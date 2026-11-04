@@ -89,7 +89,9 @@ func _on_arc(from: Vector2, to: Vector2) -> void:
 
 
 func _on_reaction(reaction_name: String, position: Vector2, color: Color) -> void:
-    _texts.append({ "pos": position + Vector2(0, -30), "text": reaction_name, "color": color, "t": 0.95, "life": 0.95 })
+    # Reactions speak through their visuals; only events that need words get text.
+    if reaction_name in ["ELITE", "Shield broken!", "Shield restored!", "Path opened!"]:
+        _texts.append({ "pos": position + Vector2(0, -30), "text": reaction_name, "color": color, "t": 0.95, "life": 0.95 })
     Sfx.reaction(reaction_name)
     var P := Art.PARTICLES
     match reaction_name:

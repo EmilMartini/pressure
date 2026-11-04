@@ -1,8 +1,10 @@
 class_name Player
 extends CharacterBody2D
-## One player: movement, aim modes, the carried arsenal, gear, pressure gauge, focus, health.
+## One player: movement, the carried arsenal (which aims and fires itself), gear,
+## level-ups, pressure gauge, health. Guns orbit the figure and point where they shoot.
 
 signal died(player: Player)
+signal leveled_up(player: Player)
 
 const LAYER_PLAYERS := 1
 const LAYER_WALLS := 4
@@ -11,10 +13,8 @@ const SPEED_LOSS_PER_WEIGHT := 0.025
 const PRESSURE_DECAY := 7.0        # per second, toward neutral
 const PRESSURE_LIMIT := 100.0
 const STALL_SECONDS := 3.0
-const FOCUS_PER_HIT := 0.07
-const FOCUS_DECAY := 0.12          # per second
-const FOCUS_MISS_PENALTY := 0.15
 const VENT_MIN := 20.0
+const GUN_RING := 26.0
 const EQUIP_KEYS := ["head", "chest", "hands", "feet", "ring1", "ring2", "trinket1", "trinket2"]
 
 const PLAYER_COLORS := [
@@ -38,19 +38,21 @@ var invuln := 0.0
 var weight_capacity_base := 10
 var weight_capacity := 10
 var guns: Array[Gun] = []
-var primary: Gun = null
 
 ## Equipped gear: EQUIP_KEYS -> item id. Gun mods live on the guns.
 var equipment: Dictionary = {}
 var _stats: Dictionary = {}
 
-var auto_aim := true
-var aim_dir := Vector2.RIGHT
+## Level-ups: xp from kills, upgrades picked on the level-up screen.
+var xp := 0.0
+var level := 1
+var bonus_stats: Dictionary = {}
 
-var pressure := 0.0        # -limit cold .. +limit hot
-var overheated := 0.0      # seconds left of stall
-var frozen_up := 0.0       # seconds left of slow fire
-var focus := 0.0           # 0..1, manual-aim reward
+var aim_dir := Vector2.RIGHT      # where the figure faces: the nearest enemy, else movement
+var pressure := 0.0               # -limit cold .. +limit hot
+var pressure_limit_bonus := 0.0   # from run boons
+var overheated := 0.0             # seconds left of stall
+var frozen_up := 0.0              # seconds left of slow fire
 var kills := 0
 var last_message := ""
 var _message_time := 0.0
@@ -58,6 +60,8 @@ var _sprite: Sprite2D
 var _anim_t := 0.0
 var _recoil := Vector2.ZERO
 var _squash := 0.0
+var _mastery: Node = null
+var _squash_scale := 2.0
 
 
 func _init(p_index: int, p_input: PlayerInput) -> void:
@@ -80,6 +84,7 @@ func _ready() -> void:
     var tiles: Array = Art.TILES["player"]
     _sprite = Art.sprite(tiles[index % tiles.size()], 2.0, color.lerp(Color.WHITE, 0.35))
     add_child(_sprite)
+    _mastery = get_node_or_null("/root/Mastery")
 
 
 func main() -> Main:
@@ -108,18 +113,31 @@ func add_gun(id: String) -> bool:
     var gun := Gun.new(data, self)
     add_child(gun)
     guns.append(gun)
-    if primary == null:
-        primary = gun
+    _layout_guns()
     say("Picked up %s" % data.display_name)
     return true
 
 
-func cycle_primary() -> void:
-    if guns.size() < 2:
-        return
-    var i := guns.find(primary)
-    primary = guns[(i + 1) % guns.size()]
-    say("Primary: %s" % primary.data.display_name)
+## Take a gun off the player. Returns its id so the room can put it on the floor.
+func drop_gun(gun: Gun) -> String:
+    if not guns.has(gun):
+        return ""
+    var id := gun.data.id
+    guns.erase(gun)
+    remove_child(gun)
+    gun.queue_free()
+    _layout_guns()
+    recalc_stats()
+    say("Dropped %s" % gun.data.display_name)
+    return id
+
+
+## Guns sit in a ring around the figure so what you carry is what you see.
+func _layout_guns() -> void:
+    var n := guns.size()
+    for i in n:
+        var angle := -PI / 2.0 + TAU * float(i) / float(n)
+        guns[i].position = Vector2.RIGHT.rotated(angle) * (GUN_RING + 4.0 * float(mini(n, 8)))
 
 
 func element_kinds() -> Array:
@@ -130,7 +148,17 @@ func element_kinds() -> Array:
     return kinds
 
 
-# --- Gear ------------------------------------------------------------------
+## The gun a new mod goes on: the first without one, else the first.
+func mod_target() -> Gun:
+    if guns.is_empty():
+        return null
+    for g in guns:
+        if g.mod == "":
+            return g
+    return guns[0]
+
+
+# --- Gear and level-ups -----------------------------------------------------
 
 
 ## Equip an item. Returns the id it replaced, or "".
@@ -141,11 +169,12 @@ func equip(id: String) -> String:
     var slot: String = item["slot"]
     var old := ""
     if slot == "mod":
-        if primary == null:
+        var g := mod_target()
+        if g == null:
             return ""
-        old = primary.mod
-        primary.mod = id
-        say("%s fitted to %s" % [item["name"], primary.data.display_name])
+        old = g.mod
+        g.mod = id
+        say("%s fitted to %s" % [item["name"], g.data.display_name])
     else:
         var key := slot
         if slot in ["ring", "trinket"]:
@@ -185,9 +214,12 @@ func recalc_stats() -> void:
     weight_capacity = weight_capacity_base + int(stat("carry"))
 
 
-## Summed modifier for a key, including conditional modifiers that currently hold.
+## Summed modifier for a key: gear, set bonuses, level-ups, mastery, and conditional
+## gear modifiers that currently hold.
 func stat(key: String) -> float:
-    var v := float(_stats.get(key, 0.0))
+    var v := float(_stats.get(key, 0.0)) + float(bonus_stats.get(key, 0.0))
+    if _mastery != null:
+        v += _mastery.bonus(key)
     for id in equipment.values():
         var cm: Dictionary = Items.get_item(id).get("cond_mods", {})
         for cond in cm.keys():
@@ -196,26 +228,32 @@ func stat(key: String) -> float:
     return v
 
 
-var pressure_limit_bonus := 0.0   # from run boons
+func xp_to_next() -> float:
+    return 15.0 + 10.0 * float(level - 1)
+
+
+func gain_xp(amount: float) -> void:
+    if not alive:
+        return
+    xp += amount * (1.0 + stat("xp_gain"))
+    while xp >= xp_to_next():
+        xp -= xp_to_next()
+        level += 1
+        say("Level %d" % level)
+        Sfx.play("unlock")
+        leveled_up.emit(self)
+
+
+## Called by the level-up screen with an option from LevelUps.
+func apply_upgrade(opt: Dictionary) -> void:
+    var key: String = opt["key"]
+    bonus_stats[key] = float(bonus_stats.get(key, 0.0)) + float(opt["amount"])
+    recalc_stats()
+    say(opt.get("name", "Upgrade"))
 
 
 func pressure_limit() -> float:
     return PRESSURE_LIMIT + pressure_limit_bonus + stat("pressure_limit")
-
-
-## Take a gun off the player. Returns its id so the room can put it on the floor.
-func drop_gun(gun: Gun) -> String:
-    if not guns.has(gun):
-        return ""
-    var id := gun.data.id
-    guns.erase(gun)
-    if primary == gun:
-        primary = guns[0] if not guns.is_empty() else null
-    remove_child(gun)
-    gun.queue_free()
-    recalc_stats()
-    say("Dropped %s" % gun.data.display_name)
-    return id
 
 
 func move_speed() -> float:
@@ -234,7 +272,7 @@ func on_reaction(_reaction_name: String) -> void:
         heal(steal)
 
 
-# --- Pressure and focus ----------------------------------------------------
+# --- Pressure --------------------------------------------------------------
 
 
 func add_pressure(amount: float) -> void:
@@ -256,26 +294,13 @@ func add_pressure(amount: float) -> void:
         Items.fire(self, "freeze_up", { "pos": global_position, "element": Element.Kind.ICE })
 
 
-## Nudge the sprite opposite to a shot; called by Gun.
+## Nudge the figure opposite to a shot; called by Gun.
 func kick(dir: Vector2, strength: float) -> void:
     _recoil = -dir * strength
 
 
 func cooldown_multiplier() -> float:
     return 3.0 if frozen_up > 0.0 else 1.0
-
-
-func focus_multiplier() -> float:
-    return 1.0 + focus * 0.5
-
-
-func on_projectile_hit(manual: bool) -> void:
-    if manual and not auto_aim:
-        focus = minf(1.0, focus + FOCUS_PER_HIT * (1.0 + stat("focus_gain")))
-
-
-func on_projectile_missed() -> void:
-    focus = maxf(0.0, focus - FOCUS_MISS_PENALTY)
 
 
 func vent() -> void:
@@ -298,6 +323,10 @@ func vent() -> void:
         e.take_damage(strength * 0.35, col, true, self)
         if is_instance_valid(e) and not e.is_queued_for_deletion():
             e.apply_element(kind, strength * 0.3, self)
+    # A vent sweeping through a cloud reacts with the whole cloud.
+    for c in get_tree().get_nodes_in_group("clouds"):
+        if is_instance_valid(c) and c.global_position.distance_to(global_position) <= vent_radius + c.radius:
+            Elements.react_cloud(c, kind, strength * 0.3, self)
     pressure = 0.0
     Items.fire(self, "vent", { "pos": global_position, "element": kind })
 
@@ -351,32 +380,25 @@ func _physics_process(delta: float) -> void:
     velocity = mv * move_speed()
     move_and_slide()
 
-    var a := input.aim_vector(self)
-    if a != Vector2.ZERO:
-        aim_dir = a
-    elif mv != Vector2.ZERO:
-        aim_dir = mv.normalized()
-
-    if input.just_pressed("toggle_aim"):
-        auto_aim = not auto_aim
-        focus = 0.0
-        say("Auto-aim" if auto_aim else "Manual aim")
     if input.just_pressed("vent"):
         vent()
-    if input.just_pressed("swap"):
-        cycle_primary()
 
     pressure = move_toward(pressure, 0.0, PRESSURE_DECAY * (1.0 + stat("pressure_decay")) * delta)
     overheated = maxf(0.0, overheated - delta)
     frozen_up = maxf(0.0, frozen_up - delta)
     invuln = maxf(0.0, invuln - delta)
-    focus = maxf(0.0, focus - FOCUS_DECAY * delta)
     var regen := stat("regen")
     if regen > 0.0:
         heal(regen * delta)
     _message_time = maxf(0.0, _message_time - delta)
     if _message_time <= 0.0:
         last_message = ""
+
+    var nearest := nearest_enemy(900.0)
+    if nearest != null:
+        aim_dir = (nearest.global_position - global_position).normalized()
+    elif mv != Vector2.ZERO:
+        aim_dir = mv.normalized()
 
     _fire()
     _animate(delta, mv)
@@ -390,31 +412,43 @@ func _animate(delta: float, mv: Vector2) -> void:
     var hop := absf(sin(_anim_t)) * 3.0 if moving else 0.0
     _squash = maxf(0.0, _squash - delta * 6.0)
     _recoil = _recoil.move_toward(Vector2.ZERO, 60.0 * delta)
-    _sprite.scale = Vector2(2.0 * (1.0 + 0.3 * _squash), 2.0 * (1.0 - 0.3 * _squash))
+    _sprite.scale = Vector2(_squash_scale * (1.0 + 0.3 * _squash), _squash_scale * (1.0 - 0.3 * _squash))
     _sprite.position = Vector2(0, -hop) + _recoil
     _sprite.rotation = sin(_anim_t) * 0.08 if moving else 0.0
 
 
+## Every gun picks its own nearest target in range and fires. Elites and bosses are
+## preferred by the heaviest gun you carry, so your big hitter goes for the big one.
 func _fire() -> void:
     if overheated > 0.0:
         return
-    var trigger := input.fire_held()
+    var heaviest: Gun = null
+    for g in guns:
+        if heaviest == null or g.data.weight > heaviest.data.weight:
+            heaviest = g
     for g in guns:
         if not g.can_fire():
             continue
-        var is_primary := g == primary
-        if is_primary and not trigger:
-            continue
-        # The trigger goes for the big one: in auto-aim the primary prefers elites and bosses.
-        var target := nearest_enemy(g.effective_range(), is_primary)
+        var target := nearest_enemy(g.effective_range(), g == heaviest)
         if target == null:
-            if is_primary:
-                g.fire(aim_dir, not auto_aim)
+            # Nothing to shoot: an obstacle in range gets the gun's element instead.
+            target = nearest_obstacle(g.effective_range())
+        if target == null:
             continue
-        if auto_aim:
-            g.fire((target.global_position - global_position).normalized(), false)
-        else:
-            g.fire(aim_dir, true)
+        g.fire((target.global_position - g.global_position).normalized())
+
+
+func nearest_obstacle(max_range: float) -> Node2D:
+    var best: Node2D = null
+    var best_d := max_range * max_range
+    for ob in get_tree().get_nodes_in_group("obstacles"):
+        if not is_instance_valid(ob) or ob.is_queued_for_deletion():
+            continue
+        var d: float = ob.global_position.distance_squared_to(global_position)
+        if d < best_d:
+            best_d = d
+            best = ob
+    return best
 
 
 func nearest_enemy(max_range: float, prefer_elite: bool = false) -> Node2D:
@@ -453,10 +487,4 @@ func _draw() -> void:
     if absf(aim_dir.x) > 0.05:
         _sprite.flip_h = aim_dir.x < 0.0
     draw_circle(Vector2(0, radius * 0.7), radius * 0.9, Color(0, 0, 0, 0.35))
-    # Nose shows aim direction.
-    var tip := aim_dir * (radius + 8.0)
-    var side := aim_dir.orthogonal() * 7.0
-    draw_colored_polygon(PackedVector2Array([tip, aim_dir * 4.0 + side, aim_dir * 4.0 - side]), Color.WHITE)
-    if not auto_aim:
-        draw_line(aim_dir * (radius + 10.0), aim_dir * 90.0, Color(1, 1, 1, 0.25 + focus * 0.5), 1.5)
     draw_string(Art.FONT, Vector2(-20, -radius - 8), str(index + 1), HORIZONTAL_ALIGNMENT_CENTER, 40, 16, color)

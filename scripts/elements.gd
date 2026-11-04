@@ -63,7 +63,7 @@ const DURATION := {
 const DEFS := [
     # --- Wet
     { "a": Kind.WET, "b": Kind.SHOCK, "name": "Chain Lightning", "desc": "Lightning jumps between wet enemies", "sound": "react_chain", "fx": "spark", "do": [["chain", 3.0]] },
-    { "a": Kind.WET, "b": Kind.FIRE, "name": "Steam", "desc": "A scalding burst that slows everything in it", "sound": "react_steam", "fx": "smoke", "do": [["burst", 130, 2.0], ["slow", 0.5, 3.0, 130]] },
+    { "a": Kind.WET, "b": Kind.FIRE, "name": "Steam", "desc": "A scalding cloud that slows everything in it; charge it with lightning", "sound": "react_steam", "fx": "smoke", "do": [["burst", 130, 2.0], ["slow", 0.5, 3.0, 130], ["cloud", Kind.WET, 130, 3.5]] },
     { "a": Kind.WET, "b": Kind.ICE, "name": "Deep Freeze", "desc": "Frozen solid: takes triple damage, shatters on death", "sound": "react_freeze", "fx": "magic", "do": [["damage", 1.0], ["freeze", 3.0]] },
     { "a": Kind.WET, "b": Kind.POISON, "name": "Toxic Mist", "desc": "A poison cloud hangs in the air", "sound": "react_steam", "fx": "smoke", "do": [["damage", 1.0], ["cloud", Kind.POISON, 120, 4.0]] },
     { "a": Kind.WET, "b": Kind.ACID, "name": "Caustic Splash", "desc": "Acid sprays onto everything nearby", "sound": "react_steam", "fx": "circle", "do": [["burst", 110, 1.5], ["apply", Kind.ACID, 110]] },
@@ -194,6 +194,55 @@ func try_react(enemy: Node2D, existing: int, incoming: int, potency: float) -> S
             break
         _act(enemy, potency, act)
     return name
+
+
+## An element meets a cloud: the pair's reaction plays out over everyone inside the cloud,
+## and the cloud takes on the incoming element, so steam charged with lightning keeps
+## shocking whoever walks through it. Clouds also meet other clouds this way.
+func react_cloud(cloud: Cloud, incoming: int, potency: float, source: Player) -> String:
+    if cloud == null or not is_instance_valid(cloud) or cloud.element == incoming or cloud.cooldown > 0.0:
+        return ""
+    var d = _reactions.get(pair_key(cloud.element, incoming))
+    if d == null:
+        return ""
+    cloud.cooldown = 0.5
+    var name: String = d["name"]
+    var pos: Vector2 = cloud.global_position
+    reaction_fired.emit(name, pos, COLORS[incoming])
+    nova.emit(pos, cloud.radius, Color(COLORS[incoming], 0.6))
+    var inside := _enemies_within(pos, cloud.radius)
+    var area_done := false
+    for e in inside:
+        if not is_instance_valid(e) or e.is_queued_for_deletion():
+            continue
+        if source != null and is_instance_valid(source):
+            e.last_hit_by = source
+        for act in d["do"]:
+            if not is_instance_valid(e) or e.is_queued_for_deletion():
+                break
+            if act[0] == "cloud":
+                continue
+            if _is_area_action(act):
+                # Area actions run once over the cloud, anchored on its first enemy,
+                # or ten enemies would mean ten bursts.
+                if not area_done:
+                    _act(e, potency * 0.7, act)
+                continue
+            _act(e, potency * 0.7, act)
+        area_done = true
+    cloud.transform_to(incoming)
+    return name
+
+
+static func _is_area_action(act: Array) -> bool:
+    match act[0]:
+        "burst", "chain_state", "spread", "pull", "push":
+            return true
+        "apply":
+            return float(act[2]) > 0.0
+        "slow":
+            return float(act[3]) > 0.0
+    return false
 
 
 # --- Actions ---------------------------------------------------------------

@@ -12,17 +12,13 @@ Godot 4.7 is installed through winget. Either open the folder in the Godot edito
 godot --path .
 ```
 
-Controls are shown at the bottom of the screen in game. Press `F1` to hide them.
+Guns aim and fire on their own; you move, vent, and pick things up.
 
 | Action | Keyboard / mouse | Controller |
 |---|---|---|
 | Move | WASD | Left stick |
-| Aim | Mouse | Right stick |
-| Fire primary | Left mouse | Right trigger |
 | Interact (pedestals, stairs, sigil) | E | A |
-| Toggle auto / manual aim | Tab | Y |
 | Vent pressure | Space | LB |
-| Swap primary gun | Q | X |
 | Character sheet | C | Back / Select |
 | Pause | Esc | Start |
 | Join (players 2-4) | | Start on a pad that has not joined |
@@ -59,8 +55,10 @@ neighbours.
 ## Post-processing
 
 A screen-space pass (bloom from a thresholded blur, mild contrast and saturation, a
-vignette) that runs on the Compatibility renderer so the web build keeps it. Tweak the
-uniforms at the top of `scripts/post_fx.gd`.
+vignette, and a CRT look: slight barrel curve, scanlines, a faint phosphor triad,
+chromatic aberration and grain) that runs on the Compatibility renderer so the web build
+keeps it. Tweak the uniforms at the top of `scripts/post_fx.gd`; set `crt_curve`,
+`scanline`, `aberration` and `grain` to 0 for a clean picture.
 
 ## Music
 
@@ -82,6 +80,22 @@ Three tabs, from the main menu or the pause menu:
 
 Player 1 is keyboard + mouse and the first controller, merged. Every other
 controller joins as a new player by pressing Start.
+
+## Levels, mastery and reactions that chain
+
+Kills give XP. Each level, once the room is clear, you pick one of three upgrades
+(damage, attack speed, crit, bounces, pierce, health, armour, speed, scrap, pressure and
+so on; the catalog is `scripts/levelup.gd`). Runs also earn **mastery points** (one per
+floor reached, one per 150 kills, three for a win) spent in the Mastery tree from the main
+menu: 212 small permanent nodes across offense, defense, pressure, economy, utility and
+every element, idle-game style. Wipe save clears both.
+
+Reactions chain through clouds. Steam, Toxic Mist, Firestorm, Magma, Blizzard, Tar Pit
+and others leave a cloud; any element that enters a cloud of a different element reacts
+with the whole cloud and the cloud takes on that element. Shock through steam is a
+lightning field that keeps shocking; fire into a poison cloud is a Noxious Flame over
+everyone in it; two clouds meeting react with each other. A vent sweeping through a cloud
+does the same.
 
 ## Progression
 
@@ -159,7 +173,12 @@ scripts/
   sfx.gd             autoload `Sfx`: one-shot sounds by name
   menu.gd            main menu (scenes/menu.tscn is the start scene)
   pause_menu.gd      pause overlay, also the run-over screen
-  journal.gd         achievements / arsenal / gear journal used by both menus
+  journal.gd         achievements / arsenal / gear / reactions journal used by both menus
+  levelup.gd         level-up upgrade catalog;  levelup_screen.gd  the pick-one-of-three overlay
+  mastery.gd         autoload `Mastery`: the permanent skill tree and its save;  mastery_screen.gd
+  cloud.gd           lingering element patches that react with what enters them
+  prompts.gd         Xbox-style button and key-cap drawing
+  post_fx.gd         bloom, grading and CRT post-process
   character_sheet.gd gear, set bonuses and computed stats for one player
   music.gd           autoload `Music`: looping tracks with crossfades
   menu_pad.gd        direct controller polling for menu navigation

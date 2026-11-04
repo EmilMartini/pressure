@@ -10,16 +10,16 @@ extends Node
 ##   dmg, dmg_<el>, potency, potency_<el>, potency:<Reaction Name>, fire_rate,
 ##   fire_rate_<el>, proj_speed, range, pierce (int), pierce_<el> (int), proj_count (int),
 ##   max_hp (int), regen (hp/s), speed, carry (int), pressure_decay, pressure_limit (int),
-##   vent_radius, vent_power, focus_gain, scrap_gain, crit, armor (int), dodge,
-##   state_duration, vs_wet, vs_burning, vs_frozen, vs_shocked, vs_oiled, lifesteal (hp per
-##   reaction), thorns (int), chain_jumps (int)
+##   vent_radius, vent_power, scrap_gain, crit, crit_dmg (added to the x2 base), armor (int),
+##   dodge, state_duration, vs_wet, vs_burning, vs_frozen, vs_shocked, vs_oiled, lifesteal
+##   (hp per reaction), thorns (int), chain_jumps (int), bounce (int), xp_gain
 ## Gun mods (slot "mod", apply to the gun they sit on): g_dmg, g_fire_rate, g_count (int),
 ##   g_pierce (int), g_range, g_speed, g_pressure, extra_element (el key)
 ## Triggers: { on, chance, if, do, element, potency, radius, amount, count }
 ##   on:  hit, kill, elite_kill, reaction, reaction:<Reaction Name>, vent, room_clear, hurt,
 ##        overheat, freeze_up
 ##   if:  target_wet, target_burning, target_frozen, target_shocked, target_oiled, hot,
-##        cold, low_hp, manual, elite
+##        cold, low_hp, elite
 ##   do:  apply, nova, heal, scrap, pressure, shoot, shield, slow, chain
 ##   element: wet, shock, fire, ice, oil, or "last" (the element of the event)
 
@@ -252,8 +252,6 @@ func condition(c: String, player: Player, ctx: Dictionary) -> bool:
             return player.pressure < -30.0
         "low_hp":
             return player.hp < player.max_hp * 0.4
-        "manual":
-            return not player.auto_aim
     return false
 
 
@@ -350,7 +348,7 @@ func _build_catalog() -> void:
     # --- Head
     _add("rusted_helm", "Rusted Helm", "head", C, "+20 max HP", { "max_hp": 20 })
     _add("scavenger_hood", "Scavenger Hood", "head", U, "+25% scrap", { "scrap_gain": 0.25 })
-    _add("crown_of_focus", "Crown of Focus", "head", R, "Focus builds 50% faster. +10% damage in manual aim.", { "focus_gain": 0.5 }, [], { "cond_mods": { "manual": { "dmg": 0.10 } } })
+    _add("crown_of_focus", "Crown of Focus", "head", R, "+8% damage, +5% crit chance, +1 bounce", { "dmg": 0.08, "crit": 0.05, "bounce": 1 })
     _add("boiler_cap", "Boiler Cap", "head", E, "+40 pressure limit. Pressure fades 30% faster.", { "pressure_limit": 40, "pressure_decay": 0.3 })
     _add("skullcap_vented", "Skullcap of the Vented", "head", L, "Venting also fires 8 shots of the vented element.", {}, [{ "on": "vent", "do": "shoot", "element": "last", "count": 8, "potency": 8 }])
 

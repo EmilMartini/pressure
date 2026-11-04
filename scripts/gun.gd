@@ -1,12 +1,17 @@
 class_name Gun
 extends Node2D
-## One carried gun. Spawns projectiles; the Player decides when and where it fires.
-## Stats are the gun's base numbers shaped by the player's gear and this gun's mod.
+## One carried gun, drawn orbiting the player and pointing at whatever it last shot.
+## Spawns projectiles; the Player decides when and where it fires. Stats are the gun's
+## base numbers shaped by the player's gear, level-ups, mastery and this gun's mod.
 
 var data: GunData
 var player: Player
 var cooldown := 0.0
 var mod := ""   # item id of the gun mod fitted to this gun, or ""
+
+var _sprite: Sprite2D
+var _aim := Vector2.RIGHT
+var _recoil := 0.0
 
 
 func _init(p_data: GunData, p_player: Player) -> void:
@@ -15,8 +20,18 @@ func _init(p_data: GunData, p_player: Player) -> void:
     name = data.id
 
 
+func _ready() -> void:
+    z_index = 1
+    _sprite = Art.sprite(Art.gun_tile(data.id), 1.5, data.color())
+    add_child(_sprite)
+
+
 func _process(delta: float) -> void:
     cooldown = maxf(0.0, cooldown - delta)
+    _recoil = move_toward(_recoil, 0.0, 45.0 * delta)
+    _sprite.position = -_aim * _recoil
+    _sprite.rotation = _aim.angle()
+    _sprite.flip_v = _aim.x < 0.0
 
 
 func can_fire() -> bool:
@@ -42,14 +57,14 @@ func fire_rate() -> float:
     return data.fire_rate * maxf(0.2, 1.0 + player.stat("fire_rate") + player.stat("fire_rate_" + ek) + _gm("g_fire_rate"))
 
 
-func fire(dir: Vector2, manual: bool) -> void:
+func fire(dir: Vector2) -> void:
     var ek := element_key()
+    _aim = dir
+    _recoil = 5.0 + float(data.weight)
     cooldown = (1.0 / fire_rate()) * player.cooldown_multiplier()
     var world := get_tree().current_scene
     var damage := data.damage * maxf(0.1, 1.0 + player.stat("dmg") + player.stat("dmg_" + ek) + _gm("g_dmg"))
     var potency := damage * data.reaction_mult * (1.0 + player.stat("potency") + player.stat("potency_" + ek))
-    if manual:
-        potency *= player.focus_multiplier()
     var crit := randf() < player.stat("crit")
     if crit:
         var crit_mult := 2.0 + player.stat("crit_dmg")
@@ -64,6 +79,7 @@ func fire(dir: Vector2, manual: bool) -> void:
         var ex: String = Items.get_item(mod).get("mods", {}).get("extra_element", "")
         if ex != "":
             extra = Items.ELEMENTS[ex]
+    var muzzle := global_position + dir * 14.0
     for i in count:
         var angle := 0.0
         if count > 1:
@@ -77,15 +93,15 @@ func fire(dir: Vector2, manual: bool) -> void:
         p.potency = potency
         p.lifetime = lifetime
         p.pierce = pierce
+        p.bounces = int(player.stat("bounce"))
         p.radius = data.projectile_radius * (1.4 if crit else 1.0)
         p.color = data.color()
-        p.manual = manual
         p.crit = crit
         p.shooter = player
-        p.global_position = player.global_position + dir * (player.radius + 6.0)
+        p.global_position = muzzle
         world.add_child(p)
     player.add_pressure(data.pressure_per_shot * (1.0 + _gm("g_pressure")))
-    player.kick(dir, 2.0 + float(data.weight))
+    player.kick(dir, 1.0 + float(data.weight) * 0.5)
     Sfx.shoot(data.element)
     if "fx" in world and world.fx != null:
-        world.fx.puff(Art.PARTICLES["light"], player.global_position + dir * (player.radius + 12.0), Color(data.color(), 0.9), 26.0 + float(data.weight) * 5.0, 0.08, true)
+        world.fx.puff(Art.PARTICLES["light"], muzzle, Color(data.color(), 0.9), 22.0 + float(data.weight) * 4.0, 0.08, true)

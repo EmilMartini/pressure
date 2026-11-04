@@ -24,7 +24,7 @@ const TILE := 16
 
 ## Sheet coordinates (column, row) in the packed 1-bit sheet.
 const TILES := {
-    "player": [Vector2i(28, 0), Vector2i(26, 0), Vector2i(30, 0), Vector2i(31, 0)],
+    "player": [Vector2i(26, 0), Vector2i(31, 0), Vector2i(30, 0), Vector2i(27, 0)],
     "grunt": Vector2i(29, 6),
     "runner": Vector2i(26, 8),
     "brute": Vector2i(30, 6),

@@ -12,11 +12,13 @@ var radius: float
 var life: float
 var potency: float
 var source: Player
+var cooldown := 0.0   # seconds until this cloud may react again
 var _tick := 0.0
 var _puff := 0.0
 
 
-## Spawn a cloud, or top up an existing one of the same element close by.
+## Spawn a cloud, top up a nearby cloud of the same element, or react with a nearby
+## cloud of a different element (two overlapping clouds are a reaction, not a stack).
 static func spawn(parent: Node, pos: Vector2, p_element: int, p_radius: float, p_life: float, p_potency: float, p_source: Player) -> void:
     var tree := parent.get_tree()
     var clouds := tree.get_nodes_in_group("clouds")
@@ -24,10 +26,14 @@ static func spawn(parent: Node, pos: Vector2, p_element: int, p_radius: float, p
     for c in clouds:
         if not is_instance_valid(c):
             continue
-        if c.element == p_element and c.global_position.distance_to(pos) < MERGE_DISTANCE:
+        var near: bool = c.global_position.distance_to(pos) < MERGE_DISTANCE * 1.3
+        if near and c.element == p_element:
             c.life = maxf(c.life, p_life)
             c.radius = maxf(c.radius, p_radius)
             c.potency = maxf(c.potency, p_potency)
+            return
+        if near and c.cooldown <= 0.0 and Elements.reaction_name(c.element, p_element) != "":
+            Elements.react_cloud(c, p_element, p_potency, p_source)
             return
         if oldest == null or c.life < oldest.life:
             oldest = c
@@ -51,10 +57,19 @@ func _ready() -> void:
     add_to_group("clouds")
 
 
+## Become a cloud of another element after a reaction, and linger a little longer.
+func transform_to(new_element: int) -> void:
+    element = new_element
+    life = maxf(life, 2.5)
+    _tick = 0.0
+    queue_redraw()
+
+
 func _process(delta: float) -> void:
     life -= delta
     _tick -= delta
     _puff -= delta
+    cooldown = maxf(0.0, cooldown - delta)
     if _tick <= 0.0:
         _tick = 0.6
         for e in get_tree().get_nodes_in_group("enemies"):

@@ -167,8 +167,11 @@ func _draw_minimap(vp: Vector2) -> void:
 
 
 func _draw_player_panel(p: Player, origin: Vector2) -> void:
-    draw_rect(Rect2(origin, Vector2(PANEL_W, PANEL_H)), Color(0.03, 0.02, 0.04, 0.72))
-    draw_rect(Rect2(origin, Vector2(PANEL_W, PANEL_H)), Color(p.color, 0.5), false, 2.0)
+    var gun_rows := maxi(1, int(ceil(float(p.guns.size()) / 8.0)))
+    var pip_rows := maxi(1, int(ceil(float(p.weight_capacity) / 20.0)))
+    var panel_h := PANEL_H + 14.0 + 34.0 * float(gun_rows - 1) + 11.0 * float(pip_rows - 1)
+    draw_rect(Rect2(origin, Vector2(PANEL_W, panel_h)), Color(0.03, 0.02, 0.04, 0.72))
+    draw_rect(Rect2(origin, Vector2(PANEL_W, panel_h)), Color(p.color, 0.5), false, 2.0)
     var x := origin.x + 10.0
     var y := origin.y + 10.0
 
@@ -181,12 +184,11 @@ func _draw_player_panel(p: Player, origin: Vector2) -> void:
     _icon(tiles[p.index % tiles.size()], box.grow(-6.0), tint)
     _text(Vector2(x + 2, y + 62), "P%d" % (p.index + 1), 18, p.color)
 
-    # Aim mode badge
+    # Level badge
     var bx := x + 64.0
     var badge := Rect2(origin.x + PANEL_W - 96, y, 86, 20)
-    var badge_col := Color(0.25, 0.5, 0.9) if p.auto_aim else Color(0.75, 0.4, 0.95)
-    draw_rect(badge, Color(badge_col, 0.85))
-    _text(Vector2(badge.position.x, badge.position.y + 15), "AUTO" if p.auto_aim else "MANUAL", 15, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, badge.size.x, false)
+    draw_rect(badge, Color(0.55, 0.4, 0.15, 0.9))
+    _text(Vector2(badge.position.x, badge.position.y + 15), "LEVEL %d" % p.level, 15, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, badge.size.x, false)
 
     # Health
     var hp_rect := Rect2(bx, y + 24, PANEL_W - 84, 20)
@@ -213,29 +215,29 @@ func _draw_player_panel(p: Player, origin: Vector2) -> void:
     elif p.frozen_up > 0.0:
         _text(Vector2(g.position.x, gy + 12), "FROZEN UP", 14, Color(0.6, 0.9, 1.0), HORIZONTAL_ALIGNMENT_CENTER, g.size.x)
 
-    # Focus, manual only
-    if not p.auto_aim:
-        var f := Rect2(bx, y + 70, PANEL_W - 84, 6)
-        _bar(f, p.focus, Color(0.85, 0.5, 1.0))
-        _text(Vector2(f.end.x - 80, y + 69), "FOCUS x%.2f" % p.focus_multiplier(), 13, Color(0.85, 0.5, 1.0), HORIZONTAL_ALIGNMENT_RIGHT, 80)
+    # Experience toward the next level
+    var f := Rect2(bx, y + 70, PANEL_W - 84, 6)
+    _bar(f, p.xp / p.xp_to_next(), Color(0.85, 0.65, 0.2))
 
-    # Gun icons with element frames; primary carries the trigger tag.
+    # Gun icons with element frames, wrapping into rows.
     var gx := x
     var gyy := y + 84.0
-    for gun in p.guns:
-        var slot := Rect2(gx, gyy, 36, 36)
+    var per_row := 8
+    for i in p.guns.size():
+        var gun: Gun = p.guns[i]
+        if i > 0 and i % per_row == 0:
+            gx = x
+            gyy += 34.0
+        var slot := Rect2(gx, gyy, 30, 30)
         var ec: Color = gun.data.color()
-        var is_primary := gun == p.primary
         draw_rect(slot, Color(0.08, 0.06, 0.08, 0.9))
-        _icon(Art.gun_tile(gun.data.id), slot.grow(-4.0), ec)
-        draw_rect(slot, Color.WHITE if is_primary else Color(ec, 0.8), false, 3.0 if is_primary else 1.5)
+        _icon(Art.gun_tile(gun.data.id), slot.grow(-3.0), ec)
+        draw_rect(slot, Color(ec, 0.8), false, 1.5)
         if gun.mod != "":
-            draw_rect(Rect2(gx + 26, gyy + 2, 8, 8), Items.rarity_color(Items.get_item(gun.mod)))
-        if is_primary:
-            Prompts.draw(self, Vector2(gx + 18, gyy + 42), p.input.prompt("fire"), p.input.last_kind, 16.0)
-        gx += 40.0
-        if gx > origin.x + PANEL_W - 60:
-            break
+            draw_rect(Rect2(gx + 21, gyy + 2, 7, 7), Items.rarity_color(Items.get_item(gun.mod)))
+        gx += 34.0
+    # Rows below follow however many gun rows there were.
+    y += 34.0 * float(gun_rows - 1)
 
     # Gear slots: head, chest, hands, feet, rings, trinkets.
     var ex := x
@@ -253,13 +255,14 @@ func _draw_player_panel(p: Player, origin: Vector2) -> void:
             draw_rect(gbox, Color(0.25, 0.22, 0.24), false, 1.0)
         ex += 28.0
 
-    # Weight pips
+    # Weight pips, wrapping at twenty per row.
     var wx := x
     var wy := y + 168.0
+    var per := 20
     for i in p.weight_capacity:
         var filled := i < p.total_weight()
-        draw_rect(Rect2(wx + float(i) * 11.0, wy, 8, 8), UiTheme.BONE if filled else Color(0.25, 0.22, 0.24))
-    _text(Vector2(wx + float(p.weight_capacity) * 11.0 + 8.0, wy + 8), "WEIGHT %d/%d" % [p.total_weight(), p.weight_capacity], 14, UiTheme.DIM)
+        draw_rect(Rect2(wx + float(i % per) * 11.0, wy + float(i / per) * 11.0, 8, 8), UiTheme.BONE if filled else Color(0.25, 0.22, 0.24))
+    _text(Vector2(wx, wy + 11.0 * float(pip_rows) + 10.0), "WEIGHT %d/%d" % [p.total_weight(), p.weight_capacity], 14, UiTheme.DIM)
 
     if p.last_message != "":
         _text(Vector2(origin.x + PANEL_W - 10, y + 68), p.last_message, 14, Color(1.0, 0.9, 0.4), HORIZONTAL_ALIGNMENT_RIGHT, -1)

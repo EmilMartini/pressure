@@ -1,7 +1,8 @@
 class_name Projectile
 extends Area2D
-## A bullet. Deals raw damage, then applies its element (which may react).
-## Drawn per element: droplets, bolts, embers, shards, tar. Glows add on top.
+## A bullet. Deals raw damage, then applies its element (which may react). Passing
+## through a cloud of another element reacts with the whole cloud. Bounces redirect it
+## to the next enemy. Drawn per element: droplets, bolts, embers, shards, tar...
 
 const LAYER_ENEMIES := 2
 
@@ -13,14 +14,15 @@ var element: int = Element.Kind.NONE
 var potency := 1.0
 var lifetime := 1.0
 var pierce := 0
+var bounces := 0
 var radius := 4.0
 var color := Color.WHITE
-var manual := false
 var crit := false
 var extra_element: int = Element.Kind.NONE   # from a Coating gun mod
 var shooter: Player = null
 
 var _hit: Dictionary = {}
+var _clouds_hit: Dictionary = {}
 var _trail: Array = []
 var _smoke_cd := 0.0
 
@@ -53,6 +55,12 @@ func _physics_process(delta: float) -> void:
         if is_instance_valid(ob) and not ob.is_queued_for_deletion() and ob.overlaps(global_position, radius):
             _on_body_entered(ob)
             return
+    for c in get_tree().get_nodes_in_group("clouds"):
+        if not is_instance_valid(c) or _clouds_hit.has(c) or c.element == element:
+            continue
+        if c.global_position.distance_to(global_position) <= c.radius:
+            _clouds_hit[c] = true
+            Elements.react_cloud(c, element, potency, shooter)
     if element == Element.Kind.FIRE:
         _smoke_cd -= delta
         if _smoke_cd <= 0.0:
@@ -61,8 +69,6 @@ func _physics_process(delta: float) -> void:
             if fx != null:
                 fx.puff(Art.PARTICLES["smoke"], global_position, Color(0.25, 0.22, 0.2, 0.45), radius * 4.0, 0.35, false, Vector2(0, -20), 0.5)
     if lifetime <= 0.0:
-        if manual and shooter != null and _hit.is_empty():
-            shooter.on_projectile_missed()
         queue_free()
     queue_redraw()
 
@@ -149,8 +155,6 @@ func _draw() -> void:
 func _on_body_entered(body: Node) -> void:
     if body is Obstacle:
         body.apply_element(element, potency)
-        if shooter != null:
-            shooter.on_projectile_hit(manual)
         queue_free()
         return
     if not body is Enemy or _hit.has(body):
@@ -177,9 +181,28 @@ func _on_body_entered(body: Node) -> void:
     if extra_element != Element.Kind.NONE and is_instance_valid(enemy) and not enemy.is_queued_for_deletion():
         enemy.apply_element(extra_element, potency * 0.8, shooter)
     if shooter != null:
-        shooter.on_projectile_hit(manual)
         Items.fire(shooter, "hit", { "target": enemy, "pos": global_position, "element": element })
+    if bounces > 0:
+        var next := _next_target()
+        if next != null:
+            bounces -= 1
+            velocity = (next.global_position - global_position).normalized() * velocity.length()
+            lifetime = maxf(lifetime, 0.6)
+            return
     if pierce > 0:
         pierce -= 1
     else:
         queue_free()
+
+
+func _next_target() -> Node2D:
+    var best: Node2D = null
+    var best_d := 320.0 * 320.0
+    for e in get_tree().get_nodes_in_group("enemies"):
+        if _hit.has(e) or not is_instance_valid(e) or e.is_queued_for_deletion():
+            continue
+        var d: float = e.global_position.distance_squared_to(global_position)
+        if d < best_d:
+            best_d = d
+            best = e
+    return best

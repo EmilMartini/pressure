@@ -12,6 +12,8 @@ var fx: Fx
 var hud: Hud
 var camera: Camera2D
 var pause_menu: PauseMenu
+var levelup: LevelUpScreen
+var _pending_levelups: Array = []
 var _shake := 0.0
 
 var floor_number := 0
@@ -67,6 +69,8 @@ func _ready() -> void:
     layer.add_child(hud)
     pause_menu = PauseMenu.new(self)
     add_child(pause_menu)
+    levelup = LevelUpScreen.new(self)
+    add_child(levelup)
 
     var pads := Input.get_connected_joypads()
     _spawn_player(0 if pads.has(0) else -1, true)
@@ -116,6 +120,13 @@ func _ready() -> void:
             current._handle_interact()
             current._handle_interact()
             print("[INTERACT TEST] guns=%d edges_left=%s" % [p0.guns.size(), str(p0.input._edges)])
+        # The level-up picker.
+        players[0].level = 2
+        levelup.open(players[0])
+        await get_tree().create_timer(0.6).timeout
+        await _screenshot("res://autotest/levelup.png")
+        get_tree().paused = false
+        levelup.visible = false
         # Special rooms, for checking their dressing.
         for t in [RoomData.Type.SHOP, RoomData.Type.TREASURE, RoomData.Type.CHALLENGE, RoomData.Type.HIDDEN]:
             for pos in rooms.keys():
@@ -159,6 +170,11 @@ func _on_unlocked(unlock_id: String, achievement_name: String) -> void:
 
 func _end_run(won: bool) -> void:
     Progress.end_run(won, floor_number, total_kills)
+    var mastery := get_node_or_null("/root/Mastery")
+    if mastery != null and not autotest:
+        var gained: int = mastery.award(floor_number, total_kills, won)
+        if gained > 0:
+            announce("+%d mastery points" % gained)
     Music.play("ambient", 2.5)
     if not autotest:
         get_tree().create_timer(1.6).timeout.connect(pause_menu.show_menu)
@@ -312,6 +328,7 @@ func _spawn_player(device: int, keyboard: bool) -> Player:
     add_child(p)
     players.append(p)
     p.died.connect(_on_player_died)
+    p.leveled_up.connect(_on_leveled_up)
     # Naked start: no guns. The entrance offers a pick of two; late joiners get a random one.
     if current != null:
         if current.data.type == RoomData.Type.START and floor_number == 1:
@@ -362,6 +379,26 @@ func _handle_sheet_buttons() -> void:
         _back_was_down[d] = down
 
 
+## Level-ups wait for a quiet moment: the picker opens once the room is clear.
+func _on_leveled_up(p: Player) -> void:
+    if autotest:
+        var opts: Array = LevelUps.roll(p, 1)
+        if not opts.is_empty():
+            p.apply_upgrade(opts[0])
+        return
+    _pending_levelups.append(p)
+
+
+func _serve_levelups() -> void:
+    if _pending_levelups.is_empty() or pause_menu.visible or levelup.is_open():
+        return
+    if current != null and current.active:
+        return
+    var p: Player = _pending_levelups.pop_front()
+    if is_instance_valid(p) and p.alive:
+        levelup.open(p)
+
+
 func _on_player_died(_p: Player) -> void:
     for p in players:
         if p.alive:
@@ -378,6 +415,7 @@ func _process(delta: float) -> void:
         _autotest_tick(delta)
     _handle_joins()
     _handle_sheet_buttons()
+    _serve_levelups()
     camera.position = _party_center()
     camera.offset = Vector2(randf_range(-1.0, 1.0), randf_range(-1.0, 1.0)) * _shake
     _shake = move_toward(_shake, 0.0, 28.0 * delta)
@@ -467,17 +505,14 @@ func _autotest_tick(delta: float) -> void:
     var p := players[0]
     var t := p.nearest_enemy(900.0)
     var circle := Vector2.RIGHT.rotated(_clock * 0.6)
-    p.input.force_fire = t != null
     if t != null:
         var to_enemy := (t.global_position - p.global_position).normalized()
-        p.input.force_aim = to_enemy
         p.input.force_move = (-to_enemy * 0.8 + circle * 0.6).normalized()
         var inner := current.rect.grow(-120.0)
         if not inner.has_point(p.global_position):
             p.input.force_move = (inner.get_center() - p.global_position).normalized()
         _bot_idle = 0.0
     else:
-        p.input.force_aim = Vector2.ZERO
         _bot_idle += delta
         _bot_navigate(p)
     if fmod(_clock, 6.0) < delta:
@@ -490,9 +525,7 @@ func _autotest_tick(delta: float) -> void:
                 peds.append("%s@%s" % [ped.offer.get("id", ped.kind()), ped.position.round()])
         print("    room active=%s wave_left=%.0f enemies=%d paused=%s pos=%s move=%s fire=%s idle=%.1f peds=%s" % [
             current.active, current.wave_time_left, current.enemies.get_child_count(), get_tree().paused,
-            p.global_position.round(), p.input.force_move, p.input.force_fire, _bot_idle, str(peds)])
-    if _clock >= 12.0 and p.auto_aim:
-        p.auto_aim = false
+            p.global_position.round(), p.input.force_move, p.level, _bot_idle, str(peds)])
     if _clock >= 30.0 and not _shots_taken.has("pause"):
         _shots_taken["pause"] = true
         pause_menu.show_for_test()
@@ -564,11 +597,9 @@ func _bot_navigate(p: Player) -> void:
                 gun = g
         if gun == null:
             continue
-        p.primary = gun
+        # Guns fire at obstacles on their own once in range; just walk up to it.
         var target := room.door_world_position(dir)
         var to := target - p.global_position
-        p.input.force_aim = to.normalized()
-        p.input.force_fire = true
         p.input.force_move = to.normalized() if to.length() > 130.0 else Vector2.ZERO
         return
     _bot_obstacle_time = 0.0

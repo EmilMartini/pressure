@@ -203,8 +203,8 @@ func _build_guns() -> void:
             b.add_theme_color_override(state, ec)
         var normal := StyleBoxFlat.new()
         normal.bg_color = Color(0.08, 0.06, 0.08, 0.95)
-        normal.border_color = Color.WHITE if g == player.primary else Color(ec, 0.8)
-        normal.set_border_width_all(3 if g == player.primary else 2)
+        normal.border_color = Color(ec, 0.8)
+        normal.set_border_width_all(2)
         normal.set_content_margin_all(8)
         var focus := normal.duplicate()
         focus.border_color = Color(1.0, 0.45, 0.15)
@@ -221,8 +221,8 @@ func _build_guns() -> void:
 
 func _gun_tooltip(g: Gun) -> String:
     var ec := g.data.color().to_html(false)
-    var text := "[b][color=#%s]%s[/color][/b]   [color=#9a948f]%s, weight %d%s[/color]\n%.1f shots/s, %.0f damage" % [
-        ec, g.data.display_name, Element.NAMES[g.data.element], g.data.weight, "   TRIGGER" if g == player.primary else "", g.fire_rate(), g.data.damage]
+    var text := "[b][color=#%s]%s[/color][/b]   [color=#9a948f]%s, weight %d[/color]\n%.1f shots/s, %.0f damage" % [
+        ec, g.data.display_name, Element.NAMES[g.data.element], g.data.weight, g.fire_rate(), g.data.damage]
     if g.data.projectile_count > 1:
         text += ", %d projectiles" % g.data.projectile_count
     if g.data.pierce > 0:
@@ -313,7 +313,9 @@ func _build_stats() -> void:
     _row("Pressure limit", "%d" % int(p.pressure_limit()))
     _row("Pressure decay", _pct(p.stat("pressure_decay")))
     _row("Vent radius / power", "%s / %s" % [_pct(p.stat("vent_radius")), _pct(p.stat("vent_power"))])
-    _row("Focus gain", _pct(p.stat("focus_gain")))
+    _row("Bounces", "%d" % int(p.stat("bounce")))
+    _row("Level / XP", "%d   (%d / %d)" % [p.level, int(p.xp), int(p.xp_to_next())])
+    _row("XP gain", _pct(p.stat("xp_gain")))
     _group("SUSTAIN & ECONOMY")
     _row("Lifesteal", "%.0f HP per reaction" % p.stat("lifesteal"))
     _row("Thorns", "%d" % int(p.stat("thorns")))

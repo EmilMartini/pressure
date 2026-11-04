@@ -31,17 +31,18 @@ raids, loot tables).
 - **Swap primary** (X / Q) cycles which carried gun is on the trigger.
 
 ### Firing model
-- The **arsenal** (every gun you carry) auto-fires. In auto-aim mode each gun picks its own
-  nearest target in range. In manual mode the arsenal fires along your aim, but only while an
-  enemy is in range, so you are never spraying at nothing.
-- One carried gun is the **primary**. It only fires on the trigger. The primary is where the
-  deliberate reaction setups happen: wet them with the arsenal, shock them with the trigger.
+- Every gun you carry aims and fires on its own at its nearest target in range, Brotato
+  style. Guns orbit the figure and point where they shoot, so your loadout is visible.
+  The heaviest gun you carry prefers elites and bosses. With nothing to shoot, a gun in range
+  of an obstacle fires its element at that instead, which is how hidden rooms open.
+- Manual aim, the trigger and focus were cut: play showed they added input without adding
+  decisions. The decisions are what you carry, what you wear, where you stand, and when you vent.
 
-### Rewarding manual aim
-- **Target choice.** Auto-aim always picks the nearest enemy. Sequence elites need a specific
-  reaction on *them*, so auto-aim wastes shots on chaff. Manual aim is how you set up reactions on purpose.
-- **Focus.** Consecutive manual hits build a focus meter that multiplies reaction potency
-  (up to +50%). Misses and time drain it. Auto-aim never builds focus.
+### Levels
+- Kills give XP. Each level, once the room is clear, pick one of three upgrades from a
+  Brotato-like catalog: damage, attack speed, crit chance and damage, bounces, pierce,
+  projectiles, health, armour, dodge, regen, speed, range, potency, element duration, chain
+  jumps, lifesteal, thorns, scrap, pressure limit and decay, vent size, carry, XP gain.
 
 ### Weight
 - No gun slots. A **carry budget** (starts at 10, bought up in the shop).
@@ -60,6 +61,13 @@ reaction is one line; adding an element is a colour, a pressure weight and its l
 Status effects on enemies: burn, stacking poison (a poisoned corpse passes it on),
 bleed (hurts while moving), corrosion (+50% damage taken), freeze (x3 damage, shatters),
 stun, slow, shoves from pulls and pushes, and lingering clouds that keep applying an element.
+
+**Clouds chain.** A cloud is an element hanging in the air, and anything that enters it
+reacts with the whole cloud: a projectile, a vent, another cloud. The pair's reaction plays
+out over everyone inside, and the cloud takes on the incoming element. So Steam (a wet
+cloud) hit by Shock becomes a lightning field that keeps shocking; Fire into Toxic Mist is a
+Noxious Flame over the crowd; a Blizzard drifting into a Magma pool is a Thermal Shock. This
+is the layer that makes the game its own thing: reactions are not a lookup, they are weather.
 
 A few of the sixty-five: Wet + Void is a Whirlpool that drags everything in. Shock + Holy is
 Smite, one enormous strike. Fire + Stone leaves a pool of Magma. Poison + Gale is a Plague
@@ -153,6 +161,16 @@ your starting power. That keeps the "overpowered and bored" failure out by const
   to the game should always come with the achievement that unlocks it.
 - Save file: `user://save.json` (on Windows: `%APPDATA%/Godot/app_userdata/Pressure/`).
   F9 wipes it for testing a first-ever run.
+
+### Layer 1b: the Mastery tree — BUILT
+- A permanent, idle-game sized tree: 212 nodes in 17 branches (offense, defense,
+  pressure, economy, utility, and one per element). Each node is a small bonus, one to
+  three percent or a point of a flat stat, and costs one to three mastery points.
+- Points come from runs: one per floor reached, one per 150 kills, three for a win. They
+  are spent from the main menu's Mastery screen. Wipe save clears the tree too.
+- This is the one deliberate exception to "nothing makes a run easier": the bonuses are
+  small enough to be felt over dozens of runs, not one, and the real growth stays in the
+  unlock pool. If it ever trivialises floor 1, shrink the node values, not the tree.
 
 ### Layer 2: characters (Isaac)
 - Unlockable characters are different *naked starts*, not stronger ones: a different

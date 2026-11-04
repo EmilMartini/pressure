@@ -24,6 +24,7 @@ Art="*res://scripts/art.gd"
 Items="*res://scripts/items.gd"
 Sfx="*res://scripts/sfx.gd"
 Music="*res://scripts/music.gd"
+Mastery="*res://scripts/mastery.gd"
 
 [display]
 

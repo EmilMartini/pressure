@@ -5,6 +5,8 @@ extends Control
 var _root: VBoxContainer
 var _journal: Journal
 var _journal_center: CenterContainer
+var _mastery: MasteryScreen
+var _mastery_center: CenterContainer
 var _wipe_armed := false
 var _wipe_button: Button
 var _title_time := 0.0
@@ -25,9 +27,13 @@ func _ready() -> void:
     _pad.on_tab = func(step: int):
         if _journal.visible:
             _journal.set_tab(_journal.tab + step)
+        elif _mastery.visible:
+            _mastery.set_tab(_mastery.tab + step)
     _build_main()
     _build_journal()
     _journal.visible = false
+    _build_mastery()
+    _mastery.visible = false
     Music.duck(false)
     Music.play("menu")
     if OS.get_cmdline_user_args().has("--menu-shot"):
@@ -42,11 +48,15 @@ func _process(delta: float) -> void:
     _pad.poll(get_viewport(), delta)
     if _journal.visible and Input.is_action_just_pressed("ui_cancel"):
         _show_main()
+    elif _mastery.visible and Input.is_action_just_pressed("ui_cancel"):
+        _close_mastery()
 
 
 func _on_cancel() -> void:
     if _journal.visible:
         _show_main()
+    elif _mastery.visible:
+        _close_mastery()
 
 
 func _draw() -> void:
@@ -90,6 +100,7 @@ func _build_main() -> void:
     var play := UiTheme.button("Play", _on_play)
     _root.add_child(play)
     _root.add_child(UiTheme.button("Journal", _show_journal))
+    _root.add_child(UiTheme.button("Mastery", _show_mastery))
     _wipe_button = UiTheme.button("Wipe save", _on_wipe)
     _root.add_child(_wipe_button)
     _root.add_child(UiTheme.button("Quit", func(): get_tree().quit()))
@@ -111,8 +122,29 @@ func _show_journal() -> void:
     _journal.set_tab(_journal.tab)
 
 
+func _build_mastery() -> void:
+    _mastery_center = CenterContainer.new()
+    _mastery_center.set_anchors_preset(Control.PRESET_FULL_RECT)
+    add_child(_mastery_center)
+    _mastery = MasteryScreen.new(_close_mastery)
+    _mastery_center.add_child(_mastery)
+
+
+func _show_mastery() -> void:
+    Sfx.play("ui_open")
+    _root.visible = false
+    _mastery.visible = true
+    _mastery.set_tab(_mastery.tab)
+
+
+func _close_mastery() -> void:
+    _show_main()
+    (_root.get_child(2) as Button).grab_focus()
+
+
 func _show_main() -> void:
     _journal.visible = false
+    _mastery.visible = false
     _root.visible = true
     (_root.get_child(1) as Button).grab_focus()
 
@@ -128,6 +160,7 @@ func _on_wipe() -> void:
         _wipe_button.text = "Really wipe? (press again)"
         return
     Progress.reset()
+    Mastery.reset()
     _wipe_armed = false
     _wipe_button.text = "Wipe save"
     Sfx.play("ui_back")
@@ -145,4 +178,9 @@ func _menu_shot() -> void:
         await get_tree().create_timer(0.3).timeout
         await RenderingServer.frame_post_draw
         get_viewport().get_texture().get_image().save_png("res://autotest/journal_%d.png" % i)
+    _show_main()
+    _show_mastery()
+    await get_tree().create_timer(0.4).timeout
+    await RenderingServer.frame_post_draw
+    get_viewport().get_texture().get_image().save_png("res://autotest/mastery.png")
     get_tree().quit()

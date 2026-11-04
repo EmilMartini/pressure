@@ -280,6 +280,8 @@ func _on_enemy_died(e: Enemy) -> void:
         Progress.add("bosses")
     elif e.is_elite:
         Progress.add("elites")
+    if e.last_hit_by != null and is_instance_valid(e.last_hit_by):
+        e.last_hit_by.gain_xp(float(e.scrap_value) * 2.0 + 1.0)
     _drop_scrap(e.global_position, e.scrap_value, mini(e.scrap_value, 5))
     if e.is_elite and data.type == RoomData.Type.CHALLENGE:
         _elites_alive -= 1
@@ -610,7 +612,7 @@ func activate(ped: Pedestal, pl: Player) -> void:
                 Sfx.play("error")
                 return
             var item := Items.get_item(o["id"])
-            if item["slot"] == "mod" and pl.primary == null:
+            if item["slot"] == "mod" and pl.guns.is_empty():
                 pl.say("No gun to fit it to")
                 Sfx.play("error")
                 return
@@ -624,9 +626,8 @@ func activate(ped: Pedestal, pl: Player) -> void:
                     if other["kind"] in ["gun", "item", "boon"]:
                         other["taken"] = true
             if replaced != "":
-                # The old piece lands beside the pedestal, not under your feet.
-                var side := Vector2(80, 0) if ped.position.x < rect.end.x - 170.0 else Vector2(-80, 0)
-                data.stock.append(Items.offer(replaced, 0, ped.position + side))
+                # The old piece takes the plinth the new one came from.
+                data.stock.append(Items.offer(replaced, 0, ped.position))
         "boon":
             match o["id"]:
                 "vitality":
