@@ -51,6 +51,9 @@ var _sprite: Sprite2D
 var _sprite_scale := 1.0
 var _anim_t := 0.0
 var _fx_t := 0.0   # status animation clock, runs even while frozen
+var _dot_accum := 0.0   # damage-over-time waiting to be shown as one number
+var _dot_color := Color.WHITE
+var _dot_timer := 0.0
 var _spawn_t := 0.0
 var _squash := 0.0
 
@@ -210,7 +213,7 @@ func _on_reaction_pair(a: int, b: int) -> void:
         Elements.reaction_fired.emit("Shield cracked", global_position, Color(1, 1, 1, 0.9))
 
 
-func take_damage(amount: float, color: Color, flash: bool = true, source: Player = null) -> void:
+func take_damage(amount: float, color: Color, flash: bool = true, source: Player = null, crit: bool = false) -> void:
     if hp <= 0.0:
         return
     if source != null:
@@ -224,6 +227,13 @@ func take_damage(amount: float, color: Color, flash: bool = true, source: Player
     if corroded_time > 0.0:
         amount *= 1.5
     hp -= amount
+    if flash:
+        var fx := _fx()
+        if fx != null:
+            fx.number(global_position + Vector2(0, -radius), amount, color if color != Color.WHITE else Color(0.95, 0.9, 0.85), crit)
+    else:
+        _dot_accum += amount
+        _dot_color = color
     if flash:
         _flash = 0.12
         _flash_color = color
@@ -341,6 +351,13 @@ func _physics_process(delta: float) -> void:
         if states[kind] <= 0.0:
             states.erase(kind)
     _fx_t += delta
+    _dot_timer -= delta
+    if _dot_timer <= 0.0 and _dot_accum >= 0.5:
+        var fx := _fx()
+        if fx != null:
+            fx.number(global_position + Vector2(0, -radius), _dot_accum, _dot_color, false, true)
+        _dot_accum = 0.0
+        _dot_timer = 0.5
     if burn_time > 0.0:
         burn_time -= delta
         take_damage(burn_dps * delta, Element.COLORS[Element.Kind.FIRE], false)

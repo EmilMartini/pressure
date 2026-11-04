@@ -60,6 +60,7 @@ var stats: Dictionary = {}            # stat -> int
 var achievements_done: Dictionary = {}
 var history: Array = []               # { won, floor, kills, unlocks }
 var run_unlocks: Array = []           # unlock ids earned during the current run
+var names: Array = ["", "", "", ""]   # player names; empty falls back to P1..P4
 
 
 func _ready() -> void:
@@ -71,6 +72,20 @@ func _ready() -> void:
 
 func has(unlock_id: String) -> bool:
     return unlocks.has(unlock_id)
+
+
+## The name shown for player `i` (0-based): what they typed, else P1..P4.
+func player_name(i: int) -> String:
+    if i >= 0 and i < names.size() and names[i] != "":
+        return names[i]
+    return "P%d" % (i + 1)
+
+
+func set_player_name(i: int, n: String) -> void:
+    if i < 0 or i >= names.size():
+        return
+    names[i] = n.strip_edges().left(12)
+    save()
 
 
 func stat(key: String) -> int:
@@ -193,6 +208,7 @@ func save() -> void:
         "stats": stats,
         "achievements": achievements_done.keys(),
         "history": history,
+        "names": names,
     }
     var f := FileAccess.open(save_path, FileAccess.WRITE)
     if f == null:
@@ -225,6 +241,9 @@ func load_save() -> void:
     for a in parsed.get("achievements", []):
         achievements_done[a] = true
     history = parsed.get("history", [])
+    var saved_names: Array = parsed.get("names", [])
+    for i in mini(4, saved_names.size()):
+        names[i] = str(saved_names[i]).strip_edges().left(12)
 
 
 ## Wipe everything: back to a first-ever run.

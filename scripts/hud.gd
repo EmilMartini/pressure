@@ -261,9 +261,11 @@ func _draw_vitals(p: Player, origin: Vector2) -> void:
     var w := CARD_W - 84.0 - 10.0
 
     # Name and level pill
-    var name_rect := Rect2(x, origin.y + 8.0, 30.0, 22.0)
-    _body_in(name_rect, "P%d" % (p.index + 1), 18, p.color, HORIZONTAL_ALIGNMENT_LEFT)
-    var pill := Rect2(x + 34.0, origin.y + 9.0, 58.0, 20.0)
+    var pname := p.display_name()
+    var name_w := maxf(30.0, Art.FONT.get_string_size(pname, HORIZONTAL_ALIGNMENT_LEFT, -1, 20).x + 4.0)
+    var name_rect := Rect2(x, origin.y + 8.0, name_w, 22.0)
+    _body_in(name_rect, pname, 20, p.color, HORIZONTAL_ALIGNMENT_LEFT)
+    var pill := Rect2(x + name_w + 4.0, origin.y + 9.0, 58.0, 20.0)
     draw_rect(pill, Color(0.55, 0.4, 0.15, 0.9))
     draw_rect(pill, Color(0, 0, 0, 0.6), false, 1.0)
     _body_in(pill, "LV %d" % p.level, 20, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, false)
@@ -309,7 +311,7 @@ func _draw_hotbars(vp: Vector2, bottom: float) -> void:
         _backdrop(Rect2(x - 8.0, top - 8.0, total + 16.0, block_h + 16.0))
 
         if many:
-            _body_in(Rect2(x, top, 26.0, block_h), "P%d" % (p.index + 1), 16, p.color)
+            _body_in(Rect2(x, top, 26.0, block_h), p.display_name().left(2), 20, p.color)
             draw_rect(Rect2(x + 27.0, top, 2.0, block_h), Color(p.color, 0.6))
             x += tag_w
 
@@ -424,7 +426,7 @@ func _draw_vent(p: Player, g: Rect2, tagged: bool) -> void:
     draw_texture_rect(Art.PARTICLES["flame"], Rect2(g.end.x + 3.0, g.position.y - 4.0, 22, 22), false, HOT)
 
     # Label and prompt.
-    var label := "P%d VENT" % (p.index + 1) if tagged else "VENT"
+    var label := "%s VENT" % p.display_name().to_upper() if tagged else "VENT"
     var label_y := g.position.y - 10.0
     _body(Vector2(g.position.x, label_y), label, 16, UiTheme.BONE)
     var prompt := p.input.prompt("vent")

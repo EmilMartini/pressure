@@ -183,7 +183,7 @@ func _on_body_entered(body: Node) -> void:
             raw *= 1.0 + shooter.stat("vs_shocked")
         if enemy.has_state(Element.Kind.OIL):
             raw *= 1.0 + shooter.stat("vs_oiled")
-    enemy.take_damage(raw, color, true, shooter)
+    enemy.take_damage(raw, color, true, shooter, crit)
     if is_instance_valid(enemy) and not enemy.is_queued_for_deletion():
         enemy.apply_element(element, potency, shooter)
     for extra in extra_elements:

@@ -359,6 +359,9 @@ func take_damage(amount: float, attacker: Node2D = null) -> void:
     amount = maxf(1.0, amount - stat("armor"))
     hp -= amount
     invuln = 0.6
+    var tree_scene := get_tree().current_scene
+    if tree_scene != null and "fx" in tree_scene and tree_scene.fx != null:
+        tree_scene.fx.number(global_position + Vector2(0, -16), amount, Color(1.0, 0.35, 0.3), true)
     _squash = 1.0
     Sfx.play("hurt")
     var scene := get_tree().current_scene
@@ -376,6 +379,10 @@ func take_damage(amount: float, attacker: Node2D = null) -> void:
         Sfx.play("down")
         died.emit(self)
     queue_redraw()
+
+
+func display_name() -> String:
+    return Progress.player_name(index)
 
 
 func say(text: String) -> void:

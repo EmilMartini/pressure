@@ -7,8 +7,11 @@ var _journal: Journal
 var _journal_center: CenterContainer
 var _mastery: MasteryScreen
 var _mastery_center: CenterContainer
+var _names: PanelContainer
+var _name_edits: Array = []
 var _wipe_armed := false
 var _wipe_button: Button
+var _buttons: Dictionary = {}   # label -> Button, for focus returns
 var _title_time := 0.0
 var _pad := MenuPad.new()
 
@@ -34,6 +37,8 @@ func _ready() -> void:
     _journal.visible = false
     _build_mastery()
     _mastery.visible = false
+    _build_names()
+    _names.visible = false
     Music.duck(false)
     Music.play("menu")
     if OS.get_cmdline_user_args().has("--menu-shot"):
@@ -50,6 +55,8 @@ func _process(delta: float) -> void:
         _show_main()
     elif _mastery.visible and Input.is_action_just_pressed("ui_cancel"):
         _close_mastery()
+    elif _names.visible and Input.is_action_just_pressed("ui_cancel"):
+        _close_names()
 
 
 func _on_cancel() -> void:
@@ -57,6 +64,8 @@ func _on_cancel() -> void:
         _show_main()
     elif _mastery.visible:
         _close_mastery()
+    elif _names.visible:
+        _close_names()
 
 
 func _draw() -> void:
@@ -99,8 +108,13 @@ func _build_main() -> void:
     _root.add_child(spacer)
     var play := UiTheme.button("Play", _on_play)
     _root.add_child(play)
-    _root.add_child(UiTheme.button("Journal", _show_journal))
-    _root.add_child(UiTheme.button("Mastery", _show_mastery))
+    _buttons["play"] = play
+    _buttons["journal"] = UiTheme.button("Journal", _show_journal)
+    _root.add_child(_buttons["journal"])
+    _buttons["mastery"] = UiTheme.button("Mastery", _show_mastery)
+    _root.add_child(_buttons["mastery"])
+    _buttons["names"] = UiTheme.button("Names", _show_names)
+    _root.add_child(_buttons["names"])
     _wipe_button = UiTheme.button("Wipe save", _on_wipe)
     _root.add_child(_wipe_button)
     _root.add_child(UiTheme.button("Quit", func(): get_tree().quit()))
@@ -139,14 +153,62 @@ func _show_mastery() -> void:
 
 func _close_mastery() -> void:
     _show_main()
-    (_root.get_child(2) as Button).grab_focus()
+    (_buttons["mastery"] as Button).grab_focus()
+
+
+func _build_names() -> void:
+    var center := CenterContainer.new()
+    center.set_anchors_preset(Control.PRESET_FULL_RECT)
+    add_child(center)
+    _names = PanelContainer.new()
+    _names.custom_minimum_size = Vector2(560, 0)
+    center.add_child(_names)
+    var col := VBoxContainer.new()
+    col.add_theme_constant_override("separation", 10)
+    _names.add_child(col)
+    col.add_child(UiTheme.label("NAMES", 40))
+    col.add_child(UiTheme.label("Type a name for each player; keyboard only", 20, UiTheme.DIM))
+    for i in 4:
+        var row := HBoxContainer.new()
+        row.add_theme_constant_override("separation", 12)
+        col.add_child(row)
+        var tag := UiTheme.label("P%d" % (i + 1), 24, Player.PLAYER_COLORS[i % Player.PLAYER_COLORS.size()])
+        tag.custom_minimum_size = Vector2(60, 0)
+        row.add_child(tag)
+        var edit := LineEdit.new()
+        edit.placeholder_text = "Player %d" % (i + 1)
+        edit.text = Progress.names[i]
+        edit.max_length = 12
+        edit.custom_minimum_size = Vector2(380, 44)
+        edit.add_theme_font_override("font", Art.FONT)
+        edit.add_theme_font_size_override("font_size", 24)
+        edit.add_theme_color_override("font_color", UiTheme.BONE)
+        edit.text_changed.connect(func(t: String): Progress.set_player_name(i, t))
+        row.add_child(edit)
+        _name_edits.append(edit)
+    var back := UiTheme.button("Back", _close_names)
+    col.add_child(back)
+
+
+func _show_names() -> void:
+    Sfx.play("ui_open")
+    _root.visible = false
+    _names.visible = true
+    (_name_edits[0] as LineEdit).grab_focus()
+
+
+func _close_names() -> void:
+    _show_main()
+    (_buttons["names"] as Button).grab_focus()
 
 
 func _show_main() -> void:
+    var was_journal := _journal.visible
     _journal.visible = false
     _mastery.visible = false
+    _names.visible = false
     _root.visible = true
-    (_root.get_child(1) as Button).grab_focus()
+    (_buttons["journal"] if was_journal else _buttons["play"]).grab_focus()
 
 
 func _on_play() -> void:
@@ -183,4 +245,10 @@ func _menu_shot() -> void:
     await get_tree().create_timer(0.4).timeout
     await RenderingServer.frame_post_draw
     get_viewport().get_texture().get_image().save_png("res://autotest/mastery.png")
+    _show_main()
+    _show_names()
+    (_name_edits[0] as LineEdit).text = "Emil"
+    await get_tree().create_timer(0.3).timeout
+    await RenderingServer.frame_post_draw
+    get_viewport().get_texture().get_image().save_png("res://autotest/names.png")
     get_tree().quit()

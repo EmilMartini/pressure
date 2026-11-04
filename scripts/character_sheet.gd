@@ -90,7 +90,7 @@ func _hint(text: String) -> Label:
 
 func show_player(p: Player) -> void:
     player = p
-    _title.text = "P%d   CHARACTER" % (p.index + 1)
+    _title.text = "%s   CHARACTER" % p.display_name().to_upper()
     _title.add_theme_color_override("font_color", p.color)
     for c in _doll.get_children():
         c.queue_free()

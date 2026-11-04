@@ -160,7 +160,7 @@ func _show_next() -> void:
         return
     _options = LevelUps.roll(_player, 3)
     var col: Color = _player.color
-    _title.text = "P%d  LEVEL %d" % [_player.index + 1, _player.level]
+    _title.text = "%s  LEVEL %d" % [_player.display_name().to_upper(), _player.level]
     _title.add_theme_color_override("font_color", col)
     _hint.text = "Choose one upgrade"
     if not _queue.is_empty():

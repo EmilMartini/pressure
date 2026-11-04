@@ -134,6 +134,37 @@ Eight gear slots plus a mod slot per gun. Every item is a few lines of data in
 that all compose. To add an item, add one `_add(...)` line; the drop tables, pedestals,
 HUD and effect engine pick it up with no other change.
 
+## Play in the browser
+
+The game exports to a single-page web build (GL Compatibility, single-threaded, so it
+runs on any static host without special headers). Two ways to get it:
+
+- **GitHub Pages, automatic.** Push the repository to GitHub, open Settings > Pages and
+  set Source to "GitHub Actions". `.github/workflows/deploy.yml` then exports the Web
+  preset on every push to `main` and publishes it at
+  `https://<user>.github.io/<repo>/`. Share that link; nothing to install, saves live
+  in the browser.
+- **Locally.** Install the 4.7.2 export templates once (`tools/get_templates.sh`, or
+  Editor > Manage Export Templates), then `tools/export_web.sh --serve` exports to
+  `export/web` and serves it on http://localhost:8060.
+
+The web build keeps controllers (browser Gamepad API: press a button once so the page
+sees the pad), keyboard and mouse. Co-op is local, so friends on their own machines each
+play their own run.
+
+## Names
+
+Main menu > Names: a field per player, saved with the rest of the profile. The name
+replaces P1..P4 on the HUD, the character sheet and the level-up screen. Typing needs a
+keyboard; the field is still reachable with a pad.
+
+## Damage numbers
+
+Every hit prints its damage over the target: element-coloured for bullets and
+reactions, big yellow with a bang for crits, red on your own figure when you are hit.
+Burn, poison and bleed ticks are batched into one dim number every half second so a
+burning crowd stays readable.
+
 ## Self-test
 
 ```
@@ -170,6 +201,8 @@ To change which sprite something uses, edit the coordinates in `scripts/art.gd`
 
 ```
 project.godot        project settings, autoloads, renderer
+export_presets.cfg   the Web export preset;  .github/workflows/deploy.yml publishes it
+tools/               export_web.sh (export + serve), get_templates.sh
 scenes/main.tscn     the only scene; everything is built in code
 scripts/
   main.gd            run orchestrator: floors, current room, scrap, camera, HUD, joins, bot
@@ -195,7 +228,7 @@ scripts/
   hud.gd             floor/room status, boss bar, minimap, player panels, help, banners
   art.gd             autoload `Art`: sheet lookups, particle textures, fonts, palette
   sfx.gd             autoload `Sfx`: one-shot sounds by name
-  menu.gd            main menu (scenes/menu.tscn is the start scene)
+  menu.gd            main menu (scenes/menu.tscn is the start scene), names screen
   pause_menu.gd      pause overlay, also the run-over screen
   journal.gd         achievements / arsenal / gear / reactions journal used by both menus
   levelup.gd         level-up upgrade catalog;  levelup_screen.gd  the pick-one-of-three overlay

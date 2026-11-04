@@ -4,6 +4,7 @@ extends Node2D
 ## normal layer and an additive glow layer, corpses, bone bits and floor scorches.
 
 const MAX_PUFFS := 180
+const MAX_TEXTS := 48
 
 var main: Main
 var _arcs: Array = []      # { a, b, t }
@@ -76,6 +77,23 @@ func radial(sheet: String, pos: Vector2, count: int, speed: float, color: Color,
     for i in count:
         var a := TAU * float(i) / float(count) + randf_range(-0.2, 0.2)
         book(sheet, pos, size, life, color, true, a, Vector2.RIGHT.rotated(a) * speed)
+
+
+## A floating damage number. `big` is a crit: larger, brighter, and it lingers.
+func number(pos: Vector2, amount: float, color: Color, big := false, dim := false) -> void:
+    var n := maxi(1, roundi(amount))
+    var text := str(n) + ("!" if big else "")
+    var size := 30 if big else (20 if dim else 24)
+    var col := color
+    if big:
+        col = Color(1.0, 0.95, 0.55)
+    elif dim:
+        col = Color(color, 0.75)
+    var p := pos + Vector2(randf_range(-14.0, 14.0), -22.0 + randf_range(-6.0, 6.0))
+    _texts.append({ "pos": p, "text": text, "color": col, "t": 0.9 if big else 0.7, "life": 0.9 if big else 0.7, "size": size,
+        "vel": Vector2(randf_range(-20.0, 20.0), -70.0 if big else -50.0) })
+    if _texts.size() > MAX_TEXTS:
+        _texts.pop_front()
 
 
 func corpse(tex: Texture2D, pos: Vector2, scale: float, color: Color, flip: bool) -> void:
@@ -209,7 +227,11 @@ func _process(delta: float) -> void:
             if list[i]["t"] <= 0.0:
                 list.remove_at(i)
     for t in _texts:
-        t["pos"].y -= 34.0 * delta
+        if t.has("vel"):
+            t["pos"] += t["vel"] * delta
+            t["vel"].y += 60.0 * delta   # numbers pop up and settle
+        else:
+            t["pos"].y -= 34.0 * delta
     for list in [_puffs, _add_puffs]:
         for p in list:
             p["pos"] += p["vel"] * delta
@@ -291,6 +313,6 @@ func _draw() -> void:
         var pop: float = clampf(elapsed / 0.12, 0.0, 1.0)
         var col: Color = t["color"]
         col.a = clampf(t["t"] / 0.5, 0.0, 1.0)
-        var size := int(14 + 10 * pop)
+        var size := int(t.get("size", 20) + 6 * pop)
         draw_string(Art.FONT, t["pos"] + Vector2(-99, 1), t["text"], HORIZONTAL_ALIGNMENT_CENTER, 200, size, Color(0, 0, 0, col.a * 0.8))
         draw_string(Art.FONT, t["pos"] + Vector2(-100, 0), t["text"], HORIZONTAL_ALIGNMENT_CENTER, 200, size, col)

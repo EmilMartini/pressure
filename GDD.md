@@ -242,7 +242,11 @@ your starting power. That keeps the "overpowered and bored" failure out by const
 ## 6. Tech
 - **Godot 4.7, GDScript.** Web export is GDScript only, and Azeroth Survivors proves a
   no-install browser game is the right way to share.
-- Compatibility renderer (WebGL 2) so the web build runs everywhere.
+- Compatibility renderer (WebGL 2) so the web build runs everywhere. The Web preset is
+  single-threaded on purpose: that build needs no cross-origin isolation headers, so
+  GitHub Pages (or any static host) can serve it. A push to main deploys it.
+- Damage numbers on every hit, batched for damage over time; player names from the
+  menu replace P1..P4.
 - Art: Kenney CC0 packs, tinted dark. The 1-Bit Pack gives a single white-on-transparent
   sheet, so the whole look is a palette in `art.gd`: bone, blood, rust and stone, with a
   vignette over everything. No generative art.
