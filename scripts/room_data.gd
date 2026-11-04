@@ -43,6 +43,9 @@ var stock: Array = []
 ## Scrap pieces lying in the room (hidden caches), collected on entry.
 var loose_scrap := 0
 
+## Treasure rooms: how big the chest is (1 small, 2 medium, 3+ large).
+var chest_tier := 1
+
 
 func type_name() -> String:
     return TYPE_NAMES[type]

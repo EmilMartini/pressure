@@ -232,8 +232,7 @@ func _draw_player_panel(p: Player, origin: Vector2) -> void:
         if gun.mod != "":
             draw_rect(Rect2(gx + 26, gyy + 2, 8, 8), Items.rarity_color(Items.get_item(gun.mod)))
         if is_primary:
-            draw_rect(Rect2(gx, gyy + 36, 36, 12), Color.WHITE)
-            _text(Vector2(gx, gyy + 46), p.input.prompt("fire"), 11, Color.BLACK, HORIZONTAL_ALIGNMENT_CENTER, 36, false)
+            Prompts.draw(self, Vector2(gx + 18, gyy + 42), p.input.prompt("fire"), p.input.last_kind, 16.0)
         gx += 40.0
         if gx > origin.x + PANEL_W - 60:
             break

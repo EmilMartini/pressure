@@ -17,6 +17,9 @@ func _ready() -> void:
     get_viewport().size_changed.connect(func(): size = get_viewport_rect().size)
     theme = UiTheme.make()
     RenderingServer.set_default_clear_color(Art.CLEAR)
+    var post := PostFx.new()
+    post.layer = -1   # under the menu controls, over the painted backdrop
+    add_child(post)
     MenuPad.strip_joypad_from_ui_actions()
     _pad.on_cancel = _on_cancel
     _pad.on_tab = func(step: int):

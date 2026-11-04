@@ -47,10 +47,6 @@ static func generate(floor_number: int) -> Dictionary:
     rooms[start].discovered = true
     for d in rooms[start].doors.keys():
         rooms[rooms[start].doors[d]["to"]].discovered = true
-    # The shop and treasure show on the map from the start, so a run can aim for them.
-    for p in rooms.keys():
-        if rooms[p].type in [RoomData.Type.SHOP, RoomData.Type.TREASURE]:
-            rooms[p].discovered = true
     return rooms
 
 
@@ -136,23 +132,24 @@ static func _stock_rooms(rooms: Dictionary, floor_number: int) -> void:
                 for i in mini(slots, shop_pool.size()):
                     var id: String = shop_pool[i]
                     r.stock.append(offer("gun", id, gun_price(Guns.make(id), floor_number)))
-                r.stock.append(offer("carry", "", 18 + floor_number * 6, 2))
-                r.stock.append(offer("repair", "", 10, 40))
+                r.stock.append(offer("carry", "", 30 + floor_number * 10, 2))
+                r.stock.append(offer("repair", "", 15, 40))
                 var shop_items: Array = []
                 for i in (3 if Progress.has("shop:items") else 2):
                     var iid := Items.roll(floor_number * 3, Items.Rarity.COMMON, shop_items)
                     shop_items.append(iid)
                     r.stock.append(Items.offer(iid, Items.price(Items.get_item(iid), floor_number)))
             RoomData.Type.TREASURE:
+                # A chest, Slay the Spire style: one pick from gear, a gun, or a run boon.
+                # Chest size grows with the floor and a little luck.
+                var tier := floor_number + (1 if randf() < 0.3 else 0)
+                var min_rarity: int = clampi(tier, Items.Rarity.UNCOMMON, Items.Rarity.EPIC)
+                r.stock.append(Items.offer(Items.roll(floor_number * 3 + tier * 2, min_rarity), 0))
                 var pool: Array = Guns.ids()
-                pool.shuffle()
-                for i in mini(2, pool.size()):
-                    r.stock.append(offer("gun", pool[i], 0))
-                var picked: Array = []
-                for i in 2:
-                    var iid := Items.roll(floor_number * 3 + 2, Items.Rarity.UNCOMMON, picked)
-                    picked.append(iid)
-                    r.stock.append(Items.offer(iid, 0))
+                if not pool.is_empty():
+                    r.stock.append(offer("gun", pool.pick_random(), 0))
+                r.stock.append(boon_offer(tier))
+                r.chest_tier = tier
             RoomData.Type.HIDDEN:
                 r.stock.append(offer("carry", "", 0, 3))
                 r.stock.append(Items.offer(Items.roll(floor_number * 3 + 4, Items.Rarity.RARE), 0))
@@ -162,7 +159,22 @@ static func _stock_rooms(rooms: Dictionary, floor_number: int) -> void:
 
 
 static func gun_price(data: GunData, floor_number: int) -> int:
-    return 6 + data.weight * 4 + floor_number * 3
+    return 12 + data.weight * 6 + floor_number * 6
+
+
+const BOONS := {
+    "vitality": { "name": "Vitality", "desc": "+20 max HP for this run", "amount": 20 },
+    "haul": { "name": "Pack Mule", "desc": "+2 carry capacity", "amount": 2 },
+    "boiler": { "name": "Boiler", "desc": "+25 pressure limit", "amount": 25 },
+    "hoard": { "name": "Hoard", "desc": "A pile of scrap", "amount": 60 },
+}
+
+
+## A run-long boon offer; bigger chests pay more.
+static func boon_offer(tier: int) -> Dictionary:
+    var id: String = BOONS.keys().pick_random()
+    var o := offer("boon", id, 0, int(BOONS[id]["amount"] * (1.0 + 0.5 * float(tier - 1))))
+    return o
 
 
 static func offer(kind: String, id: String, price: int, amount: int = 0) -> Dictionary:

@@ -31,7 +31,7 @@ func show_for_test(path: String = "res://autotest/pause.png", sheet_player: Play
 
 func _init(p_main: Main) -> void:
     main = p_main
-    layer = 50
+    layer = 50   # above the post-process (1) and the HUD (2)
     process_mode = Node.PROCESS_MODE_ALWAYS
 
 

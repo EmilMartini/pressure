@@ -7,7 +7,8 @@ const RANGE := 52.0
 
 var offer: Dictionary
 var highlighted := false
-var prompt_key := "E"   # set by the room from the nearest player's device
+var prompt_key := "E"      # set by the room from the nearest player's device
+var prompt_kind := "kb"    # "pad" or "kb"
 var _sprite: Sprite2D
 var _t := randf() * TAU
 
@@ -26,10 +27,12 @@ func _ready() -> void:
         "item":
             coord = Items.icon(item())
             tint = Items.icon_tint(item())
+        "boon":
+            coord = { "vitality": Vector2i(40, 10), "haul": Vector2i(47, 4), "boiler": Vector2i(45, 16), "hoard": Vector2i(45, 16) }.get(offer["id"], Vector2i(45, 16))
         _:
             coord = Art.TILES.get(kind(), Art.TILES["cog"])
     _sprite = Art.sprite(coord, 2.5, tint)
-    _sprite.position = Vector2(0, -12)
+    _sprite.position = Vector2(0, -36)
     add_child(_sprite)
 
 
@@ -45,6 +48,8 @@ func title() -> String:
     match kind():
         "item":
             return item().get("name", "?")
+        "boon":
+            return "%s  (+%d)" % [FloorGen.BOONS[offer["id"]]["name"], offer["amount"]]
         "gun":
             var g := Guns.make(offer["id"])
             return "%s  (weight %d)" % [g.display_name, g.weight]
@@ -69,6 +74,8 @@ func color() -> Color:
     match kind():
         "item":
             return Items.rarity_color(item())
+        "boon":
+            return Color(1.0, 0.85, 0.4)
         "gun":
             return Element.COLORS[Guns.make(offer["id"]).element]
         "carry":
@@ -85,8 +92,10 @@ func color() -> Color:
 func _process(delta: float) -> void:
     _t += delta
     if _sprite != null and kind() not in ["sigil", "stairs"]:
-        _sprite.position.y = -14.0 + sin(_t * 2.2) * 3.0
+        _sprite.position.y = -38.0 + sin(_t * 2.2) * 3.0
         _sprite.rotation = sin(_t * 1.1) * 0.08
+    elif _sprite != null:
+        _sprite.position.y = -12.0
     queue_redraw()
 
 
@@ -94,15 +103,24 @@ func _draw() -> void:
     var c := color()
     var glow: Texture2D = Art.PARTICLES["light"]
     var g := 110.0 + sin(_t * 2.2) * 8.0
-    draw_texture_rect(glow, Rect2(Vector2(-g / 2.0, -g / 2.0 - 6.0), Vector2(g, g)), false, Color(c, 0.16 + (0.1 if highlighted else 0.0)))
+    draw_texture_rect(glow, Rect2(Vector2(-g / 2.0, -g / 2.0 - 36.0), Vector2(g, g)), false, Color(c, 0.16 + (0.1 if highlighted else 0.0)))
     if kind() == "sigil":
         draw_arc(Vector2.ZERO, 44.0, 0.0, TAU, 48, Color(c, 0.6), 3.0)
         draw_arc(Vector2.ZERO, 30.0, 0.0, TAU, 6, Color(c, 0.8), 2.0)
-    else:
+    elif kind() == "stairs":
         draw_circle(Vector2(0, 12), 22.0, Color(0, 0, 0, 0.45))
-        draw_arc(Vector2(0, 12), 22.0, 0.0, TAU, 32, Color(c, 0.5), 2.0)
-    if highlighted:
-        draw_arc(Vector2.ZERO, RANGE - 6.0, 0.0, TAU, 40, Color(1, 1, 1, 0.5), 1.5)
+    else:
+        # A stone plinth: shadow, shaft, lit top; the item hovers above it.
+        draw_circle(Vector2(0, 18), 26.0, Color(0, 0, 0, 0.45))
+        draw_colored_polygon(PackedVector2Array([Vector2(-16, -8), Vector2(16, -8), Vector2(20, 14), Vector2(-20, 14)]), Color(0.30, 0.27, 0.29))
+        draw_rect(Rect2(-20, 10, 40, 6), Color(0.22, 0.2, 0.22))
+        draw_rect(Rect2(-18, -12, 36, 6), Color(0.42, 0.38, 0.40))
+        draw_rect(Rect2(-18, -12, 36, 2), Color(0.58, 0.54, 0.55))
+        draw_line(Vector2(-10, -4), Vector2(-10, 8), Color(0.2, 0.18, 0.2), 1.0)
+        draw_line(Vector2(10, -4), Vector2(10, 8), Color(0.2, 0.18, 0.2), 1.0)
+        draw_circle(Vector2(0, -14), 10.0, Color(0, 0, 0, 0.35))
+        if highlighted:
+            draw_rect(Rect2(-18, -12, 36, 6), Color(c, 0.6))
     var y := 44.0
     var title_col := Color(0.92, 0.9, 0.85)
     if kind() == "item":
@@ -115,17 +133,15 @@ func _draw() -> void:
         y += 15.0
         draw_multiline_string(Art.FONT, Vector2(-140, y), it["desc"], HORIZONTAL_ALIGNMENT_CENTER, 280, 14, 2, Color(0.88, 0.86, 0.8))
         y += 32.0
+    elif kind() == "boon":
+        draw_string(Art.FONT, Vector2(-130, y), FloorGen.BOONS[offer["id"]]["desc"], HORIZONTAL_ALIGNMENT_CENTER, 260, 14, Color(0.88, 0.86, 0.8))
+        y += 18.0
     var pt := price_text()
     if pt != "":
         draw_string(Art.FONT, Vector2(-130, y), pt, HORIZONTAL_ALIGNMENT_CENTER, 260, 16, Art.SCRAP_TINT)
         y += 18.0
     if highlighted:
         var verb := "begin" if kind() == "sigil" else ("descend" if kind() == "stairs" else ("equip" if kind() == "item" else "take"))
-        # Key cap over the item, in the player's own device's key.
-        var w := 14.0 + 9.0 * float(prompt_key.length())
-        var cap := Rect2(-w / 2.0, -58.0 + sin(_t * 5.0) * 2.0, w, 22.0)
-        draw_rect(cap.grow(2.0), Color(0, 0, 0, 0.8))
-        draw_rect(cap, Color(0.92, 0.9, 0.85))
-        draw_rect(Rect2(cap.position + Vector2(0, cap.size.y - 3), Vector2(cap.size.x, 3)), Color(0.6, 0.58, 0.55))
-        draw_string(Art.FONT, Vector2(cap.position.x, cap.position.y + 16), prompt_key, HORIZONTAL_ALIGNMENT_CENTER, cap.size.x, 16, Color(0.08, 0.06, 0.08))
+        # The player's own device's button, floating over the item.
+        Prompts.draw(self, Vector2(0, -78.0 + sin(_t * 5.0) * 2.0), prompt_key, prompt_kind, 24.0)
         draw_string(Art.FONT, Vector2(-130, y), verb, HORIZONTAL_ALIGNMENT_CENTER, 260, 15, Color(0.6, 1.0, 1.0))

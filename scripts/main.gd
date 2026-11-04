@@ -58,9 +58,10 @@ func _ready() -> void:
 
     RenderingServer.set_default_clear_color(Art.CLEAR)
 
+    add_child(PostFx.new())
     var layer := CanvasLayer.new()
+    layer.layer = 2
     add_child(layer)
-    layer.add_child(_make_vignette())
     hud = Hud.new()
     hud.main = self
     layer.add_child(hud)
@@ -91,6 +92,19 @@ func _ready() -> void:
         DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path("res://autotest"))
         await get_tree().create_timer(0.8).timeout
         await _screenshot("res://autotest/start.png")
+        # Stand next to the first pedestal to show the prompt, once per device kind.
+        if current != null and not current.pedestals.is_empty():
+            var ped: Pedestal = current.pedestals[0]
+            players[0].global_position = ped.global_position + Vector2(0, 30)
+            players[0].input.lock_kind = true
+            players[0].input.last_kind = "kb"
+            await get_tree().create_timer(0.3).timeout
+            await _screenshot("res://autotest/prompt_kb.png")
+            players[0].input.last_kind = "pad"
+            await get_tree().create_timer(0.3).timeout
+            await _screenshot("res://autotest/prompt_pad.png")
+            players[0].input.last_kind = "kb"
+            players[0].input.lock_kind = false
         # Interact edge test: one simulated press must equip exactly once, even when
         # several rendered frames pass before the next physics tick.
         if current != null and not current.pedestals.is_empty():
@@ -102,17 +116,15 @@ func _ready() -> void:
             current._handle_interact()
             current._handle_interact()
             print("[INTERACT TEST] guns=%d edges_left=%s" % [p0.guns.size(), str(p0.input._edges)])
-        # Stand next to the first pedestal to show the key cap, once per device kind.
-        if current != null and not current.pedestals.is_empty():
-            var ped: Pedestal = current.pedestals[0]
-            players[0].global_position = ped.global_position + Vector2(0, 30)
-            players[0].input.last_kind = "kb"
-            await get_tree().create_timer(0.3).timeout
-            await _screenshot("res://autotest/prompt_kb.png")
-            players[0].input.last_kind = "pad"
-            players[0].input.device = 99   # pretend a pad is the live device for the shot
-            await get_tree().create_timer(0.3).timeout
-            await _screenshot("res://autotest/prompt_pad.png")
+        # Special rooms, for checking their dressing.
+        for t in [RoomData.Type.SHOP, RoomData.Type.TREASURE, RoomData.Type.CHALLENGE, RoomData.Type.HIDDEN]:
+            for pos in rooms.keys():
+                if rooms[pos].type == t:
+                    enter_room(pos, Vector2i.ZERO)
+                    players[0].global_position = Vector2(0, 120)
+                    await get_tree().create_timer(0.5).timeout
+                    await _screenshot("res://autotest/room_%s.png" % rooms[pos].type_name().to_lower().replace(" ", "_"))
+                    break
         get_tree().quit()
 
 
@@ -616,8 +628,10 @@ func _print_stats(label: String) -> void:
     for r in rooms.values():
         if r.visited:
             visited += 1
-    print("[%s] t=%.0f floor=%d room=%s visited=%d/%d cleared=%d kills=%d scrap=%d hp=%.0f weight=%d/%d" % [
-        label, _clock, floor_number, current.data.type_name() if current else "-", visited, rooms.size(),
-        rooms_cleared, total_kills, scrap, p.hp, p.total_weight(), p.weight_capacity])
+    print("[%s] t=%.0f wall=%.0f fps=%d floor=%d room=%s visited=%d/%d cleared=%d kills=%d scrap=%d hp=%.0f weight=%d/%d clouds=%d" % [
+        label, _clock, Time.get_ticks_msec() / 1000.0, Engine.get_frames_per_second(), floor_number,
+        current.data.type_name() if current else "-", visited, rooms.size(),
+        rooms_cleared, total_kills, scrap, p.hp, p.total_weight(), p.weight_capacity,
+        get_tree().get_nodes_in_group("clouds").size()])
     print("    reactions: %s" % str(_reaction_counts))
     print("    unlocked this run: %s  (achievements %d/%d)" % [str(Progress.run_unlocks), Progress.achievements_count(), Progress.ACHIEVEMENTS.size()])

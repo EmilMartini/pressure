@@ -406,10 +406,71 @@ func _tiled(tex: Texture2D, size: Vector2, tint: Color) -> Sprite2D:
     return s
 
 
+const FLOOR_TINTS := {
+    RoomData.Type.SHOP: Color(0.22, 0.17, 0.12),
+    RoomData.Type.TREASURE: Color(0.22, 0.19, 0.11),
+    RoomData.Type.BOSS: Color(0.20, 0.09, 0.10),
+    RoomData.Type.CHALLENGE: Color(0.17, 0.11, 0.21),
+    RoomData.Type.HIDDEN: Color(0.10, 0.17, 0.17),
+}
+
+
+## A decorative sprite from the sheet, placed in room space.
+func _prop(coord: Vector2i, pos: Vector2, scale: float, tint: Color, z: int = -1) -> Sprite2D:
+    var s := Art.sprite(coord, scale, tint)
+    s.position = pos
+    s.z_index = z
+    add_child(s)
+    return s
+
+
+## Dressing per room type, so a shop reads as a shop before you see a price.
+func _dress_room() -> void:
+    var half := SIZE / 2.0
+    match data.type:
+        RoomData.Type.SHOP:
+            # A counter along the back wall with a hooded keeper behind it, lanterns at the ends.
+            for i in 7:
+                _prop(Vector2i(16, 5), Vector2(-240.0 + float(i) * 80.0, -half.y + 110.0), 2.5, Color(0.45, 0.35, 0.25))
+            _prop(Vector2i(26, 0), Vector2(0, -half.y + 70.0), 3.0, Color(0.75, 0.68, 0.6), 1)
+            _prop(Vector2i(14, 10), Vector2(-300, -half.y + 80.0), 2.5, Color(1.0, 0.75, 0.3), 1)
+            _prop(Vector2i(14, 10), Vector2(300, -half.y + 80.0), 2.5, Color(1.0, 0.75, 0.3), 1)
+            for i in 4:
+                _prop(Vector2i(3, 7), Vector2(-half.x + 60.0, -200.0 + float(i) * 120.0), 2.5, Color(0.5, 0.42, 0.35))
+                _prop(Vector2i(3, 7), Vector2(half.x - 60.0, -200.0 + float(i) * 120.0), 2.5, Color(0.5, 0.42, 0.35))
+        RoomData.Type.TREASURE:
+            # The chest, sized by tier, on a dais with gold scattered around it.
+            var tier := data.chest_tier
+            _prop(Vector2i(9, 11), Vector2(0, -170.0), 3.5 + float(tier), Color(1.0, 0.8, 0.35), 1)
+            for i in 8 + tier * 4:
+                var a := randf() * TAU
+                _prop(Vector2i(45, 16), Vector2(cos(a) * randf_range(90, 220), -170.0 + sin(a) * randf_range(50, 120)), 1.2, Color(0.9, 0.75, 0.3))
+            for i in 2:
+                _prop(Vector2i(13, 3), Vector2(-200.0 + float(i) * 400.0, -half.y + 90.0), 3.0, Color(0.55, 0.5, 0.45))
+        RoomData.Type.BOSS:
+            for i in 14:
+                var d := _prop(Vector2i(38, 11), Vector2(randf_range(-half.x + 80, half.x - 80), randf_range(-half.y + 80, half.y - 80)), 2.0, Color(0.55, 0.3, 0.3))
+                d.rotation = randf() * TAU
+            for i in 2:
+                _prop(Vector2i(13, 3), Vector2(-280.0 + float(i) * 560.0, -half.y + 90.0), 3.5, Color(0.45, 0.3, 0.3))
+        RoomData.Type.CHALLENGE:
+            # Weapon racks on the side walls.
+            for i in 5:
+                _prop(Vector2i(32 + i, 6), Vector2(-half.x + 50.0, -160.0 + float(i) * 80.0), 2.2, Color(0.7, 0.6, 0.8))
+                _prop(Vector2i(37 + (i % 2), 7), Vector2(half.x - 50.0, -160.0 + float(i) * 80.0), 2.2, Color(0.7, 0.6, 0.8))
+        RoomData.Type.HIDDEN:
+            for i in 6:
+                _prop(Vector2i(10, 7), Vector2(randf_range(-half.x + 100, half.x - 100), randf_range(-half.y + 100, half.y - 100)), 2.5, Color(0.5, 0.55, 0.5))
+        RoomData.Type.START:
+            for i in 2:
+                _prop(Vector2i(14, 10), Vector2(-120.0 + float(i) * 240.0, -half.y + 70.0), 2.5, Color(1.0, 0.75, 0.3), 1)
+
+
 func _build_floor() -> void:
-    var floor_sprite := _tiled(Art.FLOOR, SIZE, Art.FLOOR_TINT)
+    var floor_sprite := _tiled(Art.FLOOR, SIZE, FLOOR_TINTS.get(data.type, Art.FLOOR_TINT))
     floor_sprite.z_index = -2
     add_child(floor_sprite)
+    _dress_room()
     # Bones, skulls and rubble, fixed per room so they do not shuffle on re-entry.
     var rng := RandomNumberGenerator.new()
     rng.seed = hash(data.pos) + main.floor_number * 7919
@@ -433,9 +494,14 @@ func _build_pedestals() -> void:
     var offers: Array = data.stock.filter(func(o): return not o["taken"])
     var row: Array = offers.filter(func(o): return not o.has("pos"))
     var n := row.size()
+    var per_row := 4
+    var rows := int(ceil(float(n) / float(per_row)))
     for i in n:
         var ped := Pedestal.new(row[i])
-        ped.position = Vector2((float(i) - float(n - 1) / 2.0) * 170.0, 0.0)
+        var r := i / per_row
+        var in_row := mini(per_row, n - r * per_row)
+        var c := i % per_row
+        ped.position = Vector2((float(c) - float(in_row - 1) / 2.0) * 150.0, 90.0 + (float(r) - float(rows - 1) / 2.0) * 200.0)
         add_child(ped)
         pedestals.append(ped)
     for o in offers:
@@ -465,6 +531,16 @@ func add_gun_choice() -> void:
     _build_pedestals()
 
 
+## Put a gun on the floor at a position (dropped from the character sheet).
+func add_floor_gun(id: String, pos: Vector2) -> void:
+    var inner := rect.grow(-90.0)
+    var p := Vector2(clampf(pos.x, inner.position.x, inner.end.x), clampf(pos.y, inner.position.y, inner.end.y))
+    var o := FloorGen.offer("gun", id, 0)
+    o["pos"] = p
+    data.stock.append(o)
+    _build_pedestals()
+
+
 func has_gun_choice() -> bool:
     for o in data.stock:
         if o["kind"] == "gun" and o.get("choice", false) and not o["taken"]:
@@ -480,6 +556,7 @@ func _handle_interact() -> void:
         ped.highlighted = near != null and near.global_position.distance_to(ped.global_position) <= Pedestal.RANGE
         if near != null:
             ped.prompt_key = near.input.prompt("interact")
+            ped.prompt_kind = near.input.last_kind
     for pl in main.players:
         if not pl.alive or not pl.input.take_pressed("interact"):
             continue
@@ -525,7 +602,7 @@ func activate(ped: Pedestal, pl: Player) -> void:
                             other["taken"] = true
             elif o["price"] == 0 and data.type in [RoomData.Type.TREASURE, RoomData.Type.CHALLENGE]:
                 for other in data.stock:
-                    if other["kind"] == "gun":
+                    if other["kind"] in ["gun", "item", "boon"]:
                         other["taken"] = true
         "item":
             if main.scrap < o["price"]:
@@ -544,12 +621,32 @@ func activate(ped: Pedestal, pl: Player) -> void:
             o["taken"] = true
             if o["price"] == 0 and data.type in [RoomData.Type.TREASURE, RoomData.Type.CHALLENGE]:
                 for other in data.stock:
-                    if other["kind"] in ["gun", "item"]:
+                    if other["kind"] in ["gun", "item", "boon"]:
                         other["taken"] = true
             if replaced != "":
                 # The old piece lands beside the pedestal, not under your feet.
                 var side := Vector2(80, 0) if ped.position.x < rect.end.x - 170.0 else Vector2(-80, 0)
                 data.stock.append(Items.offer(replaced, 0, ped.position + side))
+        "boon":
+            match o["id"]:
+                "vitality":
+                    pl.max_hp_base += o["amount"]
+                    pl.recalc_stats()
+                    pl.heal(o["amount"])
+                "haul":
+                    pl.weight_capacity_base += o["amount"]
+                    pl.recalc_stats()
+                "boiler":
+                    pl.pressure_limit_bonus += o["amount"]
+                "hoard":
+                    main.add_scrap(o["amount"])
+            pl.say("%s" % FloorGen.BOONS[o["id"]]["name"])
+            Sfx.play("buy")
+            o["taken"] = true
+            if data.type == RoomData.Type.TREASURE:
+                for other in data.stock:
+                    if other["kind"] in ["gun", "item", "boon"]:
+                        other["taken"] = true
         "carry":
             if main.scrap < o["price"]:
                 pl.say("Need %d scrap" % o["price"])

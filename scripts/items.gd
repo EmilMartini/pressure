@@ -33,7 +33,7 @@ const RARITY_COLORS := [
     Color(0.75, 0.40, 1.00),
     Color(1.00, 0.55, 0.15),
 ]
-const RARITY_PRICE := [8, 14, 24, 40, 70]
+const RARITY_PRICE := [16, 26, 42, 70, 115]
 const SLOTS := ["head", "chest", "hands", "feet", "ring", "trinket", "mod"]
 const SLOT_ICONS := {
     "head": Vector2i(33, 0), "chest": Vector2i(35, 1), "hands": Vector2i(41, 1),
@@ -144,7 +144,7 @@ func rarity_color(item: Dictionary) -> Color:
 
 
 func price(item: Dictionary, floor_number: int) -> int:
-    return RARITY_PRICE[int(item.get("rarity", 0))] + floor_number * 4
+    return RARITY_PRICE[int(item.get("rarity", 0))] + floor_number * 6
 
 
 func icon(item: Dictionary) -> Vector2i:

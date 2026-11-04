@@ -251,9 +251,7 @@ func _act(enemy: Node2D, potency: float, act: Array) -> void:
         "chain_state":
             _chain_along_state(enemy, int(act[1]), potency * float(act[2]), source)
         "cloud":
-            var c := Cloud.new(int(act[1]), float(act[2]), float(act[3]), potency * 0.6, source)
-            c.global_position = pos
-            _world().add_child(c)
+            Cloud.spawn(_world(), pos, int(act[1]), float(act[2]), float(act[3]), potency * 0.6, source)
         "purge":
             var n: int = enemy.purge_states()
             if n > 0:

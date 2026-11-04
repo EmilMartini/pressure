@@ -22,6 +22,7 @@ var _mouse_active_until := 0.0
 
 ## "pad" or "kb": whichever this player touched last. Drives on-screen prompts.
 var last_kind := "kb"
+var lock_kind := false   # tests pin the kind so a stray mouse move cannot flip it
 var _last_mouse_screen := Vector2i(-1, -1)
 
 const PROMPTS := {
@@ -46,6 +47,8 @@ func prompt(action: String) -> String:
 
 
 func _update_kind() -> void:
+    if lock_kind:
+        return
     var pad := false
     if device >= 0:
         pad = Vector2(Input.get_joy_axis(device, JOY_AXIS_LEFT_X), Input.get_joy_axis(device, JOY_AXIS_LEFT_Y)).length() > STICK_DEADZONE \

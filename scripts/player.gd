@@ -196,8 +196,26 @@ func stat(key: String) -> float:
     return v
 
 
+var pressure_limit_bonus := 0.0   # from run boons
+
+
 func pressure_limit() -> float:
-    return PRESSURE_LIMIT + stat("pressure_limit")
+    return PRESSURE_LIMIT + pressure_limit_bonus + stat("pressure_limit")
+
+
+## Take a gun off the player. Returns its id so the room can put it on the floor.
+func drop_gun(gun: Gun) -> String:
+    if not guns.has(gun):
+        return ""
+    var id := gun.data.id
+    guns.erase(gun)
+    if primary == gun:
+        primary = guns[0] if not guns.is_empty() else null
+    remove_child(gun)
+    gun.queue_free()
+    recalc_stats()
+    say("Dropped %s" % gun.data.display_name)
+    return id
 
 
 func move_speed() -> float:

@@ -213,8 +213,12 @@ your starting power. That keeps the "overpowered and bored" failure out by const
   Difficulty starts at 2, adds 4 per floor, and creeps up one step every second room
   cleared, so a floor is one difficulty band and the stairs are the jump.
 - Every arena clear pays out a free gun or item on a pedestal, so power grows with the
-  rooms whether or not the shop turns up. The shop and treasure room are marked on the
-  minimap from the start of the floor.
+  rooms whether or not the shop turns up. The minimap reveals rooms Isaac-style, as you
+  reach their neighbours; special rooms are dressed so you know them on sight.
+- Treasure rooms are chests: one pick from gear, a gun, or a run boon (Vitality, Pack
+  Mule, Boiler, Hoard). Chest tier rises with the floor and a little luck, raising the
+  gear rarity and the boon size. Shop prices are high enough that a floor's scrap buys one
+  or two things, not the whole counter.
 - Rooms are 1120 by 720 with the camera zoomed to 1.3x, so a room is about a screen and
   a half, close to Isaac's one-screen rooms with a little scroll.
 - Enemies drop scrap. The shop sells three guns, a carry upgrade and a repair.

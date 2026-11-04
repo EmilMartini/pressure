@@ -39,11 +39,28 @@ or the keyboard. F1 shows a full control strip if you want one.
 
 ## Character sheet
 
-C, the pad's Back button, or the pause menu's Character entry. Shows equipped gear per
-slot, each gun with its mod, every set with which bonus thresholds are active, and the
-full computed stat list: health, armour, dodge, regen, move speed, damage, attack speed,
-crit chance and damage, projectiles, pierce, range, potency per element, state duration,
-chain jumps, lifesteal, thorns, pressure, vent, focus and scrap. Shoulders cycle players.
+C, the pad's Back button, or the pause menu's Character entry. A paper doll: gear slots
+around your figure, your guns below it, a tooltip for whatever you move to, and a readable
+stat panel on the right grouped into attributes, offense, elements, pressure, sustain and
+set bonuses. Press a gun in the row to drop it on the floor of the current room, where it
+sits on a plinth and can be picked up again. Shoulders cycle players in co-op.
+
+## Rooms and loot
+
+Each special room is dressed to be recognised: a counter and keeper in the shop, a chest
+on a dais with scattered gold in treasure rooms, weapon racks in challenge rooms, bones in
+the boss room, crates in hidden caches. Treasure rooms work like Slay the Spire chests:
+one pick from a piece of gear, a gun, or a run-long boon (max health, carry, pressure
+limit, or a pile of scrap), with bigger chests on deeper floors. Everything on offer sits
+on a stone plinth, and the prompt over it is the pad's coloured face button or a key cap
+depending on what you last touched. The minimap reveals rooms only as you reach their
+neighbours.
+
+## Post-processing
+
+A screen-space pass (bloom from a thresholded blur, mild contrast and saturation, a
+vignette) that runs on the Compatibility renderer so the web build keeps it. Tweak the
+uniforms at the top of `scripts/post_fx.gd`.
 
 ## Music
 
