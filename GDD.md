@@ -178,14 +178,15 @@ your starting power. That keeps the "overpowered and bored" failure out by const
 | 3 | Meta progression | Unlock pool done (achievements, save file, gated guns/obstacles/rooms). Next: in-run gear with loot tables, characters, keystone tiers, the hall |
 | 4 | Online co-op | Host-authoritative netcode for the desktop build |
 | 5 | Raids | Multi-boss co-op dungeons with mechanics |
-| 6 | Art & sound pass | First art pass done with Kenney 1-Bit, particles and fonts. Sound, music and juice still to do. |
+| 6 | Art, sound & juice | Done (first pass): Kenney 1-Bit sprites, particle reactions on an additive layer, scorches, corpses and bone bits, procedural animation (hop, spawn pop, hit squash, recoil, muzzle flash), camera shake, 46 Kenney sounds, main menu, codex, pause menu, Brotato-style HUD. Music still to do. |
 
 ### What the dungeon run does today
 - A floor is a tree of 9 to 13 rooms on a grid. Dead ends become the boss, treasure, shop
   and challenge rooms. One hidden room hangs off an ordinary room behind an obstacle:
   a pool (freeze it), a thicket (burn it) or a rusted valve (Steam it: Wet, then Fire).
 - Arena rooms lock their doors and run a timed wave; the timer grows with difficulty.
-  Difficulty = 3 per floor plus one per room cleared, so every clear makes the next room harder.
+  Difficulty starts at 2 and adds 3 per floor plus one per room cleared, so the first
+  arena already bites and every clear makes the next room harder.
 - Enemies drop scrap. The shop sells three guns, a carry upgrade and a repair.
   Treasure rooms give a free pick of one gun from three. Challenge rooms start from a sigil,
   spawn two sequence elites plus adds, and pay out scrap and a free gun pick.

@@ -34,6 +34,10 @@ var _flash := 0.0
 var _flash_color := Color.WHITE
 var _shield_flash := 0.0
 var _sprite: Sprite2D
+var _sprite_scale := 1.0
+var _anim_t := 0.0
+var _spawn_t := 0.0
+var _squash := 0.0
 
 
 func configure(type: String, wave: int) -> void:
@@ -90,8 +94,19 @@ func _ready() -> void:
     add_child(shape)
     z_index = 8
     base_color = Art.ENEMY_TINT.get(kind_name, base_color)
-    _sprite = Art.sprite(Art.TILES.get(kind_name, Art.TILES["grunt"]), radius / 6.0, base_color)
+    _sprite_scale = radius / 6.0
+    _sprite = Art.sprite(Art.TILES.get(kind_name, Art.TILES["grunt"]), 0.01, base_color)
     add_child(_sprite)
+    var fx := _fx()
+    if fx != null:
+        fx.puff(Art.PARTICLES["smoke"], global_position, Color(0.1, 0.08, 0.1, 0.7), radius * 4.5, 0.5, false, Vector2(0, -20))
+
+
+func _fx() -> Fx:
+    var scene := get_tree().current_scene
+    if scene != null and "fx" in scene:
+        return scene.fx
+    return null
 
 
 # --- States and reactions --------------------------------------------------
@@ -155,6 +170,8 @@ func take_damage(amount: float, color: Color, flash: bool = true) -> void:
     if flash:
         _flash = 0.12
         _flash_color = color
+        _squash = 1.0
+        Sfx.play("hit")
     if hp <= 0.0:
         _die()
         return
@@ -192,6 +209,20 @@ func add_burn(dps: float, seconds: float) -> void:
 func _die() -> void:
     if frozen_time > 0.0:
         Elements.nova.emit(global_position, radius * 2.5, Color(Element.COLORS[Element.Kind.ICE], 0.6))
+    var fx := _fx()
+    if fx != null:
+        fx.corpse(_sprite.texture, global_position, _sprite_scale, _sprite.modulate, _sprite.flip_h)
+        fx.bones(global_position, base_color.darkened(0.2), 4 if is_elite else 2)
+        if burn_time > 0.0:
+            fx.scorch(global_position, radius * 4.0)
+        fx._shake(6.0 if kind_name == "boss" else (2.5 if is_elite else 0.8))
+    match kind_name:
+        "boss":
+            Sfx.play("die_boss")
+        "elite":
+            Sfx.play("die_elite")
+        _:
+            Sfx.play("die")
     remove_from_group("enemies")
     died.emit(self)
     queue_free()
@@ -236,8 +267,14 @@ func _physics_process(delta: float) -> void:
 
 func _update_sprite() -> void:
     var c := base_color
+    if states.has(Element.Kind.WET):
+        c = c.lerp(Element.COLORS[Element.Kind.WET], 0.4)
+    if states.has(Element.Kind.OIL):
+        c = c.lerp(Color(0.15, 0.1, 0.08), 0.5)
+    if states.has(Element.Kind.SHOCK) and randf() < 0.5:
+        c = c.lerp(Element.COLORS[Element.Kind.SHOCK], 0.5)
     if frozen_time > 0.0:
-        c = c.lerp(Element.COLORS[Element.Kind.ICE], 0.7)
+        c = c.lerp(Element.COLORS[Element.Kind.ICE], 0.75)
     if burn_time > 0.0:
         c = c.lerp(Element.COLORS[Element.Kind.FIRE], 0.35)
     if _flash > 0.0:
@@ -245,6 +282,18 @@ func _update_sprite() -> void:
     _sprite.modulate = c
     if absf(velocity.x) > 1.0:
         _sprite.flip_h = velocity.x < 0.0
+    # Animation: spawn pop, hop while walking, squash on hit, stiff when frozen.
+    var delta := get_physics_process_delta_time()
+    _spawn_t = minf(1.0, _spawn_t + delta * 3.0)
+    _squash = maxf(0.0, _squash - delta * 6.0)
+    var moving := velocity.length() > 5.0
+    if moving:
+        _anim_t += delta * (9.0 + speed * 0.02)
+    var hop := absf(sin(_anim_t)) * 3.0 if moving else 0.0
+    var s := _sprite_scale * (_spawn_t + 0.35 * sin(_spawn_t * PI))
+    _sprite.scale = Vector2(s * (1.0 + 0.4 * _squash), s * (1.0 - 0.4 * _squash))
+    _sprite.position = Vector2(0, -hop)
+    _sprite.rotation = (sin(_anim_t) * 0.12 if moving else 0.0)
 
 
 func _nearest_player() -> Player:
@@ -266,31 +315,41 @@ func _draw() -> void:
     if is_elite:
         draw_arc(Vector2.ZERO, radius - 2.0, 0.0, TAU, 32, Color(1.0, 0.85, 0.3), 2.0)
     if immune_to != Element.Kind.NONE:
-        draw_arc(Vector2.ZERO, radius + 4.0, 0.0, TAU, 32, Element.COLORS[immune_to], 2.5)
+        draw_arc(Vector2.ZERO, radius + 5.0, 0.0, TAU, 32, Element.COLORS[immune_to], 3.0)
+        draw_arc(Vector2.ZERO, radius + 5.0, 0.0, TAU, 32, Color(0, 0, 0, 0.4), 1.0)
     if shielded():
-        draw_arc(Vector2.ZERO, radius + 9.0, 0.0, TAU, 40, Color(1, 1, 1, 0.45 + _shield_flash), 2.0)
+        draw_arc(Vector2.ZERO, radius + 11.0, 0.0, TAU, 40, Color(1, 1, 1, 0.45 + _shield_flash), 2.5)
 
-    # Active states as dots above the body.
-    var i := 0
-    var y := -radius - 7.0
-    for kind in states.keys():
-        draw_circle(Vector2(-8.0 + 8.0 * i, y), 3.5, Element.COLORS[kind])
-        i += 1
+    # Element states drawn on the body.
+    if states.has(Element.Kind.WET):
+        for i in 2:
+            var dx := -radius * 0.4 + float(i) * radius * 0.8
+            draw_circle(Vector2(dx, radius * 0.6 + fmod(_anim_t * 6.0 + i * 3.0, 6.0)), 2.2, Color(Element.COLORS[Element.Kind.WET], 0.9))
+    if states.has(Element.Kind.SHOCK):
+        for i in 3:
+            var a := randf() * TAU
+            var p := Vector2.RIGHT.rotated(a) * radius * randf_range(0.8, 1.4)
+            draw_line(p, p + Vector2.RIGHT.rotated(a + randf_range(-1.0, 1.0)) * 6.0, Color(1, 1, 0.6, 0.9), 1.5)
     if burn_time > 0.0:
-        draw_circle(Vector2(-8.0 + 8.0 * i, y), 3.5, Element.COLORS[Element.Kind.FIRE])
+        var f := radius * randf_range(2.4, 3.2)
+        draw_texture_rect(Art.PARTICLES["flame"], Rect2(Vector2(-f / 2.0, -radius - f * 0.8), Vector2(f, f)), false, Color(1.0, 0.6, 0.2, 0.85))
+    if frozen_time > 0.0:
+        var f := radius * 3.4
+        draw_texture_rect(Art.PARTICLES["magic"], Rect2(Vector2(-f / 2.0, -f / 2.0), Vector2(f, f)), false, Color(0.8, 0.97, 1.0, 0.55))
 
     # Required reaction sequence, each pair as two half-dots.
     if sequence.size() > 0:
-        var sy := -radius - 20.0
+        var sy := -radius - 24.0
         var n := sequence.size()
         for k in n:
-            var x := (float(k) - float(n - 1) / 2.0) * 16.0
+            var x := (float(k) - float(n - 1) / 2.0) * 22.0
             var done := k < sequence_index
             var alpha := 0.3 if done else 1.0
-            draw_circle(Vector2(x - 3.0, sy), 4.0, Color(Element.COLORS[sequence[k].x], alpha))
-            draw_circle(Vector2(x + 3.0, sy), 4.0, Color(Element.COLORS[sequence[k].y], alpha))
+            draw_circle(Vector2(x, sy), 7.5, Color(0, 0, 0, 0.6 * alpha))
+            draw_circle(Vector2(x - 3.5, sy), 5.0, Color(Element.COLORS[sequence[k].x], alpha))
+            draw_circle(Vector2(x + 3.5, sy), 5.0, Color(Element.COLORS[sequence[k].y], alpha))
 
-    if hp < max_hp and hp > 0.0:
-        var w := radius * 2.0
-        draw_rect(Rect2(-radius, radius + 4.0, w, 3.0), Color(0, 0, 0, 0.6))
-        draw_rect(Rect2(-radius, radius + 4.0, w * hp / max_hp, 3.0), Color(0.9, 0.2, 0.2))
+    if (hp < max_hp and hp > 0.0) or is_elite:
+        var w := radius * 2.2
+        draw_rect(Rect2(-w / 2.0, radius + 5.0, w, 4.0), Color(0, 0, 0, 0.7))
+        draw_rect(Rect2(-w / 2.0, radius + 5.0, w * hp / max_hp, 4.0), Color(0.9, 0.2, 0.2))

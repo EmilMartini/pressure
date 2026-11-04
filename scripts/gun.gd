@@ -46,3 +46,7 @@ func fire(dir: Vector2, manual: bool) -> void:
         p.global_position = player.global_position + dir * (player.radius + 6.0)
         world.add_child(p)
     player.add_pressure(data.pressure_per_shot)
+    player.kick(dir, 2.0 + float(data.weight))
+    Sfx.shoot(data.element)
+    if "fx" in world and world.fx != null:
+        world.fx.puff(Art.PARTICLES["light"], player.global_position + dir * (player.radius + 12.0), Color(data.color(), 0.9), 26.0 + float(data.weight) * 5.0, 0.08, true)

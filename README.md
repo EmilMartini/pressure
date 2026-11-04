@@ -23,10 +23,15 @@ Controls are shown at the bottom of the screen in game. Press `F1` to hide them.
 | Toggle auto / manual aim | Tab | Y |
 | Vent pressure | Space | LB |
 | Swap primary gun | Q | X |
-| Join (players 2-4) | | Start |
+| Pause | Esc | Start |
+| Join (players 2-4) | | Start on a pad that has not joined |
 | Give player 1 a gun (debug) | 1 to 0 | |
 | Wipe the save file (debug) | F9 | |
-| Restart | R | Start (after game over) |
+| Restart | R | |
+
+The game opens on a main menu (Play, Codex, Wipe save, Quit). The pause menu doubles as
+the run-over screen with the run summary and next goals. The help strip at the bottom
+hides itself after 20 seconds; F1 brings it back.
 
 Player 1 is keyboard + mouse and the first controller, merged. Every other
 controller joins as a new player by pressing Start.
@@ -42,10 +47,12 @@ The self-test uses its own save file and never touches yours.
 ## Self-test
 
 ```
-godot --path . -- --autotest
+godot --path . res://scenes/main.tscn -- --autotest
 ```
 
-Add `--short` after `--autotest` for a 70-second run.
+Add `--short` after `--autotest` for a 70-second run. `godot --path . -- --menu-shot`
+screenshots the menu and codex. `godot --headless --path . res://scenes/main.tscn -- --obstacle-test`
+checks projectiles hit obstacles.
 A bot plays by itself for up to five minutes: explores rooms, buys from pedestals,
 clears obstacles, fights elites and the boss, takes the stairs. It saves screenshots to
 `autotest/` and prints progress and reaction counts. Use it to check a build still
@@ -59,6 +66,9 @@ All art is from Kenney (kenney.nl), CC0, no generative art:
   thing through the `Art` autoload. Characters, monsters, items, bricks, floor, decals.
 - **Particle Pack** (`assets/kenney/particles/`): reaction puffs (smoke, flame, spark, magic).
 - **Kenney Fonts** (`assets/fonts/`): Kenney Pixel for the HUD and world text.
+- **Kenney audio** (`assets/audio/`): a curated set from Sci-fi Sounds, Impact Sounds,
+  Interface Sounds and RPG Audio, renamed to what they do in the game. The `Sfx` autoload
+  maps names to files, picks variants, wobbles pitch and rate-limits repeats.
 
 To change which sprite something uses, edit the coordinates in `scripts/art.gd`
 (column, row on the packed sheet, 16px tiles).
@@ -89,4 +99,8 @@ scripts/
   fx.gd              arcs, rings, floating text, particle puffs
   hud.gd             floor/room status, boss bar, minimap, player panels, help, banners
   art.gd             autoload `Art`: sheet lookups, particle textures, fonts, palette
+  sfx.gd             autoload `Sfx`: one-shot sounds by name
+  menu.gd            main menu and codex (scenes/menu.tscn is the start scene)
+  pause_menu.gd      pause overlay, also the run-over screen
+  ui_theme.gd        shared dark theme for menus
 ```

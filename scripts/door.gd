@@ -48,8 +48,23 @@ func _ready() -> void:
 
 
 func set_state(s: int) -> void:
+    var was := state
     state = s
     _apply()
+    if not is_inside_tree() or was == s:
+        return
+    if s == State.LOCKED:
+        Sfx.play("door_lock")
+        _lock.scale = Vector2(3.2, 3.2)
+        _lock.modulate.a = 1.0
+        create_tween().tween_property(_lock, "scale", Vector2(2.0, 2.0), 0.25).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+    elif was == State.LOCKED and s == State.OPEN:
+        Sfx.play("door_open")
+        _lock.visible = true
+        var tw := create_tween()
+        tw.tween_property(_lock, "modulate:a", 0.0, 0.35)
+        tw.parallel().tween_property(_lock, "scale", Vector2(2.8, 2.8), 0.35)
+        tw.tween_callback(func(): _lock.visible = state == State.LOCKED)
 
 
 func set_obstacle(kind: String) -> void:

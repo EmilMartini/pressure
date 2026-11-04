@@ -7,6 +7,8 @@ const RANGE := 52.0
 
 var offer: Dictionary
 var highlighted := false
+var _sprite: Sprite2D
+var _t := randf() * TAU
 
 
 func _init(p_offer: Dictionary) -> void:
@@ -21,9 +23,9 @@ func _ready() -> void:
             coord = Art.gun_tile(offer["id"])
         _:
             coord = Art.TILES.get(kind(), Art.TILES["cog"])
-    var s := Art.sprite(coord, 2.5, color())
-    s.position = Vector2(0, -10)
-    add_child(s)
+    _sprite = Art.sprite(coord, 2.5, color())
+    _sprite.position = Vector2(0, -12)
+    add_child(_sprite)
 
 
 func kind() -> String:
@@ -67,12 +69,19 @@ func color() -> Color:
     return Color.WHITE
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
+    _t += delta
+    if _sprite != null and kind() not in ["sigil", "stairs"]:
+        _sprite.position.y = -14.0 + sin(_t * 2.2) * 3.0
+        _sprite.rotation = sin(_t * 1.1) * 0.08
     queue_redraw()
 
 
 func _draw() -> void:
     var c := color()
+    var glow: Texture2D = Art.PARTICLES["light"]
+    var g := 110.0 + sin(_t * 2.2) * 8.0
+    draw_texture_rect(glow, Rect2(Vector2(-g / 2.0, -g / 2.0 - 6.0), Vector2(g, g)), false, Color(c, 0.16 + (0.1 if highlighted else 0.0)))
     if kind() == "sigil":
         draw_arc(Vector2.ZERO, 44.0, 0.0, TAU, 48, Color(c, 0.6), 3.0)
         draw_arc(Vector2.ZERO, 30.0, 0.0, TAU, 6, Color(c, 0.8), 2.0)

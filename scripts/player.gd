@@ -48,6 +48,9 @@ var kills := 0
 var last_message := ""
 var _message_time := 0.0
 var _sprite: Sprite2D
+var _anim_t := 0.0
+var _recoil := Vector2.ZERO
+var _squash := 0.0
 
 
 func _init(p_index: int, p_input: PlayerInput) -> void:
@@ -125,10 +128,19 @@ func add_pressure(amount: float) -> void:
         overheated = STALL_SECONDS
         pressure = 45.0
         say("OVERHEAT")
+        Sfx.play("overheat")
+        _squash = 1.0
     elif pressure <= -PRESSURE_LIMIT:
         frozen_up = STALL_SECONDS
         pressure = -45.0
         say("FROZEN UP")
+        Sfx.play("frozen")
+        _squash = 1.0
+
+
+## Nudge the sprite opposite to a shot; called by Gun.
+func kick(dir: Vector2, strength: float) -> void:
+    _recoil = -dir * strength
 
 
 func cooldown_multiplier() -> float:
@@ -155,6 +167,7 @@ func vent() -> void:
     var hot := pressure > 0.0
     var strength := absf(pressure)
     var vent_radius := 110.0 + strength * 1.6
+    _squash = 1.0
     var kind: int = Element.Kind.FIRE if hot else Element.Kind.ICE
     var col: Color = Element.COLORS[kind]
     Elements.nova.emit(global_position, vent_radius, Color(col, 0.55))
@@ -178,11 +191,17 @@ func take_damage(amount: float) -> void:
         return
     hp -= amount
     invuln = 0.6
+    _squash = 1.0
+    Sfx.play("hurt")
+    var scene := get_tree().current_scene
+    if scene != null and scene.has_method("shake"):
+        scene.shake(5.0)
     if hp <= 0.0:
         hp = 0.0
         alive = false
         remove_from_group("players")
         say("DOWN")
+        Sfx.play("down")
         died.emit(self)
     queue_redraw()
 
@@ -230,7 +249,20 @@ func _physics_process(delta: float) -> void:
         last_message = ""
 
     _fire()
+    _animate(delta, mv)
     queue_redraw()
+
+
+func _animate(delta: float, mv: Vector2) -> void:
+    var moving := mv != Vector2.ZERO
+    if moving:
+        _anim_t += delta * 11.0
+    var hop := absf(sin(_anim_t)) * 3.0 if moving else 0.0
+    _squash = maxf(0.0, _squash - delta * 6.0)
+    _recoil = _recoil.move_toward(Vector2.ZERO, 60.0 * delta)
+    _sprite.scale = Vector2(2.0 * (1.0 + 0.3 * _squash), 2.0 * (1.0 - 0.3 * _squash))
+    _sprite.position = Vector2(0, -hop) + _recoil
+    _sprite.rotation = sin(_anim_t) * 0.08 if moving else 0.0
 
 
 func _fire() -> void:

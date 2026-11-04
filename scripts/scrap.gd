@@ -5,6 +5,7 @@ extends Node2D
 var value := 1
 var main: Main
 var _vel := Vector2.ZERO
+var _sprite: Sprite2D
 
 
 func _init(p_value: int, p_main: Main) -> void:
@@ -15,13 +16,14 @@ func _init(p_value: int, p_main: Main) -> void:
 
 func _ready() -> void:
     _vel = Vector2.RIGHT.rotated(randf() * TAU) * randf_range(60.0, 220.0)
-    var s := Art.sprite(Art.TILES["scrap"], 0.9 + minf(0.6, float(value) * 0.1), Art.SCRAP_TINT)
-    add_child(s)
+    _sprite = Art.sprite(Art.TILES["scrap"], 0.9 + minf(0.6, float(value) * 0.1), Art.SCRAP_TINT)
+    add_child(_sprite)
 
 
 func _physics_process(delta: float) -> void:
     _vel = _vel.move_toward(Vector2.ZERO, 320.0 * delta)
     position += _vel * delta
+    _sprite.rotation += delta * 4.0
     var p := main.nearest_alive_player(global_position)
     if p == null:
         return
@@ -31,6 +33,7 @@ func _physics_process(delta: float) -> void:
         position += d.normalized() * 460.0 * delta
     if dist < 24.0:
         main.add_scrap(value)
+        Sfx.play("scrap", 0.0, 0.2)
         queue_free()
 
 

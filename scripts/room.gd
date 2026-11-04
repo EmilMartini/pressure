@@ -93,11 +93,15 @@ func _begin_arena() -> void:
     _spawn_timer = 0.8
     _elite_timer = wave_duration * 0.45 if diff >= 2 else INF
     main.announce("Survive %d seconds" % int(wave_duration))
+    Sfx.play("wave_start")
 
 
 func _tick_arena(delta: float) -> void:
     var diff := main.difficulty()
+    var before := ceili(wave_time_left)
     wave_time_left -= delta
+    if wave_time_left <= 3.0 and ceili(wave_time_left) != before:
+        Sfx.play("tick", 0.0, 0.0)
     _spawn_timer -= delta
     _elite_timer -= delta
     if _spawn_timer <= 0.0:
@@ -146,6 +150,8 @@ func _begin_boss() -> void:
     boss.reshield_sequence = _random_sequence(pairs, 2)
     _add_timer = 5.0
     main.announce("BOSS: break the shield in order")
+    Sfx.play("boss")
+    main.shake(10.0)
 
 
 func _tick_boss(delta: float) -> void:
@@ -167,6 +173,7 @@ func _finish_fight(bonus_scrap: int) -> void:
         e.vanish()
     _drop_scrap(Vector2.ZERO, bonus_scrap, 6)
     main.on_room_cleared(self)
+    Sfx.play("cleared")
     _apply_doors()
 
 
@@ -175,7 +182,7 @@ func _finish_fight(bonus_scrap: int) -> void:
 
 func _spawn_group() -> void:
     var diff := main.difficulty()
-    var count := mini(7, 2 + diff / 3 + (main.players.size() - 1))
+    var count := mini(8, 3 + diff / 3 + (main.players.size() - 1))
     for i in count:
         var roll := randf()
         var type := "grunt"
@@ -427,12 +434,15 @@ func activate(ped: Pedestal, pl: Player) -> void:
             var gdata := Guns.make(o["id"])
             if main.scrap < o["price"]:
                 pl.say("Need %d scrap" % o["price"])
+                Sfx.play("error")
                 return
             if not pl.can_carry(gdata):
                 pl.say("Too heavy: %s is %d, %d free" % [gdata.display_name, gdata.weight, pl.weight_capacity - pl.total_weight()])
+                Sfx.play("error")
                 return
             main.scrap -= o["price"]
             pl.add_gun(o["id"])
+            Sfx.play("buy")
             o["taken"] = true
             if o["price"] == 0 and data.type in [RoomData.Type.TREASURE, RoomData.Type.CHALLENGE]:
                 for other in data.stock:
@@ -441,24 +451,30 @@ func activate(ped: Pedestal, pl: Player) -> void:
         "carry":
             if main.scrap < o["price"]:
                 pl.say("Need %d scrap" % o["price"])
+                Sfx.play("error")
                 return
             main.scrap -= o["price"]
             pl.weight_capacity += o["amount"]
             pl.say("Carry capacity %d" % pl.weight_capacity)
+            Sfx.play("buy")
             o["taken"] = true
         "repair":
             if main.scrap < o["price"]:
                 pl.say("Need %d scrap" % o["price"])
+                Sfx.play("error")
                 return
             main.scrap -= o["price"]
             pl.hp = minf(pl.max_hp, pl.hp + o["amount"])
             pl.say("Repaired")
+            Sfx.play("buy")
             o["taken"] = true
         "stairs":
+            Sfx.play("stairs")
             main.next_floor()
             return
         "sigil":
             o["taken"] = true
+            Sfx.play("confirm")
             begin_challenge()
     _build_pedestals()
 

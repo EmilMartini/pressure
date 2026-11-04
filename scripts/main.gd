@@ -12,6 +12,9 @@ var players: Array[Player] = []
 var fx: Fx
 var hud: Hud
 var camera: Camera2D
+var pause_menu: PauseMenu
+var _shake := 0.0
+var _help_timer := 20.0
 
 var floor_number := 0
 var rooms: Dictionary = {}          # Vector2i -> RoomData
@@ -43,6 +46,7 @@ func _ready() -> void:
     randomize()
 
     fx = Fx.new()
+    fx.main = self
     add_child(fx)
 
     camera = Camera2D.new()
@@ -59,6 +63,8 @@ func _ready() -> void:
     hud = Hud.new()
     hud.main = self
     layer.add_child(hud)
+    pause_menu = PauseMenu.new(self)
+    add_child(pause_menu)
 
     var pads := Input.get_connected_joypads()
     _spawn_player(0 if pads.has(0) else -1, true)
@@ -102,10 +108,21 @@ func _obstacle_test() -> void:
 
 func _on_unlocked(unlock_id: String, achievement_name: String) -> void:
     hud.toast("%s: unlocked %s" % [achievement_name, Progress.unlock_label(unlock_id)])
+    Sfx.play("unlock")
 
 
 func _end_run(won: bool) -> void:
     Progress.end_run(won, floor_number, total_kills)
+    if not autotest:
+        get_tree().create_timer(1.6).timeout.connect(pause_menu.show_menu)
+
+
+func shake(amount: float) -> void:
+    _shake = maxf(_shake, amount)
+
+
+func is_device_joined(device: int) -> bool:
+    return _joined_devices.has(device)
 
 
 # --- Floors and rooms --------------------------------------------------------
@@ -180,8 +197,9 @@ func next_floor() -> void:
 
 
 ## Enemy scaling input: grows with floors and with every room the party clears.
+## Starts at 2 so the first arena already bites.
 func difficulty() -> int:
-    return (floor_number - 1) * 3 + rooms_cleared
+    return 2 + (floor_number - 1) * 3 + rooms_cleared
 
 
 func add_scrap(v: int) -> void:
@@ -282,13 +300,15 @@ func _process(delta: float) -> void:
         _autotest_tick(delta)
     _handle_joins()
     camera.position = _party_center()
+    camera.offset = Vector2(randf_range(-1.0, 1.0), randf_range(-1.0, 1.0)) * _shake
+    _shake = move_toward(_shake, 0.0, 28.0 * delta)
     _message_time = maxf(0.0, _message_time - delta)
     if _message_time <= 0.0:
         message = ""
-    if game_over or victory:
-        for p in players:
-            if p.input.just_pressed("start"):
-                _restart()
+    if show_help and _help_timer > 0.0:
+        _help_timer -= delta
+        if _help_timer <= 0.0:
+            show_help = false
 
 
 func _input(event: InputEvent) -> void:
@@ -300,6 +320,7 @@ func _input(event: InputEvent) -> void:
             _restart()
         KEY_F1:
             show_help = not show_help
+            _help_timer = 0.0
         KEY_F9:
             Progress.reset()
             announce("Save wiped: next run starts from nothing")
@@ -384,6 +405,9 @@ func _autotest_tick(delta: float) -> void:
         p.vent()
     if _clock >= 12.0 and p.auto_aim:
         p.auto_aim = false
+    if _clock >= 30.0 and not _shots_taken.has("pause"):
+        _shots_taken["pause"] = true
+        pause_menu.show_for_test()
     for shot_time in [15.0, 60.0, 120.0, 180.0, 240.0]:
         if _clock >= shot_time and not _shots_taken.has(shot_time):
             _shots_taken[shot_time] = true

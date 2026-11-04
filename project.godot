@@ -11,7 +11,7 @@ config_version=5
 [application]
 
 config/name="Pressure"
-run/main_scene="res://scenes/main.tscn"
+run/main_scene="res://scenes/menu.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 config/icon="res://icon.svg"
 
@@ -21,6 +21,7 @@ Elements="*res://scripts/elements.gd"
 Progress="*res://scripts/progress.gd"
 Guns="*res://scripts/gun_library.gd"
 Art="*res://scripts/art.gd"
+Sfx="*res://scripts/sfx.gd"
 
 [display]
 
