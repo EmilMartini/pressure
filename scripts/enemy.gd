@@ -143,6 +143,8 @@ var _dot_color := Color.WHITE
 var _dot_timer := 0.0
 var _spawn_t := 0.0
 var _squash := 0.0
+var _floor_t := randf() * 0.25   # next floor-material check, staggered across enemies
+var _on_ice := false
 
 var _wave := 0
 var _dead := false
@@ -586,6 +588,39 @@ func _explode(dmg: float, rad: float) -> void:
         if e != self and is_instance_valid(e) and not e.is_queued_for_deletion() \
                 and e.global_position.distance_to(pos) <= rad:
             e.apply_element(Element.Kind.FIRE, potency, null)
+    var mats := Materials.find(self)
+    if mats != null:
+        mats.ignite(pos, rad)          # fuel in the blast catches
+        mats.ignite(pos, 20.0, true)   # and the crater burns briefly
+
+
+## What the floor does to us, a few times a second (see Materials).
+func _feel_floor() -> void:
+    _on_ice = false
+    var mats := Materials.find(self)
+    if mats == null:
+        return
+    match mats.material_at(global_position):
+        Materials.FIRE:
+            add_burn(4.0, 1.5)
+        Materials.WATER:
+            if not has_state(Element.Kind.WET):
+                apply_element(Element.Kind.WET, 1.0, null)
+        Materials.CHARGED:
+            take_damage(3.0, Element.COLORS[Element.Kind.SHOCK], true)
+            if not _dead and hp > 0.0 and not has_state(Element.Kind.SHOCK):
+                apply_element(Element.Kind.SHOCK, 1.0, null)
+        Materials.POISON:
+            add_poison(2.0, 2.0)
+        Materials.ACID:
+            corrode(1.0)
+        Materials.OIL:
+            if burn_time > 0.0:
+                mats.ignite(global_position, radius)   # a burning body lights the oil it walks in
+            elif not has_state(Element.Kind.OIL):
+                apply_element(Element.Kind.OIL, 1.0, null)
+        Materials.ICE:
+            _on_ice = true
 
 
 ## A bomber that reached a player: blows up, no scrap.
@@ -719,12 +754,20 @@ func _physics_process(delta: float) -> void:
     _flash = maxf(0.0, _flash - delta)
     _shield_flash = maxf(0.0, _shield_flash - delta)
 
+    _floor_t -= delta
+    if _floor_t <= 0.0:
+        _floor_t = 0.25
+        _feel_floor()
+        if _dead or hp <= 0.0:
+            return
+
     _tick_affix(delta)
     if kind_name == "boss":
         _tick_boss_passive(delta)
         if _dead:
             return
 
+    var prev_vel := velocity
     var target := _nearest_player()
     if frozen_time > 0.0 or stun_time > 0.0 or target == null:
         velocity = Vector2.ZERO
@@ -732,6 +775,9 @@ func _physics_process(delta: float) -> void:
         velocity = _think(delta, target)
         if _dead:
             return
+    if _on_ice and frozen_time <= 0.0:
+        var keep := pow(Materials.ICE_KEEP, delta * 60.0)
+        velocity = prev_vel * keep + velocity * (1.0 - keep)
     velocity += shove_vel
     shove_vel = shove_vel.move_toward(Vector2.ZERO, 900.0 * delta)
     move_and_slide()

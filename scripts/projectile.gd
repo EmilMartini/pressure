@@ -158,6 +158,7 @@ func _land() -> void:
             if is_instance_valid(c) and c.element != element and c.global_position.distance_to(global_position) <= c.radius + r * 0.5:
                 Elements.react_cloud(c, element, potency, shooter)
     Elements.nova.emit(global_position, r, Color(color, 0.55))
+    _leave_material(r * 0.6, true)
     var fx := _fx()
     if fx != null:
         fx.puff(Art.PARTICLES["smoke"], global_position, Color(color, 0.6), r * 1.2, 0.3, false)
@@ -168,6 +169,7 @@ func _land() -> void:
 
 ## Splash from a shot that ended on a hit: half damage to everyone else nearby.
 func _splash(center_hit: Node) -> void:
+    _leave_material(maxf(splash_radius * 0.5, radius * 2.0), splash_radius > 0.0)
     if splash_radius <= 0.0:
         return
     for e in get_tree().get_nodes_in_group("enemies"):
@@ -204,6 +206,20 @@ func _burst_shards(exclude: Node) -> void:
         if exclude != null:
             s._hit[exclude] = true
         parent.add_child.call_deferred(s)
+
+
+## Where the shot ends, its element lands on the floor (see Materials): one stamp per shot.
+## `big` (lobs and splash shots) lays more and lets Fire burn a small patch of bare floor.
+func _leave_material(r: float, big: bool) -> void:
+    if element == Element.Kind.NONE:
+        return
+    var mats := Materials.find(self)
+    if mats == null:
+        return
+    var amount := clampi(int(40.0 + potency * 6.0), 40, 200)
+    if big:
+        amount = mini(255, amount + 40)
+    mats.stamp(element, global_position, r, amount, big)
 
 
 func _fx() -> Fx:

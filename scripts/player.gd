@@ -63,6 +63,8 @@ var _squash_scale := 2.0
 var _costume: Node2D              # front costume layer, drawn over the body sprite
 var _orbit_angle := 0.0
 var _orbit_hits: Dictionary = {}  # enemy instance id -> msec when an orbital may hit it again
+var _floor_t := 0.0               # next floor-material check
+var _on_ice := false
 
 const ORBIT_RADIUS := 60.0
 const ORBIT_HIT := 10.0
@@ -361,6 +363,9 @@ func vent() -> void:
     for c in get_tree().get_nodes_in_group("clouds"):
         if is_instance_valid(c) and c.global_position.distance_to(global_position) <= vent_radius + c.radius:
             Elements.react_cloud(c, kind, strength * 0.3, self)
+    var mats := Materials.find(self)
+    if mats != null:
+        mats.stamp(kind, global_position, vent_radius, 160)
     pressure = 0.0
     Items.fire(self, "vent", { "pos": global_position, "element": kind })
 
@@ -417,8 +422,19 @@ func _physics_process(delta: float) -> void:
     if not alive:
         return
 
+    _floor_t -= delta
+    if _floor_t <= 0.0:
+        _floor_t = 0.25
+        _feel_floor()
+        if not alive:
+            return
     var mv := input.move_vector()
-    velocity = mv * move_speed()
+    var want := mv * move_speed()
+    if _on_ice:
+        var keep := pow(Materials.ICE_KEEP, delta * 60.0)
+        velocity = velocity * keep + want * (1.0 - keep)
+    else:
+        velocity = want
     move_and_slide()
 
     if input.just_pressed("vent"):
@@ -446,6 +462,21 @@ func _physics_process(delta: float) -> void:
     _animate(delta, mv)
     queue_redraw()
     _costume.queue_redraw()
+
+
+## What the floor does to us: fire and charged water hurt (invuln still applies), ice slides.
+func _feel_floor() -> void:
+    _on_ice = false
+    var mats := Materials.find(self)
+    if mats == null:
+        return
+    match mats.material_at(global_position):
+        Materials.FIRE:
+            take_damage(3.0, null)
+        Materials.CHARGED:
+            take_damage(4.0, null)
+        Materials.ICE:
+            _on_ice = true
 
 
 func _animate(delta: float, mv: Vector2) -> void:

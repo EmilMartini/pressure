@@ -47,9 +47,11 @@ raids, loot tables).
   and each upgrade is small (+4% damage, +8 health, +3% crit), so a floor gives three to
   five levels and no single pick swings a run. Power comes from stacking many of them.
   XP per kill is 2 + 2 x scrap value, which lands around level 14 on floor 4.
-- Measured loop (bot, naked start): floor 2 at 2.5 min, floor 3 at 5, floor 4 at 9,
-  health dipping under 20 on floor 4. The arena feeds 11 + 7 x difficulty enemy hp per
-  second; every spawned group buys itself a pause of its hp over that rate.
+- Measured loop (bot, naked start, explores every room, spends in shops): floor 2 at
+  5 min, floor 3 at 10, floor 4 at 18 with level 19, ten guns and 141 max health, never
+  in danger past floor 1; a human who skips rooms is faster and leaner. The arena feeds
+  20 + 11 x difficulty enemy hp per second; every spawned group buys itself a pause of
+  its hp over that rate. Floors 3 to 5 are the next tuning target once play says so.
 
 ### Gun tiers and mods
 - Guns have tiers I to IV, Brotato style. Picking up a duplicate merges it into the one

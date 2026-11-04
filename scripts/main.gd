@@ -24,6 +24,7 @@ var current_pos := Vector2i.ZERO
 var scrap := 0
 var rooms_cleared := 0
 var floor_rooms_cleared := 0   # difficulty creeps within a floor, resets at the stairs
+var _paused_secs := 0.0
 var total_kills := 0
 var game_over := false
 var victory := false
@@ -547,6 +548,24 @@ func _autotest_tick(delta: float) -> void:
     _clock += delta
     if current == null or players.is_empty():
         return
+    # Watchdog: nothing in a bot run may hold the tree paused. Report what did and go on.
+    if get_tree().paused:
+        _paused_secs += delta
+        if _paused_secs > 4.0:
+            var open: Array = []
+            for c in get_children():
+                if c is CanvasLayer or c is Control:
+                    if c.get("visible") == true:
+                        open.append(c.name)
+            print("[WATCHDOG] tree paused %.0f s at t=%.0f; visible overlays: %s" % [_paused_secs, _clock, str(open)])
+            if levelup != null and levelup.has_method("is_open") and levelup.is_open():
+                print("[WATCHDOG] level-up screen open")
+            if gun_pick != null and gun_pick.is_open():
+                print("[WATCHDOG] gun picker open")
+            get_tree().paused = false
+            _paused_secs = 0.0
+    else:
+        _paused_secs = 0.0
     var p := players[0]
     var t := p.nearest_enemy(900.0)
     var circle := Vector2.RIGHT.rotated(_clock * 0.6)

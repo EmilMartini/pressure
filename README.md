@@ -234,12 +234,22 @@ All art is from Kenney (kenney.nl), CC0, no generative art:
 - **1-Bit Pack** (`assets/kenney/1bit_mono.png`): every sprite in the game, tinted per
   thing through the `Art` autoload. Characters, monsters, items, bricks, floor, decals.
 - **Particle Pack** (`assets/kenney/particles/`): reaction puffs (smoke, flame, spark, magic).
+- **Materials on the floor** (`scripts/materials.gd`, Noita-inspired): every room has
+  an 8 px material grid. Bullets, vents, puddles and deaths lay oil, water, ice, poison
+  gas, acid and blood on it; oil pools burn and spread fire, water puts fire out, boils
+  to steam and conducts a shock across the whole pool, ice freezes water and you slide
+  on it, gas drifts, acid eats oil and ice, door obstacles react to what touches them.
+  Enemies and players standing in it take the effect. Only active cells are stepped
+  (12 steps a second, 2,500 cells a step), drawn as translucent pixel squares.
 - **Effects are generated, not drawn**: every reaction, status and nova is pixel
   particles in the game's own palette (2 to 5 px squares, translucent, additive for hot
   elements) with per-element physics: fire rises and flickers into smoke, water falls and
   splashes, ice shards stop and crumble, sparks jitter with arcs, oil and blood arc and
-  stick, void spirals in, gale streaks. Nothing opaque ever covers the fight. See the
-  pixel system at the top of `scripts/fx.gd`.
+  stick, void spirals in, gale streaks. Every element has a signature shape (flame
+  tongues, splash crown, branching bolts, growing ice spikes, gas blooms, fizzing acid,
+  blood spray, void implosion, light pillar, whirl, stone chunks) and a reaction draws
+  both of its elements' signatures plus accents for what it does; the ring is only a
+  thin outline of a burst radius. Nothing opaque ever covers the fight.
 - **Kenney Fonts** (`assets/fonts/`): Kenney Pixel for the HUD and world text.
 - **Kenney audio** (`assets/audio/`): a curated set from Sci-fi Sounds, Impact Sounds,
   Interface Sounds and RPG Audio, renamed to what they do in the game. The `Sfx` autoload
@@ -275,7 +285,9 @@ scripts/
   elements.gd        autoload `Elements` / class `Element`: kinds, colours, reaction table
   enemy.gd           thirteen kinds, states, reactions, elite affixes, five bosses
   enemy_projectile.gd enemy shots;  spawn_table.gd  floor-gated spawn groups, affixes, bosses
-  fx.gd              arcs, rings, floating text, particle puffs, animation-sheet flipbooks
+  fx.gd              pixel particles, element signatures, bolts and spikes, numbers, corpses
+  materials.gd       the floor material grid: oil, water, fire, ice, gas, acid, blood
+  classes.gd         starting classes;  class_select.gd  the class card screen
   gun_pick_screen.gd pick which gun a mod goes on
   hud.gd             floor/room status, boss bar, minimap, player panels, help, banners
   art.gd             autoload `Art`: sheet lookups, particle textures, fonts, palette

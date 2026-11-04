@@ -9,12 +9,15 @@ signal door_entered(dir: Vector2i)
 const SIZE := Vector2(1120, 720)
 const WALL := 60.0
 const GAP := 150.0
+## Kinds that leave blood on the floor when they die.
+const BLOODY_KINDS := ["grunt", "runner", "brute", "swarmer", "spitter", "charger", "splitter", "shaman", "elite", "boss"]
 
 var data: RoomData
 var main: Main
 var rect := Rect2(-SIZE / 2.0, SIZE)
 var enemies: Node2D
 var pickups: Node2D
+var materials: Materials            # floor material layer (oil, water, fire, gas...)
 var doors: Dictionary = {}          # dir -> Door
 var pedestals: Array[Pedestal] = []
 
@@ -44,6 +47,8 @@ func _ready() -> void:
     pickups.name = "Pickups"
     add_child(pickups)
     _build_floor()
+    materials = Materials.new(rect)   # z -1: over floor and decals, under bodies
+    add_child(materials)
     _build_walls()
     _build_doors()
     _build_pedestals()
@@ -298,6 +303,13 @@ func _on_enemy_died(e: Enemy) -> void:
     if e.last_hit_by != null and is_instance_valid(e.last_hit_by):
         e.last_hit_by.gain_xp(2.0 + 2.0 * float(e.scrap_value))
     _drop_scrap(e.global_position, e.scrap_value, mini(e.scrap_value, 5))
+    if materials != null:
+        if e.kind_name in BLOODY_KINDS:
+            materials.stamp(Element.Kind.BLOOD, e.global_position, e.radius * 0.8, 90)
+        if e.has_state(Element.Kind.OIL):
+            materials.stamp(Element.Kind.OIL, e.global_position, e.radius * 1.5, 120)
+        if e.burn_time > 0.0:
+            materials.ignite(e.global_position, e.radius * 1.5)
     if e.is_elite and data.type == RoomData.Type.CHALLENGE:
         _elites_alive -= 1
     # Loot: bosses always drop rare or better, elites drop sometimes.

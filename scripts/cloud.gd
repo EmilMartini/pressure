@@ -56,6 +56,11 @@ func _init(p_element: int, p_radius: float, p_life: float, p_potency: float, p_s
 
 func _ready() -> void:
     add_to_group("clouds")
+    if is_puddle():
+        # The floor's material layer gets the same water, so the two systems agree.
+        var mats := Materials.find(self)
+        if mats != null:
+            mats.stamp(Element.Kind.WET, global_position, radius * 0.4, 40)
 
 
 func is_puddle() -> bool:

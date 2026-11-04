@@ -5,14 +5,29 @@ extends Node2D
 ## edge), translucent so the floor and enemies stay readable under a burst, each moving by
 ## a behaviour (fire rises, water falls and splashes, oil sticks, void spirals in...).
 ## Also lightning arcs, ring outlines, floating text, corpses, bone bits and floor scorches.
+##
+## Every element has a signature shape (sig_fire, sig_wet, ... via signature()): flame
+## tongues, a splash crown, lightning bolts, ice spikes, oil splatter, gas blooms, a fizzing
+## puddle, a blood spray, an implosion, a pillar of light, a whirl, heavy chunks. A reaction
+## is element a's signature, then element b's at 70%, then accents for what it does. Lines
+## (bolts, spikes, rays, collapse lines) are short-lived vector shapes in `_shapes`.
 
 const MAX_PUFFS := 120
 const MAX_TEXTS := 48
 const MAX_PIXELS := 700   # ring buffer: a new pixel past the cap overwrites the oldest
 const MAX_ALPHA := 0.75
+const MAX_SHAPES := 96
 
 ## Pixel behaviours.
-enum B { FIRE, SMOKE, WET, ICE, SHOCK, OIL, POISON, ACID, BLOOD, VOID, HOLY, GALE, STONE, RING, DRIFT, ORBIT, EMBER, STUCK }
+enum B { FIRE, SMOKE, WET, ICE, SHOCK, OIL, POISON, ACID, BLOOD, VOID, HOLY, GALE, STONE, RING, DRIFT, ORBIT, EMBER, STUCK,
+    TONGUE, BLOOM, SHEEN, FALL, SIZZLE, WHIRL }
+
+## Vector shape kinds.
+const SH_BOLT := 0       # { pts, w }            jagged polyline, yellow glow under a white core
+const SH_SPIKE := 1      # { a, b, grow, pal, w } a line of squares growing a -> b, crumbles at the end
+const SH_RAY := 2        # { a, b, grow, c, w }  a thin line growing a -> b, fading
+const SH_COLLAPSE := 3   # { c, a, len }          a short line sliding from a into c
+const SH_DISC := 4       # { c, r }               a dark disc with a thin violet edge
 
 ## Palette ids 0..12 are Element.Kind (0 = NONE = white); the extras follow.
 const PAL_SMOKE := 13
@@ -22,7 +37,8 @@ const GRAVITY := 560.0
 
 var main: Main
 var _arcs: Array = []      # { a, b, t }
-var _rings: Array = []     # { pos, r, color, t, life }  thin outlines that follow the pixel rings
+var _rings: Array = []     # { pos, r, color, t, life }  thin brief outlines of a burst radius
+var _shapes: Array = []    # { k, t, life, d (delay), ... }  see SH_*
 var _texts: Array = []     # { pos, text, color, t, life }
 var _puffs: Array = []     # textured puffs (bone bits), normal blend
 var _add_puffs: Array = [] # textured soft glow underlays, additive
@@ -230,15 +246,17 @@ func smoke(pos: Vector2, count: int, spread := 10.0, pal := PAL_SMOKE) -> void:
         _px(pos + off, Vector2(randf_range(-15.0, 15.0), randf_range(-35.0, -15.0)), randf_range(0.8, 1.4), randf_range(3.0, 4.0), randf_range(0.35, 0.45), B.SMOKE, pal, false)
 
 
-## An expanding hollow ring of pixels that reaches `r` at the end of `life`, plus a faint outline.
-func ring(pos: Vector2, r: float, pal: int, count := 40, life := 0.45, outline := true) -> void:
-    var speed := r * 2.5 / (1.0 - exp(-2.5 * life))
-    for n in count:
-        var d := Vector2.RIGHT.rotated(TAU * float(n) / float(count) + randf_range(-0.05, 0.05))
-        _px(pos + d * 3.0, d * speed * randf_range(0.94, 1.0), life * randf_range(0.85, 1.0), 2.0, randf_range(0.4, 0.55), B.RING, pal, true)
-    if outline:
-        var c: Color = _pal[pal * 3]
-        _rings.append({ "pos": pos, "r": r, "color": Color(c, 0.3), "t": life, "life": life })
+## A thin, brief outline of a burst radius. Never the body of an effect. Two outlines of the
+## same radius at the same spot in the same instant (reaction + nova signal) draw once.
+func outline(pos: Vector2, r: float, pal: int, life := 0.3) -> void:
+    for o in _rings:
+        var op: Vector2 = o["pos"]
+        var orad: float = o["r"]
+        var oage: float = float(o["life"]) - float(o["t"])
+        if op.distance_squared_to(pos) < 16.0 and absf(orad - r) < r * 0.1 and oage < 0.1:
+            return
+    var c: Color = _pal[pal * 3]
+    _rings.append({ "pos": pos, "r": r, "color": Color(c, 0.3), "t": life, "life": life })
 
 
 ## Pixels on a circle spiralling into `pos`.
@@ -285,6 +303,259 @@ func linger(pos: Vector2, r: float, count: int, pal: int, additive := false) -> 
         _px(pos + off, Vector2(randf_range(-12.0, 12.0), randf_range(-14.0, 4.0)), randf_range(1.0, 1.8), randf_range(2.0, 4.0), randf_range(0.35, 0.5), B.DRIFT, pal, additive)
 
 
+## Motes of an element scattered over a disc of radius `r` (an area being coated, no ring).
+func _scatter(kind: int, pos: Vector2, r: float, count: int) -> void:
+    for n in count:
+        mote(kind, pos + Vector2.RIGHT.rotated(randf() * TAU) * r * sqrt(randf()) * 0.8)
+
+
+## A flat sheen on the floor: wide low squares that spread a little and fade.
+func _patch(pos: Vector2, r: float, pal: int, count: int, alpha := 0.25, life := 1.2) -> void:
+    for n in count:
+        var off := Vector2(randf_range(-r, r), randf_range(-r, r) * 0.35)
+        _px(pos + off, off.normalized() * randf_range(8.0, 20.0), life * randf_range(0.8, 1.2), randf_range(3.0, 5.0), alpha * randf_range(0.8, 1.2), B.SHEEN, pal, false)
+
+
+# --- Vector shapes ---------------------------------------------------------
+
+
+func _shape(sh: Dictionary, life: float, delay := 0.0) -> void:
+    sh["life"] = life
+    sh["d"] = delay
+    sh["t"] = life + delay
+    _shapes.append(sh)
+    if _shapes.size() > MAX_SHAPES:
+        _shapes.pop_front()
+
+
+## Jagged polyline from `from` heading `dir`.
+func _bolt_pts(from: Vector2, dir: Vector2, length: float, segs: int) -> PackedVector2Array:
+    var pts := PackedVector2Array()
+    pts.append(from)
+    var p := from
+    var step := length / float(segs)
+    for n in segs:
+        p += dir.rotated(randf_range(-0.7, 0.7)) * step * randf_range(0.7, 1.2)
+        pts.append(p)
+    return pts
+
+
+## One lightning bolt with 1-2 sub-branches and sparks at the tips.
+func _bolt(pos: Vector2, dir: Vector2, length: float, life: float, w := 1.0) -> void:
+    var pts := _bolt_pts(pos, dir, length, 6)
+    _shape({ "k": SH_BOLT, "pts": pts, "w": w }, life)
+    _sparks(pts[pts.size() - 1], 2)
+    for m in 1 + randi() % 2:
+        var side := 1.0 if randi() % 2 == 0 else -1.0
+        var sub := _bolt_pts(pts[2 + randi() % 3], dir.rotated(randf_range(0.5, 0.9) * side), length * 0.4, 3)
+        _shape({ "k": SH_BOLT, "pts": sub, "w": w * 0.6 }, life * 0.8)
+        _sparks(sub[sub.size() - 1], 1)
+
+
+func _sparks(pos: Vector2, count: int) -> void:
+    for n in count:
+        _px(pos, Vector2.RIGHT.rotated(randf() * TAU) * randf_range(30.0, 90.0), randf_range(0.12, 0.25), 2.0, 0.7, B.SHOCK, Element.Kind.SHOCK, true)
+
+
+## Spikes growing out of the ground from `pos`, fanned `fan` radians either side of up.
+func _spikes(pos: Vector2, count: int, length: float, pal := Element.Kind.ICE, fan := 1.25, hold := 0.35) -> void:
+    for k in count:
+        var q := 0.5 if count == 1 else float(k) / float(count - 1)
+        var ang := -PI * 0.5 + lerpf(-fan, fan, q) + randf_range(-0.12, 0.12)
+        var base := pos + Vector2(randf_range(-5.0, 5.0), randf_range(0.0, 6.0))
+        var tip := base + Vector2.RIGHT.rotated(ang) * length * randf_range(0.6, 1.0)
+        _shape({ "k": SH_SPIKE, "a": base, "b": tip, "grow": 0.2, "pal": pal, "w": 4.0 if length > 30.0 else 3.0 }, 0.2 + hold * randf_range(0.8, 1.2), randf_range(0.0, 0.06))
+
+
+## A spike at the end of its hold breaks into falling fragments.
+func _crumble(sh: Dictionary) -> void:
+    var a0: Vector2 = sh["a"]
+    var b0: Vector2 = sh["b"]
+    var pal: int = sh["pal"]
+    var n := clampi(int(a0.distance_to(b0) / 6.0), 2, 5)
+    for m in n:
+        var p := a0.lerp(b0, (float(m) + 0.5) / float(n))
+        _px(p, Vector2(randf_range(-25.0, 25.0), randf_range(-30.0, 0.0)), randf_range(0.35, 0.6), randf_range(2.0, 3.0), 0.6, B.FALL, pal, true)
+
+
+func _ray(a: Vector2, b: Vector2, c: Color, life: float, w := 1.0, delay := 0.0) -> void:
+    _shape({ "k": SH_RAY, "a": a, "b": b, "grow": 0.08, "c": c, "w": w }, life, delay)
+
+
+# --- Element signatures ----------------------------------------------------
+# Each takes pos, size (reach in px) and strength (1 = a full signature, 20-60 pixels).
+
+
+static func _n(base: float, strength: float, lo: int, hi: int) -> int:
+    return clampi(roundi(base * strength), lo, hi)
+
+
+## The signature shape of an element. `dir` aims directional ones (blood).
+func signature(kind: int, pos: Vector2, size: float, strength := 1.0, dir := Vector2.ZERO) -> void:
+    match kind:
+        Element.Kind.FIRE: sig_fire(pos, size, strength)
+        Element.Kind.WET: sig_wet(pos, size, strength)
+        Element.Kind.SHOCK: sig_shock(pos, size, strength)
+        Element.Kind.ICE: sig_ice(pos, size, strength)
+        Element.Kind.OIL: sig_oil(pos, size, strength)
+        Element.Kind.POISON: sig_poison(pos, size, strength)
+        Element.Kind.ACID: sig_acid(pos, size, strength)
+        Element.Kind.BLOOD: sig_blood(pos, size, strength, dir)
+        Element.Kind.VOID: sig_void(pos, size, strength)
+        Element.Kind.HOLY: sig_holy(pos, size, strength)
+        Element.Kind.GALE: sig_gale(pos, size, strength)
+        Element.Kind.STONE: sig_stone(pos, size, strength)
+        _: pixels(0, pos, _n(12.0, strength, 4, 20), size * 1.5)
+
+
+## One flame tongue: a short vertical run of squares, yellow at the base to red at the top,
+## rising and swaying together.
+func _tongue(base: Vector2, height: int, vy: float, life: float, sz: float) -> void:
+    var ph := randf() * TAU
+    var vx := randf_range(-6.0, 6.0)
+    for m in height:
+        var step := 1 if m == 0 else (2 if m == height - 1 else 0)
+        _px(base + Vector2(0, -float(m) * sz * 0.9), Vector2(vx, vy), life * (1.0 - 0.12 * float(m)), maxf(2.0, sz - 0.4 * float(m)), randf_range(0.5, 0.65), B.TONGUE, Element.Kind.FIRE, true, Vector2(ph, float(step)))
+
+
+## FIRE: 5-9 flame tongues, embers; tongues leave a little smoke when they die.
+func sig_fire(pos: Vector2, size: float, strength := 1.0) -> void:
+    var n := _n(5.0 + size / 30.0, strength, 3, 12)
+    for k in n:
+        var x := lerpf(-size * 0.45, size * 0.45, (float(k) + randf_range(0.2, 0.8)) / float(n))
+        var tall := 1.0 - absf(x) / maxf(size, 1.0) * 0.8
+        _tongue(pos + Vector2(x, randf_range(-4.0, 8.0)), 3 + randi() % 3, randf_range(-110.0, -60.0) * tall, randf_range(0.35, 0.6), randf_range(3.0, 4.0))
+    for k in _n(4.0, strength, 1, 8):
+        ember(pos + Vector2(randf_range(-size * 0.4, size * 0.4), randf_range(-10.0, 4.0)))
+    _glow(pos, size * 1.2, Color(1.0, 0.6, 0.2, 0.25), 0.25)
+
+
+## WET: a crown of droplets thrown up and out that fall back and splash, plus a puddle sheen.
+func sig_wet(pos: Vector2, size: float, strength := 1.0) -> void:
+    var n := _n(14.0, strength, 6, 22)
+    var spd := clampf(size * 1.6, 60.0, 200.0)
+    var a0 := randf() * TAU
+    for k in n:
+        var ang := a0 + TAU * float(k) / float(n) + randf_range(-0.1, 0.1)
+        var d := Vector2(cos(ang), sin(ang) * 0.45)
+        var floor_y := pos.y + maxf(d.y, 0.0) * size * 0.6 + randf_range(2.0, 8.0)
+        var v := Vector2(d.x * spd * randf_range(0.6, 1.0), d.y * spd * 0.4 - randf_range(140.0, 220.0))
+        _px(pos + d * 4.0, v, 1.4, randf_range(2.0, 3.0), randf_range(0.5, 0.65), B.WET, Element.Kind.WET, false, Vector2(0, floor_y))
+    _patch(pos + Vector2(0, 4.0), size * 0.35, Element.Kind.WET, _n(6.0, strength, 3, 8), 0.25, 1.2)
+
+
+## SHOCK: 3-5 branching bolts from the point outward, sparks at the tips.
+func sig_shock(pos: Vector2, size: float, strength := 1.0) -> void:
+    var n := _n(3.0 + 2.0 * minf(strength, 1.0), maxf(strength, 1.0), 2, 7)
+    var a0 := randf() * TAU
+    for k in n:
+        var dir := Vector2.RIGHT.rotated(a0 + TAU * float(k) / float(n) + randf_range(-0.4, 0.4))
+        _bolt(pos, dir, size * randf_range(0.7, 1.1), randf_range(0.15, 0.3), clampf(strength, 0.6, 1.3))
+    for k in _n(6.0, strength, 2, 10):
+        _px(pos, Vector2.RIGHT.rotated(randf() * TAU) * randf_range(40.0, 110.0), randf_range(0.15, 0.3), 2.0, 0.7, B.SHOCK, Element.Kind.SHOCK, true)
+    _glow(pos, size * 1.2, Color(1.0, 1.0, 0.8, 0.3), 0.15)
+
+
+## ICE: 5-7 crystal spikes growing from the ground, holding, then crumbling; white tip glints.
+func sig_ice(pos: Vector2, size: float, strength := 1.0) -> void:
+    _spikes(pos, _n(5.0 + 2.0 * minf(strength, 1.0), maxf(strength, 1.0), 3, 9), size * 0.8)
+    for k in _n(5.0, strength, 2, 8):
+        _px(pos + Vector2(randf_range(-6.0, 6.0), randf_range(-4.0, 4.0)), Vector2.RIGHT.rotated(randf() * TAU) * randf_range(30.0, 70.0), randf_range(0.4, 0.7), randf_range(2.0, 3.0), 0.6, B.ICE, Element.Kind.ICE, true)
+    _glow(pos, size, Color(0.8, 0.95, 1.0, 0.25), 0.25)
+
+
+## OIL: dark droplets that arc out and stick as glossy dots, plus a small dark pool.
+func sig_oil(pos: Vector2, size: float, strength := 1.0) -> void:
+    for k in _n(16.0, strength, 6, 22):
+        var d := Vector2.RIGHT.rotated(randf() * TAU)
+        var spd := size * randf_range(0.8, 1.8)
+        _px(pos + d * 3.0, Vector2(d.x * spd, d.y * spd * 0.4 - randf_range(60.0, 130.0)), 1.4, randf_range(3.0, 5.0), randf_range(0.55, 0.7), B.OIL, Element.Kind.OIL, false, Vector2(0, pos.y + maxf(d.y, 0.0) * size * 0.4 + randf_range(4.0, 14.0)))
+    _patch(pos + Vector2(0, 4.0), size * 0.25, Element.Kind.OIL, _n(5.0, strength, 2, 6), 0.45, 1.9)
+
+
+## POISON: 3-4 gas blooms (clusters with a light core) that rise slowly, wobble and thin out.
+func sig_poison(pos: Vector2, size: float, strength := 1.0) -> void:
+    var blobs := _n(3.5, strength, 2, 5)
+    var br := clampf(size * 0.12, 5.0, 12.0)
+    for k in blobs:
+        var c := pos + Vector2(randf_range(-size * 0.4, size * 0.4), randf_range(-size * 0.2, size * 0.1))
+        var vel := Vector2(randf_range(-10.0, 10.0), randf_range(-28.0, -14.0))
+        var ph := randf() * TAU
+        var life := randf_range(1.1, 1.7)
+        for j in 6 + randi() % 5:
+            var off := Vector2.RIGHT.rotated(randf() * TAU) * br * sqrt(randf())
+            var step := 1 if off.length() < br * 0.45 else (0 if randf() < 0.7 else 2)
+            _px(c + off, vel + off * 0.6, life * randf_range(0.95, 1.0), randf_range(3.0, 4.0), randf_range(0.35, 0.5), B.BLOOM, Element.Kind.POISON, false, Vector2(ph, float(step)))
+
+
+## ACID: a bright fizzing pool, bubbles rising and popping, eating sparks on the ground.
+func sig_acid(pos: Vector2, size: float, strength := 1.0) -> void:
+    var r := size * 0.35
+    _patch(pos + Vector2(0, 4.0), r, Element.Kind.ACID, _n(6.0, strength, 3, 8), 0.3, 1.3)
+    for k in _n(13.0, strength, 5, 18):
+        var off := Vector2(randf_range(-r, r), randf_range(-r, r) * 0.35)
+        _px(pos + off, Vector2(0, randf_range(-35.0, -12.0)), randf_range(0.4, 1.0), randf_range(2.0, 3.0), 0.55, B.ACID, Element.Kind.ACID, false, Vector2(randf() * TAU, 0))
+    for k in _n(8.0, strength, 3, 12):
+        var off2 := Vector2(randf_range(-r, r), randf_range(-r, r) * 0.35)
+        _px(pos + off2 + Vector2(0, 4.0), Vector2.ZERO, randf_range(0.2, 0.5), 2.0, 0.7, B.SIZZLE, Element.Kind.ACID, true)
+
+
+## BLOOD: a spray along `dir` (radial when zero); droplets arc out and splat into dots.
+func sig_blood(pos: Vector2, size: float, strength := 1.0, dir := Vector2.ZERO) -> void:
+    var aim := dir.normalized()
+    for k in _n(18.0, strength, 8, 24):
+        var d := aim.rotated(randf_range(-0.5, 0.5)) if aim != Vector2.ZERO else Vector2.RIGHT.rotated(randf() * TAU)
+        var spd := size * randf_range(1.2, 2.4)
+        _px(pos + d * 4.0, Vector2(d.x * spd, d.y * spd * 0.5 - randf_range(60.0, 140.0)), 1.4, randf_range(2.0, 4.0), randf_range(0.55, 0.7), B.BLOOD, Element.Kind.BLOOD, false, Vector2(0, pos.y + maxf(d.y, 0.0) * size * 0.3 + randf_range(4.0, 14.0)))
+
+
+## VOID: an implosion. Pixels spiral in, a dark disc with a violet edge opens and closes,
+## then a pulse of short lines collapses inward.
+func sig_void(pos: Vector2, size: float, strength := 1.0) -> void:
+    spiral(pos, size, _n(22.0, strength, 8, 40), Element.Kind.VOID)
+    _shape({ "k": SH_DISC, "c": pos, "r": clampf(size * 0.3, 8.0, 40.0) * clampf(strength, 0.6, 1.5) }, 0.45)
+    var lines := _n(10.0, strength, 5, 16)
+    for k in lines:
+        var d := Vector2.RIGHT.rotated(TAU * float(k) / float(lines) + randf_range(-0.1, 0.1))
+        _shape({ "k": SH_COLLAPSE, "c": pos, "a": pos + d * size * randf_range(0.8, 1.0), "len": randf_range(6.0, 10.0) }, 0.28, 0.2)
+
+
+## HOLY: a pillar of light. Rising white and gold column, a bright flash at the base, thin
+## rays fanning up.
+func sig_holy(pos: Vector2, size: float, strength := 1.0) -> void:
+    var w := clampf(size * 0.15, 6.0, 20.0)
+    for k in _n(22.0, strength, 8, 50):
+        _px(pos + Vector2(randf_range(-w, w), randf_range(-4.0, 4.0) - randf() * size * 0.3), Vector2(randf_range(-4.0, 4.0), randf_range(-150.0, -70.0)), randf_range(0.5, 0.9), randf_range(2.0, 3.0), randf_range(0.55, 0.75), B.HOLY, PAL_GOLD if k % 2 == 1 else Element.Kind.HOLY, true)
+    for k in _n(6.0, strength, 3, 10):
+        _px(pos, Vector2.RIGHT.rotated(randf() * TAU) * Vector2(1.0, 0.4) * randf_range(40.0, 90.0), randf_range(0.1, 0.18), 3.0, MAX_ALPHA, B.RING, 0, true)
+    _glow(pos, size * 0.9, Color(1.0, 0.95, 0.7, 0.3), 0.2)
+    var rays := _n(5.0, strength, 3, 9)
+    for k in rays:
+        var q := 0.5 if rays == 1 else float(k) / float(rays - 1)
+        var ang := -PI * 0.5 + lerpf(-0.55, 0.55, q) + randf_range(-0.06, 0.06)
+        _ray(pos, pos + Vector2.RIGHT.rotated(ang) * size * randf_range(0.9, 1.3), Color(1.0, 0.85, 0.4), 0.35, 1.0, randf_range(0.0, 0.05))
+
+
+## GALE: a whirl. Streaks orbit the point once and fly off; grey dust swept up.
+func sig_gale(pos: Vector2, size: float, strength := 1.0) -> void:
+    for k in _n(14.0, strength, 6, 24):
+        var ang := randf() * TAU
+        var r := size * randf_range(0.35, 0.6)
+        _px(pos + Vector2(cos(ang), sin(ang) * 0.55) * r, Vector2(ang, r), randf_range(0.5, 0.7), 2.0, randf_range(0.45, 0.6), B.WHIRL, Element.Kind.GALE, false, pos)
+    for k in _n(10.0, strength, 4, 16):
+        _px(pos + Vector2(randf_range(-size * 0.4, size * 0.4), randf_range(0.0, 8.0)), Vector2(randf_range(-60.0, 60.0), randf_range(-25.0, -5.0)), randf_range(0.6, 1.0), randf_range(2.0, 4.0), randf_range(0.3, 0.45), B.DRIFT, PAL_STEAM, false, Vector2(randf() * TAU, 0))
+
+
+## STONE: heavy chunks arcing out and bouncing once, a dust cloud at ground level.
+func sig_stone(pos: Vector2, size: float, strength := 1.0) -> void:
+    for k in _n(10.0, strength, 4, 30):
+        var d := Vector2.RIGHT.rotated(randf() * TAU)
+        var spd := size * randf_range(0.8, 1.6)
+        _px(pos + d * 4.0, Vector2(d.x * spd, d.y * spd * 0.3 - randf_range(120.0, 220.0)), 1.6, randf_range(3.0, 5.0), randf_range(0.6, 0.7), B.STONE, Element.Kind.STONE, false, Vector2(0, pos.y + maxf(d.y, 0.0) * size * 0.3 + randf_range(4.0, 16.0)))
+    for k in _n(12.0, strength, 4, 30):
+        _px(pos + Vector2(randf_range(-size * 0.5, size * 0.5), randf_range(2.0, 10.0)), Vector2(randf_range(-40.0, 40.0), randf_range(-10.0, 0.0)), randf_range(0.8, 1.4), randf_range(3.0, 4.0), randf_range(0.3, 0.4), B.DRIFT, Element.Kind.STONE, false, Vector2(randf() * TAU, 0))
+
+
 # --- Public spawners -------------------------------------------------------
 
 
@@ -311,7 +582,9 @@ func puff(tex: Texture2D, pos: Vector2, color: Color, size: float, life: float, 
             for k in clampi(int(size / 10.0), 4, 12):
                 _px(pos, Vector2.RIGHT.rotated(randf() * TAU) * randf_range(40.0, 120.0), randf_range(0.15, 0.3), 2.0, 0.7, B.SHOCK, pal, true)
         "circle":
-            ring(pos, size * 0.5, pal, clampi(int(size / 4.0), 12, 32), maxf(life, 0.2), false)
+            outline(pos, size * 0.5, pal, maxf(life, 0.2))
+            for k in clampi(int(size / 12.0), 3, 8):
+                _px(pos, Vector2.RIGHT.rotated(randf() * TAU) * randf_range(30.0, 80.0), randf_range(0.15, 0.3), 2.0, 0.6, B.RING, pal, true)
         "flame":
             for k in clampi(int(size / 12.0), 3, 12):
                 _element_px(Element.Kind.FIRE, pos, Vector2.RIGHT.rotated(randf() * TAU) * 40.0, pal)
@@ -334,14 +607,12 @@ func _glow(pos: Vector2, size: float, color: Color, life: float) -> void:
     _tex_puff(Art.PARTICLES["light"], pos, Color(color, minf(color.a, 0.3)), size, life, true, Vector2.ZERO, 0.0)
 
 
-## Thin wrapper for older callers (bomber): an element ring of pixels, no sheet.
+## Thin wrapper for older callers (bomber): the element's signature at the blast's size.
 func blast(pos: Vector2, radius: float, color: Color, _life := 0.55) -> void:
     var kind := _kind_of(color)
-    pixels(kind, pos, 24, radius * 0.9, 10.0)
+    signature(kind, pos, clampf(radius * 0.6, 40.0, 100.0), 1.2)
     if kind == Element.Kind.FIRE:
         smoke(pos, 8, 16.0)
-        for k in 6:
-            ember(pos + Vector2(randf_range(-20.0, 20.0), randf_range(-10.0, 10.0)))
 
 
 ## A floating damage number. `big` is a crit: larger, brighter, and it lingers.
@@ -400,166 +671,174 @@ func _on_reaction(reaction_name: String, position: Vector2, color: Color) -> voi
     Sfx.reaction(reaction_name)
     match reaction_name:
         "Chain Lightning":
-            pixels(Element.Kind.SHOCK, position, 28, 170.0, 8.0)
-            pixels(Element.Kind.WET, position, 10, 90.0)
-            ring(position, 60.0, Element.Kind.SHOCK, 32, 0.3)
+            sig_shock(position, 120.0, 1.6)
+            sig_wet(position, 50.0, 0.5)
+            _sparks(position, 8)
             _glow(position, 90.0, Color(1, 1, 0.8, 0.3), 0.2)
             _shake(3.0)
         "Steam":
-            for n in 40:
-                var off := Vector2(randf_range(-50.0, 50.0), randf_range(-20.0, 20.0))
+            # A scalding white cloud billowing up off a snuffed splash.
+            for n in 45:
+                var off := Vector2(randf_range(-55.0, 55.0), randf_range(-20.0, 20.0))
                 _px(position + off, Vector2(randf_range(-25.0, 25.0), randf_range(-70.0, -25.0)), randf_range(0.9, 1.6), randf_range(3.0, 5.0), randf_range(0.3, 0.45), B.SMOKE, PAL_STEAM, false)
-            pixels(Element.Kind.WET, position, 12, 120.0)
-            ring(position, 130.0, PAL_STEAM, 40, 0.45)
+            sig_wet(position, 90.0, 0.9)
+            sig_fire(position, 50.0, 0.4)
+            outline(position, 130.0, PAL_STEAM, 0.3)
             _shake(2.0)
         "Deep Freeze":
-            shards(position, 8, 34.0)
-            linger(position, 50.0, 16, Element.Kind.ICE, true)
-            ring(position, 55.0, Element.Kind.ICE, 32, 0.35)
-            _glow(position, 80.0, Color(0.8, 0.95, 1.0, 0.3), 0.3)
+            sig_ice(position, 100.0, 1.4)
+            _spikes(position, 5, 26.0, Element.Kind.ICE, PI * 0.8, 0.5)
+            sig_wet(position, 40.0, 0.4)
+            linger(position, 50.0, 12, Element.Kind.ICE, true)
+            _glow(position, 90.0, Color(0.8, 0.95, 1.0, 0.3), 0.3)
             _shake(3.0)
         "Inferno":
-            ring(position, 90.0, Element.Kind.FIRE, 48, 0.5)
-            for n in 50:
-                var off := Vector2(randf_range(-45.0, 45.0), randf_range(-15.0, 15.0))
-                _element_px(Element.Kind.FIRE, position + off, Vector2(randf_range(-40.0, 40.0), randf_range(-60.0, 0.0)))
-            smoke(position, 16, 30.0)
-            for n in 10:
-                ember(position + Vector2(randf_range(-40.0, 40.0), randf_range(-10.0, 10.0)))
-            pixels(Element.Kind.OIL, position, 8, 120.0)
+            sig_fire(position, 130.0, 1.5)
+            sig_oil(position, 70.0, 0.8)
+            for n in 8:
+                ember(position + Vector2(randf_range(-50.0, 50.0), randf_range(-10.0, 10.0)))
+            smoke(position, 10, 30.0)
             scorch(position, 120.0)
             _shake(5.0)
         "Ignition":
-            pixels(Element.Kind.SHOCK, position, 16, 160.0)
-            pixels(Element.Kind.FIRE, position, 30, 70.0, 12.0)
-            ring(position, 60.0, Element.Kind.FIRE, 32, 0.35)
-            smoke(position, 6, 12.0)
+            sig_shock(position, 70.0, 0.8)
+            sig_fire(position, 70.0, 1.0)
+            sig_oil(position, 50.0, 0.5)
             scorch(position, 70.0)
             _shake(3.0)
         "Fire Nova":
-            ring(position, 130.0, Element.Kind.FIRE, 48, 0.5)
-            ring(position, 90.0, Element.Kind.SHOCK, 32, 0.4, false)
-            for n in 60:
+            outline(position, 130.0, Element.Kind.FIRE, 0.35)
+            sig_fire(position, 70.0, 1.0)
+            for k in 8:
+                var fp := position + Vector2.RIGHT.rotated(TAU * float(k) / 8.0 + randf_range(-0.2, 0.2)) * Vector2(1.0, 0.6) * randf_range(70.0, 110.0)
+                _tongue(fp, 3 + randi() % 3, randf_range(-100.0, -60.0), randf_range(0.35, 0.55), randf_range(3.0, 4.0))
+            for n in 30:
                 var d := Vector2.RIGHT.rotated(randf() * TAU)
-                _px(position + d * 8.0, d * randf_range(150.0, 320.0) + Vector2(0, -30.0), randf_range(0.35, 0.65), randf_range(3.0, 5.0), randf_range(0.45, 0.65), B.FIRE, Element.Kind.FIRE, true)
-            smoke(position, 20, 50.0)
-            for n in 12:
+                _px(position + d * 8.0, d * randf_range(150.0, 320.0) + Vector2(0, -30.0), randf_range(0.3, 0.55), randf_range(3.0, 4.0), randf_range(0.45, 0.65), B.FIRE, Element.Kind.FIRE, true)
+            smoke(position, 12, 50.0)
+            for n in 8:
                 ember(position + Vector2.RIGHT.rotated(randf() * TAU) * randf_range(20.0, 90.0))
             scorch(position, 220.0)
             _shake(9.0)
         "Frost Nova":
-            ring(position, 130.0, Element.Kind.ICE, 48, 0.5)
-            shards(position, 12, 40.0)
-            linger(position, 120.0, 24, Element.Kind.ICE, true)
+            outline(position, 130.0, Element.Kind.ICE, 0.35)
+            sig_ice(position, 90.0, 1.3)
+            for k in 4:
+                var ip := position + Vector2.RIGHT.rotated(TAU * float(k) / 4.0 + randf_range(-0.3, 0.3)) * Vector2(1.0, 0.6) * randf_range(70.0, 100.0)
+                _spikes(ip, 3, 26.0, Element.Kind.ICE, 0.8, 0.4)
+            linger(position, 120.0, 16, Element.Kind.ICE, true)
             _glow(position, 140.0, Color(0.7, 0.9, 1.0, 0.25), 0.35)
             _shake(9.0)
         "Shield broken!":
-            ring(position, 90.0, 0, 40, 0.4)
-            for n in 24:
-                var d := Vector2.RIGHT.rotated(randf() * TAU)
-                _px(position + d * 14.0, d * randf_range(200.0, 420.0), randf_range(0.5, 0.8), randf_range(2.0, 4.0), randf_range(0.55, 0.75), B.ICE, 0, true)
+            outline(position, 90.0, 0, 0.3)
+            _spikes(position, 8, 36.0, 0, PI * 0.875, 0.12)
+            for n in 22:
+                var sd := Vector2.RIGHT.rotated(randf() * TAU)
+                _px(position + sd * 14.0, sd * randf_range(120.0, 260.0) + Vector2(0, -60.0), randf_range(0.5, 0.8), randf_range(2.0, 4.0), randf_range(0.55, 0.75), B.FALL, 0, true)
             _shake(5.0)
         "Shield restored!":
-            spiral(position, 70.0, 30, Element.Kind.ICE)
-            ring(position, 50.0, 0, 32, 0.6)
-            rise(position, 8, 14.0)
+            spiral(position, 70.0, 26, Element.Kind.ICE)
+            sig_holy(position, 60.0, 0.6)
+            outline(position, 50.0, 0, 0.4)
         "Path opened!":
-            pixels(Element.Kind.STONE, position, 40, 180.0, 20.0)
-            smoke(position, 16, 30.0, Element.Kind.STONE)
-            ring(position, 120.0, 0, 44, 0.5)
+            sig_stone(position, 120.0, 2.5)
+            outline(position, 120.0, Element.Kind.STONE, 0.3)
             _shake(4.0)
         "ELITE":
-            rise(position, 30, 22.0)
-            ring(position, 60.0, PAL_GOLD, 36, 0.5)
+            sig_holy(position, 110.0, 1.8)
+            outline(position, 60.0, PAL_GOLD, 0.4)
             _glow(position, 100.0, Color(1.0, 0.85, 0.3, 0.3), 0.5)
         _:
             _react_data(reaction_name, position, color)
 
 
-## Data-driven reactions: the visual follows what the reaction does.
+## Data-driven reactions: element a's signature, element b's at 70%, then an accent per
+## thing the reaction does.
 func _react_data(reaction_name: String, pos: Vector2, color: Color) -> void:
     var d := Elements.def_by_name(reaction_name)
     var inc := _kind_of(color)
     var pal := _pal_of(color)
     if d.is_empty():
         # Shield cracked, ENRAGED and other one-off events.
-        pixels(inc, pos, 12, 90.0)
-        ring(pos, 45.0, pal, 24, 0.35)
+        if inc != Element.Kind.NONE:
+            signature(inc, pos, 45.0, 0.5)
+        else:
+            pixels(0, pos, 12, 90.0)
+        outline(pos, 45.0, pal, 0.25)
+        _shake(3.0)
         return
     var ka: int = d["a"]
     var kb: int = d["b"]
-    var shake := 3.0
-    for act in d.get("do", []):
-        var verb: String = act[0]
+    var acts: Array = d.get("do", [])
+    var reach := 0.0
+    for act in acts:
+        var verb0: String = act[0]
+        if verb0 in ["burst", "pull", "push"]:
+            reach = maxf(reach, float(act[1]))
+        elif verb0 in ["apply", "spread", "cloud"]:
+            reach = maxf(reach, float(act[2]))
+        elif verb0 == "slow" and act.size() > 3:
+            reach = maxf(reach, float(act[3]))
+    var sz := clampf(reach * 0.45, 40.0, 80.0) if reach > 0.0 else 50.0
+    signature(ka, pos, sz, 1.0)
+    signature(kb, pos, sz * 0.7, 0.7)
+    var shake := 2.5
+    for ac in acts:
+        var verb: String = ac[0]
         match verb:
             "burst":
-                var br := float(act[1])
-                ring(pos, br, pal, clampi(32 + int(br / 12.0), 32, 48), 0.45)
-                pixels(ka, pos, 8, br * 0.6)
-                pixels(kb, pos, 8, br * 0.6)
+                var br := float(ac[1])
+                outline(pos, br, pal, 0.3)
                 shake = maxf(shake, 2.0 + br / 60.0)
             "apply", "spread":
-                var ak: int = act[1]
-                var ar := float(act[2])
+                var ak: int = ac[1]
+                var ar := float(ac[2])
                 if ar <= 0.0:
-                    pixels(ak, pos, 8, 50.0)
+                    pixels(ak, pos, 6, 50.0)
                 else:
-                    ring(pos, ar, ak, clampi(24 + int(ar / 20.0), 24, 40), 0.8)
-                    pixels(ak, pos, 6, 60.0)
+                    _scatter(ak, pos, ar, 8)
             "cloud":
-                var ck: int = act[1]
-                linger(pos, float(act[2]), 26, ck, ck in [Element.Kind.FIRE, Element.Kind.HOLY, Element.Kind.SHOCK, Element.Kind.ICE])
+                var ck: int = ac[1]
+                linger(pos, float(ac[2]), 18, ck, ck in [Element.Kind.FIRE, Element.Kind.HOLY, Element.Kind.SHOCK, Element.Kind.ICE])
             "burn":
-                pixels(Element.Kind.FIRE, pos, 10, 50.0)
+                pixels(Element.Kind.FIRE, pos, 6, 40.0)
             "poison":
-                pixels(Element.Kind.POISON, pos, 8, 50.0)
+                pixels(Element.Kind.POISON, pos, 5, 30.0)
             "bleed":
-                pixels(Element.Kind.BLOOD, pos, 8, 90.0)
+                pixels(Element.Kind.BLOOD, pos, 6, 80.0)
             "corrode":
-                pixels(Element.Kind.ACID, pos, 8, 50.0)
+                pixels(Element.Kind.ACID, pos, 6, 40.0)
             "freeze":
-                shards(pos, 7, 26.0)
+                _spikes(pos, 4, 28.0, Element.Kind.ICE, 1.2, 0.5)
             "stun":
                 orbit(pos, 3, 0)
             "pull":
-                spiral(pos, float(act[1]) * 0.6, 28, pal)
+                spiral(pos, float(ac[1]) * 0.5, 18, Element.Kind.VOID)
             "push":
-                streaks(pos, float(act[1]), 24, pal)
+                streaks(pos, float(ac[1]), 14, Element.Kind.GALE)
             "chain", "chain_state":
-                pixels(Element.Kind.SHOCK, pos, 10, 110.0)
+                _bolt(pos, Vector2.RIGHT.rotated(randf() * TAU), 40.0, 0.2, 0.7)
+                _sparks(pos, 6)
             "purge", "heal_source":
-                rise(pos, 14)
+                rise(pos, 10)
             "slow":
-                var sr := float(act[3]) if act.size() > 3 else 0.0
+                var sr := float(ac[3]) if ac.size() > 3 else 0.0
                 if sr > 0.0:
-                    ring(pos, sr, pal, 24, 0.9, false)
+                    _patch(pos, sr * 0.4, kb, 6, 0.22, 1.6)
             "decay":
-                spiral(pos, 45.0, 16, Element.Kind.VOID)
-            "damage":
-                pixels(inc, pos, 6, 70.0)
-    # A small accent from the table's fx key.
-    match str(d.get("fx", "")):
-        "smoke":
-            smoke(pos, 6, 14.0)
-        "flame":
-            pixels(Element.Kind.FIRE, pos, 8, 40.0)
-        "spark":
-            pixels(Element.Kind.SHOCK, pos, 8, 120.0)
-        "magic":
-            for n in 6:
-                _px(pos + Vector2(randf_range(-14.0, 14.0), randf_range(-8.0, 8.0)), Vector2(0, randf_range(-50.0, -25.0)), randf_range(0.5, 0.8), 2.0, 0.7, B.HOLY, pal, true)
-        "light":
-            _glow(pos, 80.0, color, 0.25)
-        "twirl":
-            spiral(pos, 40.0, 10, pal)
+                spiral(pos, 45.0, 14, Element.Kind.VOID)
+    if str(d.get("fx", "")) == "light":
+        _glow(pos, 80.0, color, 0.25)
     _shake(shake)
 
 
+## Burst/pull/push/death novas: a thin brief outline, plus a small signature when the
+## colour is an element's.
 func _on_nova(position: Vector2, radius: float, color: Color) -> void:
-    ring(position, radius, _pal_of(color), clampi(32 + int(radius / 12.0), 32, 48), 0.5)
+    outline(position, radius, _pal_of(color), 0.3)
     var kind := _kind_of(color)
     if kind != Element.Kind.NONE:
-        pixels(kind, position, 10, radius * 0.5, 8.0)
+        signature(kind, position, clampf(radius * 0.4, 30.0, 70.0), 0.35)
 
 
 # --- Frame -----------------------------------------------------------------
@@ -581,6 +860,14 @@ func _process(delta: float) -> void:
         for p in list:
             p["pos"] += p["vel"] * delta
             p["vel"] = p["vel"].move_toward(Vector2.ZERO, 120.0 * delta)
+    for i in range(_shapes.size() - 1, -1, -1):
+        var sh: Dictionary = _shapes[i]
+        var st: float = float(sh["t"]) - delta
+        sh["t"] = st
+        if st <= 0.0:
+            if int(sh["k"]) == SH_SPIKE:
+                _crumble(sh)
+            _shapes.remove_at(i)
     _step_pixels(delta)
     queue_redraw()
     _add.queue_redraw()
@@ -608,7 +895,7 @@ func _step_pixels(delta: float) -> void:
         var p: Vector2 = _pp[i]
         if t <= 0.0:
             _pt[i] = 0.0
-            if b == B.FIRE and randf() < 0.3:
+            if (b == B.FIRE and randf() < 0.3) or (b == B.TONGUE and randf() < 0.2):
                 _px(p, Vector2(randf_range(-8.0, 8.0), -25.0), randf_range(0.6, 1.0), 3.0, 0.4, B.SMOKE, PAL_SMOKE, false)
             continue
         var v: Vector2 = _pv[i]
@@ -620,6 +907,35 @@ func _step_pixels(delta: float) -> void:
             B.EMBER:
                 v.y = maxf(v.y - 30.0 * delta, -70.0)
                 v.x += randf_range(-120.0, 120.0) * delta
+            B.TONGUE:
+                # The run of a tongue shares its phase and age, so it sways as one column.
+                v.y -= 30.0 * delta
+                p.x += sin((_pl[i] - t) * 14.0 + _po[i].x) * 22.0 * delta
+            B.BLOOM:
+                v.x *= damp_soft
+                v.y = lerpf(v.y, -12.0, 1.5 * delta)
+                p.x += sin((_pl[i] - t) * 3.0 + _po[i].x) * 14.0 * delta
+            B.SHEEN:
+                v *= damp_fast
+            B.FALL:
+                v.x *= damp_soft
+                v.y += GRAVITY * 0.7 * delta
+            B.SIZZLE:
+                p += Vector2(randf_range(-1.0, 1.0), randf_range(-1.0, 1.0))
+                v = Vector2.ZERO
+            B.WHIRL:
+                # v = (angle, radius) around the anchor; one turn, then fly off as a streak.
+                var wc: Vector2 = _po[i]
+                var wl: float = _pl[i]
+                v.x += TAU / (wl * 0.6) * delta
+                p = wc + Vector2(cos(v.x), sin(v.x) * 0.55) * v.y
+                if t < wl * 0.4:
+                    _pb[i] = B.GALE
+                    v = Vector2(-sin(v.x), cos(v.x) * 0.55).normalized() * randf_range(220.0, 320.0)
+                _pv[i] = v
+                _pp[i] = p
+                _pt[i] = t
+                continue
             B.SMOKE:
                 v.x = v.x * damp_soft + randf_range(-20.0, 20.0) * delta
                 v.y = lerpf(v.y, -22.0, 1.5 * delta)
@@ -743,16 +1059,38 @@ func _draw_pixels(canvas: CanvasItem, layer: int) -> void:
                     s += 2.0      # the bubble pops
                     a *= 0.6
                     step = 1
-            B.RING, B.GALE:
+            B.RING, B.GALE, B.WHIRL:
                 step = 0 if f > 0.4 else 2
+            B.TONGUE:
+                step = int(_po[i].y)
+                if (i + flick) % 5 == 0:
+                    step = 1 if step == 0 else 0
+                if f < 0.35:
+                    step = 2
+                s = maxf(1.0, s * (0.5 + 0.5 * f))
+            B.BLOOM:
+                step = int(_po[i].y) if f > 0.3 else 2
+                s *= 1.0 + 0.7 * (1.0 - f)
+            B.SHEEN:
+                step = 1 if (i + flick) % 11 == 0 else 0
+                a *= minf(1.0, f * 2.0)
+            B.SIZZLE:
+                step = 1 if (i + flick) % 2 == 0 else 0
         if f < 0.3:
             a *= 0.55
         var c: Color = _pal[_pc[i] * 3 + step]
         c.a = a
         var p: Vector2 = _pp[i]
         s = floorf(s + 0.5)
-        if b == B.GALE:
+        if b == B.SHEEN:
+            var sw := s * 3.0
+            var sh := maxf(1.0, floorf(s * 0.5))
+            canvas.draw_rect(Rect2(floorf(p.x - sw * 0.5), floorf(p.y - sh * 0.5), sw, sh), c)
+            continue
+        if b == B.GALE or b == B.WHIRL:
             var v: Vector2 = _pv[i]
+            if b == B.WHIRL:
+                v = Vector2(-sin(v.x), cos(v.x) * 0.55) * 200.0
             var ln := clampf(v.length() * 0.05, s, 14.0)
             if absf(v.x) >= absf(v.y):
                 canvas.draw_rect(Rect2(floorf(p.x - ln * 0.5), floorf(p.y - s * 0.5), ln, s), c)
@@ -786,6 +1124,69 @@ func _draw_puffs(list: Array, canvas: CanvasItem) -> void:
     canvas.draw_set_transform_matrix(Transform2D.IDENTITY)
 
 
+## Short-lived vector shapes: bolts, ice spikes, light rays, collapse lines, void discs.
+func _draw_shapes() -> void:
+    for sh in _shapes:
+        var life: float = sh["life"]
+        var e: float = life + float(sh["d"]) - float(sh["t"])
+        if e < 0.0:
+            continue
+        var k := clampf(e / life, 0.0, 1.0)
+        match int(sh["k"]):
+            SH_BOLT:
+                var pts: PackedVector2Array = sh["pts"]
+                var bw: float = sh["w"]
+                var ba := (1.0 - k) * randf_range(0.6, 1.0)
+                draw_polyline(pts, Color(1.0, 0.9, 0.4, ba * 0.45), maxf(2.0, 5.0 * bw))
+                draw_polyline(pts, Color(1.0, 1.0, 0.85, ba * MAX_ALPHA), maxf(1.0, 1.5 * bw))
+            SH_SPIKE:
+                var sa: Vector2 = sh["a"]
+                var sb: Vector2 = sh["b"]
+                var grow: float = sh["grow"]
+                var g := clampf(e / grow, 0.0, 1.0)
+                g = 1.0 - (1.0 - g) * (1.0 - g)
+                var tip := sa.lerp(sb, g)
+                var spal: int = sh["pal"]
+                var sw: float = sh["w"]
+                var cnt := maxi(1, int(sa.distance_to(tip) / 3.0))
+                for m in cnt + 1:
+                    var q := float(m) / float(cnt)
+                    var sp := sa.lerp(tip, q)
+                    var ss := floorf(lerpf(sw, 2.0, q) + 0.5)
+                    var sc: Color = _pal[spal * 3 + (1 if q > 0.6 else 0)]
+                    sc.a = 0.6
+                    draw_rect(Rect2(floorf(sp.x - ss * 0.5), floorf(sp.y - ss * 0.5), ss, ss), sc)
+                if g >= 1.0:
+                    var ga := MAX_ALPHA if int(e * 20.0) % 3 != 0 else 0.4
+                    draw_rect(Rect2(floorf(tip.x) - 1.0, floorf(tip.y) - 1.0, 2.0, 2.0), Color(1, 1, 1, ga))
+                    if e - grow < 0.1:
+                        draw_line(tip + Vector2(-3, 0), tip + Vector2(3, 0), Color(1, 1, 1, 0.6), 1.0)
+                        draw_line(tip + Vector2(0, -3), tip + Vector2(0, 3), Color(1, 1, 1, 0.6), 1.0)
+            SH_RAY:
+                var ra: Vector2 = sh["a"]
+                var rb: Vector2 = sh["b"]
+                var rg := clampf(e / float(sh["grow"]), 0.0, 1.0)
+                var rc: Color = sh["c"]
+                var rw: float = sh["w"]
+                var rend := ra.lerp(rb, rg)
+                var fade := 1.0 - k
+                draw_line(ra, rend, Color(rc, 0.2 * fade), rw * 3.0)
+                draw_line(ra, rend, Color(rc, MAX_ALPHA * fade), rw)
+            SH_COLLAPSE:
+                var cc: Vector2 = sh["c"]
+                var ca: Vector2 = sh["a"]
+                var outer := cc + (ca - cc) * (1.0 - k * k)
+                var inner := outer.move_toward(cc, float(sh["len"]))
+                draw_line(outer, inner, Color(0.85, 0.65, 1.0, MAX_ALPHA * (1.0 - 0.5 * k)), 1.0 if (int(e * 30.0) % 2 == 0) else 2.0)
+            SH_DISC:
+                var dc: Vector2 = sh["c"]
+                var dr: float = sh["r"]
+                var rr := dr * minf(1.0, k / 0.2) * (1.0 - smoothstep(0.55, 1.0, k))
+                if rr >= 1.0:
+                    draw_circle(dc, rr, Color(0.06, 0.02, 0.1, 0.55))
+                    draw_arc(dc, rr, 0.0, TAU, 32, Color(0.75, 0.5, 1.0, 0.6), 1.0)
+
+
 func _draw_scorches(canvas: CanvasItem) -> void:
     var tex: Texture2D = Art.PARTICLES["scorch"]
     for s in _scorches:
@@ -810,6 +1211,7 @@ func _draw() -> void:
     draw_set_transform_matrix(Transform2D.IDENTITY)
     _draw_puffs(_puffs, self)
     _draw_pixels(self, 0)
+    _draw_shapes()
     for a in _arcs:
         var alpha: float = clampf(a["t"] / 0.22, 0.0, 1.0)
         var pts := PackedVector2Array()
