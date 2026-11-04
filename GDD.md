@@ -46,6 +46,10 @@ raids, loot tables).
 - Brotato-shaped curve: the cost of a level rises quadratically (20, 35, 56, 83, 116...)
   and each upgrade is small (+4% damage, +8 health, +3% crit), so a floor gives three to
   five levels and no single pick swings a run. Power comes from stacking many of them.
+  XP per kill is 2 + 2 x scrap value, which lands around level 14 on floor 4.
+- Measured loop (bot, naked start): floor 2 at 2.5 min, floor 3 at 5, floor 4 at 9,
+  health dipping under 20 on floor 4. The arena feeds 11 + 7 x difficulty enemy hp per
+  second; every spawned group buys itself a pause of its hp over that rate.
 
 ### Gun tiers and mods
 - Guns have tiers I to IV, Brotato style. Picking up a duplicate merges it into the one
@@ -147,7 +151,9 @@ you pick the next node. Room types:
   thicket, shock a door's water-logged lock. Reactions are a traversal tool, not just damage.)
 - **Boss room** (end of each floor)
 
-A dungeon is 3 floors. Floors get larger and add more room types. A boss ends each floor.
+A dungeon is 5 floors. Floors get larger and add more room types and enemy kinds. A
+distinct two-phase boss ends each floor (brute king, hive mother, storm warden, pyre
+lord, void herald).
 
 **Raids** are the endgame: a longer co-op dungeon with multiple bosses that have WoW-style
 mechanics (split the party, soak zones, interrupt casts with a specific reaction, adds that
@@ -278,7 +284,7 @@ your starting power. That keeps the "overpowered and bored" failure out by const
 | # | Milestone | Status |
 |---|---|---|
 | 0 | **Combat core** | Done. Guns, five reactions, pressure, vent, focus, resistance drift, sequence elites, couch co-op. |
-| 1 | **Dungeon run** | Done (first pass). Generated floor of rooms, doors, arena waves, shop with scrap, treasure, challenge, hidden room behind an elemental obstacle, boss with re-shield phase, three floors, minimap. |
+| 1 | **Dungeon run** | Done (first pass). Generated floor of rooms, doors, arena waves, shop with scrap, treasure, challenge, hidden room behind an elemental obstacle, five bosses with phases, five floors, minimap. |
 | 2 | Tuning & content | Human playtesting, 10+ guns, more enemy types, more obstacles and reactions, room layouts with cover |
 | 3 | Meta progression | Unlock pool done (achievements, save file, gated guns/obstacles/rooms). Next: in-run gear with loot tables, characters, keystone tiers, the hall |
 | 4 | Online co-op | Host-authoritative netcode for the desktop build |
@@ -305,7 +311,7 @@ your starting power. That keeps the "overpowered and bored" failure out by const
   Treasure rooms give a free pick of one gun from three. Challenge rooms start from a sigil,
   spawn two sequence elites plus adds, and pay out scrap and a free gun pick.
 - The boss has a reaction sequence shield, re-shields with a new sequence at half health,
-  and summons adds. Killing it spawns the stairs. Three floors, then the run is won.
+  and summons adds. Killing it spawns the stairs. Five floors, then the run is won.
 - The trigger always fires along your aim even with no enemy in range, so obstacles can
   be shot deliberately. Interact with pedestals using E or the A button.
 
