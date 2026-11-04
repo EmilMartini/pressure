@@ -15,6 +15,8 @@ func _init(p_value: int, p_main: Main) -> void:
 
 func _ready() -> void:
     _vel = Vector2.RIGHT.rotated(randf() * TAU) * randf_range(60.0, 220.0)
+    var s := Art.sprite(Art.TILES["scrap"], 0.9 + minf(0.6, float(value) * 0.1), Art.SCRAP_TINT)
+    add_child(s)
 
 
 func _physics_process(delta: float) -> void:
@@ -33,5 +35,4 @@ func _physics_process(delta: float) -> void:
 
 
 func _draw() -> void:
-    var s := 5.0 + minf(4.0, float(value))
-    draw_colored_polygon(PackedVector2Array([Vector2(0, -s), Vector2(s, 0), Vector2(0, s), Vector2(-s, 0)]), Color(1.0, 0.85, 0.3))
+    draw_circle(Vector2(0, 6), 6.0, Color(0, 0, 0, 0.3))

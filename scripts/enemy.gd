@@ -33,6 +33,7 @@ var _contact_cd := 0.0
 var _flash := 0.0
 var _flash_color := Color.WHITE
 var _shield_flash := 0.0
+var _sprite: Sprite2D
 
 
 func configure(type: String, wave: int) -> void:
@@ -88,6 +89,9 @@ func _ready() -> void:
     shape.shape = circle
     add_child(shape)
     z_index = 8
+    base_color = Art.ENEMY_TINT.get(kind_name, base_color)
+    _sprite = Art.sprite(Art.TILES.get(kind_name, Art.TILES["grunt"]), radius / 6.0, base_color)
+    add_child(_sprite)
 
 
 # --- States and reactions --------------------------------------------------
@@ -226,7 +230,21 @@ func _physics_process(delta: float) -> void:
         if global_position.distance_squared_to(target.global_position) <= reach * reach:
             target.take_damage(contact_damage)
             _contact_cd = 0.8
+    _update_sprite()
     queue_redraw()
+
+
+func _update_sprite() -> void:
+    var c := base_color
+    if frozen_time > 0.0:
+        c = c.lerp(Element.COLORS[Element.Kind.ICE], 0.7)
+    if burn_time > 0.0:
+        c = c.lerp(Element.COLORS[Element.Kind.FIRE], 0.35)
+    if _flash > 0.0:
+        c = c.lerp(Color.WHITE, 0.8)
+    _sprite.modulate = c
+    if absf(velocity.x) > 1.0:
+        _sprite.flip_h = velocity.x < 0.0
 
 
 func _nearest_player() -> Player:
@@ -244,12 +262,7 @@ func _nearest_player() -> Player:
 
 
 func _draw() -> void:
-    var c := base_color
-    if frozen_time > 0.0:
-        c = c.lerp(Element.COLORS[Element.Kind.ICE], 0.7)
-    if _flash > 0.0:
-        c = c.lerp(Color.WHITE, 0.7)
-    draw_circle(Vector2.ZERO, radius, c)
+    draw_circle(Vector2(0, radius * 0.6), radius * 0.9, Color(0, 0, 0, 0.35))
     if is_elite:
         draw_arc(Vector2.ZERO, radius - 2.0, 0.0, TAU, 32, Color(1.0, 0.85, 0.3), 2.0)
     if immune_to != Element.Kind.NONE:

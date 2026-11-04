@@ -14,6 +14,18 @@ func _init(p_offer: Dictionary) -> void:
     z_index = 3
 
 
+func _ready() -> void:
+    var coord: Vector2i
+    match kind():
+        "gun":
+            coord = Art.gun_tile(offer["id"])
+        _:
+            coord = Art.TILES.get(kind(), Art.TILES["cog"])
+    var s := Art.sprite(coord, 2.5, color())
+    s.position = Vector2(0, -10)
+    add_child(s)
+
+
 func kind() -> String:
     return offer["kind"]
 
@@ -62,22 +74,17 @@ func _process(_delta: float) -> void:
 func _draw() -> void:
     var c := color()
     if kind() == "sigil":
-        draw_arc(Vector2.ZERO, 40.0, 0.0, TAU, 48, Color(c, 0.6), 3.0)
-        draw_arc(Vector2.ZERO, 26.0, 0.0, TAU, 6, c, 2.0)
-    elif kind() == "stairs":
-        draw_rect(Rect2(-24, -16, 48, 32), Color(0.15, 0.15, 0.18))
-        for i in 4:
-            draw_line(Vector2(-24, -16 + i * 10), Vector2(24, -16 + i * 10), Color(0.5, 0.5, 0.55), 2.0)
+        draw_arc(Vector2.ZERO, 44.0, 0.0, TAU, 48, Color(c, 0.6), 3.0)
+        draw_arc(Vector2.ZERO, 30.0, 0.0, TAU, 6, Color(c, 0.8), 2.0)
     else:
-        draw_circle(Vector2.ZERO, 18.0, Color(0.18, 0.18, 0.22))
-        draw_circle(Vector2(0, -6), 9.0, c)
+        draw_circle(Vector2(0, 12), 22.0, Color(0, 0, 0, 0.45))
+        draw_arc(Vector2(0, 12), 22.0, 0.0, TAU, 32, Color(c, 0.5), 2.0)
     if highlighted:
-        draw_arc(Vector2.ZERO, RANGE - 8.0, 0.0, TAU, 40, Color(1, 1, 1, 0.5), 1.5)
-    var font := ThemeDB.fallback_font
-    draw_string(font, Vector2(-120, 36), title(), HORIZONTAL_ALIGNMENT_CENTER, 240, 13, Color.WHITE)
+        draw_arc(Vector2.ZERO, RANGE - 6.0, 0.0, TAU, 40, Color(1, 1, 1, 0.5), 1.5)
+    draw_string(Art.FONT, Vector2(-130, 44), title(), HORIZONTAL_ALIGNMENT_CENTER, 260, 18, Color(0.92, 0.9, 0.85))
     var pt := price_text()
     if pt != "":
-        draw_string(font, Vector2(-120, 52), pt, HORIZONTAL_ALIGNMENT_CENTER, 240, 12, Color(1.0, 0.9, 0.4))
+        draw_string(Art.FONT, Vector2(-130, 62), pt, HORIZONTAL_ALIGNMENT_CENTER, 260, 16, Art.SCRAP_TINT)
     if highlighted:
         var verb := "begin" if kind() == "sigil" else ("descend" if kind() == "stairs" else "take")
-        draw_string(font, Vector2(-120, 68), "E / A to %s" % verb, HORIZONTAL_ALIGNMENT_CENTER, 240, 12, Color(0.6, 1.0, 1.0))
+        draw_string(Art.FONT, Vector2(-130, 80), "E / A to %s" % verb, HORIZONTAL_ALIGNMENT_CENTER, 260, 16, Color(0.6, 1.0, 1.0))

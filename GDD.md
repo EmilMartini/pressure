@@ -102,22 +102,46 @@ A dungeon is 3 floors. Floors get larger and add more room types. A boss ends ea
 mechanics (split the party, soak zones, interrupt casts with a specific reaction, adds that
 must die in element order). Designed for 2-4 players. Only reachable at a gear score threshold.
 
-## 4. Meta progression
+## 4. Meta progression (proposal, not built)
 
-### Gear (WoW-style)
-- Elites and bosses have **loot tables**. Gear drops persist between runs.
-- Slots: Barrel, Core, Grip, Rig (armour), Trinket x2. Each gun also has a mod slot.
-- Gear is mostly **horizontal**: new reactions, gun behaviours (pierce, ricochet, orbit), vent
-  variants, pressure tolerance. Raw stat gear exists but is capped so the game never becomes trivial.
-- **Scrap** unwanted gear into materials. **Upgrade** gear with materials, which raises gear score.
-- **Gear score** sets your available **dungeon tier**. Higher tier: more resistances, longer
-  sequences, faster waves, better loot. The hook: your power unlocks harder content, never an easier game.
+Principle: **every run starts naked, and nothing you own makes a run easier.** Meta
+progression widens what can happen in a run and what you are allowed to attempt, never
+your starting power. That keeps the "overpowered and bored" failure out by construction.
 
-### Unlocks (Isaac-style)
-- The gun and gear pools start small. Achievements (first Chain Lightning kill, clear a dungeon
-  with only cold guns, vent a 100-pressure nova, ...) add items to the pool.
-- Early runs are simple on purpose. Late runs have a huge arsenal and wild reactions.
-- Save file tracks: unlocks, gear inventory, materials, best tier cleared, stats.
+### In-run gear (the WoW loot loop, inside one run)
+- Elites and bosses have **loot tables**. Gear drops during the run and is lost at the end,
+  like Isaac items. This is where the WoW itch lives: a rare drop from a specific elite,
+  a build coming together, a "god run" you talk about afterwards.
+- Slots: Barrel, Core, Grip, Rig, Trinket x2, one mod per gun. Mostly horizontal: new
+  reactions, gun behaviours (pierce, ricochet, orbit), vent variants, pressure tolerance.
+- Scrap in the run buys, repairs and rerolls. Nothing carries out except unlocks.
+
+### Layer 1: the unlock pool (Isaac)
+- Guns, gear, obstacles, room types, elite kinds and bosses all start as a small pool.
+- Completing a run, and hitting achievements inside runs (first Chain Lightning kill, clear
+  a floor with only cold guns, vent a full-pressure nova, open a hidden room with Steam),
+  adds entries to the pool. Early runs are simple on purpose, late runs are chaos.
+
+### Layer 2: characters (Isaac)
+- Unlockable characters are different *naked starts*, not stronger ones: a different
+  primary, a different pressure curve, a different vent. Examples: the Stoker starts hot
+  and vents bigger; the Diver starts cold and carries one extra weight; the Twin holds two
+  primaries but has a smaller gauge.
+
+### Layer 3: keystone tiers (WoW Mythic+)
+- Clearing a dungeon earns a **keystone** one tier higher. Tiers add affixes: more
+  resistances, longer elite sequences, a bleed on contact, rooms that lock elements out.
+- Higher tiers drop from richer loot tables and unlock faster. This is the "gear score
+  gates content" hook with the power creep removed: the number that grows is the difficulty
+  you are allowed to attempt, and the reward for growing it is more chaos, not an easier game.
+
+### Layer 4: the hall (small, cosmetic, satisfying)
+- A hub room between runs that fills up: trophies from bosses on the wall, a bestiary with
+  what you have learned about elites (their sequences shown once discovered), a reaction
+  compendium, run history. Nothing in it changes gameplay.
+
+### Save file
+- Unlocks, characters, highest keystone per character, bestiary, stats and run history.
 
 ## 5. Co-op
 - 2 to 4 players. **Couch co-op first** (one keyboard + mouse player, any number of pads;
@@ -131,7 +155,9 @@ must die in element order). Designed for 2-4 players. Only reachable at a gear s
 - **Godot 4.7, GDScript.** Web export is GDScript only, and Azeroth Survivors proves a
   no-install browser game is the right way to share.
 - Compatibility renderer (WebGL 2) so the web build runs everywhere.
-- Art: placeholder shapes now, Kenney CC0 asset packs next, no generative art.
+- Art: Kenney CC0 packs, tinted dark. The 1-Bit Pack gives a single white-on-transparent
+  sheet, so the whole look is a palette in `art.gd`: bone, blood, rust and stone, with a
+  vignette over everything. No generative art.
 - Code-driven scenes for now (everything is built in `_ready`), so the project is easy to
   read as plain scripts. Scenes get moved into the editor when they stabilise.
 
@@ -145,7 +171,7 @@ must die in element order). Designed for 2-4 players. Only reachable at a gear s
 | 3 | Gear & unlocks | Loot tables, inventory, scrap/upgrade, gear score, tiers, achievement unlocks, save file |
 | 4 | Online co-op | Host-authoritative netcode for the desktop build |
 | 5 | Raids | Multi-boss co-op dungeons with mechanics |
-| 6 | Art & sound pass | Kenney packs, juice, music |
+| 6 | Art & sound pass | First art pass done with Kenney 1-Bit, particles and fonts. Sound, music and juice still to do. |
 
 ### What the dungeon run does today
 - A floor is a tree of 9 to 13 rooms on a grid. Dead ends become the boss, treasure, shop

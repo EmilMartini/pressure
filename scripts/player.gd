@@ -47,6 +47,7 @@ var focus := 0.0           # 0..1, manual-aim reward
 var kills := 0
 var last_message := ""
 var _message_time := 0.0
+var _sprite: Sprite2D
 
 
 func _init(p_index: int, p_input: PlayerInput) -> void:
@@ -66,6 +67,9 @@ func _ready() -> void:
     shape.shape = circle
     add_child(shape)
     z_index = 10
+    var tiles: Array = Art.TILES["player"]
+    _sprite = Art.sprite(tiles[index % tiles.size()], 2.0, color.lerp(Color.WHITE, 0.35))
+    add_child(_sprite)
 
 
 # --- Arsenal ---------------------------------------------------------------
@@ -269,17 +273,20 @@ func nearest_enemy(max_range: float) -> Node2D:
 
 
 func _draw() -> void:
+    var body := color.lerp(Color.WHITE, 0.35)
     if not alive:
-        draw_circle(Vector2.ZERO, radius, Color(0.3, 0.3, 0.3, 0.6))
+        _sprite.modulate = Color(0.35, 0.3, 0.3, 0.7)
         return
-    var body := color
     if invuln > 0.0 and fmod(invuln, 0.2) < 0.1:
         body = Color(body, 0.35)
     if overheated > 0.0:
         body = body.lerp(Color(1, 0.3, 0.1), 0.6)
     elif frozen_up > 0.0:
         body = body.lerp(Color(0.6, 0.9, 1.0), 0.6)
-    draw_circle(Vector2.ZERO, radius, body)
+    _sprite.modulate = body
+    if absf(aim_dir.x) > 0.05:
+        _sprite.flip_h = aim_dir.x < 0.0
+    draw_circle(Vector2(0, radius * 0.7), radius * 0.9, Color(0, 0, 0, 0.35))
     # Nose shows aim direction.
     var tip := aim_dir * (radius + 8.0)
     var side := aim_dir.orthogonal() * 7.0
@@ -287,5 +294,4 @@ func _draw() -> void:
     if not auto_aim:
         draw_line(aim_dir * (radius + 10.0), aim_dir * 90.0, Color(1, 1, 1, 0.25 + focus * 0.5), 1.5)
     # Player number
-    var font := ThemeDB.fallback_font
-    draw_string(font, Vector2(-5, -radius - 6), str(index + 1), HORIZONTAL_ALIGNMENT_CENTER, -1, 12, color)
+    draw_string(Art.FONT, Vector2(-20, -radius - 8), str(index + 1), HORIZONTAL_ALIGNMENT_CENTER, 40, 16, color)

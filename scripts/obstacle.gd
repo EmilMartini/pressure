@@ -49,6 +49,17 @@ func _ready() -> void:
     rect.size = size
     shape.shape = rect
     add_child(shape)
+    var spec: Dictionary = KINDS[kind]
+    match kind:
+        "thicket":
+            var along := Vector2(1, 0) if size.x > size.y else Vector2(0, 1)
+            for i in 3:
+                var t := Art.sprite(Art.TILES["tree_a"] if i % 2 == 0 else Art.TILES["tree_b"], 2.2, Color(0.45, 0.62, 0.35))
+                t.position = along * (float(i) - 1.0) * 40.0
+                add_child(t)
+        "valve":
+            var cog := Art.sprite(Art.TILES["cog"], 2.6, Color(0.75, 0.6, 0.4))
+            add_child(cog)
 
 
 func apply_element(element: int, _potency: float) -> void:
@@ -83,18 +94,13 @@ func _draw() -> void:
     var spec: Dictionary = KINDS[kind]
     var r := Rect2(-size / 2.0, size)
     draw_rect(r, spec["color"])
-    match kind:
-        "pool":
-            for i in 3:
-                var y := -size.y / 3.0 + float(i) * size.y / 3.0
-                draw_line(Vector2(-size.x * 0.35, y), Vector2(size.x * 0.35, y), Color(0.5, 0.75, 1.0, 0.6), 2.0)
-        "thicket":
-            for i in 7:
-                var p := Vector2(randf_range(-size.x * 0.4, size.x * 0.4), randf_range(-size.y * 0.3, size.y * 0.3))
-                draw_circle(p, 7.0, Color(0.15, 0.35, 0.12))
-        "valve":
-            draw_arc(Vector2.ZERO, 16.0, 0.0, TAU, 24, Color(0.7, 0.5, 0.3), 5.0)
-            draw_line(Vector2(-10, -10), Vector2(10, 10), Color(0.7, 0.5, 0.3), 4.0)
+    if kind == "pool":
+        var along := Vector2(1, 0) if size.x > size.y else Vector2(0, 1)
+        var across := along.orthogonal()
+        var len := maxf(size.x, size.y)
+        for i in 3:
+            var off := across * (float(i) - 1.0) * (minf(size.x, size.y) / 3.5)
+            draw_line(off - along * len * 0.35, off + along * len * 0.35, Color(0.45, 0.7, 1.0, 0.5), 2.0)
     # Required element badge and label on the room side of the door.
     var badge_pos := inward * (size.length() * 0.5 + 22.0)
     if spec["reaction"] != "":
@@ -106,6 +112,5 @@ func _draw() -> void:
     for k in states.keys():
         draw_circle(badge_pos + Vector2(-10.0 + 10.0 * i, 14), 3.5, Element.COLORS[k])
         i += 1
-    var font := ThemeDB.fallback_font
-    var label_pos := badge_pos + inward * 26.0 + Vector2(-160, 5)
-    draw_string(font, label_pos, spec["label"], HORIZONTAL_ALIGNMENT_CENTER, 320, 12, Color(1, 1, 1, 0.85))
+    var label_pos := badge_pos + inward * 26.0 + Vector2(-180, 6)
+    draw_string(Art.FONT, label_pos, spec["label"], HORIZONTAL_ALIGNMENT_CENTER, 360, 16, Color(0.9, 0.88, 0.8, 0.9))

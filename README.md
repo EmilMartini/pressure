@@ -36,10 +36,23 @@ controller joins as a new player by pressing Start.
 godot --path . -- --autotest
 ```
 
+Add `--short` after `--autotest` for a 70-second run.
 A bot plays by itself for up to five minutes: explores rooms, buys from pedestals,
 clears obstacles, fights elites and the boss, takes the stairs. It saves screenshots to
 `autotest/` and prints progress and reaction counts. Use it to check a build still
 works after a change.
+
+## Art and fonts
+
+All art is from Kenney (kenney.nl), CC0, no generative art:
+
+- **1-Bit Pack** (`assets/kenney/1bit_mono.png`): every sprite in the game, tinted per
+  thing through the `Art` autoload. Characters, monsters, items, bricks, floor, decals.
+- **Particle Pack** (`assets/kenney/particles/`): reaction puffs (smoke, flame, spark, magic).
+- **Kenney Fonts** (`assets/fonts/`): Kenney Pixel for the HUD and world text.
+
+To change which sprite something uses, edit the coordinates in `scripts/art.gd`
+(column, row on the packed sheet, 16px tiles).
 
 ## Layout
 
@@ -63,6 +76,7 @@ scripts/
   projectile.gd      bullets: raw damage, then apply element; also hit obstacles
   elements.gd        autoload `Elements` / class `Element`: kinds, colours, reaction table
   enemy.gd           chasing, states, reactions, immunity, elite sequences, boss re-shield
-  fx.gd              arcs, rings, floating text
+  fx.gd              arcs, rings, floating text, particle puffs
   hud.gd             floor/room status, boss bar, minimap, player panels, help, banners
+  art.gd             autoload `Art`: sheet lookups, particle textures, fonts, palette
 ```

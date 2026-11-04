@@ -43,6 +43,7 @@ func _ready() -> void:
     pickups = Node2D.new()
     pickups.name = "Pickups"
     add_child(pickups)
+    _build_floor()
     _build_walls()
     _build_doors()
     _build_pedestals()
@@ -340,6 +341,39 @@ func _wall(body: StaticBody2D, center: Vector2, size: Vector2) -> void:
     shape.shape = r
     shape.position = center
     body.add_child(shape)
+    var bricks := _tiled(Art.WALL, size, Art.WALL_TINT)
+    bricks.position = center
+    bricks.z_index = -1
+    add_child(bricks)
+
+
+## A Sprite2D that repeats a 16px tile at 2x over `size`.
+func _tiled(tex: Texture2D, size: Vector2, tint: Color) -> Sprite2D:
+    var s := Sprite2D.new()
+    s.texture = tex
+    s.texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
+    s.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+    s.region_enabled = true
+    s.region_rect = Rect2(Vector2.ZERO, size / 2.0)
+    s.scale = Vector2(2, 2)
+    s.modulate = tint
+    return s
+
+
+func _build_floor() -> void:
+    var floor_sprite := _tiled(Art.FLOOR, SIZE, Art.FLOOR_TINT)
+    floor_sprite.z_index = -2
+    add_child(floor_sprite)
+    # Bones, skulls and rubble, fixed per room so they do not shuffle on re-entry.
+    var rng := RandomNumberGenerator.new()
+    rng.seed = hash(data.pos) + main.floor_number * 7919
+    var decals: Array = Art.TILES["decals"]
+    for i in 9:
+        var d := Art.sprite(decals[rng.randi() % decals.size()], 2.0, Art.DECAL_TINT)
+        d.position = Vector2(rng.randf_range(rect.position.x + 80, rect.end.x - 80), rng.randf_range(rect.position.y + 80, rect.end.y - 80))
+        d.rotation = float(rng.randi() % 4) * PI / 2.0
+        d.z_index = -1
+        add_child(d)
 
 
 # --- Pedestals and interaction ---------------------------------------------
@@ -428,16 +462,6 @@ func activate(ped: Pedestal, pl: Player) -> void:
 
 
 func _draw() -> void:
-    draw_rect(rect, Color(0.10, 0.11, 0.14))
-    var grid := Color(1, 1, 1, 0.04)
-    var x := rect.position.x
-    while x <= rect.end.x:
-        draw_line(Vector2(x, rect.position.y), Vector2(x, rect.end.y), grid, 1.0)
-        x += 100.0
-    var y := rect.position.y
-    while y <= rect.end.y:
-        draw_line(Vector2(rect.position.x, y), Vector2(rect.end.x, y), grid, 1.0)
-        y += 100.0
-    draw_rect(rect.grow(WALL / 2.0), Color(0.28, 0.29, 0.34), false, WALL)
-    var font := ThemeDB.fallback_font
-    draw_string(font, Vector2(-200, -rect.size.y / 2.0 + 40), data.type_name().to_upper(), HORIZONTAL_ALIGNMENT_CENTER, 400, 22, Color(data.color(), 0.35))
+    # Inner shadow along the walls so the floor reads as sunken.
+    draw_rect(rect.grow(-10.0), Color(0, 0, 0, 0.35), false, 20.0)
+    draw_string(Art.FONT, Vector2(-200, -rect.size.y / 2.0 + 44), data.type_name().to_upper(), HORIZONTAL_ALIGNMENT_CENTER, 400, 30, Color(data.color(), 0.3))

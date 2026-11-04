@@ -14,6 +14,7 @@ var size: Vector2
 var obstacle: Obstacle = null
 
 var _blocker_shape: CollisionShape2D
+var _lock: Sprite2D
 
 
 func _init(p_dir: Vector2i, gap: float, depth: float) -> void:
@@ -41,6 +42,8 @@ func _ready() -> void:
     _blocker_shape.shape = brect
     blocker.add_child(_blocker_shape)
     add_child(blocker)
+    _lock = Art.sprite(Art.TILES["lock"], 2.0, Color(0.85, 0.3, 0.3))
+    add_child(_lock)
     _apply()
 
 
@@ -66,6 +69,8 @@ func _on_obstacle_cleared() -> void:
 func _apply() -> void:
     if _blocker_shape != null:
         _blocker_shape.set_deferred("disabled", state != State.LOCKED)
+    if _lock != null:
+        _lock.visible = state == State.LOCKED
     queue_redraw()
 
 
@@ -78,10 +83,10 @@ func _draw() -> void:
     var r := Rect2(-size / 2.0, size)
     match state:
         State.LOCKED:
-            draw_rect(r, Color(0.45, 0.12, 0.12))
-            draw_rect(r.grow(-6.0), Color(0.8, 0.2, 0.2), false, 2.0)
+            draw_rect(r, Color(0.30, 0.09, 0.10))
+            draw_rect(r.grow(-5.0), Color(0.6, 0.15, 0.15), false, 2.0)
         State.OPEN:
-            draw_rect(r, Color(0.06, 0.07, 0.09))
-            draw_rect(r.grow(-4.0), Color(0.5, 0.9, 1.0, 0.6), false, 2.0)
+            draw_rect(r, Color(0.02, 0.02, 0.03))
+            draw_rect(r.grow(-4.0), Color(0.55, 0.75, 0.7, 0.5), false, 2.0)
         State.OBSTACLE:
-            draw_rect(r, Color(0.06, 0.07, 0.09))
+            draw_rect(r, Color(0.02, 0.02, 0.03))

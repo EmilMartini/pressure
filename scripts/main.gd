@@ -51,8 +51,11 @@ func _ready() -> void:
     add_child(camera)
     camera.make_current()
 
+    RenderingServer.set_default_clear_color(Art.CLEAR)
+
     var layer := CanvasLayer.new()
     add_child(layer)
+    layer.add_child(_make_vignette())
     hud = Hud.new()
     hud.main = self
     layer.add_child(hud)
@@ -269,6 +272,27 @@ func _restart() -> void:
     get_tree().reload_current_scene()
 
 
+## Dark edges over the whole screen; sits under the HUD.
+func _make_vignette() -> TextureRect:
+    var grad := Gradient.new()
+    grad.set_color(0, Color(0, 0, 0, 0.0))
+    grad.set_color(1, Color(0, 0, 0, 0.78))
+    grad.set_offset(0, 0.35)
+    var tex := GradientTexture2D.new()
+    tex.gradient = grad
+    tex.fill = GradientTexture2D.FILL_RADIAL
+    tex.fill_from = Vector2(0.5, 0.5)
+    tex.fill_to = Vector2(1.05, 0.5)
+    tex.width = 256
+    tex.height = 256
+    var rect := TextureRect.new()
+    rect.texture = tex
+    rect.stretch_mode = TextureRect.STRETCH_SCALE
+    rect.set_anchors_preset(Control.PRESET_FULL_RECT)
+    rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    return rect
+
+
 # --- Self-test bot ---------------------------------------------------------
 
 
@@ -316,7 +340,8 @@ func _autotest_tick(delta: float) -> void:
         if _clock >= shot_time and not _shots_taken.has(shot_time):
             _shots_taken[shot_time] = true
             _screenshot("res://autotest/t%03d.png" % int(shot_time))
-    if _clock >= 300.0 or game_over or victory:
+    var limit := 70.0 if OS.get_cmdline_user_args().has("--short") else 300.0
+    if _clock >= limit or game_over or victory:
         _print_stats("END")
         get_tree().quit()
 
