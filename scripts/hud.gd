@@ -114,7 +114,7 @@ func _draw_top(vp: Vector2) -> void:
             RoomData.Type.TREASURE:
                 hint = "Take one"
             RoomData.Type.START:
-                hint = "Pick a door"
+                hint = "Choose your first gun" if room.has_gun_choice() else "Pick a door"
             _:
                 hint = "Cleared" if room.data.cleared else ""
         if hint != "":

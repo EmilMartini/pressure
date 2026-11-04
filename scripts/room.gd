@@ -58,6 +58,10 @@ func _ready() -> void:
         data.loose_scrap = 0
     if data.is_safe():
         data.cleared = true
+    if data.type == RoomData.Type.START and main.floor_number == 1 and data.stock.is_empty():
+        for pl in main.players:
+            if pl.guns.is_empty():
+                add_gun_choice()
     if not data.cleared:
         match data.type:
             RoomData.Type.ARENA:
@@ -423,6 +427,32 @@ func _build_pedestals() -> void:
             pedestals.append(ped)
 
 
+## Two distinct unlocked guns to choose between, for one unarmed player.
+func add_gun_choice() -> void:
+    var offered: Array = []
+    for o in data.stock:
+        if o["kind"] == "gun" and not o["taken"]:
+            offered.append(o["id"])
+    var pool: Array = Guns.ids().filter(func(id): return not offered.has(id))
+    pool.shuffle()
+    if pool.size() < 2:
+        pool = Guns.ids()
+        pool.shuffle()
+    for i in mini(2, pool.size()):
+        var o := FloorGen.offer("gun", pool[i], 0)
+        o["choice"] = true
+        data.stock.append(o)
+    main.announce("Choose your first gun")
+    _build_pedestals()
+
+
+func has_gun_choice() -> bool:
+    for o in data.stock:
+        if o["kind"] == "gun" and o.get("choice", false) and not o["taken"]:
+            return true
+    return false
+
+
 func _handle_interact() -> void:
     for ped in pedestals:
         if not is_instance_valid(ped):
@@ -462,7 +492,17 @@ func activate(ped: Pedestal, pl: Player) -> void:
             pl.add_gun(o["id"])
             Sfx.play("buy")
             o["taken"] = true
-            if o["price"] == 0 and data.type in [RoomData.Type.TREASURE, RoomData.Type.CHALLENGE]:
+            if o.get("choice", false):
+                # Entrance pick: once everyone is armed, the rest of the choices vanish.
+                var all_armed := true
+                for other_pl in main.players:
+                    if other_pl.alive and other_pl.guns.is_empty():
+                        all_armed = false
+                if all_armed:
+                    for other in data.stock:
+                        if other.get("choice", false):
+                            other["taken"] = true
+            elif o["price"] == 0 and data.type in [RoomData.Type.TREASURE, RoomData.Type.CHALLENGE]:
                 for other in data.stock:
                     if other["kind"] == "gun":
                         other["taken"] = true

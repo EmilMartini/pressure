@@ -132,7 +132,8 @@ your starting power. That keeps the "overpowered and bored" failure out by const
 - Scrap in the run buys, repairs and rerolls. Nothing carries out except unlocks.
 
 ### Layer 1: the unlock pool (Isaac) — BUILT
-- Every run starts with the Water Pistol and Arc Rifle. The pool of guns a run can offer
+- Every run starts with no guns and no gear. The entrance offers each player two random
+  unlocked guns on pedestals; take one. The pool of guns a run can offer
   (shops, treasure, challenge rewards), the obstacle kinds in front of hidden rooms, the
   challenge room itself and a fourth shop slot are all unlocked by achievements.
 - Ten achievements today, tracked across runs in the save file: kills, specific reaction

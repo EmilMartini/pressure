@@ -5,7 +5,6 @@ extends Node2D
 
 const MAX_PLAYERS := 4
 const FLOORS := 3
-const STARTING_GUNS := ["water_pistol", "arc_rifle"]
 const CAMERA_PAD := 90.0
 
 var players: Array[Player] = []
@@ -72,7 +71,12 @@ func _ready() -> void:
 
     Elements.reaction_fired.connect(_count_reaction)
     Progress.unlocked.connect(_on_unlocked)
-    autotest = OS.get_cmdline_user_args().has("--autotest")
+    var args := OS.get_cmdline_user_args()
+    autotest = args.has("--autotest")
+    if args.has("--obstacle-test") or args.has("--start-shot"):
+        # Test hooks never touch the real save.
+        Progress.save_path = "user://save_autotest.json"
+        Progress.reset()
     if autotest:
         _setup_autotest()
 
@@ -80,6 +84,11 @@ func _ready() -> void:
     start_floor(1)
     if OS.get_cmdline_user_args().has("--obstacle-test"):
         _obstacle_test()
+    if OS.get_cmdline_user_args().has("--start-shot"):
+        DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path("res://autotest"))
+        await get_tree().create_timer(0.8).timeout
+        await _screenshot("res://autotest/start.png")
+        get_tree().quit()
 
 
 ## Headless check that projectiles hit obstacles: `godot --headless --path . -- --obstacle-test`
@@ -260,11 +269,14 @@ func _spawn_player(device: int, keyboard: bool) -> Player:
     add_child(p)
     players.append(p)
     p.died.connect(_on_player_died)
-    for id in STARTING_GUNS:
-        p.add_gun(id)
-    if p.guns.size() > 1:
-        p.primary = p.guns[1]
-    p.say("Primary: %s" % p.primary.data.display_name)
+    # Naked start: no guns. The entrance offers a pick of two; late joiners get a random one.
+    if current != null:
+        if current.data.type == RoomData.Type.START and floor_number == 1:
+            current.add_gun_choice()
+        else:
+            var pool: Array = Guns.ids()
+            if not pool.is_empty():
+                p.add_gun(pool.pick_random())
     if device >= 0:
         _joined_devices[device] = true
     return p

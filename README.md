@@ -38,7 +38,8 @@ controller joins as a new player by pressing Start.
 
 ## Progression
 
-Runs start naked: Water Pistol and Arc Rifle. Achievements (50 kills, 20 Chain
+Runs start naked: no guns, no gear. The entrance offers each player a pick of two random
+unlocked guns. Achievements (50 kills, 20 Chain
 Lightnings, a boss kill, a hidden room opened, ...) add guns, obstacle kinds, the
 challenge room and a fourth shop slot to the pool future runs draw from. Progress is
 saved to `user://save.json`; the run-end screen shows what you unlocked and what is next.
