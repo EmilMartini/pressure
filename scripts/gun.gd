@@ -126,7 +126,25 @@ func _shoot(dir: Vector2) -> void:
         potency *= 1.0 + (crit_mult - 1.0) * 0.5
     var count := data.projectile_count + int(player.stat("proj_count")) + int(_gm("g_count"))
     var pierce := data.pierce + int(player.stat("pierce")) + int(player.stat("pierce_" + ek)) + int(_gm("g_pierce")) + (1 if tier >= 3 else 0)
-    var speed := data.projectile_speed * (1.0 + player.stat("proj_speed") + _gm("g_speed"))
+    var speed := data.projectile_speed * maxf(0.3, 1.0 + player.stat("proj_speed") + player.stat("shot_speed") + _gm("g_speed"))
+    # Transformative gear (Isaac's tear modifiers), summed onto every shot.
+    var homing := player.stat("homing")
+    var splash := player.stat("splash")
+    var shards := int(player.stat("shards"))
+    var size_mult := maxf(0.3, 1.0 + player.stat("shot_size"))
+    var spectral := player.stat("spectral") > 0.0
+    var boomerang := player.stat("boomerang") > 0.0
+    var bounces := int(player.stat("bounce"))
+    damage *= 1.0 + 0.5 * (size_mult - 1.0)
+    # Straight guns take on the shape the gear asks for; other behaviours keep theirs.
+    var shape := data.behaviour
+    if shape == "straight":
+        if boomerang:
+            shape = "boomerang"
+        elif homing > 0.0:
+            shape = "homing"
+        elif shards > 0 and pierce == 0 and bounces == 0:
+            shape = "flak"
     var lifetime := data.lifetime * (1.0 + player.stat("range") + _gm("g_range"))
     var extras := extra_elements()
     var muzzle := global_position + dir * 14.0
@@ -158,15 +176,18 @@ func _shoot(dir: Vector2) -> void:
         p.potency = potency
         p.lifetime = lifetime
         p.pierce = pierce
-        p.bounces = int(player.stat("bounce"))
-        p.radius = data.projectile_radius * (1.4 if crit else 1.0) * (1.0 + 0.1 * float(tier - 1))
+        p.bounces = bounces
+        p.radius = data.projectile_radius * (1.4 if crit else 1.0) * (1.0 + 0.1 * float(tier - 1)) * size_mult
         p.color = Element.COLORS[el]
         p.crit = crit
         p.shooter = player
-        p.behaviour = data.behaviour
-        p.splash_radius = data.splash_radius * (1.0 + 0.1 * float(tier - 1))
-        p.shard_count = data.shard_count
-        p.homing_turn = data.homing_turn
+        p.behaviour = shape
+        p.splash_radius = data.splash_radius * (1.0 + 0.1 * float(tier - 1)) + splash
+        p.shard_count = data.shard_count + shards
+        p.homing_turn = data.homing_turn + homing
+        if spectral and shape != "lob":
+            # Spectral: the obstacle grace never runs out, so walls of rock and crates are ignored.
+            p.spectral = true
         if data.behaviour == "lob":
             p.lifetime = maxf(0.15, lob_dist * randf_range(0.9, 1.1) / maxf(1.0, speed))
             p.bounces = 0

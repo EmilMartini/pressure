@@ -60,6 +60,13 @@ var _recoil := Vector2.ZERO
 var _squash := 0.0
 var _mastery: Node = null
 var _squash_scale := 2.0
+var _costume: Node2D              # front costume layer, drawn over the body sprite
+var _orbit_angle := 0.0
+var _orbit_hits: Dictionary = {}  # enemy instance id -> msec when an orbital may hit it again
+
+const ORBIT_RADIUS := 60.0
+const ORBIT_HIT := 10.0
+const ORBITAL_TILE := Vector2i(34, 12)
 
 
 func _init(p_index: int, p_input: PlayerInput) -> void:
@@ -82,6 +89,10 @@ func _ready() -> void:
     var tiles: Array = Art.TILES["player"]
     _sprite = Art.sprite(tiles[index % tiles.size()], 2.0, color.lerp(Color.WHITE, 0.35))
     add_child(_sprite)
+    _costume = Node2D.new()
+    _costume.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+    _costume.draw.connect(_draw_costume)
+    add_child(_costume)
     _mastery = get_node_or_null("/root/Mastery")
 
 
@@ -431,8 +442,10 @@ func _physics_process(delta: float) -> void:
         aim_dir = mv.normalized()
 
     _fire()
+    _update_orbitals(delta)
     _animate(delta, mv)
     queue_redraw()
+    _costume.queue_redraw()
 
 
 func _animate(delta: float, mv: Vector2) -> void:
@@ -496,7 +509,7 @@ func nearest_enemy(max_range: float, prefer_elite: bool = false) -> Node2D:
 
 
 func _draw() -> void:
-    var body := color.lerp(Color.WHITE, 0.35)
+    var body := Items.body_tint(self, color.lerp(Color.WHITE, 0.35))
     if not alive:
         _sprite.modulate = Color(0.35, 0.3, 0.3, 0.7)
         return
@@ -506,4 +519,80 @@ func _draw() -> void:
     if absf(aim_dir.x) > 0.05:
         _sprite.flip_h = aim_dir.x < 0.0
     draw_circle(Vector2(0, radius * 0.7), radius * 0.9, Color(0, 0, 0, 0.35))
+    # Costume back layer (auras, ring sparkles) sits under the body sprite.
+    Items.draw_costume(self, self, _sprite.position, 2.0, _facing(), false)
     draw_string(Art.FONT, Vector2(-20, -radius - 8), str(index + 1), HORIZONTAL_ALIGNMENT_CENTER, 40, 16, color)
+
+
+func _facing() -> float:
+    return -1.0 if _sprite.flip_h else 1.0
+
+
+## Front costume layer (hat, gloves, boots, charms, active item) and the orbitals.
+func _draw_costume() -> void:
+    if not alive:
+        return
+    Items.draw_costume(_costume, self, _sprite.position, 2.0, _facing(), true)
+    var n := int(stat("orbitals"))
+    if n <= 0:
+        return
+    var col: Color = Element.COLORS[orbital_element()].lerp(Color.WHITE, 0.3)
+    var tex: Texture2D = Art.tile(ORBITAL_TILE)
+    for i in n:
+        var at := orbital_offset(i, n)
+        _costume.draw_circle(at, 7.0, Color(col, 0.25))
+        _costume.draw_texture_rect(tex, Rect2(at - Vector2(8, 8), Vector2(16, 16)), false, col)
+
+
+# --- Orbitals (familiars) ---------------------------------------------------
+
+
+func orbital_offset(i: int, n: int) -> Vector2:
+    return Vector2(ORBIT_RADIUS, 0).rotated(_orbit_angle + TAU * float(i) / float(maxi(1, n)))
+
+
+## The first gun's element, or none.
+func orbital_element() -> int:
+    if guns.is_empty():
+        return Element.Kind.NONE
+    return guns[0].data.element
+
+
+## Half the average gun damage (tier and damage bonuses included).
+func orbital_damage() -> float:
+    if guns.is_empty():
+        return 3.0
+    var total := 0.0
+    for g in guns:
+        total += g.data.damage * g.tier_mult()
+    return total / float(guns.size()) * maxf(0.1, 1.0 + stat("dmg")) * 0.5
+
+
+func _update_orbitals(delta: float) -> void:
+    var n := int(stat("orbitals"))
+    if n <= 0:
+        return
+    _orbit_angle = wrapf(_orbit_angle + delta * 2.4, 0.0, TAU)
+    var now := Time.get_ticks_msec()
+    var dmg := orbital_damage()
+    var kind := orbital_element()
+    var col: Color = Element.COLORS[kind]
+    var carry_element := stat("orbital_element") > 0.0 and kind != Element.Kind.NONE
+    for i in n:
+        var at := global_position + orbital_offset(i, n)
+        for e in get_tree().get_nodes_in_group("enemies"):
+            if not is_instance_valid(e) or e.is_queued_for_deletion() or not e is Enemy:
+                continue
+            if e.global_position.distance_to(at) > ORBIT_HIT + e.radius:
+                continue
+            var eid: int = e.get_instance_id()
+            if int(_orbit_hits.get(eid, 0)) > now:
+                continue
+            _orbit_hits[eid] = now + 500
+            e.take_damage(dmg, col, true, self)
+            if carry_element and is_instance_valid(e) and not e.is_queued_for_deletion():
+                e.apply_element(kind, dmg, self)
+    if _orbit_hits.size() > 64:
+        for k in _orbit_hits.keys():
+            if int(_orbit_hits[k]) <= now:
+                _orbit_hits.erase(k)

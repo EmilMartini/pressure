@@ -8,6 +8,7 @@ var _journal_center: CenterContainer
 var _mastery: MasteryScreen
 var _mastery_center: CenterContainer
 var _names: PanelContainer
+var _class_select: ClassSelect = null
 var _name_edits: Array = []
 var _wipe_armed := false
 var _wipe_button: Button
@@ -50,6 +51,8 @@ func _ready() -> void:
 func _process(delta: float) -> void:
     _title_time += delta
     queue_redraw()
+    if _class_select != null:
+        return   # the class picker polls pads and handles Esc itself
     _pad.poll(get_viewport(), delta)
     if _journal.visible and Input.is_action_just_pressed("ui_cancel"):
         _show_main()
@@ -93,7 +96,7 @@ func _draw() -> void:
         Progress.achievements_count(), Progress.ACHIEVEMENTS.size(),
         Guns.ids().size(), Guns.all_ids().size()]
     draw_string(Art.FONT, Vector2(0, vp.y - 24), stats, HORIZONTAL_ALIGNMENT_CENTER, vp.x, 18, UiTheme.DIM)
-    draw_string(Art.FONT, Vector2(0, vp.y - 6), "Music by Alex McCulloch (CC0)   Art and sound by Kenney (CC0)   Effects from OpenGameArt (CC0)", HORIZONTAL_ALIGNMENT_CENTER, vp.x, 20, Color(UiTheme.DIM, 0.8))
+    draw_string(Art.FONT, Vector2(0, vp.y - 6), "Music by Alex McCulloch (CC0)   Art and sound by Kenney (CC0)", HORIZONTAL_ALIGNMENT_CENTER, vp.x, 20, Color(UiTheme.DIM, 0.8))
 
 
 func _build_main() -> void:
@@ -213,6 +216,27 @@ func _show_main() -> void:
 
 func _on_play() -> void:
     Sfx.play("ui_confirm")
+    _show_class_select()
+
+
+## Play opens the class picker; picking a class starts the run.
+func _show_class_select() -> void:
+    if _class_select != null:
+        return
+    _root.visible = false
+    _class_select = ClassSelect.new(_on_class_picked, _close_class_select)
+    add_child(_class_select)
+
+
+func _close_class_select() -> void:
+    if _class_select != null:
+        _class_select.queue_free()
+        _class_select = null
+    _show_main()
+
+
+func _on_class_picked(id: String) -> void:
+    Progress.chosen_class = id
     get_tree().change_scene_to_file("res://scenes/main.tscn")
 
 
@@ -251,4 +275,9 @@ func _menu_shot() -> void:
     await get_tree().create_timer(0.3).timeout
     await RenderingServer.frame_post_draw
     get_viewport().get_texture().get_image().save_png("res://autotest/names.png")
+    _close_names()
+    _show_class_select()
+    await get_tree().create_timer(0.4).timeout
+    await RenderingServer.frame_post_draw
+    get_viewport().get_texture().get_image().save_png("res://autotest/classes.png")
     get_tree().quit()

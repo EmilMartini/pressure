@@ -36,6 +36,7 @@ var _life0 := 1.0
 var _pierce0 := 0
 var _returning := false
 var _ob_grace := 0.0
+var spectral := false   # passes through obstacles (Wisp Lantern and friends)
 var _home_target: Node2D = null
 var _landed := false
 
@@ -71,9 +72,9 @@ func _physics_process(delta: float) -> void:
     if _trail.size() > 6:
         _trail.pop_back()
     _ob_grace = maxf(0.0, _ob_grace - delta)
+    if homing_turn > 0.0 and not _returning:
+        _steer(delta)   # homing stacks with flak, boomerang (on the way out) and straight shots
     match behaviour:
-        "homing":
-            _steer(delta)
         "boomerang":
             if not _returning and lifetime <= _life0 * 0.5:
                 _turn_back()
@@ -91,7 +92,7 @@ func _physics_process(delta: float) -> void:
             return
         queue_redraw()
         return
-    if _ob_grace <= 0.0:
+    if _ob_grace <= 0.0 and not spectral:
         for ob in get_tree().get_nodes_in_group("obstacles"):
             if is_instance_valid(ob) and not ob.is_queued_for_deletion() and ob.overlaps(global_position, radius):
                 _on_body_entered(ob)
@@ -240,11 +241,30 @@ func _draw() -> void:
                 pts.append(dir * along + side * jag)
             draw_polyline(pts, Color(color, 0.8), 3.0)
             draw_polyline(pts, Color(1, 1, 0.9, 0.9), 1.2)
-            Art.draw_frame(self, "thunder", 1.0 - fmod(lifetime * 4.0, 1.0), Vector2.ZERO, radius * 6.0, Color(1.0, 1.0, 0.9), dir.angle())
+            # A white pixel head leading the bolt.
+            var head := pts[pts.size() - 1]
+            draw_rect(Rect2(floorf(head.x - 1.5), floorf(head.y - 1.5), 3.0, 3.0), Color(1, 1, 1, 0.95))
+            draw_rect(Rect2(floorf(head.x - 3.0), floorf(head.y - 3.0), 6.0, 6.0), Color(1.0, 0.95, 0.4, 0.35))
         Element.Kind.FIRE:
-            Art.draw_frame(self, "fireball", 1.0 - fmod(lifetime * 3.0, 1.0), Vector2.ZERO, radius * 7.0, Color(1.0, 0.9, 0.7), dir.angle())
+            # A pixel comet: hot core, orange shell, a flickering tail of shrinking squares.
+            for k in 4:
+                var back := -dir * radius * (0.9 + 0.8 * float(k)) + side * randf_range(-1.0, 1.0)
+                var ts := floorf(maxf(1.0, radius * 0.8 - float(k) * 1.2) + 0.5)
+                var tc := Color(1.0, 0.45, 0.15, 0.6 - 0.1 * float(k)) if randi() % 2 == 0 else Color(0.75, 0.15, 0.08, 0.5 - 0.1 * float(k))
+                draw_rect(Rect2(floorf(back.x - ts * 0.5), floorf(back.y - ts * 0.5), ts, ts), tc)
+            var fs := floorf(radius * 1.2 + 0.5)
+            draw_rect(Rect2(-floorf(fs * 0.5), -floorf(fs * 0.5), fs, fs), Color(1.0, 0.5, 0.15, 0.6))
+            draw_rect(Rect2(-1.5, -1.5, 3.0, 3.0), Color(1.0, 0.92, 0.45))
         Element.Kind.ICE:
-            Art.draw_frame(self, "icespear", 1.0 - fmod(lifetime * 2.0, 1.0), Vector2.ZERO, radius * 7.0, Color(0.9, 1.0, 1.0), dir.angle())
+            # A shard: pale squares along the flight line around a 2 px white core.
+            for k in 5:
+                var along2 := (float(k) - 2.0) * radius * 0.55
+                var ss := 3.0 if k in [1, 2, 3] else 2.0
+                var q := dir * along2
+                draw_rect(Rect2(floorf(q.x - ss * 0.5), floorf(q.y - ss * 0.5), ss, ss), Color(0.7, 0.95, 1.0, 0.6 if k > 0 else 0.4))
+            var tip := dir * radius * 1.6
+            draw_rect(Rect2(floorf(tip.x - 1.0), floorf(tip.y - 1.0), 2.0, 2.0), Color(0.85, 0.97, 1.0, 0.7))
+            draw_rect(Rect2(-1.0, -1.0, 2.0, 2.0), Color(1, 1, 1))
         Element.Kind.OIL:
             draw_circle(Vector2.ZERO, radius, Color(0.18, 0.13, 0.11))
             draw_circle(Vector2(-radius * 0.3, -radius * 0.3), radius * 0.35, Color(0.55, 0.45, 0.4, 0.7))
@@ -295,7 +315,7 @@ func _on_body_entered(body: Node) -> void:
     if _landed or behaviour == "lob":
         return
     if body is Obstacle:
-        if _ob_grace > 0.0:
+        if _ob_grace > 0.0 or spectral:
             return
         body.apply_element(element, potency)
         if behaviour == "boomerang" and not _returning:
@@ -328,6 +348,8 @@ func _on_body_entered(body: Node) -> void:
     elif behaviour == "boomerang" and not _returning:
         _turn_back()
     else:
+        if shard_count > 0:
+            _burst_shards(enemy)
         _splash(enemy)
         queue_free()
 

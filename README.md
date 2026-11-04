@@ -131,8 +131,9 @@ Borrowed from Brotato and tuned by the bot:
 - **Rarity odds** have gates and caps: uncommon from difficulty 1 (+7% per step, cap
   55%), rare from 3 (+3%, cap 25%), epic from 6 (+1.2%, cap 10%), legendary from 9
   (+0.5%, cap 4%), all multiplied by 1 + luck. Treasure and boss rooms raise the floor.
-- **Prices**: base by rarity (14 / 26 / 44 / 74 / 120) + difficulty + 8% of base per
-  step; guns the same shape from 10 + 7 x weight.
+- **Prices**: base by rarity (22 / 38 / 62 / 98 / 150) + 2 x difficulty + 10% of base
+  per step; guns the same shape from 16 + 9 x weight. Services: repair 24 + 10 per
+  floor, carry 50 + 18, gunsmith 45 + 20, reroll 10 + 6 per floor and climbing.
 - **Rarity gates power**: common items are one modest stat, uncommon two, rare is where
   bounce, pierce and chain live, epic adds projectiles or big conditionals with a cost,
   legendary is run-defining. Level-ups use the same tiers keyed on level and luck.
@@ -169,7 +170,9 @@ Reactions crack elite and boss shields; the attuned reaction cracks twice.
 
 ## Gear
 
-About two hundred items (132 hand-made across five rarities plus six per element),
+About 240 items (166 hand-made across five rarities plus six per element), including
+twenty shot modifiers (homing, shards, splash, boomerang, spectral, orbitals, shot size)
+that change how every gun fires, Isaac style, and all of it drawn on the figure,
 ten hand-made sets and one per element. Items drop from elites and bosses and sit in
 shops, treasure, hidden and challenge rooms.
 Eight gear slots plus a mod slot per gun. Every item is a few lines of data in
@@ -231,9 +234,12 @@ All art is from Kenney (kenney.nl), CC0, no generative art:
 - **1-Bit Pack** (`assets/kenney/1bit_mono.png`): every sprite in the game, tinted per
   thing through the `Art` autoload. Characters, monsters, items, bricks, floor, decals.
 - **Particle Pack** (`assets/kenney/particles/`): reaction puffs (smoke, flame, spark, magic).
-- **OpenGameArt effect sheets** (`assets/vfx/`, CC0, see its CREDITS.txt): fire loops by
-  BenHickling, his Ring Explosion, and StarsteelGaming's fireball, ice spear and thunder
-  sphere. Fire, ice and shock bullets, burning and frozen enemies, bursts and novas use them.
+- **Effects are generated, not drawn**: every reaction, status and nova is pixel
+  particles in the game's own palette (2 to 5 px squares, translucent, additive for hot
+  elements) with per-element physics: fire rises and flickers into smoke, water falls and
+  splashes, ice shards stop and crumble, sparks jitter with arcs, oil and blood arc and
+  stick, void spirals in, gale streaks. Nothing opaque ever covers the fight. See the
+  pixel system at the top of `scripts/fx.gd`.
 - **Kenney Fonts** (`assets/fonts/`): Kenney Pixel for the HUD and world text.
 - **Kenney audio** (`assets/audio/`): a curated set from Sci-fi Sounds, Impact Sounds,
   Interface Sounds and RPG Audio, renamed to what they do in the game. The `Sfx` autoload

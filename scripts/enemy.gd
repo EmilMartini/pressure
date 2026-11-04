@@ -137,6 +137,7 @@ var _shape: CircleShape2D
 var _sprite_scale := 1.0
 var _anim_t := 0.0
 var _fx_t := 0.0   # status animation clock, runs even while frozen
+var _shed_ms := 0  # last time a status shed a pixel into Fx (embers, poison motes)
 var _dot_accum := 0.0   # damage-over-time waiting to be shown as one number
 var _dot_color := Color.WHITE
 var _dot_timer := 0.0
@@ -1115,20 +1116,44 @@ func _draw() -> void:
             var dx := -radius * 0.4 + float(i) * radius * 0.8
             draw_circle(Vector2(dx, radius * 0.6 + fmod(_anim_t * 6.0 + i * 3.0, 6.0)), 2.2, Color(Element.COLORS[Element.Kind.WET], 0.9))
     if states.has(Element.Kind.SHOCK):
-        for i in 3:
-            var a := randf() * TAU
-            var p := Vector2.RIGHT.rotated(a) * radius * randf_range(0.8, 1.4)
-            draw_line(p, p + Vector2.RIGHT.rotated(a + randf_range(-1.0, 1.0)) * 6.0, Color(1, 1, 0.6, 0.9), 1.5)
+        # One or two jagged 1 px arcs crawling over the body, a white pixel at each tip.
+        for k in 1 + randi() % 2:
+            var a0 := randf() * TAU
+            var p0 := Vector2.RIGHT.rotated(a0) * radius * randf_range(0.7, 1.2)
+            var p2 := Vector2.RIGHT.rotated(a0 + randf_range(0.6, 1.4)) * radius * randf_range(0.7, 1.2)
+            var p1 := (p0 + p2) * 0.5 + Vector2(randf_range(-4.0, 4.0), randf_range(-4.0, 4.0))
+            draw_polyline(PackedVector2Array([p0, p1, p2]), Color(1.0, 0.95, 0.4, 0.7), 1.0)
+            draw_rect(Rect2(floorf(p2.x - 1.0), floorf(p2.y - 1.0), 2.0, 2.0), Color(1, 1, 0.9, 0.75))
+    # Statuses shed pixels into the world effects layer about ten times a second.
+    if burn_time > 0.0 or poison_time > 0.0:
+        var now := Time.get_ticks_msec()
+        if now - _shed_ms >= 100:
+            _shed_ms = now
+            var fx := _fx()
+            if fx != null:
+                if burn_time > 0.0:
+                    fx.ember(global_position + Vector2(randf_range(-radius * 0.5, radius * 0.5), -radius * randf_range(0.6, 1.2)))
+                if poison_time > 0.0 and randf() < 0.3 + 0.15 * float(poison_stacks):
+                    fx.mote(Element.Kind.POISON, global_position + Vector2(randf_range(-radius, radius), randf_range(-radius, radius * 0.3)))
     if burn_time > 0.0:
-        var f := radius * 3.2
-        Art.draw_frame(self, "fire", fmod(_fx_t * 0.9, 1.0), Vector2(0, -radius * 0.9), f, Color(1.0, 0.85, 0.6, 0.95))
+        _draw_pixel_flame(Vector2(0, -radius * 0.2), radius * 1.1, radius * 1.6, 8)
     if frozen_time > 0.0:
-        var f := radius * 3.0
-        Art.draw_frame(self, "cold_fire", fmod(_fx_t * 0.5, 1.0), Vector2(0, -radius * 0.6), f, Color(0.85, 0.97, 1.0, 0.8))
+        # A crystalline outline: pale pixels around the body, one glint running round.
+        var n := 14
+        var glint := int(_fx_t * 10.0) % n
+        draw_circle(Vector2.ZERO, radius + 2.0, Color(0.7, 0.95, 1.0, 0.12))
+        for k in n:
+            var a1 := TAU * float(k) / float(n)
+            var q := Vector2(cos(a1), sin(a1)) * (radius + 3.0 + (1.5 if k % 3 == 0 else 0.0))
+            var sz := 3.0 if k % 2 == 0 else 2.0
+            var cc := Color(1, 1, 1, 0.75) if k == glint else (Color(0.85, 0.97, 1.0, 0.6) if k % 2 == 0 else Color(0.55, 0.8, 0.95, 0.5))
+            draw_rect(Rect2(floorf(q.x - sz * 0.5), floorf(q.y - sz * 0.5), sz, sz), cc)
     if poison_time > 0.0:
-        for i in poison_stacks:
-            var a := _anim_t * 0.7 + float(i) * 1.1
-            draw_circle(Vector2(cos(a) * radius * 1.1, -radius * 0.5 - fmod(a * 4.0, 14.0)), 2.5, Color(Element.COLORS[Element.Kind.POISON], 0.9))
+        for k in poison_stacks:
+            var a2 := _anim_t * 0.7 + float(k) * 1.1
+            var q2 := Vector2(cos(a2) * radius * 1.1, -radius * 0.5 - fmod(a2 * 4.0, 14.0))
+            draw_rect(Rect2(floorf(q2.x - 1.5), floorf(q2.y - 1.5), 3.0, 3.0), Color(0.45, 0.9, 0.2, 0.55))
+            draw_rect(Rect2(floorf(q2.x - 0.5), floorf(q2.y - 0.5), 1.0, 1.0), Color(0.75, 1.0, 0.5, 0.75))
     if bleed_time > 0.0:
         draw_circle(Vector2(radius * 0.5, radius * 0.9), 2.5, Element.COLORS[Element.Kind.BLOOD])
         draw_circle(Vector2(-radius * 0.3, radius * 1.0), 2.0, Element.COLORS[Element.Kind.BLOOD])
@@ -1160,6 +1185,26 @@ func _draw() -> void:
         var w := radius * 2.2
         draw_rect(Rect2(-w / 2.0, radius + 5.0, w, 4.0), Color(0, 0, 0, 0.7))
         draw_rect(Rect2(-w / 2.0, radius + 5.0, w * maxf(0.0, hp) / max_hp, 4.0), Color(0.9, 0.2, 0.2))
+
+
+## A flickering flame of `count` pixel squares rising from `base` (local), `w` wide, `h` tall.
+func _draw_pixel_flame(base: Vector2, w: float, h: float, count: int) -> void:
+    var tick := int(_fx_t * 15.0)
+    for k in count:
+        var rise := fmod(_fx_t * 1.6 + float(k) * 0.618, 1.0)   # 0 at the base, 1 at the tip
+        var x := sin(_fx_t * 9.0 + float(k) * 2.1) * w * 0.4 * (1.0 - rise)
+        var pos := base + Vector2(x, -rise * h)
+        var sz := floorf(4.0 - 2.5 * rise + 0.5)
+        var col: Color
+        if rise < 0.35:
+            col = Color(1.0, 0.88, 0.35, 0.7) if (k + tick) % 3 == 0 else Color(1.0, 0.45, 0.15, 0.6)
+        elif rise < 0.75:
+            col = Color(1.0, 0.45, 0.15, 0.55) if (k + tick) % 2 == 0 else Color(0.72, 0.14, 0.08, 0.5)
+        else:
+            col = Color(0.72, 0.14, 0.08, 0.4)
+        draw_rect(Rect2(floorf(pos.x - sz * 0.5), floorf(pos.y - sz * 0.5), sz, sz), col)
+    # A 2 px hot core at the base, the only opaque bit.
+    draw_rect(Rect2(floorf(base.x - 1.0), floorf(base.y - 1.0), 2.0, 2.0), Color(1.0, 0.95, 0.6, 0.9))
 
 
 ## Per-kind tells: charge lines, fuses, armour plates, heal pulses, boss telegraphs.
@@ -1267,7 +1312,7 @@ func _draw_boss() -> void:
         "pyre_lord":
             for hz in _hazards:
                 draw_circle(to_local(hz["pos"]), 55.0, Color(1.0, 0.35, 0.1, 0.10 * clampf(float(hz["t"]), 0.0, 1.0)))
-            Art.draw_frame(self, "fire", fmod(_fx_t * (1.4 if _phase == 2 else 0.9), 1.0), Vector2(0, -radius * 1.2), radius * 2.4, Color(1.0, 0.8, 0.5, 0.8))
+            _draw_pixel_flame(Vector2(0, -radius * 0.5), radius * 1.6, radius * 2.2, 14 if _phase == 2 else 10)
         "void_herald":
             var pull_r := 260.0 if _phase == 1 else 320.0
             var c: Color = Element.COLORS[Element.Kind.VOID]

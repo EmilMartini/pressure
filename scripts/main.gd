@@ -76,14 +76,21 @@ func _ready() -> void:
     gun_pick = GunPickScreen.new(self)
     add_child(gun_pick)
 
+    var args := OS.get_cmdline_user_args()
+    autotest = args.has("--autotest")
+    if autotest:
+        # The bot plays the Vagrant unless told otherwise: `-- --autotest --class=pyromancer`.
+        Progress.chosen_class = "vagrant"
+        for a in args:
+            if a.begins_with("--class="):
+                Progress.chosen_class = a.substr(8)
+        print("[CLASS] %s" % Progress.chosen_class)
     var pads := Input.get_connected_joypads()
     _spawn_player(0 if pads.has(0) else -1, true)
     Input.joy_connection_changed.connect(_on_joy_connection_changed)
 
     Elements.reaction_fired.connect(_count_reaction)
     Progress.unlocked.connect(_on_unlocked)
-    var args := OS.get_cmdline_user_args()
-    autotest = args.has("--autotest")
     if args.has("--obstacle-test") or args.has("--start-shot"):
         # Test hooks never touch the real save.
         Progress.save_path = "user://save_autotest.json"
@@ -169,7 +176,10 @@ func _obstacle_test() -> void:
 
 
 func _on_unlocked(unlock_id: String, achievement_name: String) -> void:
-    hud.toast("%s: unlocked %s" % [achievement_name, Progress.unlock_label(unlock_id)])
+    var what := Progress.unlock_label(unlock_id)
+    if unlock_id.begins_with("class:"):
+        what = "the %s class" % String(Classes.get_def(unlock_id.substr(6)).get("name", unlock_id))
+    hud.toast("%s: unlocked %s" % [achievement_name, what])
     Sfx.play("unlock")
 
 
@@ -353,8 +363,14 @@ func _spawn_player(device: int, keyboard: bool) -> Player:
     players.append(p)
     p.died.connect(_on_player_died)
     p.leveled_up.connect(_on_leveled_up)
-    # Naked start: no guns. The entrance offers a pick of two; late joiners get a random one.
-    if current != null:
+    # Player 1 plays the class picked on the menu; later joiners get a random unlocked one.
+    var class_id: String = Progress.chosen_class
+    if players.size() > 1:
+        class_id = String(Classes.unlocked().pick_random())
+    Classes.apply(p, class_id)
+    # A class brings its own gun. The Vagrant starts naked: the entrance offers a pick of
+    # two (the room does that for unarmed players on entry); late joiners get a random one.
+    if current != null and class_id == "vagrant":
         if current.data.type == RoomData.Type.START and floor_number == 1:
             current.add_gun_choice()
         else:

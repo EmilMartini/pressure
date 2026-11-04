@@ -45,7 +45,22 @@ extends Node
 ##        or "last" (the element of the event)
 ##   at: "target" centres nova/spread/slow on the event's target instead of `pos`.
 ##   chain with `count`: arcs from each of the `count` nearest enemies within `radius`.
-## Extra item keys: element (el key, for tint), cond_mods, price (int: overrides the
+## Shot modifiers (Isaac's tear effects; worn gear only, consumed in Gun._shoot):
+##   homing (rad/s turn; straight guns become homing), splash (px, added to splash radius),
+##   shards (int; straight guns without pierce/bounce become flak, others burst at end of
+##   life), shot_size (fraction: radius x(1+v), damage x(1+v/2)), shot_speed (fraction,
+##   stacks with proj_speed), spectral (int flag: shots ignore obstacles), boomerang (int
+##   flag: straight guns become boomerangs; wins over homing and shards).
+## Familiars (Player): orbitals (int: discs circling at 60 px, hit for half the average
+##   gun damage every 0.5 s per enemy), orbital_element (int flag: they also apply the
+##   first gun's element).
+## Looks (costumes): look: { tile: Vector2i, tint: Color or el key, offset: Vector2 (in
+##   body-tile pixels from the figure's centre), scale: float (1 = body tile size), aura:
+##   Color or el key, side: bool (offset.x follows facing) }. Merged over SLOT_LOOKS; the
+##   LOOKS table gives rare-and-up items theirs. A full set (4 pieces, or all if fewer)
+##   tints the figure toward the set colour (SETS[sid].color, or the element colour) with
+##   a stronger aura. Drawn by `draw_costume`, used by Player and the character sheet.
+## Extra item keys: element (el key, for tint), cond_mods, look, price (int: overrides the
 ##   rarity base price for an item that is cheaper or pricier than its rarity),
 ##   pools (Array of POOLS names; when absent the pools are derived from the item's shape
 ##   by `_auto_pools`), weight (float, default 1.0: pick weight inside a pool, Isaac style;
@@ -69,7 +84,7 @@ const RARITY_COLORS := [
     Color(0.75, 0.40, 1.00),
     Color(1.00, 0.55, 0.15),
 ]
-const RARITY_PRICE := [14, 26, 44, 74, 120]
+const RARITY_PRICE := [22, 38, 62, 98, 150]
 ## Roll odds per rarity above common: [min difficulty, growth per difficulty, cap].
 ## chance = clamp(growth * (difficulty - min + 1) * (1 + luck), 0, cap).
 const RARITY_ODDS := {
@@ -120,23 +135,23 @@ const ELEMENT_SET_CAPSTONES := {
 ## Sets: wear several pieces for bonuses at 2, 3 and 4 pieces. Gun mods count.
 ## Elemental sets are generated per element in _build_sets; these are the hand-made ones.
 const BASE_SETS := {
-    "scavenger": { "name": "Scavenger", "items": ["scavenger_hood", "scrap_magnet", "mudwaders", "lucky_cog"],
+    "scavenger": { "name": "Scavenger", "color": Color(0.85, 0.72, 0.35), "items": ["scavenger_hood", "scrap_magnet", "mudwaders", "lucky_cog"],
         "bonuses": { 2: { "scrap_gain": 0.20 }, 3: { "carry": 2 } } },
-    "overloader": { "name": "Overloader", "items": ["boiler_cap", "overclock", "signet_of_overload", "hot_rod"],
+    "overloader": { "name": "Overloader", "color": Color(1.00, 0.50, 0.20), "items": ["boiler_cap", "overclock", "signet_of_overload", "hot_rod"],
         "bonuses": { 2: { "pressure_limit": 20 }, 3: { "dmg": 0.15 } } },
-    "warden": { "name": "Warden", "items": ["padded_vest", "rusted_helm", "worn_gloves", "leather_boots", "bone_ring"],
+    "warden": { "name": "Warden", "color": Color(0.70, 0.75, 0.85), "items": ["padded_vest", "rusted_helm", "worn_gloves", "leather_boots", "bone_ring"],
         "bonuses": { 2: { "max_hp": 15 }, 3: { "armor": 2 }, 4: { "regen": 1 } } },
-    "gunslinger": { "name": "Gunslinger", "items": ["hair_trigger", "bandolier", "gun_oil", "marksman_monocle"],
+    "gunslinger": { "name": "Gunslinger", "color": Color(0.95, 0.80, 0.55), "items": ["hair_trigger", "bandolier", "gun_oil", "marksman_monocle"],
         "bonuses": { 2: { "fire_rate": 0.08 }, 3: { "proj_speed": 0.15 }, 4: { "pierce": 1 } } },
-    "bulwark": { "name": "Bulwark", "items": ["iron_pot", "riveted_plate", "spiked_gauntlets", "anvil_boots"],
+    "bulwark": { "name": "Bulwark", "color": Color(0.55, 0.65, 0.80), "items": ["iron_pot", "riveted_plate", "spiked_gauntlets", "anvil_boots"],
         "bonuses": { 2: { "armor": 2 }, 3: { "thorns": 6 }, 4: { "max_hp": 30 } } },
-    "alchemist": { "name": "Alchemist", "items": ["reagent_satchel", "fume_mask", "catalyst_ring", "alembic"],
+    "alchemist": { "name": "Alchemist", "color": Color(0.45, 0.95, 0.55), "items": ["reagent_satchel", "fume_mask", "catalyst_ring", "alembic"],
         "bonuses": { 2: { "potency": 0.10 }, 3: { "state_duration": 0.20 }, 4: { "lifesteal": 1 } } },
-    "windrunner": { "name": "Windrunner", "items": ["feather_cap", "runner_wraps", "slipstream_cloak", "quicksilver_band"],
+    "windrunner": { "name": "Windrunner", "color": Color(0.60, 1.00, 0.95), "items": ["feather_cap", "runner_wraps", "slipstream_cloak", "quicksilver_band"],
         "bonuses": { 2: { "speed": 0.08 }, 3: { "dodge": 0.06 }, 4: { "crit": 0.08 } } },
-    "prospector": { "name": "Prospector", "items": ["miners_lamp", "coin_purse", "ledger", "gilded_ring"],
+    "prospector": { "name": "Prospector", "color": Color(1.00, 0.85, 0.30), "items": ["miners_lamp", "coin_purse", "ledger", "gilded_ring"],
         "bonuses": { 2: { "luck": 0.10 }, 3: { "xp_gain": 0.15 }, 4: { "scrap_gain": 0.25 } } },
-    "steamworks": { "name": "Steamworks", "items": ["gasket_ring", "bellows", "heat_gauge", "exhaust_pipes"],
+    "steamworks": { "name": "Steamworks", "color": Color(0.90, 0.55, 0.40), "items": ["gasket_ring", "bellows", "heat_gauge", "exhaust_pipes"],
         "bonuses": { 2: { "vent_radius": 0.15 }, 3: { "vent_power": 0.20 }, 4: { "pressure_limit": 25 } } },
 }
 
@@ -214,7 +229,7 @@ func rarity_color(item: Dictionary) -> Color:
 func price(item: Dictionary, floor_number: int) -> int:
     var base := float(item.get("price", RARITY_PRICE[int(item.get("rarity", 0))]))
     var diff := float(maxi(0, floor_number))
-    return int(roundf(base + diff + base * 0.08 * diff))
+    return int(roundf(base + 2.0 * diff + base * 0.10 * diff))
 
 
 func icon(item: Dictionary) -> Vector2i:
@@ -747,6 +762,33 @@ func _build_catalog() -> void:
     # Legendary
     _add("chain_reactor", "Chain Reactor", "mod", L, "Reactions have 25% to burst into more. Gun +10% dmg", { "g_dmg": 0.10 }, [{ "on": "reaction", "chance": 0.25, "do": "nova", "element": "last", "radius": 120, "potency": 8 }], { "weight": 0.4 })
 
+    # ======================= SHOT MODIFIERS (Isaac's tear effects; treasure pool, low weights)
+    var TR := ["treasure"]
+    var TH := ["treasure", "hidden"]
+    # Rare
+    _add("seeker_lens", "Seeker Lens", "head", R, "Shots curve toward foes", { "homing": 1.5 }, [], { "pools": TR, "weight": 0.6 })
+    _add("tracker_boots", "Tracker's Boots", "feet", R, "Shots drift toward foes, +5% speed", { "homing": 0.8, "speed": 0.05 }, [], { "pools": TR, "weight": 0.6 })
+    _add("bone_orbit", "Bone Orbit", "trinket", R, "A bone circles you, striking what it touches", { "orbitals": 1 }, [], { "pools": TR, "weight": 0.6 })
+    _add("powder_horn", "Powder Horn", "trinket", R, "Shots splash for 30 px when they land", { "splash": 30 }, [], { "pools": TR, "weight": 0.6 })
+    _add("lead_shot", "Lead Shot", "ring", R, "+25% shot size, -10% shot speed", { "shot_size": 0.25, "shot_speed": -0.10 }, [], { "pools": TR, "weight": 0.6 })
+    _add("wisp_lantern", "Wisp Lantern", "trinket", R, "Spectral shots: they pass through obstacles", { "spectral": 1 }, [], { "pools": TR, "weight": 0.5 })
+    _add("rifled_sleeve", "Rifled Sleeve", "hands", R, "+25% shot speed, +10% range", { "shot_speed": 0.25, "range": 0.10 }, [], { "pools": TR, "weight": 0.7 })
+    _add("splinter_charm", "Splinter Charm", "ring", R, "Shots break into 2 splinters, -5% damage", { "shards": 2, "dmg": -0.05 }, [], { "pools": TR, "weight": 0.5 })
+    # Epic
+    _add("cluster_rounds", "Cluster Rounds", "hands", E, "Shots burst into 3 shards", { "shards": 3 }, [], { "pools": TR, "weight": 0.4 })
+    _add("big_iron", "Big Iron", "ring", E, "+60% shot size, -15% fire rate", { "shot_size": 0.6, "fire_rate": -0.15 }, [], { "pools": TH, "weight": 0.4 })
+    _add("cerebral_spark", "Cerebral Spark", "head", E, "Shots hunt foes hard. -10% damage", { "homing": 3.0, "dmg": -0.10 }, [], { "pools": TR, "weight": 0.4 })
+    _add("twin_moons", "Twin Moons", "trinket", E, "Two moons orbit you. -10 max HP", { "orbitals": 2, "max_hp": -10 }, [], { "pools": TR, "weight": 0.4 })
+    _add("shrapnel_vest", "Shrapnel Vest", "chest", E, "2 shards and 20 px splash, -8% speed", { "shards": 2, "splash": 20, "speed": -0.08 }, [], { "pools": TR, "weight": 0.4 })
+    _add("phantom_shroud", "Phantom Shroud", "chest", E, "Spectral, lightly homing shots. -15 max HP", { "spectral": 1, "homing": 1.0, "max_hp": -15 }, [], { "pools": TH, "weight": 0.4 })
+    _add("detonator_cap", "Detonator Cap", "head", E, "Shots splash 60 px, -10% fire rate", { "splash": 60, "fire_rate": -0.10 }, [], { "pools": TR, "weight": 0.4 })
+    _add("feral_fang", "Feral Fang", "ring", E, "Homing, +30% shot speed, -10 max HP", { "homing": 1.5, "shot_speed": 0.30, "max_hp": -10 }, [], { "pools": TR, "weight": 0.4 })
+    # Legendary
+    _add("mothers_blade", "Mother's Blade", "hands", L, "Shots return like boomerangs. +40% damage", { "boomerang": 1, "dmg": 0.40 }, [], { "pools": TR, "weight": 0.3 })
+    _add("skull_choir", "Skull Choir", "trinket", L, "3 skulls orbit you and carry your element", { "orbitals": 3, "orbital_element": 1 }, [], { "pools": TR, "weight": 0.3 })
+    _add("godhead", "Godhead", "head", L, "Shots seek, swell and burst in light", { "homing": 2.5, "splash": 40, "shot_size": 0.2 }, [], { "pools": TH, "weight": 0.3 })
+    _add("hive_heart", "Hive Heart", "chest", L, "Shots burst into 4 shards. A drone orbits you", { "shards": 4, "orbitals": 1 }, [], { "pools": TH, "weight": 0.3 })
+
     # ======================= ACTIVE ITEMS (press "active"; a room clear refills one charge)
     _add("smelling_salts", "Smelling Salts", "active", C, "Use: heal 15. 2 charges", {}, [],
         { "active": { "charges": 2, "do": [{ "do": "heal", "amount": 15 }] } })
@@ -787,6 +829,8 @@ func _build_catalog() -> void:
         _add("gloves_%s" % e, "%s-touched Gloves" % T, "hands", R, "%s guns: +15%% fire rate, pierce +1" % en, { "fire_rate_%s" % e: 0.15, "pierce_%s" % e: 1 }, [], { "element": e })
         _add("coating_%s" % e, "%s Coating" % T, "mod", R, "This gun also applies %s with every hit" % en, { "extra_element": e }, [], { "element": e })
         _add("mantle_%s" % e, "Mantle of %s" % T, "chest", E, "+30%% potency for %s reactions, +15 max HP" % en, { "potency_%s" % e: 0.3, "max_hp": 15 }, [], { "element": e })
+
+    _apply_looks()
 
     # --- Pools: an explicit "pools" in extra wins; everything else is sorted by shape.
     for id in catalog.keys():
@@ -860,3 +904,207 @@ func _auto_pools(it: Dictionary) -> Array:
     if out.is_empty():
         out.append("treasure")
     return out
+
+
+# --- Looks (costumes on the figure) -----------------------------------------
+
+## Default look per slot when an item has none. Offsets are in body-tile pixels from the
+## figure's centre (the body tile is 16 px); scale 1 = the size of the body tile.
+const SLOT_LOOKS := {
+    "head": { "tile": Vector2i(33, 0), "offset": Vector2(0, -8.0), "scale": 0.6 },
+    "chest": {},
+    "hands": { "tile": Vector2i(41, 1), "offset": Vector2(6.5, 3.0), "scale": 0.35, "side": true },
+    "feet": { "tile": Vector2i(40, 1), "offset": Vector2(0, 7.5), "scale": 0.5 },
+    "ring": { "sparkle": true },
+    "trinket": { "tile": Vector2i(44, 7), "offset": Vector2(-5.0, 4.0), "scale": 0.35, "side": true },
+    "active": { "offset": Vector2(-6.5, -2.0), "scale": 0.45, "side": true, "pips": true },
+    "mod": {},
+}
+
+## Explicit looks for rare-and-up items (tint may be a Color or an element key).
+const LOOKS := {
+    # Head
+    "crown_of_focus": { "tile": Vector2i(43, 2) },
+    "marksman_monocle": { "tile": Vector2i(37, 0), "scale": 0.5 },
+    "storm_hood": { "tile": Vector2i(47, 2), "tint": "shock", "scale": 0.7 },
+    "seer_circlet": { "tile": Vector2i(44, 2), "scale": 0.5 },
+    "boiler_cap": { "tile": Vector2i(38, 0), "tint": Color(1.0, 0.55, 0.25) },
+    "berserker_helm": { "tile": Vector2i(36, 0), "tint": Color(0.9, 0.3, 0.3), "scale": 0.7 },
+    "skullcap_vented": { "tile": Vector2i(34, 12), "tint": Color(1.0, 0.6, 0.3), "aura": "fire" },
+    "seeker_lens": { "tile": Vector2i(37, 0), "scale": 0.5, "tint": Color(0.6, 0.9, 1.0) },
+    "cerebral_spark": { "tile": Vector2i(45, 2), "tint": Color(1.0, 0.6, 0.9) },
+    "detonator_cap": { "tile": Vector2i(38, 0), "tint": Color(1.0, 0.4, 0.2) },
+    "godhead": { "tile": Vector2i(44, 2), "tint": Color(1.0, 0.95, 0.6), "scale": 0.7, "aura": "holy" },
+    # Chest
+    "conductors_mail": { "tile": Vector2i(33, 1), "tint": "shock" },
+    "leech_mail": { "tile": Vector2i(34, 1), "tint": "blood" },
+    "spiked_cuirass": { "tile": Vector2i(36, 1) },
+    "glacier_plate": { "tile": Vector2i(35, 1), "tint": "ice" },
+    "ammo_harness": { "tile": Vector2i(32, 1), "tint": Color(0.85, 0.7, 0.4) },
+    "shrapnel_vest": { "tile": Vector2i(32, 1), "tint": Color(0.7, 0.7, 0.75) },
+    "phantom_shroud": { "tile": Vector2i(47, 1), "tint": Color(0.75, 0.8, 1.0, 0.6) },
+    "phoenix_mantle": { "tile": Vector2i(38, 1), "tint": "fire", "aura": "fire" },
+    "gilded_carapace": { "tile": Vector2i(36, 1), "tint": Color(1.0, 0.85, 0.3), "aura": Color(1.0, 0.85, 0.3) },
+    "hive_heart": { "tile": Vector2i(34, 1), "tint": Color(0.95, 0.8, 0.3), "aura": Color(0.95, 0.75, 0.2) },
+    # Hands
+    "grip_of_pierce": { "tile": Vector2i(42, 1) },
+    "ricochet_gloves": { "tile": Vector2i(42, 0) },
+    "kindling_mitts": { "tile": Vector2i(41, 0), "tint": "fire" },
+    "twin_triggers": { "tile": Vector2i(42, 1), "tint": Color(0.9, 0.5, 1.0) },
+    "executioners_grip": { "tile": Vector2i(41, 1), "tint": Color(0.8, 0.2, 0.25) },
+    "rifled_sleeve": { "tile": Vector2i(41, 0), "tint": Color(0.7, 0.75, 0.85) },
+    "cluster_rounds": { "tile": Vector2i(45, 9), "tint": Color(1.0, 0.6, 0.3) },
+    "hands_of_storm": { "tile": Vector2i(42, 0), "tint": "shock", "aura": "shock" },
+    "mothers_blade": { "tile": Vector2i(35, 7), "tint": Color(0.95, 0.3, 0.35), "scale": 0.55, "aura": Color(0.9, 0.2, 0.25) },
+    # Feet
+    "frost_treads": { "tile": Vector2i(44, 1), "tint": "ice" },
+    "anvil_boots": { "tile": Vector2i(43, 0), "tint": Color(0.6, 0.65, 0.75) },
+    "greased_soles": { "tile": Vector2i(45, 1), "tint": "oil" },
+    "tidewalkers": { "tile": Vector2i(44, 0), "tint": "wet" },
+    "tracker_boots": { "tile": Vector2i(43, 1), "tint": Color(0.6, 0.9, 1.0) },
+    "hover_greaves": { "tile": Vector2i(45, 0), "tint": Color(0.75, 0.6, 1.0) },
+    "vent_striders": { "tile": Vector2i(43, 1), "tint": Color(1.0, 0.55, 0.25) },
+    "seven_league": { "tile": Vector2i(44, 0), "tint": Color(0.6, 1.0, 0.9), "aura": "gale" },
+    # Trinkets
+    "steam_whistle": { "tile": Vector2i(46, 9), "tint": "wet" },
+    "pressure_valve": { "tile": Vector2i(45, 16) },
+    "alembic": { "tile": Vector2i(41, 11), "tint": Color(0.5, 1.0, 0.6) },
+    "rabbit_foot": { "tile": Vector2i(45, 7), "tint": Color(1.0, 0.9, 0.6) },
+    "grisly_trophy": { "tile": Vector2i(38, 11) },
+    "static_jar": { "tile": Vector2i(40, 11), "tint": "shock" },
+    "hot_rod": { "tile": Vector2i(44, 7), "tint": "fire" },
+    "cold_snap": { "tile": Vector2i(44, 7), "tint": "ice" },
+    "blood_pact": { "tile": Vector2i(40, 10), "tint": "blood" },
+    "plague_censer": { "tile": Vector2i(42, 11), "tint": "poison" },
+    "bone_orbit": { "tile": Vector2i(32, 12) },
+    "powder_horn": { "tile": Vector2i(45, 9) },
+    "wisp_lantern": { "tile": Vector2i(46, 9), "tint": Color(0.7, 0.85, 1.0) },
+    "twin_moons": { "tile": Vector2i(43, 12), "tint": Color(0.85, 0.85, 1.0) },
+    "heart_of_forge": { "tile": Vector2i(38, 10), "tint": "fire", "aura": "fire" },
+    "permafrost_core": { "tile": Vector2i(32, 10), "tint": "ice", "aura": "ice" },
+    "skull_choir": { "tile": Vector2i(34, 12), "tint": Color(0.9, 0.85, 1.0), "aura": "void" },
+    # Rings (the sparkle default; legendaries add an aura)
+    "signet_of_overload": { "sparkle": true, "aura": Color(1.0, 0.5, 0.2) },
+    "storm_halo": { "sparkle": true, "tint": "shock", "aura": "shock" },
+}
+
+
+## Merge LOOKS and the element families into the catalog.
+func _apply_looks() -> void:
+    for id in LOOKS.keys():
+        if catalog.has(id) and not catalog[id].has("look"):
+            catalog[id]["look"] = LOOKS[id]
+    for e in ELEMENTS.keys():
+        if catalog.has("mantle_%s" % e):
+            catalog["mantle_%s" % e]["look"] = { "tile": Vector2i(37, 1), "tint": e }
+        if catalog.has("gloves_%s" % e):
+            catalog["gloves_%s" % e]["look"] = { "tile": Vector2i(41, 1), "tint": e }
+        if catalog.has("vial_%s" % e):
+            catalog["vial_%s" % e]["look"] = { "tile": Vector2i(41, 11), "tint": e }
+
+
+func _look_color(v, fallback: Color) -> Color:
+    if v is Color:
+        return v
+    if v is String and ELEMENTS.has(v):
+        return Element.COLORS[ELEMENTS[v]]
+    return fallback
+
+
+## An item's full look: the slot default with the item's own look on top, colours resolved.
+func look_of(item: Dictionary) -> Dictionary:
+    var slot: String = item.get("slot", "trinket")
+    var out: Dictionary = SLOT_LOOKS.get(slot, {}).duplicate()
+    var own: Dictionary = item.get("look", {})
+    for k in own.keys():
+        out[k] = own[k]
+    out["tint"] = _look_color(out.get("tint"), icon_tint(item) if item.has("element") else rarity_color(item))
+    if out.has("aura"):
+        out["aura"] = _look_color(out["aura"], rarity_color(item))
+    if slot == "active" and not out.has("tile"):
+        out["tile"] = icon(item)
+    return out
+
+
+func set_color(sid: String) -> Color:
+    if ELEMENTS.has(sid):
+        return Element.COLORS[ELEMENTS[sid]]
+    return SETS.get(sid, {}).get("color", Color.WHITE)
+
+
+## The colour of a completed set (4 pieces, or all of a smaller set), or transparent.
+func full_set_color(player: Player) -> Color:
+    var counts := set_counts(player)
+    for sid in counts.keys():
+        var need := mini(4, SETS[sid]["items"].size())
+        if counts[sid] >= need:
+            return set_color(sid)
+    return Color(0, 0, 0, 0)
+
+
+## Body tint: the player's colour, nudged by the chest piece and pulled toward a full set.
+func body_tint(player: Player, base: Color) -> Color:
+    var c := base
+    var chest := get_item(player.equipment.get("chest", ""))
+    if not chest.is_empty():
+        c = c.lerp(look_of(chest)["tint"], 0.3)
+    var sc := full_set_color(player)
+    if sc.a > 0.0:
+        c = c.lerp(sc, 0.45)
+    return Color(c, base.a)
+
+
+## Draw the costume layers of `player` on `canvas`. `center` is the body tile's centre,
+## `unit` the screen pixels per body-tile pixel (2 in game), `facing` +1 right / -1 left.
+## Call once with front = false before the body (auras, ring sparkles) and once with
+## front = true after it (hats, gloves, boots, charms, the active item).
+func draw_costume(canvas: CanvasItem, player: Player, center: Vector2, unit: float, facing: float, front: bool) -> void:
+    var t := float(Time.get_ticks_msec()) / 1000.0
+    if not front:
+        var sc := full_set_color(player)
+        if sc.a > 0.0:
+            var pulse := 0.5 + 0.5 * sin(t * 2.5)
+            var big := unit * 34.0
+            canvas.draw_texture_rect(Art.PARTICLES["light"], Rect2(center - Vector2(big, big) / 2.0, Vector2(big, big)), false, Color(sc, 0.35 + 0.15 * pulse))
+            for i in 6:
+                var sp := center + Vector2(unit * 13.0, 0).rotated(t * 1.2 + TAU * float(i) / 6.0) * Vector2(1.0, 0.6)
+                canvas.draw_rect(Rect2(sp - Vector2(unit, unit) * 0.6, Vector2(unit, unit) * 1.2), Color(sc, 0.8))
+    for key in Player.EQUIP_KEYS:
+        if not player.equipment.has(key):
+            continue
+        var it := get_item(player.equipment[key])
+        if it.is_empty():
+            continue
+        var lk := look_of(it)
+        var tint: Color = lk["tint"]
+        var second := String(key).ends_with("2")
+        if not front:
+            if lk.has("aura"):
+                var ac: Color = lk["aura"]
+                var s := unit * 26.0
+                canvas.draw_texture_rect(Art.PARTICLES["light"], Rect2(center - Vector2(s, s) / 2.0, Vector2(s, s)), false, Color(ac, 0.22 + 0.08 * sin(t * 3.0)))
+            if lk.get("sparkle", false):
+                var phase := t * 0.8 + (PI if second else 0.0)
+                for i in 3:
+                    var p := center + Vector2(unit * 10.0, 0).rotated(phase + TAU * float(i) / 3.0) * Vector2(1.0, 0.55)
+                    canvas.draw_rect(Rect2(p - Vector2(unit, unit) * 0.5, Vector2(unit, unit)), Color(tint, 0.75))
+            continue
+        if not lk.has("tile"):
+            continue
+        var off: Vector2 = lk.get("offset", Vector2.ZERO)
+        if it.get("slot", "") == "chest":
+            off = lk.get("offset", Vector2(0, 1.5))
+        if lk.get("side", false):
+            off.x *= facing
+        if second:
+            off.x = -off.x
+        var scale := float(lk.get("scale", 0.8 if it.get("slot", "") == "chest" else 0.5))
+        var size := 16.0 * unit * scale
+        var at := center + off * unit
+        var col := Color(tint, tint.a * (0.85 if it.get("slot", "") == "chest" else 1.0))
+        canvas.draw_texture_rect(Art.tile(lk["tile"]), Rect2(at - Vector2(size, size) / 2.0, Vector2(size, size)), false, col)
+        if lk.get("pips", false):
+            var max_charges := active_max_charges(player)
+            for c in max_charges:
+                var pip := Rect2(at + Vector2(-size / 2.0 + float(c) * unit * 2.0, size / 2.0 + unit * 0.5), Vector2(unit * 1.5, unit * 1.5))
+                canvas.draw_rect(pip, Color(1.0, 0.9, 0.4) if c < player.active_charges else Color(0.25, 0.22, 0.24))

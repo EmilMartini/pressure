@@ -184,7 +184,11 @@ func _draw_doll() -> void:
     _doll.draw_colored_polygon(PackedVector2Array([center + Vector2(-50, 90), center + Vector2(50, 90), center + Vector2(60, 110), center + Vector2(-60, 110)]), Color(0.3, 0.27, 0.29))
     var tiles: Array = Art.TILES["player"]
     var tex: AtlasTexture = Art.tile(tiles[player.index % tiles.size()])
-    _doll.draw_texture_rect(tex, Rect2(center - Vector2(72, 80), Vector2(144, 144)), false, player.color.lerp(Color.WHITE, 0.35))
+    # Same costume layers as in game, at 9 screen px per body-tile pixel (144 / 16).
+    var body_center := center - Vector2(72, 80) + Vector2(72, 72)
+    Items.draw_costume(_doll, player, body_center, 9.0, 1.0, false)
+    _doll.draw_texture_rect(tex, Rect2(center - Vector2(72, 80), Vector2(144, 144)), false, Items.body_tint(player, player.color.lerp(Color.WHITE, 0.35)))
+    Items.draw_costume(_doll, player, body_center, 9.0, 1.0, true)
     _doll.draw_string(_body_font, Vector2(center.x - 100, 300), "%d / %d HP" % [int(player.hp), int(player.max_hp)], HORIZONTAL_ALIGNMENT_CENTER, 200, 15, UiTheme.BONE)
 
 

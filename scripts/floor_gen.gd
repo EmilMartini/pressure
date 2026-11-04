@@ -132,9 +132,9 @@ static func _stock_rooms(rooms: Dictionary, floor_number: int, luck: float = 0.0
                 for i in slots:
                     r.stock.append(roll_ware(floor_number, luck, r.stock))
                 r.stock.append(offer("reroll", "", reroll_price(floor_number, 0)))
-                r.stock.append(offer("carry", "", 30 + floor_number * 10, 2))
-                r.stock.append(offer("repair", "", 15, 40))
-                r.stock.append(offer("gunsmith", "", 28 + floor_number * 12))
+                r.stock.append(offer("carry", "", 50 + floor_number * 18, 2))
+                r.stock.append(offer("repair", "", 24 + floor_number * 10, 40))
+                r.stock.append(offer("gunsmith", "", 45 + floor_number * 20))
             RoomData.Type.TREASURE:
                 # A chest, Slay the Spire style: one pick from gear, a gun, or a run boon.
                 # Chest size grows with the floor and a little luck.
@@ -174,14 +174,14 @@ static func roll_ware(floor_number: int, luck: float, stock: Array) -> Dictionar
 
 ## Reroll cost: Brotato's shape, a floor-based start that climbs with every use.
 static func reroll_price(floor_number: int, uses: int) -> int:
-    return 6 + floor_number * 4 + uses * (3 + floor_number * 2)
+    return 10 + floor_number * 6 + uses * (6 + floor_number * 3)
 
 
 ## Brotato's shape: base + difficulty + 8% of base per difficulty step.
 static func gun_price(data: GunData, floor_number: int) -> int:
-    var base := 10 + data.weight * 7
+    var base := 16 + data.weight * 9
     var diff := floor_number * 4
-    return base + diff + int(float(base) * 0.08 * float(diff))
+    return base + 2 * diff + int(float(base) * 0.10 * float(diff))
 
 
 const BOONS := {

@@ -227,11 +227,22 @@ your starting power. That keeps the "overpowered and bored" failure out by const
   small enough to be felt over dozens of runs, not one, and the real growth stays in the
   unlock pool. If it ever trivialises floor 1, shrink the node values, not the tree.
 
-### Layer 2: characters (Isaac)
-- Unlockable characters are different *naked starts*, not stronger ones: a different
-  primary, a different pressure curve, a different vent. Examples: the Stoker starts hot
-  and vents bigger; the Diver starts cold and carries one extra weight; the Twin holds two
-  primaries but has a smaller gauge.
+### Layer 2: starting classes (Dark Souls, Isaac) — BUILT
+- A class is only the first room. Each is a starting gun of its element, one themed
+  starting item, a small permanent affinity (that element's reactions +20% potency, its
+  guns +10% damage) and a quirk (the Pyromancer is frailer, the Frostbinder slower, the
+  Templar regenerates, the Voidwalker is lucky). From there the run goes wherever the
+  loot takes it, Dark Souls style: a Pyromancer who finds a hydro cannon becomes a
+  steam build.
+- The Vagrant is the naked start (pick of two guns, a little more carry and scrap) and
+  is always unlocked; the twelve elemental classes unlock through achievements on their
+  element's signature reaction, Isaac style. Later joiners in co-op get a random unlocked
+  class. Picked on a card screen between Play and the first room.
+- Items are visible on the figure (Isaac costumes, Brotato weapons): hats, plate, gloves,
+  boots, charms, an aura for rings and legendaries, the active item on the back, and a
+  completed set tints the whole figure (Guppy-style transformation). Twenty
+  shot-modifier items (homing, shards, splash, boomerang, spectral, orbitals, shot size)
+  are the tear-modifier layer.
 
 ### Layer 3: keystone tiers (WoW Mythic+)
 - Clearing a dungeon earns a **keystone** one tier higher. Tiers add affixes: more
@@ -267,12 +278,12 @@ your starting power. That keeps the "overpowered and bored" failure out by const
 - Art: Kenney CC0 packs, tinted dark. The 1-Bit Pack gives a single white-on-transparent
   sheet, so the whole look is a palette in `art.gd`: bone, blood, rust and stone, with a
   vignette over everything. No generative art.
-- Effects: hand-drawn CC0 animation sheets from OpenGameArt (`assets/vfx`): a looping
-  fire, a cold blue fire, a 56-frame ring explosion and the fireball, ice spear and
-  thunder sphere strips. `Art.draw_frame` plays a frame of any sheet; `Fx.book`,
-  `Fx.blast` and `Fx.radial` spawn them. Fire, ice and shock bullets are the spell
-  sprites, burning and frozen bodies play the fire sheets, every burst reaction is a
-  tinted ring explosion, novas throw spears or fireballs outward.
+- Effects: generated pixel particles (Noita-inspired, no sheets): a 700-slot ring
+  buffer of 2 to 5 px squares in three-step element palettes, translucent so the fight
+  stays readable, with a behaviour per element (fire rises and flickers, water falls and
+  splashes, ice crumbles, sparks arc, oil sticks, void spirals in). Reactions map by
+  what they do: a burst is a hollow pixel ring, a cloud lingers, a freeze is a shard
+  star, pulls spiral in. Burning enemies shed embers, poisoned ones motes.
 - Music: three CC0 synthwave tracks by Alex McCulloch (menu, run, boss).
 - Text: the Kenney Pixel font everywhere, never under 20 px, and as few words as the
   screen can get away with.

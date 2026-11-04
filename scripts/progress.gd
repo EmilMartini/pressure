@@ -8,7 +8,7 @@ signal unlocked(unlock_id: String, achievement_name: String)
 const SAVE_PATH := "user://save.json"
 
 ## Always available, run one included.
-const BASE_UNLOCKS := ["gun:water_pistol", "gun:arc_rifle", "gun:flare_pistol", "gun:slick_wand", "obstacle:pool"]
+const BASE_UNLOCKS := ["gun:water_pistol", "gun:arc_rifle", "gun:flare_pistol", "gun:slick_wand", "obstacle:pool", "class:vagrant"]
 
 ## stat: the Progress stat that counts toward it. goal: the number to reach.
 const ACHIEVEMENTS := [
@@ -28,16 +28,22 @@ const ACHIEVEMENTS := [
         "stat": "reaction:Steam", "goal": 10, "rewards": ["gun:oil_slinger"] },
     { "id": "arsonist", "name": "Arsonist", "desc": "Fire 10 Infernos or Ignitions",
         "stat": "reactions_fire", "goal": 10, "rewards": ["obstacle:thicket"] },
+    { "id": "class_tarsmith", "name": "Pitch Black", "desc": "Fire 20 Ignitions",
+        "stat": "reaction:Ignition", "goal": 20, "rewards": ["class:tarsmith"] },
     { "id": "plumber", "name": "Plumber", "desc": "Open a hidden room",
         "stat": "hidden_rooms", "goal": 1, "rewards": ["obstacle:valve", "gun:mist_sprayer"] },
     { "id": "slayer", "name": "Slayer", "desc": "Kill 5 elites",
         "stat": "elites", "goal": 5, "rewards": ["gun:ember_carbine"] },
+    { "id": "class_stormcaller", "name": "Lightning Rod", "desc": "Fire 30 Chain Lightnings",
+        "stat": "reaction:Chain Lightning", "goal": 30, "rewards": ["class:stormcaller"] },
     { "id": "bloodied", "name": "Bloodied", "desc": "Kill 150 enemies",
         "stat": "kills", "goal": 150, "rewards": ["gun:etcher_beam"] },
     { "id": "plasma", "name": "Plasma Physicist", "desc": "Fire 10 Plasmas",
         "stat": "reaction:Plasma", "goal": 10, "rewards": ["gun:storm_seeker"] },
     { "id": "black_ice", "name": "Black Ice", "desc": "Fire 10 Black Ices",
         "stat": "reaction:Black Ice", "goal": 10, "rewards": ["gun:rime_chakram"] },
+    { "id": "class_frostbinder", "name": "Cold Hands", "desc": "Fire 20 Deep Freezes",
+        "stat": "reaction:Deep Freeze", "goal": 20, "rewards": ["class:frostbinder"] },
     { "id": "floor_breaker", "name": "Floor Breaker", "desc": "Kill a boss",
         "stat": "bosses", "goal": 1, "rewards": ["room:challenge", "gun:tar_mortar"] },
     { "id": "venter", "name": "Venter", "desc": "Vent 15 novas",
@@ -56,22 +62,32 @@ const ACHIEVEMENTS := [
         "stat": "items_picked", "goal": 30, "rewards": ["rarity:legendary"] },
     { "id": "chemist", "name": "Chemist", "desc": "Fire 25 Steams",
         "stat": "reaction:Steam", "goal": 25, "rewards": ["gun:venom_spitter"] },
+    { "id": "class_tidecaller", "name": "High Tide", "desc": "Fire 30 Steams",
+        "stat": "reaction:Steam", "goal": 30, "rewards": ["class:tidecaller"] },
     { "id": "polluter", "name": "Polluter", "desc": "Fire 10 Contaminations",
         "stat": "reaction:Contamination", "goal": 10, "rewards": ["gun:blight_seeker"] },
     { "id": "fumigator", "name": "Fumigator", "desc": "Fire 10 Noxious Flames",
         "stat": "reaction:Noxious Flame", "goal": 10, "rewards": ["gun:plague_mortar"] },
+    { "id": "class_plaguewright", "name": "Patient Zero", "desc": "Fire 20 Contaminations",
+        "stat": "reaction:Contamination", "goal": 20, "rewards": ["class:plaguewright"] },
     { "id": "alchemist", "name": "Alchemist", "desc": "Fire 25 Infernos",
         "stat": "reaction:Inferno", "goal": 25, "rewards": ["gun:acid_flask", "obstacle:rubble"] },
+    { "id": "class_pyromancer", "name": "Firestarter", "desc": "Fire 30 Infernos",
+        "stat": "reaction:Inferno", "goal": 30, "rewards": ["class:pyromancer"] },
     { "id": "butcher", "name": "Butcher", "desc": "Kill 250 enemies",
         "stat": "kills", "goal": 250, "rewards": ["gun:blood_lance"] },
     { "id": "hemophile", "name": "Hemophile", "desc": "Fire 10 Thin Bloods",
         "stat": "reaction:Thin Blood", "goal": 10, "rewards": ["gun:clot_orb"] },
+    { "id": "class_bloodletter", "name": "Leech", "desc": "Fire 20 Thin Bloods",
+        "stat": "reaction:Thin Blood", "goal": 20, "rewards": ["class:bloodletter"] },
     { "id": "pressure_cooker", "name": "Pressure Cooker", "desc": "Fire 60 Steams",
         "stat": "reaction:Steam", "goal": 60, "rewards": ["gun:kettle_gun"] },
     { "id": "abyss", "name": "Abyss", "desc": "Kill 3 bosses",
         "stat": "bosses", "goal": 3, "rewards": ["gun:void_orb"] },
     { "id": "maelstrom", "name": "Maelstrom", "desc": "Fire 10 Whirlpools",
         "stat": "reaction:Whirlpool", "goal": 10, "rewards": ["gun:rift_seeker"] },
+    { "id": "class_alchemist", "name": "Splash Zone", "desc": "Fire 20 Caustic Splashes",
+        "stat": "reaction:Caustic Splash", "goal": 20, "rewards": ["class:alchemist"] },
     { "id": "catalyst", "name": "Catalyst", "desc": "Fire 300 reactions",
         "stat": "reactions", "goal": 300, "rewards": ["gun:null_wand"] },
     { "id": "zealot", "name": "Zealot", "desc": "Fire 80 Deep Freezes",
@@ -80,10 +96,16 @@ const ACHIEVEMENTS := [
         "stat": "reaction:Chain Lightning", "goal": 80, "rewards": ["gun:gale_blaster", "obstacle:miasma"] },
     { "id": "baptist", "name": "Baptist", "desc": "Fire 10 Baptisms",
         "stat": "reaction:Baptism", "goal": 10, "rewards": ["gun:prayer_burst"] },
+    { "id": "class_templar", "name": "Anointed", "desc": "Fire 20 Baptisms",
+        "stat": "reaction:Baptism", "goal": 20, "rewards": ["class:templar"] },
     { "id": "windbreaker", "name": "Windbreaker", "desc": "Fire 10 Monsoons",
         "stat": "reaction:Monsoon", "goal": 10, "rewards": ["gun:cyclone_flak"] },
+    { "id": "class_windrunner", "name": "Rainmaker", "desc": "Fire 20 Monsoons",
+        "stat": "reaction:Monsoon", "goal": 20, "rewards": ["class:windrunner"] },
     { "id": "mason", "name": "Mason", "desc": "Kill 20 elites",
         "stat": "elites", "goal": 20, "rewards": ["gun:stone_sling"] },
+    { "id": "class_stonewarden", "name": "Bog Standard", "desc": "Fire 20 Muds",
+        "stat": "reaction:Mud", "goal": 20, "rewards": ["class:stonewarden"] },
     { "id": "exterminator", "name": "Exterminator", "desc": "Kill 600 enemies",
         "stat": "kills", "goal": 600, "rewards": ["gun:corrosion_burst"] },
     { "id": "pyromaniac", "name": "Pyromaniac", "desc": "Fire 60 Infernos",
@@ -94,6 +116,8 @@ const ACHIEVEMENTS := [
         "stat": "bosses", "goal": 6, "rewards": ["gun:sun_cannon"] },
     { "id": "annihilator", "name": "Annihilator", "desc": "Fire 5 Annihilations",
         "stat": "reaction:Annihilation", "goal": 5, "rewards": ["gun:eclipse_carbine"] },
+    { "id": "class_voidwalker", "name": "Event Horizon", "desc": "Fire 10 Singularities",
+        "stat": "reaction:Singularity", "goal": 10, "rewards": ["class:voidwalker"] },
     { "id": "reactionary", "name": "Reactionary", "desc": "Discover 20 different reactions",
         "stat": "reactions_discovered", "goal": 20, "rewards": ["shop:items"] },
     { "id": "reaper", "name": "Reaper", "desc": "Kill 1500 enemies",
@@ -107,6 +131,7 @@ var achievements_done: Dictionary = {}
 var history: Array = []               # { won, floor, kills, unlocks }
 var run_unlocks: Array = []           # unlock ids earned during the current run
 var names: Array = ["", "", "", ""]   # player names; empty falls back to P1..P4
+var chosen_class := "vagrant"         # class picked on the menu for player 1; not saved
 
 
 func _ready() -> void:
@@ -149,6 +174,8 @@ func unlock_label(unlock_id: String) -> String:
                 "ward": "Ward obstacles", "rubble": "Rubble obstacles", "miasma": "Miasma obstacles" }.get(parts[1], parts[1])
         "room":
             return "Challenge rooms" if parts[1] == "challenge" else parts[1]
+        "class":
+            return "%s class" % Classes.get_def(parts[1]).get("name", parts[1])
         "shop":
             return "Fourth shop slot" if parts[1] == "extra" else "Third shop item"
         "rarity":

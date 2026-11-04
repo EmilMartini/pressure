@@ -106,5 +106,20 @@ func _draw() -> void:
             draw_arc(Vector2.ZERO, r, 0.0, TAU, 32, Color(0.8, 0.9, 1.0, 0.35 * (1.0 - r / radius)), 1.5)
         draw_set_transform_matrix(Transform2D.IDENTITY)
         return
-    draw_circle(Vector2.ZERO, radius, Color(col, 0.08))
-    draw_arc(Vector2.ZERO, radius, 0.0, TAU, 40, Color(col, 0.35), 2.0)
+    # A loose field of drifting pixels instead of a disc, so what is inside stays visible.
+    var core := col.lightened(0.45)
+    var edge := col.darkened(0.4)
+    var tt := Time.get_ticks_msec() / 1000.0
+    var fade := clampf(life, 0.0, 1.0)
+    var count := clampi(int(radius / 7.0), 10, 20)
+    for i in count:
+        var fi := float(i)
+        var rr := radius * 0.9 * sqrt(fmod(fi * 0.618 + 0.13, 1.0))
+        var q := Vector2.RIGHT.rotated(fi * 2.399 + tt * 0.15 * (1.0 if i % 2 == 0 else -1.0)) * rr
+        q += Vector2(sin(tt * 0.7 + fi * 1.3), cos(tt * 0.5 + fi * 2.1)) * radius * 0.1
+        q.y -= fmod(tt * 6.0 + fi * 3.7, 10.0)   # a slow upward creep
+        var sz := 2.0 + float(i % 3)
+        var c: Color = core if (i + int(tt * 3.0)) % 6 == 0 else (edge if i % 4 == 1 else col)
+        c.a = (0.3 + 0.15 * float(i % 2)) * fade
+        draw_rect(Rect2(floorf(q.x - sz * 0.5), floorf(q.y - sz * 0.5), sz, sz), c)
+    draw_arc(Vector2.ZERO, radius, 0.0, TAU, 40, Color(col, 0.22 * fade), 1.0)
