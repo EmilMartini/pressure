@@ -91,6 +91,17 @@ func _ready() -> void:
         DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path("res://autotest"))
         await get_tree().create_timer(0.8).timeout
         await _screenshot("res://autotest/start.png")
+        # Interact edge test: one simulated press must equip exactly once, even when
+        # several rendered frames pass before the next physics tick.
+        if current != null and not current.pedestals.is_empty():
+            var p0 := players[0]
+            p0.equip("bone_ring")
+            p0.input._edges["interact"] = true
+            var ped0: Pedestal = current.pedestals[0]
+            p0.global_position = ped0.global_position
+            current._handle_interact()
+            current._handle_interact()
+            print("[INTERACT TEST] guns=%d edges_left=%s" % [p0.guns.size(), str(p0.input._edges)])
         # Stand next to the first pedestal to show the key cap, once per device kind.
         if current != null and not current.pedestals.is_empty():
             var ped: Pedestal = current.pedestals[0]

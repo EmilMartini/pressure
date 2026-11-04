@@ -481,7 +481,7 @@ func _handle_interact() -> void:
         if near != null:
             ped.prompt_key = near.input.prompt("interact")
     for pl in main.players:
-        if not pl.alive or not pl.input.just_pressed("interact"):
+        if not pl.alive or not pl.input.take_pressed("interact"):
             continue
         var best: Pedestal = null
         var best_d := Pedestal.RANGE
@@ -547,7 +547,9 @@ func activate(ped: Pedestal, pl: Player) -> void:
                     if other["kind"] in ["gun", "item"]:
                         other["taken"] = true
             if replaced != "":
-                data.stock.append(Items.offer(replaced, 0, ped.position))
+                # The old piece lands beside the pedestal, not under your feet.
+                var side := Vector2(80, 0) if ped.position.x < rect.end.x - 170.0 else Vector2(-80, 0)
+                data.stock.append(Items.offer(replaced, 0, ped.position + side))
         "carry":
             if main.scrap < o["price"]:
                 pl.say("Need %d scrap" % o["price"])

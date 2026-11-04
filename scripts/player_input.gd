@@ -93,11 +93,26 @@ func poll() -> void:
         "interact": _button(JOY_BUTTON_A, KEY_E),
         "start": _button(JOY_BUTTON_START, KEY_ENTER),
     }
+    for action in _cur.keys():
+        if _cur[action] and not _prev.get(action, false):
+            _edges[action] = true
 
 
-## True on the frame the named button went down.
+## True on the physics frame the named button went down.
 func just_pressed(action: String) -> bool:
     return _cur.get(action, false) and not _prev.get(action, false)
+
+
+## Like just_pressed, but each press is handed out once. Use this from _process code,
+## which can run several times per physics tick and would otherwise see one press twice.
+func take_pressed(action: String) -> bool:
+    if _edges.has(action):
+        _edges.erase(action)
+        return true
+    return false
+
+
+var _edges: Dictionary = {}
 
 
 func move_vector() -> Vector2:
