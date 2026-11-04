@@ -8,7 +8,6 @@ const CARD_SIZE := Vector2(300, 340)
 const CARD_GAP := 28
 const ICON_BOX := 120          # height of the icon area at the top of a card
 const GRACE := 0.35            # seconds before a pick is accepted, so mashing does not choose
-const RARE_COLOR := Color(0.35, 0.60, 1.00)
 
 var main
 var _queue: Array = []         # players waiting for their level-up
@@ -16,6 +15,7 @@ var _player = null             # player choosing right now
 var _options: Array = []
 var _cards: Array[Button] = []
 var _names: Array[Label] = []
+var _rarities: Array[Label] = []
 var _effects: Array[Label] = []
 var _descs: Array[Label] = []
 var _title: Label
@@ -105,6 +105,12 @@ func _make_card(i: int) -> Button:
     box.add_theme_constant_override("separation", 6)
     box.mouse_filter = Control.MOUSE_FILTER_IGNORE
     b.add_child(box)
+    var rarity_label := UiTheme.label("", 16, UiTheme.DIM)
+    rarity_label.add_theme_font_override("font", Art.FONT)
+    rarity_label.add_theme_font_size_override("font_size", 16)
+    rarity_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    box.add_child(rarity_label)
+    _rarities.append(rarity_label)
     var name_label := UiTheme.label("", 34)
     name_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
     box.add_child(name_label)
@@ -171,14 +177,18 @@ func _show_next() -> void:
             card.visible = false
             continue
         var opt: Dictionary = _options[i]
-        var rare := LevelUps.is_rare(opt)
+        var rarity: int = clampi(int(opt.get("rarity", 0)), 0, Items.RARITY_COLORS.size() - 1)
+        var rarity_col: Color = Items.RARITY_COLORS[rarity]
         card.visible = true
+        card.add_theme_stylebox_override("normal", _card_box(Color(0.10, 0.08, 0.10, 0.96), rarity_col.darkened(0.25), 2))
         card.icon = Art.tile(opt["icon"])
         var tint := LevelUps.tint(opt)
         for state in ["icon_normal_color", "icon_hover_color", "icon_focus_color", "icon_pressed_color"]:
             card.add_theme_color_override(state, tint)
         _names[i].text = opt["name"]
-        _names[i].add_theme_color_override("font_color", RARE_COLOR if rare else UiTheme.BONE)
+        _names[i].add_theme_color_override("font_color", rarity_col)
+        _rarities[i].text = String(Items.RARITY_NAMES[rarity]).to_upper()
+        _rarities[i].add_theme_color_override("font_color", rarity_col)
         _effects[i].text = LevelUps.describe(opt)
         _descs[i].text = opt["desc"]
     _pad = MenuPad.new()

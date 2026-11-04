@@ -19,6 +19,7 @@ Guns aim and fire on their own; you move, vent, and pick things up.
 | Move | WASD | Left stick |
 | Interact (pedestals, stairs, sigil) | E | A |
 | Vent pressure | Space | LB |
+| Use active item | F | X |
 | Character sheet | C | Back / Select |
 | Pause | Esc | Start |
 | Join (players 2-4) | | Start on a pad that has not joined |
@@ -118,8 +119,44 @@ scrap and kills top-right, the gun hotbar bottom-centre (tier pips and mod dots 
 gun, weight beside it), gear slots bottom-left, the vent gauge bottom-right with its
 prompt. Everything is set in the Kenney Pixel font at 20 px or more.
 
+## Balance model
+
+Borrowed from Brotato and tuned by the bot:
+
+- **Difficulty** is one number: 2 + 4 per floor past the first + half the rooms cleared.
+  Five floors, so it runs from 2 to about 22.
+- **Enemies** scale linearly per kind (hp = base + slope x difficulty, contact damage
+  +0.35 per step); speed never scales. Thirteen kinds plus elite affixes and five bosses
+  with two phases each; `scripts/spawn_table.gd` gates kinds by floor.
+- **Rarity odds** have gates and caps: uncommon from difficulty 1 (+7% per step, cap
+  55%), rare from 3 (+3%, cap 25%), epic from 6 (+1.2%, cap 10%), legendary from 9
+  (+0.5%, cap 4%), all multiplied by 1 + luck. Treasure and boss rooms raise the floor.
+- **Prices**: base by rarity (14 / 26 / 44 / 74 / 120) + difficulty + 8% of base per
+  step; guns the same shape from 10 + 7 x weight.
+- **Rarity gates power**: common items are one modest stat, uncommon two, rare is where
+  bounce, pierce and chain live, epic adds projectiles or big conditionals with a cost,
+  legendary is run-defining. Level-ups use the same tiers keyed on level and luck.
+- **Waves** last 18 s to 60 s with difficulty; elites get affixes from difficulty 6 and
+  come in twos from 8, threes from 16.
+
+## Isaac layer: pools, no repeats, active items
+
+- **Pools by room**: every item belongs to pools (shop = economy, utility, defence, gun
+  mods; treasure = build-defining triggers and mechanics; boss = plain stat-ups; hidden =
+  weird and strong, legendaries and drawbacks; challenge = offence; arena = the free
+  post-fight commons and uncommons). Rooms roll from their pool, treasure and hidden
+  never below uncommon, and very strong items carry a lower pick weight.
+- **No repeats in a run**: an item that has been on show leaves the pool until the run
+  ends, like Isaac removing an item from its pool.
+- **Active item** (Isaac's spacebar item): one slot, used with F or X, charges that refill
+  one per cleared room. Fourteen of them from a 15-point heal to the Pressure Bomb, a huge
+  nova of whatever you last vented.
+
 ## Guns
 
+Forty-three guns, at least three per element plus six exotics, across archetypes (pistol,
+rifle, shotgun, SMG, sniper, mortar, beam, orb, boomerang, homing, burst, flak, wand,
+cannon) with a DPS budget per weight written next to each in `scripts/gun_library.gd`.
 Tiers I to IV: a duplicate merges into the gun you carry one tier up, and the shop's
 Gunsmith raises your lowest-tier gun. A gun holds one mod per tier and mod effects stack.
 When more than one gun has a free slot, picking up a mod opens a picker (one card per
@@ -128,7 +165,9 @@ Reactions crack elite and boss shields; the attuned reaction cracks twice.
 
 ## Gear
 
-Items drop from elites and bosses and sit in shops, treasure, hidden and challenge rooms.
+About two hundred items (132 hand-made across five rarities plus six per element),
+ten hand-made sets and one per element. Items drop from elites and bosses and sit in
+shops, treasure, hidden and challenge rooms.
 Eight gear slots plus a mod slot per gun. Every item is a few lines of data in
 [items.gd](scripts/items.gd): stat modifiers, conditional modifiers and triggered effects
 that all compose. To add an item, add one `_add(...)` line; the drop tables, pedestals,
@@ -171,7 +210,9 @@ burning crowd stays readable.
 godot --path . res://scenes/main.tscn -- --autotest
 ```
 
-Add `--short` after `--autotest` for a 70-second run. `godot --path . -- --menu-shot`
+Add `--short` after `--autotest` for a 70-second run, `--secs=N` for any length, and
+`--arsenal` to start with every gun (a stress test; the default is a real naked start
+that measures the progression loop). The log prints `[FLOOR]` and `[DEATH]` lines. `godot --path . -- --menu-shot`
 screenshots the menu and codex. `godot --headless --path . res://scenes/main.tscn -- --obstacle-test`
 checks projectiles hit obstacles.
 A bot plays by itself for up to five minutes: explores rooms, buys from pedestals,
@@ -222,7 +263,8 @@ scripts/
   items.gd           autoload `Items`: gear catalog and the trigger/stat effect engine
   projectile.gd      bullets: raw damage, then apply element; also hit obstacles
   elements.gd        autoload `Elements` / class `Element`: kinds, colours, reaction table
-  enemy.gd           chasing, states, reactions, immunity, elite sequences, boss re-shield
+  enemy.gd           thirteen kinds, states, reactions, elite affixes, five bosses
+  enemy_projectile.gd enemy shots;  spawn_table.gd  floor-gated spawn groups, affixes, bosses
   fx.gd              arcs, rings, floating text, particle puffs, animation-sheet flipbooks
   gun_pick_screen.gd pick which gun a mod goes on
   hud.gd             floor/room status, boss bar, minimap, player panels, help, banners

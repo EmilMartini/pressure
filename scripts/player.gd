@@ -14,7 +14,7 @@ const PRESSURE_DECAY := 7.0        # per second, toward neutral
 const PRESSURE_LIMIT := 100.0
 const VENT_MIN := 20.0
 const GUN_RING := 26.0
-const EQUIP_KEYS := ["head", "chest", "hands", "feet", "ring1", "ring2", "trinket1", "trinket2"]
+const EQUIP_KEYS := ["head", "chest", "hands", "feet", "ring1", "ring2", "trinket1", "trinket2", "active"]
 
 const PLAYER_COLORS := [
     Color(0.40, 0.90, 0.55),
@@ -40,6 +40,7 @@ var guns: Array[Gun] = []
 
 ## Equipped gear: EQUIP_KEYS -> item id. Gun mods live on the guns.
 var equipment: Dictionary = {}
+var active_charges := 0           # charges on the active item (equipment["active"])
 var _stats: Dictionary = {}
 
 ## Level-ups: xp from kills, upgrades picked on the level-up screen.
@@ -216,9 +217,16 @@ func equip(id: String) -> String:
                 key = slot + "1"
         old = equipment.get(key, "")
         equipment[key] = id
+        if slot == "active":
+            active_charges = Items.active_max_charges(self)
         say("Equipped %s" % item["name"])
     recalc_stats()
     return old
+
+
+## Use the active item (Isaac's spacebar item). False when empty or out of charges.
+func use_active() -> bool:
+    return Items.use_active(self)
 
 
 func equipped_item_ids() -> Array:
@@ -404,6 +412,8 @@ func _physics_process(delta: float) -> void:
 
     if input.just_pressed("vent"):
         vent()
+    if input.take_pressed("active"):
+        use_active()
 
     pressure = move_toward(pressure, 0.0, PRESSURE_DECAY * (1.0 + stat("pressure_decay")) * delta)
     invuln = maxf(0.0, invuln - delta)

@@ -16,6 +16,9 @@ var mods: Array = []   # item ids of the gun mods fitted to this gun
 var _sprite: Sprite2D
 var _aim := Vector2.RIGHT
 var _recoil := 0.0
+var _burst_left := 0      # burst shots still queued from the last trigger
+var _burst_timer := 0.0
+var _alt_flip := false    # alternating-element guns flip this per projectile
 
 
 func _init(p_data: GunData, p_player: Player) -> void:
@@ -33,6 +36,18 @@ func _ready() -> void:
 func _process(delta: float) -> void:
     cooldown = maxf(0.0, cooldown - delta)
     _recoil = move_toward(_recoil, 0.0, 45.0 * delta)
+    if _burst_left > 0:
+        _burst_timer -= delta
+        if _burst_timer <= 0.0:
+            _burst_left -= 1
+            _burst_timer = data.burst_gap
+            # Each burst shot re-aims at whatever is nearest now.
+            var tgt: Node2D = null
+            if is_instance_valid(player):
+                tgt = player.nearest_enemy(effective_range())
+            if tgt != null:
+                _aim = (tgt.global_position - global_position).normalized()
+            _shoot(_aim)
     _sprite.position = -_aim * _recoil
     _sprite.rotation = _aim.angle()
     _sprite.flip_v = _aim.x < 0.0
@@ -62,11 +77,13 @@ func extra_elements() -> Array:
         var ex: String = Items.get_item(id).get("mods", {}).get("extra_element", "")
         if ex != "" and Items.ELEMENTS.has(ex):
             out.append(Items.ELEMENTS[ex])
+    if data.extra_element != Element.Kind.NONE:
+        out.append(data.extra_element)
     return out
 
 
 func element_key() -> String:
-    return Items.ELEMENT_KEYS[data.element]
+    return Items.ELEMENT_KEYS.get(data.element, "none")
 
 
 func tier_mult() -> float:
@@ -82,11 +99,23 @@ func fire_rate() -> float:
     return data.fire_rate * (1.0 + 0.12 * float(tier - 1)) * maxf(0.2, 1.0 + player.stat("fire_rate") + player.stat("fire_rate_" + ek) + _gm("g_fire_rate"))
 
 
+## One trigger pull: the first shot leaves now, the rest of a burst follows in _process.
+## The cooldown covers the whole burst, so fire_rate stays triggers per second.
 func fire(dir: Vector2) -> void:
-    var ek := element_key()
     _aim = dir
     _recoil = 5.0 + float(data.weight)
-    cooldown = 1.0 / fire_rate()
+    var burst := maxi(1, data.burst_count)
+    cooldown = maxf(1.0 / fire_rate(), data.burst_gap * float(burst - 1) + 0.05)
+    _burst_left = burst - 1
+    _burst_timer = data.burst_gap
+    _shoot(dir)
+    player.add_pressure(data.pressure_per_shot * (1.0 + _gm("g_pressure")))
+    player.kick(dir, 1.0 + float(data.weight) * 0.5)
+
+
+## Spawns one volley (projectile_count projectiles) toward `dir`.
+func _shoot(dir: Vector2) -> void:
+    var ek := element_key()
     var world := get_tree().current_scene
     var damage := data.damage * tier_mult() * maxf(0.1, 1.0 + player.stat("dmg") + player.stat("dmg_" + ek) + _gm("g_dmg"))
     var potency := damage * data.reaction_mult * (1.0 + player.stat("potency") + player.stat("potency_" + ek))
@@ -101,28 +130,48 @@ func fire(dir: Vector2) -> void:
     var lifetime := data.lifetime * (1.0 + player.stat("range") + _gm("g_range"))
     var extras := extra_elements()
     var muzzle := global_position + dir * 14.0
+    # Lobbed shells land on the nearest enemy (or most of the way out when there is none).
+    var lob_dist := 0.0
+    if data.behaviour == "lob":
+        var rng := effective_range()
+        lob_dist = rng * 0.6
+        var tgt := player.nearest_enemy(rng)
+        if tgt != null:
+            lob_dist = clampf(muzzle.distance_to(tgt.global_position), 60.0, rng)
+    var shot_element: int = data.element
     for i in count:
         var angle := 0.0
         if count > 1:
             angle = lerpf(-data.spread_deg, data.spread_deg, float(i) / float(count - 1)) * 0.5
         angle += randf_range(-data.spread_deg, data.spread_deg) * 0.15
+        var el: int = data.element
+        if data.alt_element != Element.Kind.NONE:
+            _alt_flip = not _alt_flip
+            if _alt_flip:
+                el = data.alt_element
+        shot_element = el
         var p := Projectile.new()
         p.velocity = dir.rotated(deg_to_rad(angle)) * speed
         p.damage = damage
-        p.element = data.element
+        p.element = el
         p.extra_elements = extras
         p.potency = potency
         p.lifetime = lifetime
         p.pierce = pierce
         p.bounces = int(player.stat("bounce"))
         p.radius = data.projectile_radius * (1.4 if crit else 1.0) * (1.0 + 0.1 * float(tier - 1))
-        p.color = data.color()
+        p.color = Element.COLORS[el]
         p.crit = crit
         p.shooter = player
+        p.behaviour = data.behaviour
+        p.splash_radius = data.splash_radius * (1.0 + 0.1 * float(tier - 1))
+        p.shard_count = data.shard_count
+        p.homing_turn = data.homing_turn
+        if data.behaviour == "lob":
+            p.lifetime = maxf(0.15, lob_dist * randf_range(0.9, 1.1) / maxf(1.0, speed))
+            p.bounces = 0
         p.global_position = muzzle
         world.add_child(p)
-    player.add_pressure(data.pressure_per_shot * (1.0 + _gm("g_pressure")))
-    player.kick(dir, 1.0 + float(data.weight) * 0.5)
-    Sfx.shoot(data.element)
+    Sfx.shoot(shot_element)
     if "fx" in world and world.fx != null:
-        world.fx.puff(Art.PARTICLES["light"], muzzle, Color(data.color(), 0.9), 22.0 + float(data.weight) * 4.0, 0.08, true)
+        world.fx.puff(Art.PARTICLES["light"], muzzle, Color(Element.COLORS[shot_element], 0.9), 22.0 + float(data.weight) * 4.0, 0.08, true)

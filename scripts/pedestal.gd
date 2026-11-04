@@ -18,7 +18,14 @@ func _init(p_offer: Dictionary) -> void:
     z_index = 3
 
 
+## A plinth whose offer has been taken: the altar stays, bare, until the room is rebuilt.
+func empty() -> bool:
+    return bool(offer.get("taken", false))
+
+
 func _ready() -> void:
+    if empty():
+        return
     var coord: Vector2i
     var tint := color()
     match kind():
@@ -106,6 +113,17 @@ func _process(delta: float) -> void:
 
 
 func _draw() -> void:
+    if empty():
+        # Bare plinth: shadow, shaft and top, a little dust where the item stood.
+        draw_circle(Vector2(0, 18), 26.0, Color(0, 0, 0, 0.45))
+        draw_colored_polygon(PackedVector2Array([Vector2(-16, -8), Vector2(16, -8), Vector2(20, 14), Vector2(-20, 14)]), Color(0.26, 0.23, 0.25))
+        draw_rect(Rect2(-20, 10, 40, 6), Color(0.2, 0.18, 0.2))
+        draw_rect(Rect2(-18, -12, 36, 6), Color(0.36, 0.33, 0.35))
+        draw_rect(Rect2(-18, -12, 36, 2), Color(0.48, 0.45, 0.46))
+        draw_line(Vector2(-10, -4), Vector2(-10, 8), Color(0.18, 0.16, 0.18), 1.0)
+        draw_line(Vector2(10, -4), Vector2(10, 8), Color(0.18, 0.16, 0.18), 1.0)
+        draw_circle(Vector2(0, -11), 7.0, Color(0, 0, 0, 0.25))
+        return
     var c := color()
     var glow: Texture2D = Art.PARTICLES["light"]
     var g := 110.0 + sin(_t * 2.2) * 8.0

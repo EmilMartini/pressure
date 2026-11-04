@@ -3,6 +3,9 @@ extends Area2D
 ## A bullet. Deals raw damage, then applies its element (which may react). Passing
 ## through a cloud of another element reacts with the whole cloud. Bounces redirect it
 ## to the next enemy. Drawn per element: droplets, bolts, embers, shards, tar...
+## `behaviour` (from GunData) changes the flight: "straight", "lob" (arcs over everything
+## and splashes on landing), "homing", "boomerang" (returns to the shooter and can hit the
+## same enemies again on the way back) and "flak" (bursts into shards on hit or at range).
 
 const LAYER_ENEMIES := 2
 
@@ -20,11 +23,21 @@ var color := Color.WHITE
 var crit := false
 var extra_elements: Array = []   # from Coating gun mods, one element each
 var shooter: Player = null
+var behaviour := "straight"
+var splash_radius := 0.0
+var shard_count := 0
+var homing_turn := 0.0
 
 var _hit: Dictionary = {}
 var _clouds_hit: Dictionary = {}
 var _trail: Array = []
 var _smoke_cd := 0.0
+var _life0 := 1.0
+var _pierce0 := 0
+var _returning := false
+var _ob_grace := 0.0
+var _home_target: Node2D = null
+var _landed := false
 
 
 func _ready() -> void:
@@ -38,6 +51,12 @@ func _ready() -> void:
     add_child(shape)
     body_entered.connect(_on_body_entered)
     z_index = 5
+    _life0 = maxf(0.01, lifetime)
+    _pierce0 = pierce
+    if behaviour == "lob":
+        # In the air: no contact with anything until it lands.
+        monitoring = false
+        z_index = 6
     if element != Element.Kind.OIL:
         if _add_material == null:
             _add_material = CanvasItemMaterial.new()
@@ -46,21 +65,44 @@ func _ready() -> void:
 
 
 func _physics_process(delta: float) -> void:
+    if _landed:
+        return
     _trail.push_front(global_position)
     if _trail.size() > 6:
         _trail.pop_back()
+    _ob_grace = maxf(0.0, _ob_grace - delta)
+    match behaviour:
+        "homing":
+            _steer(delta)
+        "boomerang":
+            if not _returning and lifetime <= _life0 * 0.5:
+                _turn_back()
+            if _returning and shooter != null and is_instance_valid(shooter):
+                var to_home := shooter.global_position - global_position
+                if to_home.length() < 18.0:
+                    queue_free()
+                    return
+                velocity = to_home.normalized() * velocity.length()
     position += velocity * delta
     lifetime -= delta
-    for ob in get_tree().get_nodes_in_group("obstacles"):
-        if is_instance_valid(ob) and not ob.is_queued_for_deletion() and ob.overlaps(global_position, radius):
-            _on_body_entered(ob)
+    if behaviour == "lob":
+        if lifetime <= 0.0:
+            _land()
             return
-    for c in get_tree().get_nodes_in_group("clouds"):
-        if not is_instance_valid(c) or _clouds_hit.has(c) or c.element == element:
-            continue
-        if c.global_position.distance_to(global_position) <= c.radius:
-            _clouds_hit[c] = true
-            Elements.react_cloud(c, element, potency, shooter)
+        queue_redraw()
+        return
+    if _ob_grace <= 0.0:
+        for ob in get_tree().get_nodes_in_group("obstacles"):
+            if is_instance_valid(ob) and not ob.is_queued_for_deletion() and ob.overlaps(global_position, radius):
+                _on_body_entered(ob)
+                return
+    if element != Element.Kind.NONE:
+        for c in get_tree().get_nodes_in_group("clouds"):
+            if not is_instance_valid(c) or _clouds_hit.has(c) or c.element == element:
+                continue
+            if c.global_position.distance_to(global_position) <= c.radius:
+                _clouds_hit[c] = true
+                Elements.react_cloud(c, element, potency, shooter)
     if element == Element.Kind.FIRE:
         _smoke_cd -= delta
         if _smoke_cd <= 0.0:
@@ -69,8 +111,98 @@ func _physics_process(delta: float) -> void:
             if fx != null:
                 fx.puff(Art.PARTICLES["smoke"], global_position, Color(0.25, 0.22, 0.2, 0.45), radius * 4.0, 0.35, false, Vector2(0, -20), 0.5)
     if lifetime <= 0.0:
+        if shard_count > 0:
+            _burst_shards(null)
         queue_free()
     queue_redraw()
+
+
+## Homing: turn toward the nearest enemy not yet hit, at most homing_turn rad/s.
+func _steer(delta: float) -> void:
+    if _home_target == null or not is_instance_valid(_home_target) or _home_target.is_queued_for_deletion() or _hit.has(_home_target):
+        _home_target = _next_target()
+    if _home_target == null or velocity == Vector2.ZERO:
+        return
+    var want := (_home_target.global_position - global_position).angle()
+    var diff := wrapf(want - velocity.angle(), -PI, PI)
+    velocity = velocity.rotated(clampf(diff, -homing_turn * delta, homing_turn * delta))
+
+
+## Boomerang: head back to the shooter, free to hit everything again.
+func _turn_back() -> void:
+    _returning = true
+    _hit.clear()
+    pierce = _pierce0
+    _ob_grace = 0.2
+    velocity = -velocity
+    lifetime = maxf(lifetime, _life0 * 0.5 + 0.8)
+
+
+## Lob: the shell comes down and splashes everything within splash_radius at full damage.
+func _land() -> void:
+    _landed = true
+    var r := maxf(splash_radius, radius * 2.0)
+    for e in get_tree().get_nodes_in_group("enemies"):
+        if not is_instance_valid(e) or e.is_queued_for_deletion() or not e is Enemy:
+            continue
+        var en := e as Enemy
+        if en.global_position.distance_to(global_position) <= r + en.radius:
+            _hit[en] = true
+            _deal_hit(en, damage, potency)
+    for ob in get_tree().get_nodes_in_group("obstacles"):
+        if is_instance_valid(ob) and not ob.is_queued_for_deletion() and ob.overlaps(global_position, r * 0.5):
+            ob.apply_element(element, potency)
+    if element != Element.Kind.NONE:
+        for c in get_tree().get_nodes_in_group("clouds"):
+            if is_instance_valid(c) and c.element != element and c.global_position.distance_to(global_position) <= c.radius + r * 0.5:
+                Elements.react_cloud(c, element, potency, shooter)
+    Elements.nova.emit(global_position, r, Color(color, 0.55))
+    var fx := _fx()
+    if fx != null:
+        fx.puff(Art.PARTICLES["smoke"], global_position, Color(color, 0.6), r * 1.2, 0.3, false)
+    if shard_count > 0:
+        _burst_shards(null)
+    queue_free()
+
+
+## Splash from a shot that ended on a hit: half damage to everyone else nearby.
+func _splash(center_hit: Node) -> void:
+    if splash_radius <= 0.0:
+        return
+    for e in get_tree().get_nodes_in_group("enemies"):
+        if e == center_hit or not is_instance_valid(e) or e.is_queued_for_deletion() or not e is Enemy:
+            continue
+        var en := e as Enemy
+        if en.global_position.distance_to(global_position) <= splash_radius + en.radius:
+            _deal_hit(en, damage * 0.5, potency * 0.5)
+    Elements.nova.emit(global_position, splash_radius, Color(color, 0.45))
+
+
+## Flak: shard_count small straight shards of the same element at 50% damage.
+func _burst_shards(exclude: Node) -> void:
+    var parent := get_parent()
+    if parent == null:
+        return
+    var n := shard_count
+    shard_count = 0
+    var base_angle := randf() * TAU
+    for i in n:
+        var s := Projectile.new()
+        var a := base_angle + TAU * float(i) / float(n) + randf_range(-0.15, 0.15)
+        s.velocity = Vector2.RIGHT.rotated(a) * 520.0
+        s.damage = damage * 0.5
+        s.element = element
+        s.extra_elements = extra_elements
+        s.potency = potency * 0.5
+        s.lifetime = 0.22
+        s.radius = maxf(2.0, radius * 0.45)
+        s.color = color
+        s.crit = crit
+        s.shooter = shooter
+        s.position = position
+        if exclude != null:
+            s._hit[exclude] = true
+        parent.add_child.call_deferred(s)
 
 
 func _fx() -> Fx:
@@ -83,7 +215,15 @@ func _fx() -> Fx:
 func _draw() -> void:
     var dir := velocity.normalized() if velocity != Vector2.ZERO else Vector2.RIGHT
     var side := dir.orthogonal()
-    if _trail.size() > 1 and element != Element.Kind.OIL:
+    if behaviour == "lob":
+        # Shadow on the ground, the shell drawn up in the air along a sine arc.
+        var t := clampf(1.0 - lifetime / _life0, 0.0, 1.0)
+        var arc := clampf(_life0 * velocity.length() * 0.35, 30.0, 140.0)
+        var h := sin(PI * t) * arc
+        draw_set_transform(Vector2.ZERO, 0.0, Vector2(1.0, 0.45))
+        draw_circle(Vector2.ZERO, radius * (1.2 - 0.4 * sin(PI * t)), Color(0, 0, 0, 0.45))
+        draw_set_transform(Vector2(0, -h), 0.0, Vector2.ONE)
+    elif _trail.size() > 1 and element != Element.Kind.OIL:
         for i in range(_trail.size() - 1):
             var f := 1.0 - float(i) / float(_trail.size())
             draw_line(to_local(_trail[i]), to_local(_trail[i + 1]), Color(color, 0.45 * f), maxf(1.0, radius * 1.3 * f))
@@ -145,19 +285,57 @@ func _draw() -> void:
         var glow: Texture2D = Art.PARTICLES["light"]
         var gs := radius * 6.0
         draw_texture_rect(glow, Rect2(Vector2(-gs, -gs) / 2.0, Vector2(gs, gs)), false, Color(color, 0.35))
+    if behaviour == "boomerang":
+        draw_arc(Vector2.ZERO, radius * 1.5, lifetime * 14.0, lifetime * 14.0 + PI, 10, Color(color, 0.8), 2.0)
+    if behaviour == "lob":
+        draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
 func _on_body_entered(body: Node) -> void:
+    if _landed or behaviour == "lob":
+        return
     if body is Obstacle:
+        if _ob_grace > 0.0:
+            return
         body.apply_element(element, potency)
+        if behaviour == "boomerang" and not _returning:
+            _turn_back()
+            return
+        if shard_count > 0:
+            _burst_shards(null)
+        _splash(null)
         queue_free()
         return
     if not body is Enemy or _hit.has(body):
         return
     var enemy := body as Enemy
     _hit[enemy] = true
-    var raw := damage
-    if enemy.immune_to == element:
+    _deal_hit(enemy, damage, potency)
+    if behaviour == "flak":
+        _burst_shards(enemy)
+        _splash(enemy)
+        queue_free()
+        return
+    if bounces > 0:
+        var next := _next_target()
+        if next != null:
+            bounces -= 1
+            velocity = (next.global_position - global_position).normalized() * velocity.length()
+            lifetime = maxf(lifetime, 0.6)
+            return
+    if pierce > 0:
+        pierce -= 1
+    elif behaviour == "boomerang" and not _returning:
+        _turn_back()
+    else:
+        _splash(enemy)
+        queue_free()
+
+
+## The shared hit path: raw damage (with element-vs-state multipliers), then the element.
+func _deal_hit(enemy: Enemy, dmg: float, pot: float) -> void:
+    var raw := dmg
+    if enemy.immune_to == element and element != Element.Kind.NONE:
         raw = 0.0
     # How the element meets what the target already carries, before any gear bonuses:
     # water conducts, damp things burn badly, oil feeds fire, frozen things shatter.
@@ -185,28 +363,17 @@ func _on_body_entered(body: Node) -> void:
             raw *= 1.0 + shooter.stat("vs_oiled")
     enemy.take_damage(raw, color, true, shooter, crit)
     if is_instance_valid(enemy) and not enemy.is_queued_for_deletion():
-        enemy.apply_element(element, potency, shooter)
+        enemy.apply_element(element, pot, shooter)
     for extra in extra_elements:
         if is_instance_valid(enemy) and not enemy.is_queued_for_deletion():
-            enemy.apply_element(extra, potency * 0.8, shooter)
+            enemy.apply_element(extra, pot * 0.8, shooter)
     if shooter != null:
         Items.fire(shooter, "hit", { "target": enemy, "pos": global_position, "element": element })
-    if bounces > 0:
-        var next := _next_target()
-        if next != null:
-            bounces -= 1
-            velocity = (next.global_position - global_position).normalized() * velocity.length()
-            lifetime = maxf(lifetime, 0.6)
-            return
-    if pierce > 0:
-        pierce -= 1
-    else:
-        queue_free()
 
 
 func _next_target() -> Node2D:
     var best: Node2D = null
-    var best_d := 320.0 * 320.0
+    var best_d := (450.0 * 450.0) if behaviour == "homing" else (320.0 * 320.0)
     for e in get_tree().get_nodes_in_group("enemies"):
         if _hit.has(e) or not is_instance_valid(e) or e.is_queued_for_deletion():
             continue

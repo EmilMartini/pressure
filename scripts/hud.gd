@@ -359,9 +359,13 @@ func _draw_gun_slot(gun: Gun, slot: Rect2) -> void:
 # --- Bottom left: gear -----------------------------------------------------
 
 
+## Extra space before the active item so it reads as its own thing.
+const ACTIVE_GAP := 10.0
+
+
 func _gear_width(s: float) -> float:
     var gap := 4.0 if s >= GEAR_BIG else 3.0
-    return float(Player.EQUIP_KEYS.size()) * (s + gap) - gap
+    return float(Player.EQUIP_KEYS.size()) * (s + gap) - gap + ACTIVE_GAP
 
 
 func _draw_main_gear(p: Player, bottom: float) -> void:
@@ -374,15 +378,30 @@ func _draw_gear(p: Player, origin: Vector2, s: float) -> void:
     var gap := 4.0 if s >= GEAR_BIG else 3.0
     for k in Player.EQUIP_KEYS.size():
         var key: String = Player.EQUIP_KEYS[k]
-        var gbox := Rect2(origin.x + float(k) * (s + gap), origin.y, s, s)
+        var is_active := key == "active"
+        var gbox := Rect2(origin.x + float(k) * (s + gap) + (ACTIVE_GAP if is_active else 0.0), origin.y, s, s)
         draw_rect(gbox, Color(0.08, 0.06, 0.08, 0.9))
         if p.equipment.has(key):
             var it := Items.get_item(p.equipment[key])
-            _icon(Items.icon(it), gbox.grow(-3.0), Items.icon_tint(it))
+            var charged := not is_active or p.active_charges > 0
+            _icon(Items.icon(it), gbox.grow(-3.0), Items.icon_tint(it) if charged else Color(0.4, 0.38, 0.4))
             draw_rect(gbox, Items.rarity_color(it), false, 2.0)
+            if is_active:
+                _draw_charge_pips(gbox, p.active_charges, Items.active_max_charges(p))
         else:
             _icon(Items.SLOT_ICONS[key.rstrip("12")], gbox.grow(-4.0), Color(0.3, 0.28, 0.3))
             draw_rect(gbox, Color(0.25, 0.22, 0.24), false, 1.0)
+
+
+## A row of charge pips along the bottom edge of the active item's box.
+func _draw_charge_pips(box: Rect2, charges: int, max_charges: int) -> void:
+    if max_charges <= 0:
+        return
+    var pip_w := clampf((box.size.x - 4.0) / float(max_charges) - 2.0, 2.0, 6.0)
+    for c in max_charges:
+        var pip := Rect2(box.position.x + 3.0 + float(c) * (pip_w + 2.0), box.end.y - 6.0, pip_w, 4.0)
+        draw_rect(pip.grow(1.0), Color(0, 0, 0, 0.8))
+        draw_rect(pip, ANNOUNCE if c < charges else Color(0.25, 0.22, 0.24))
 
 
 # --- Bottom right: vent gauge ----------------------------------------------

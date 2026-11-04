@@ -181,3 +181,5 @@ func shoot(element: int) -> void:
             play("shoot_ice")
         Element.Kind.OIL, Element.Kind.VOID, Element.Kind.GALE:
             play("shoot_oil")
+        _:
+            play("shoot_shock")

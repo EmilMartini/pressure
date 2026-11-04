@@ -159,6 +159,17 @@ Principle: **every run starts naked, and nothing you own makes a run easier.** M
 progression widens what can happen in a run and what you are allowed to attempt, never
 your starting power. That keeps the "overpowered and bored" failure out by construction.
 
+### Itemization model (Brotato tiers, Isaac pools) — BUILT
+- Rarity is the quality axis and gates power: commons are one small stat, uncommons two,
+  rares introduce mechanics (bounce, pierce, chain), epics add projectiles or big
+  conditionals with a cost, legendaries are run-defining. Rarity odds use gates and caps
+  by difficulty and scale with luck; prices are base + difficulty + 8% of base per step.
+- Pools by room type, Isaac style, with per-item pick weights and no repeats within a
+  run. Treasure rooms are the build-defining source, shops are utility, boss drops are
+  stat-ups, hidden rooms are weird and strong.
+- An active item slot with room-clear charges, Isaac's spacebar item.
+- Level-ups use the same tiers keyed on level and luck; mechanical level-ups are rare.
+
 ### In-run gear (the WoW loot loop, inside one run) — BUILT, first batch
 - Gear drops during the run and is lost at the end, like Isaac items. Elites drop an item
   55% of the time, bosses always drop rare or better, shops sell two, treasure rooms offer

@@ -7,6 +7,7 @@ extends PanelContainer
 const SLOT_LAYOUT := {
     "head": Vector2(24, 20), "chest": Vector2(24, 92), "hands": Vector2(24, 164), "feet": Vector2(24, 236),
     "trinket1": Vector2(336, 20), "trinket2": Vector2(336, 92), "ring1": Vector2(336, 164), "ring2": Vector2(336, 236),
+    "active": Vector2(180, 6),
 }
 const SLOT_SIZE := 60.0
 
@@ -161,6 +162,8 @@ func _build_slots() -> void:
 func _item_tooltip(it: Dictionary) -> String:
     var col := Items.rarity_color(it).to_html(false)
     var text := "[b][color=#%s]%s[/color][/b]   [color=#9a948f]%s %s[/color]\n%s" % [col, it["name"], Items.RARITY_NAMES[it["rarity"]], it["slot"], it["desc"]]
+    if it.has("active"):
+        text += "\n[color=#9a948f]Charges %d / %d. A cleared room refills one.[/color]" % [player.active_charges, Items.active_max_charges(player)]
     var sid := Items.set_of(it["id"])
     if sid != "":
         var s: Dictionary = Items.SETS[sid]

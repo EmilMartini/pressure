@@ -8,7 +8,7 @@ const DIRS: Array[Vector2i] = [Vector2i.UP, Vector2i.DOWN, Vector2i.LEFT, Vector
 const OBSTACLES := ["pool", "thicket", "valve", "ward", "rubble", "miasma"]
 
 
-static func generate(floor_number: int) -> Dictionary:
+static func generate(floor_number: int, luck: float = 0.0) -> Dictionary:
     var target := 7 + floor_number * 2
     var start := Vector2i(GRID / 2, GRID / 2)
     var rooms: Dictionary = {}
@@ -42,7 +42,7 @@ static func generate(floor_number: int) -> Dictionary:
         rooms[candidates[i]].type = specials[i]
 
     _place_hidden_room(rooms, start)
-    _stock_rooms(rooms, floor_number)
+    _stock_rooms(rooms, floor_number, luck)
 
     rooms[start].discovered = true
     for d in rooms[start].doors.keys():
@@ -121,7 +121,7 @@ static func unlocked_obstacles() -> Array:
     return out
 
 
-static func _stock_rooms(rooms: Dictionary, floor_number: int) -> void:
+static func _stock_rooms(rooms: Dictionary, floor_number: int, luck: float = 0.0) -> void:
     for p in rooms.keys():
         var r: RoomData = rooms[p]
         match r.type:
@@ -137,15 +137,15 @@ static func _stock_rooms(rooms: Dictionary, floor_number: int) -> void:
                 r.stock.append(offer("gunsmith", "", 28 + floor_number * 12))
                 var shop_items: Array = []
                 for i in (3 if Progress.has("shop:items") else 2):
-                    var iid := Items.roll(floor_number * 3, Items.Rarity.COMMON, shop_items)
+                    var iid := Items.roll(floor_number * 4, Items.Rarity.COMMON, shop_items, luck, "shop")
                     shop_items.append(iid)
-                    r.stock.append(Items.offer(iid, Items.price(Items.get_item(iid), floor_number)))
+                    r.stock.append(Items.offer(iid, Items.price(Items.get_item(iid), floor_number * 4)))
             RoomData.Type.TREASURE:
                 # A chest, Slay the Spire style: one pick from gear, a gun, or a run boon.
                 # Chest size grows with the floor and a little luck.
                 var tier := floor_number + (1 if randf() < 0.3 else 0)
                 var min_rarity: int = clampi(tier, Items.Rarity.UNCOMMON, Items.Rarity.EPIC)
-                r.stock.append(Items.offer(Items.roll(floor_number * 3 + tier * 2, min_rarity), 0))
+                r.stock.append(Items.offer(Items.roll(floor_number * 4 + tier * 2, maxi(min_rarity, Items.pool_min_rarity("treasure")), [], luck, "treasure"), 0))
                 var pool: Array = Guns.ids()
                 if not pool.is_empty():
                     r.stock.append(offer("gun", pool.pick_random(), 0))
@@ -153,14 +153,17 @@ static func _stock_rooms(rooms: Dictionary, floor_number: int) -> void:
                 r.chest_tier = tier
             RoomData.Type.HIDDEN:
                 r.stock.append(offer("carry", "", 0, 3))
-                r.stock.append(Items.offer(Items.roll(floor_number * 3 + 4, Items.Rarity.RARE), 0))
+                r.stock.append(Items.offer(Items.roll(floor_number * 4 + 4, Items.Rarity.RARE, [], luck, "hidden"), 0))
                 r.loose_scrap = 20 + floor_number * 10
             RoomData.Type.CHALLENGE:
                 r.stock.append(offer("sigil", "", 0))
 
 
+## Brotato's shape: base + difficulty + 8% of base per difficulty step.
 static func gun_price(data: GunData, floor_number: int) -> int:
-    return 12 + data.weight * 6 + floor_number * 6
+    var base := 10 + data.weight * 7
+    var diff := floor_number * 4
+    return base + diff + int(float(base) * 0.08 * float(diff))
 
 
 const BOONS := {

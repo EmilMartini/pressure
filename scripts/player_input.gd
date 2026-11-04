@@ -24,6 +24,7 @@ var _last_mouse_screen := Vector2i(-1, -1)
 const PROMPTS := {
     "interact": ["A", "E"],
     "vent": ["LB", "Space"],
+    "active": ["X", "F"],
     "pause": ["Start", "Esc"],
     "sheet": ["Back", "C"],
 }
@@ -83,6 +84,7 @@ func poll() -> void:
     _cur = {
         "vent": _button(JOY_BUTTON_LEFT_SHOULDER, KEY_SPACE),
         "interact": _button(JOY_BUTTON_A, KEY_E),
+        "active": _button(JOY_BUTTON_X, KEY_F),
         "start": _button(JOY_BUTTON_START, KEY_ENTER),
     }
     for action in _cur.keys():

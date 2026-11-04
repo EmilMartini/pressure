@@ -92,7 +92,7 @@ func _begin_arena() -> void:
     data.started = true
     active = true
     var diff := main.difficulty()
-    wave_duration = clampf(16.0 + 2.5 * float(diff), 16.0, 40.0)
+    wave_duration = clampf(18.0 + 2.2 * float(diff), 18.0, 60.0)
     wave_time_left = wave_duration
     _spawn_timer = 0.8
     _elite_timer = wave_duration * 0.45 if diff >= 2 else INF
@@ -109,11 +109,17 @@ func _tick_arena(delta: float) -> void:
     _spawn_timer -= delta
     _elite_timer -= delta
     if _spawn_timer <= 0.0:
-        _spawn_timer = maxf(0.45, 1.2 - 0.04 * float(diff))
-        _spawn_group()
+        # Pacing by hit-point budget: each group buys itself a pause proportional to its
+        # total hp against what a party of this difficulty is expected to put out, so a
+        # starter pistol holds floor 1 and a built party gets a flood on floor 5.
+        if enemies.get_child_count() < mini(70, 24 + diff * 2):
+            var spawned_hp := _spawn_group()
+            _spawn_timer = clampf(spawned_hp / hp_inflow_target(diff), 0.8, 6.0)
+        else:
+            _spawn_timer = 1.0
     if _elite_timer <= 0.0:
         _elite_timer = INF
-        _spawn_elite(1 + int(diff >= 6))
+        _spawn_elite(SpawnTable.elite_count(diff))
     if wave_time_left <= 0.0:
         _finish_fight(6)
         _arena_reward()
@@ -130,7 +136,7 @@ func _arena_reward() -> void:
     if randf() < 0.5 and not guns.is_empty():
         data.stock.append(FloorGen.offer("gun", guns.pick_random(), 0))
     else:
-        data.stock.append(Items.offer(Items.roll(main.difficulty(), Items.Rarity.COMMON), 0))
+        data.stock.append(Items.offer(Items.roll(main.difficulty(), Items.Rarity.COMMON, [], main.party_luck(), "arena"), 0))
     _build_pedestals()
     main.announce("Room cleared: take your reward")
 
@@ -156,7 +162,7 @@ func _tick_challenge(delta: float) -> void:
     if _elites_alive <= 0:
         var picked: Array = []
         for i in 3:
-            var id := Items.roll(main.difficulty() + 2, Items.Rarity.UNCOMMON, picked)
+            var id := Items.roll(main.difficulty() + 2, Items.Rarity.UNCOMMON, picked, main.party_luck(), "challenge")
             picked.append(id)
             data.stock.append(Items.offer(id, 0))
         _finish_fight(20)
@@ -167,6 +173,7 @@ func _begin_boss() -> void:
     data.started = true
     active = true
     boss = _spawn_enemy("boss", Vector2(0, -220))
+    boss.set_boss(SpawnTable.boss_for(main.floor_number))
     var pairs := Elements.available_reactions(main.party_elements())
     var hits := 5 + main.difficulty() / 3
     if not pairs.is_empty():
@@ -200,6 +207,8 @@ func _finish_fight(bonus_scrap: int) -> void:
     data.cleared = true
     for e in enemies.get_children():
         e.vanish()
+    for sh in get_tree().get_nodes_in_group("enemy_projectiles"):
+        sh.queue_free()
     _drop_scrap(Vector2.ZERO, bonus_scrap, 6)
     main.on_room_cleared(self)
     Sfx.play("cleared")
@@ -212,21 +221,24 @@ func _finish_fight(bonus_scrap: int) -> void:
 # --- Spawning ----------------------------------------------------------------
 
 
-func _spawn_group() -> void:
+## Enemy hit points per second the arena feeds the party at a difficulty. Roughly
+## 60-70% of what an invested party deals; the gap is where upgrades go.
+static func hp_inflow_target(diff: int) -> float:
+    return 11.0 + 7.0 * float(diff)
+
+
+func _spawn_group() -> float:
     var diff := main.difficulty()
-    var count := mini(8, 3 + diff / 4 + (main.players.size() - 1))
-    for i in count:
-        var roll := randf()
-        var type := "grunt"
-        if roll < 0.25:
-            type = "runner"
-        elif roll < 0.37 and diff >= 1:
-            type = "brute"
+    var total_hp := 0.0
+    for type in SpawnTable.group(diff, main.floor_number, main.players.size()):
         var e := _spawn_enemy(type, _spawn_point())
-        if diff >= 2 and randf() < minf(0.6, 0.06 * float(diff)):
+        total_hp += e.max_hp
+        if e.immune_to == Element.Kind.NONE and diff >= 2 and randf() < minf(0.5, 0.05 * float(diff)):
+            # Never immune to the party's only element: that would be unkillable.
             var kinds := main.party_elements()
-            if not kinds.is_empty():
+            if kinds.size() >= 2:
                 e.immune_to = kinds.pick_random()
+    return total_hp
 
 
 func _spawn_enemy(type: String, pos: Vector2) -> Enemy:
@@ -244,6 +256,7 @@ func _spawn_elite(count: int) -> void:
     var pairs := Elements.available_reactions(main.party_elements())
     for i in count:
         var e := _spawn_enemy("elite", _spawn_point())
+        e.set_affix(SpawnTable.elite_affix(diff))
         if not pairs.is_empty():
             e.set_shield(pairs.pick_random(), hits)
         Elements.reaction_fired.emit("ELITE", e.global_position, Color(1.0, 0.85, 0.3))
@@ -281,7 +294,7 @@ func _on_enemy_died(e: Enemy) -> void:
     elif e.is_elite:
         Progress.add("elites")
     if e.last_hit_by != null and is_instance_valid(e.last_hit_by):
-        e.last_hit_by.gain_xp(float(e.scrap_value) + 1.0)
+        e.last_hit_by.gain_xp(2.0 + 2.0 * float(e.scrap_value))
     _drop_scrap(e.global_position, e.scrap_value, mini(e.scrap_value, 5))
     if e.is_elite and data.type == RoomData.Type.CHALLENGE:
         _elites_alive -= 1
@@ -289,10 +302,10 @@ func _on_enemy_died(e: Enemy) -> void:
     var inner := rect.grow(-90.0)
     var drop_pos := Vector2(clampf(e.global_position.x, inner.position.x, inner.end.x), clampf(e.global_position.y, inner.position.y, inner.end.y))
     if e.kind_name == "boss":
-        data.stock.append(Items.offer(Items.roll(main.difficulty() + 4, Items.Rarity.RARE), 0, Vector2(0, 150)))
+        data.stock.append(Items.offer(Items.roll(main.difficulty() + 4, Items.Rarity.RARE, [], main.party_luck(), "boss"), 0, Vector2(0, 150)))
         _build_pedestals()
     elif e.is_elite and randf() < 0.55:
-        data.stock.append(Items.offer(Items.roll(main.difficulty()), 0, drop_pos))
+        data.stock.append(Items.offer(Items.roll(main.difficulty(), Items.Rarity.COMMON, [], main.party_luck()), 0, drop_pos))
         _build_pedestals()
 
 
@@ -493,7 +506,11 @@ func _build_pedestals() -> void:
         if is_instance_valid(p):
             p.queue_free()
     pedestals.clear()
-    var offers: Array = data.stock.filter(func(o): return not o["taken"])
+    # Taken offers keep their plinth (bare) so the row stays put; stairs and sigils never do.
+    var offers: Array = data.stock.filter(func(o): return not o["taken"] or o["kind"] in ["gun", "item", "boon", "gunsmith", "carry", "repair"])
+    for o in offers:
+        if o["kind"] == "item" and not o["taken"]:
+            Items.mark_seen(o["id"])   # Isaac: an item on show leaves the run's pool
     var row: Array = offers.filter(func(o): return not o.has("pos"))
     var n := row.size()
     var per_row := 4
@@ -555,7 +572,7 @@ func _handle_interact() -> void:
         if not is_instance_valid(ped):
             continue
         var near := main.nearest_alive_player(ped.global_position)
-        ped.highlighted = near != null and near.global_position.distance_to(ped.global_position) <= Pedestal.RANGE
+        ped.highlighted = not ped.empty() and near != null and near.global_position.distance_to(ped.global_position) <= Pedestal.RANGE
         if near != null:
             ped.prompt_key = near.input.prompt("interact")
             ped.prompt_kind = near.input.last_kind
@@ -565,7 +582,7 @@ func _handle_interact() -> void:
         var best: Pedestal = null
         var best_d := Pedestal.RANGE
         for ped in pedestals:
-            if not is_instance_valid(ped):
+            if not is_instance_valid(ped) or ped.empty():
                 continue
             var d := ped.global_position.distance_to(pl.global_position)
             if d < best_d:
@@ -651,7 +668,9 @@ func activate(ped: Pedestal, pl: Player) -> void:
                         other["taken"] = true
             if replaced != "":
                 # The old piece takes the plinth the new one came from.
-                data.stock.append(Items.offer(replaced, 0, ped.position))
+                o["id"] = replaced
+                o["price"] = 0
+                o["taken"] = false
         "boon":
             match o["id"]:
                 "vitality":
@@ -684,7 +703,7 @@ func activate(ped: Pedestal, pl: Player) -> void:
                 return
             main.scrap -= o["price"]
             Sfx.play("buy")
-            o["taken"] = true
+            o["price"] = int(float(o["price"]) * 1.6)   # stays on offer, dearer each time
         "carry":
             if main.scrap < o["price"]:
                 pl.say("Need %d scrap" % o["price"])
@@ -695,7 +714,7 @@ func activate(ped: Pedestal, pl: Player) -> void:
             pl.recalc_stats()
             pl.say("Carry capacity %d" % pl.weight_capacity)
             Sfx.play("buy")
-            o["taken"] = true
+            o["price"] = int(float(o["price"]) * 1.5)
         "repair":
             if main.scrap < o["price"]:
                 pl.say("Need %d scrap" % o["price"])
@@ -705,7 +724,7 @@ func activate(ped: Pedestal, pl: Player) -> void:
             pl.hp = minf(pl.max_hp, pl.hp + o["amount"])
             pl.say("Repaired")
             Sfx.play("buy")
-            o["taken"] = true
+            o["price"] += 10
         "stairs":
             Sfx.play("stairs")
             main.next_floor()

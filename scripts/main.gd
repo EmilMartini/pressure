@@ -4,7 +4,7 @@ extends Node2D
 ## couch co-op joins, and the self-test bot.
 
 const MAX_PLAYERS := 4
-const FLOORS := 3
+const FLOORS := 5
 const CAMERA_PAD := 90.0
 
 var players: Array[Player] = []
@@ -92,6 +92,7 @@ func _ready() -> void:
 
     Progress.start_run()
     Music.play("run")
+    Items.new_run()
     start_floor(1)
     if OS.get_cmdline_user_args().has("--obstacle-test"):
         _obstacle_test()
@@ -196,7 +197,10 @@ func is_device_joined(device: int) -> bool:
 
 func start_floor(n: int) -> void:
     floor_number = n
-    rooms = FloorGen.generate(n)
+    if autotest and not players.is_empty():
+        print("[FLOOR] %d at t=%.0f kills=%d scrap=%d hp=%.0f level=%d guns=%d items=%d" % [
+            n, _clock, total_kills, scrap, players[0].hp, players[0].level, players[0].guns.size(), players[0].equipment.size()])
+    rooms = FloorGen.generate(n, party_luck())
     for p in players:
         p.pressure = 0.0
         if not p.alive:
@@ -272,6 +276,14 @@ func next_floor() -> void:
 ## second room, so a floor feels like one difficulty band and the jump is the stairs.
 func difficulty() -> int:
     return 2 + (floor_number - 1) * 4 + rooms_cleared / 2
+
+
+## Best luck in the party: rarer offers for everyone, the way scrap gain works.
+func party_luck() -> float:
+    var best := 0.0
+    for p in players:
+        best = maxf(best, p.stat("luck"))
+    return best
 
 
 func add_scrap(v: int) -> void:
@@ -407,6 +419,8 @@ func _on_player_died(_p: Player) -> void:
         if p.alive:
             return
     game_over = true
+    if autotest:
+        print("[DEATH] floor=%d room=%s diff=%d t=%.0f kills=%d level=%d" % [floor_number, current.data.type_name() if current else "-", difficulty(), _clock, total_kills, players[0].level])
     _end_run(false)
 
 
@@ -488,16 +502,19 @@ func _setup_autotest() -> void:
     # Fresh, separate save so the bot exercises unlocks without touching the real one.
     Progress.save_path = "user://save_autotest.json"
     Progress.reset()
-    var p := players[0]
-    p.weight_capacity_base = 80   # carry every gun so every element gets exercised
-    p.recalc_stats()
-    for id in Guns.all_ids():
-        var owned := false
-        for g in p.guns:
-            if g.data.id == id:
-                owned = true
-        if not owned:
-            p.add_gun(id)
+    # Default: a real naked start, so the run measures the progression loop. `--arsenal`
+    # hands over every gun to stress every element and effect at once.
+    if OS.get_cmdline_user_args().has("--arsenal"):
+        var p := players[0]
+        p.weight_capacity_base = 80
+        p.recalc_stats()
+        for id in Guns.all_ids():
+            var owned := false
+            for g in p.guns:
+                if g.data.id == id:
+                    owned = true
+            if not owned:
+                p.add_gun(id)
     DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path("res://autotest"))
 
 
@@ -520,6 +537,8 @@ func _autotest_tick(delta: float) -> void:
         _bot_navigate(p)
     if fmod(_clock, 6.0) < delta:
         p.vent()
+    if fmod(_clock, 9.0) < delta and p.has_method("use_active"):
+        p.use_active()
     if fmod(_clock, 10.0) < delta:
         _print_stats("TICK")
         var peds: Array = []
@@ -555,7 +574,7 @@ func _bot_navigate(p: Player) -> void:
     var room := current
     # Pedestals worth using.
     for ped in room.pedestals:
-        if not is_instance_valid(ped):
+        if not is_instance_valid(ped) or ped.empty():
             continue
         var o: Dictionary = ped.offer
         var want := false
@@ -567,8 +586,10 @@ func _bot_navigate(p: Player) -> void:
             "item":
                 # Replacing gear drops the old piece back on the floor; never chase it twice.
                 want = o["price"] <= scrap and not _bot_tried.has(o["id"])
-            "carry", "repair", "gunsmith":
-                want = o["price"] <= scrap
+            "carry", "gunsmith":
+                want = o["price"] <= scrap and scrap > 120
+            "repair":
+                want = o["price"] <= scrap and p.hp < p.max_hp * 0.6
         if want:
             var d := ped.global_position - p.global_position
             if d.length() < 30.0:
