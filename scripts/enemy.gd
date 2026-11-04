@@ -50,6 +50,7 @@ var _shield_flash := 0.0
 var _sprite: Sprite2D
 var _sprite_scale := 1.0
 var _anim_t := 0.0
+var _fx_t := 0.0   # status animation clock, runs even while frozen
 var _spawn_t := 0.0
 var _squash := 0.0
 
@@ -159,6 +160,18 @@ func apply_element(kind: int, potency: float, source: Player = null) -> String:
         return ""
     if source != null:
         last_hit_by = source
+    # What the element does to the body's condition before any pair reaction:
+    # water puts fire out, fire thaws ice, wind fans a burning body onto its neighbours.
+    if kind == Element.Kind.WET and burn_time > 0.0:
+        burn_time = 0.0
+        Elements.nova.emit(global_position, radius * 2.0, Color(0.9, 0.95, 1.0, 0.5))
+    if kind == Element.Kind.FIRE and frozen_time > 0.0:
+        frozen_time = 0.0
+    if kind == Element.Kind.GALE and burn_time > 0.0:
+        for e in get_tree().get_nodes_in_group("enemies"):
+            if e != self and is_instance_valid(e) and not e.is_queued_for_deletion() \
+                    and e.global_position.distance_to(global_position) <= 110.0:
+                e.add_burn(burn_dps * 0.7, 2.5)
     for existing in states.keys():
         if existing == kind:
             continue
@@ -244,6 +257,10 @@ func apply_slow(factor: float, seconds: float) -> void:
 
 
 func add_burn(dps: float, seconds: float) -> void:
+    if has_state(Element.Kind.OIL):
+        seconds *= 1.5   # oil keeps it burning
+    if has_state(Element.Kind.WET):
+        seconds *= 0.5   # damp bodies burn badly
     burn_dps = maxf(burn_dps, dps)
     burn_time = maxf(burn_time, seconds)
     queue_redraw()
@@ -323,6 +340,7 @@ func _physics_process(delta: float) -> void:
         states[kind] -= delta
         if states[kind] <= 0.0:
             states.erase(kind)
+    _fx_t += delta
     if burn_time > 0.0:
         burn_time -= delta
         take_damage(burn_dps * delta, Element.COLORS[Element.Kind.FIRE], false)
@@ -365,6 +383,8 @@ func _physics_process(delta: float) -> void:
     else:
         var dir := (target.global_position - global_position).normalized()
         var s := speed * (slow_factor if slow_time > 0.0 else 1.0)
+        if has_state(Element.Kind.STONE):
+            s *= 0.75   # weighed down
         velocity = dir * s
     velocity += shove_vel
     shove_vel = shove_vel.move_toward(Vector2.ZERO, 900.0 * delta)
@@ -453,11 +473,11 @@ func _draw() -> void:
             var p := Vector2.RIGHT.rotated(a) * radius * randf_range(0.8, 1.4)
             draw_line(p, p + Vector2.RIGHT.rotated(a + randf_range(-1.0, 1.0)) * 6.0, Color(1, 1, 0.6, 0.9), 1.5)
     if burn_time > 0.0:
-        var f := radius * randf_range(2.4, 3.2)
-        draw_texture_rect(Art.PARTICLES["flame"], Rect2(Vector2(-f / 2.0, -radius - f * 0.8), Vector2(f, f)), false, Color(1.0, 0.6, 0.2, 0.85))
+        var f := radius * 3.2
+        Art.draw_frame(self, "fire", fmod(_fx_t * 0.9, 1.0), Vector2(0, -radius * 0.9), f, Color(1.0, 0.85, 0.6, 0.95))
     if frozen_time > 0.0:
-        var f := radius * 3.4
-        draw_texture_rect(Art.PARTICLES["magic"], Rect2(Vector2(-f / 2.0, -f / 2.0), Vector2(f, f)), false, Color(0.8, 0.97, 1.0, 0.55))
+        var f := radius * 3.0
+        Art.draw_frame(self, "cold_fire", fmod(_fx_t * 0.5, 1.0), Vector2(0, -radius * 0.6), f, Color(0.85, 0.97, 1.0, 0.8))
     if poison_time > 0.0:
         for i in poison_stacks:
             var a := _anim_t * 0.7 + float(i) * 1.1

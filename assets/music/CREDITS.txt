@@ -1,8 +1,7 @@
-Music by Kevin MacLeod (incompetech.com)
-Licensed under Creative Commons: By Attribution 4.0 License
-http://creativecommons.org/licenses/by/4.0/
+Music: synthwave tracks by Alex McCulloch (Pro Sensory), released CC0 on OpenGameArt.
+The license requires nothing; the author asks for a credit, which we give gladly.
 
-menu.mp3    "Lightless Dawn"
-run.mp3     "Darkest Child"
-boss.mp3    "Nightmare Machine"
-ambient.mp3 "Unseen Horrors"
+menu.mp3     "Synth Wave by Alex"    https://opengameart.org/content/synth-wave-by-alex
+run.mp3      "Synth Wave 3 by Alex"  https://opengameart.org/content/synth-wave-3-by-alex
+boss.mp3     "Dark Night"            https://opengameart.org/content/dark-night
+ambient.mp3  "Synth Wave by Alex"    (same as menu)

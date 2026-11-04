@@ -94,7 +94,7 @@ func _body_font() -> Font:
 ## text never smaller than 15 px, so everything stays readable.
 func _text(pos: Vector2, text: String, size: int, color: Color, align := HORIZONTAL_ALIGNMENT_LEFT, width := -1.0, shadow := true, pixel := false) -> void:
     var font := _font if pixel else _body_font()
-    size = maxi(size, 22 if pixel else 15)
+    size = maxi(size, 22 if pixel else 20)
     if shadow:
         var off := Vector2(2, 2) if pixel else Vector2(1, 1)
         draw_string(font, pos + off, text, align, width, size, Color(0, 0, 0, 0.75 * color.a))
@@ -114,13 +114,13 @@ func _title(pos: Vector2, text: String, size: int, color: Color, align := HORIZO
 ## Body text vertically centred in a rect, aligned horizontally inside it.
 func _body_in(rect: Rect2, text: String, size: int, color: Color, align := HORIZONTAL_ALIGNMENT_CENTER, shadow := true) -> void:
     var font := _body_font()
-    var s := maxi(size, 15)
+    var s := maxi(size, 20)
     var base := rect.position.y + (rect.size.y + font.get_ascent(s) - font.get_descent(s)) / 2.0
     _body(Vector2(rect.position.x, base), text, s, color, align, rect.size.x, shadow)
 
 
 func _body_width(text: String, size: int) -> float:
-    return _body_font().get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, maxi(size, 15)).x
+    return _body_font().get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, maxi(size, 20)).x
 
 
 func _centered(y: float, text: String, size: int, color: Color, vp: Vector2, pixel := false) -> void:
@@ -164,7 +164,7 @@ func _draw_top(vp: Vector2) -> void:
         var w := 560.0
         var r := Rect2(cx - w / 2.0, 52, w, 22)
         _bar(r, b.hp / b.max_hp, Color(0.85, 0.15, 0.25))
-        _body_in(r, "%d / %d" % [int(b.hp), int(b.max_hp)], 15, Color.WHITE)
+        _body_in(r, "%d / %d" % [int(b.hp), int(b.max_hp)], 20, Color.WHITE)
         if b.shielded():
             draw_rect(r.grow(4.0), Color(1, 1, 1, 0.5 + 0.4 * absf(sin(_time * 6.0))), false, 3.0)
             var line := "SHIELD  %d / %d cracks   any reaction cracks it, %s cracks twice" % [b.shield_hp, b.shield_max, b.weakness_name()]
@@ -266,7 +266,7 @@ func _draw_vitals(p: Player, origin: Vector2) -> void:
     var pill := Rect2(x + 34.0, origin.y + 9.0, 58.0, 20.0)
     draw_rect(pill, Color(0.55, 0.4, 0.15, 0.9))
     draw_rect(pill, Color(0, 0, 0, 0.6), false, 1.0)
-    _body_in(pill, "LV %d" % p.level, 15, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, false)
+    _body_in(pill, "LV %d" % p.level, 20, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, false)
     if not p.alive:
         _body_in(Rect2(x, origin.y + 8.0, w, 22.0), "DOWN", 16, Color(1.0, 0.35, 0.3), HORIZONTAL_ALIGNMENT_RIGHT)
 
@@ -274,7 +274,7 @@ func _draw_vitals(p: Player, origin: Vector2) -> void:
     var hp_rect := Rect2(x, origin.y + 36.0, w, 20.0)
     var hp_frac := clampf(p.hp / p.max_hp, 0.0, 1.0)
     _bar(hp_rect, hp_frac, Color(0.85, 0.2, 0.2).lerp(Color(0.35, 0.85, 0.4), hp_frac))
-    _body_in(hp_rect, "%d / %d" % [int(ceilf(p.hp)), int(p.max_hp)], 15, Color.WHITE)
+    _body_in(hp_rect, "%d / %d" % [int(ceilf(p.hp)), int(p.max_hp)], 20, Color.WHITE)
 
     # Experience toward the next level
     _bar(Rect2(x, origin.y + 64.0, w, 6.0), p.xp / p.xp_to_next(), Color(0.85, 0.65, 0.2))

@@ -13,6 +13,7 @@ var hud: Hud
 var camera: Camera2D
 var pause_menu: PauseMenu
 var levelup: LevelUpScreen
+var gun_pick: GunPickScreen
 var _pending_levelups: Array = []
 var _shake := 0.0
 
@@ -71,6 +72,8 @@ func _ready() -> void:
     add_child(pause_menu)
     levelup = LevelUpScreen.new(self)
     add_child(levelup)
+    gun_pick = GunPickScreen.new(self)
+    add_child(gun_pick)
 
     var pads := Input.get_connected_joypads()
     _spawn_player(0 if pads.has(0) else -1, true)

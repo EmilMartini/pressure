@@ -100,16 +100,11 @@ func _draw() -> void:
                 pts.append(dir * along + side * jag)
             draw_polyline(pts, Color(color, 0.8), 3.0)
             draw_polyline(pts, Color(1, 1, 0.9, 0.9), 1.2)
-            draw_circle(Vector2.ZERO, radius * 0.9, Color(1.0, 1.0, 0.85))
+            Art.draw_frame(self, "thunder", 1.0 - fmod(lifetime * 4.0, 1.0), Vector2.ZERO, radius * 6.0, Color(1.0, 1.0, 0.9), dir.angle())
         Element.Kind.FIRE:
-            var f := radius * randf_range(0.8, 1.25)
-            draw_circle(-dir * f * 0.5, f * 0.8, Color(color, 0.6))
-            draw_circle(Vector2.ZERO, f, Color(color, 0.9))
-            draw_circle(dir * f * 0.2, f * 0.5, Color(1.0, 0.95, 0.6))
+            Art.draw_frame(self, "fireball", 1.0 - fmod(lifetime * 3.0, 1.0), Vector2.ZERO, radius * 7.0, Color(1.0, 0.9, 0.7), dir.angle())
         Element.Kind.ICE:
-            var shard := PackedVector2Array([dir * radius * 2.2, side * radius * 0.8, -dir * radius * 1.4, -side * radius * 0.8])
-            draw_colored_polygon(shard, color)
-            draw_polyline(PackedVector2Array([shard[0], shard[1], shard[2], shard[3], shard[0]]), Color(1, 1, 1, 0.9), 1.0)
+            Art.draw_frame(self, "icespear", 1.0 - fmod(lifetime * 2.0, 1.0), Vector2.ZERO, radius * 7.0, Color(0.9, 1.0, 1.0), dir.angle())
         Element.Kind.OIL:
             draw_circle(Vector2.ZERO, radius, Color(0.18, 0.13, 0.11))
             draw_circle(Vector2(-radius * 0.3, -radius * 0.3), radius * 0.35, Color(0.55, 0.45, 0.4, 0.7))
@@ -164,6 +159,19 @@ func _on_body_entered(body: Node) -> void:
     var raw := damage
     if enemy.immune_to == element:
         raw = 0.0
+    # How the element meets what the target already carries, before any gear bonuses:
+    # water conducts, damp things burn badly, oil feeds fire, frozen things shatter.
+    if raw > 0.0:
+        if element == Element.Kind.SHOCK and enemy.has_state(Element.Kind.WET):
+            raw *= 1.5
+        if element == Element.Kind.FIRE and enemy.has_state(Element.Kind.WET):
+            raw *= 0.5
+        if element == Element.Kind.FIRE and enemy.has_state(Element.Kind.OIL):
+            raw *= 1.25
+        if element == Element.Kind.STONE and enemy.frozen_time > 0.0:
+            raw *= 1.5
+        if element == Element.Kind.HOLY and (enemy.poison_time > 0.0 or enemy.has_state(Element.Kind.VOID)):
+            raw *= 1.25
     if shooter != null and raw > 0.0:
         if enemy.has_state(Element.Kind.WET):
             raw *= 1.0 + shooter.stat("vs_wet")

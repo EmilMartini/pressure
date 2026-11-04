@@ -62,10 +62,10 @@ keeps it. Tweak the uniforms at the top of `scripts/post_fx.gd`; set `crt_curve`
 
 ## Music
 
-Four tracks by Kevin MacLeod (incompetech.com) under CC BY 4.0, see
-`assets/music/CREDITS.txt`: a menu theme, a run theme, a boss theme and an after-run
-ambient. The `Music` autoload crossfades and ducks while paused. The credit line is shown
-on the main menu; keep it in any build you distribute.
+Synthwave by Alex McCulloch (Pro Sensory), CC0 from OpenGameArt, see
+`assets/music/CREDITS.txt`: a menu theme, a run theme and a darker boss theme. The
+`Music` autoload crossfades and ducks while paused. The licence asks nothing, but the
+author asks for a credit, and the main menu shows one.
 
 ## Journal
 
@@ -88,7 +88,12 @@ Kills give XP. Each level, once the room is clear, you pick one of three upgrade
 so on; the catalog is `scripts/levelup.gd`). Runs also earn **mastery points** (one per
 floor reached, one per 150 kills, three for a win) spent in the Mastery tree from the main
 menu: 212 small permanent nodes across offense, defense, pressure, economy, utility and
-every element, idle-game style. Wipe save clears both.
+every element, drawn as a node graph around a core. Stick or d-pad walks the graph, A
+buys, right stick pans, triggers zoom, shoulders switch branch; the mouse drags, wheels
+and clicks. Wipe save clears both.
+
+Levels follow Brotato's shape: a quadratic XP curve and small upgrades (+4% damage, +8
+health) so a floor gives a few levels and power comes from stacking many picks.
 
 Reactions chain through clouds. Steam, Toxic Mist, Firestorm, Magma, Blizzard, Tar Pit
 and others leave a cloud; any element that enters a cloud of a different element reacts
@@ -111,12 +116,14 @@ The self-test uses its own save file and never touches yours.
 Vitals top-left (portrait, level, health, XP), room and timer top-centre, minimap with
 scrap and kills top-right, the gun hotbar bottom-centre (tier pips and mod dots on each
 gun, weight beside it), gear slots bottom-left, the vent gauge bottom-right with its
-prompt. All small text uses a readable body font; the pixel font is for headings only.
+prompt. Everything is set in the Kenney Pixel font at 20 px or more.
 
 ## Guns
 
 Tiers I to IV: a duplicate merges into the gun you carry one tier up, and the shop's
 Gunsmith raises your lowest-tier gun. A gun holds one mod per tier and mod effects stack.
+When more than one gun has a free slot, picking up a mod opens a picker (one card per
+gun, stick or d-pad to choose, A or E to confirm, B or Esc to leave the mod).
 Reactions crack elite and boss shields; the attuned reaction cracks twice.
 
 ## Gear
@@ -148,6 +155,9 @@ All art is from Kenney (kenney.nl), CC0, no generative art:
 - **1-Bit Pack** (`assets/kenney/1bit_mono.png`): every sprite in the game, tinted per
   thing through the `Art` autoload. Characters, monsters, items, bricks, floor, decals.
 - **Particle Pack** (`assets/kenney/particles/`): reaction puffs (smoke, flame, spark, magic).
+- **OpenGameArt effect sheets** (`assets/vfx/`, CC0, see its CREDITS.txt): fire loops by
+  BenHickling, his Ring Explosion, and StarsteelGaming's fireball, ice spear and thunder
+  sphere. Fire, ice and shock bullets, burning and frozen enemies, bursts and novas use them.
 - **Kenney Fonts** (`assets/fonts/`): Kenney Pixel for the HUD and world text.
 - **Kenney audio** (`assets/audio/`): a curated set from Sci-fi Sounds, Impact Sounds,
   Interface Sounds and RPG Audio, renamed to what they do in the game. The `Sfx` autoload
@@ -180,7 +190,8 @@ scripts/
   projectile.gd      bullets: raw damage, then apply element; also hit obstacles
   elements.gd        autoload `Elements` / class `Element`: kinds, colours, reaction table
   enemy.gd           chasing, states, reactions, immunity, elite sequences, boss re-shield
-  fx.gd              arcs, rings, floating text, particle puffs
+  fx.gd              arcs, rings, floating text, particle puffs, animation-sheet flipbooks
+  gun_pick_screen.gd pick which gun a mod goes on
   hud.gd             floor/room status, boss bar, minimap, player panels, help, banners
   art.gd             autoload `Art`: sheet lookups, particle textures, fonts, palette
   sfx.gd             autoload `Sfx`: one-shot sounds by name

@@ -112,6 +112,8 @@ func _process(delta: float) -> void:
         return
     if visible:
         _pad.poll(get_viewport(), delta)
+    if main.gun_pick != null and main.gun_pick.is_open():
+        return   # Escape there means "leave the mod", not "pause"
     var toggle := Input.is_action_just_pressed("ui_cancel")
     for d in Input.get_connected_joypads():
         if not main.is_device_joined(d):

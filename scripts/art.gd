@@ -20,7 +20,33 @@ const PARTICLES := {
     "twirl": preload("res://assets/kenney/particles/twirl_01.png"),
 }
 
+## Animated effect sheets (OpenGameArt, CC0; see assets/vfx/CREDITS.txt).
+## cell = frame size, cols = frames per row, frames = how many cells are used.
+const SHEETS := {
+    "fire": { "tex": preload("res://assets/vfx/fire_loop.png"), "cell": Vector2(64, 64), "cols": 10, "frames": 60 },
+    "cold_fire": { "tex": preload("res://assets/vfx/fire_burst.png"), "cell": Vector2(64, 64), "cols": 10, "frames": 60 },
+    "ring": { "tex": preload("res://assets/vfx/ring_explosion.png"), "cell": Vector2(100, 100), "cols": 10, "frames": 56 },
+    "fireball": { "tex": preload("res://assets/vfx/fireball_strip.png"), "cell": Vector2(64, 32), "cols": 9, "frames": 9 },
+    "icespear": { "tex": preload("res://assets/vfx/icespear_strip.png"), "cell": Vector2(64, 32), "cols": 6, "frames": 6 },
+    "thunder": { "tex": preload("res://assets/vfx/thundersphere_strip.png"), "cell": Vector2(64, 32), "cols": 8, "frames": 8 },
+}
+
 const TILE := 16
+
+
+## Draw one frame of an animation sheet centred on `pos`. `k` in 0..1 picks the frame,
+## `size` is the drawn width in pixels (height keeps the cell's aspect).
+func draw_frame(canvas: CanvasItem, sheet: String, k: float, pos: Vector2, size: float, color: Color, rot := 0.0) -> void:
+    var s: Dictionary = SHEETS[sheet]
+    var cell: Vector2 = s["cell"]
+    var frames: int = s["frames"]
+    var f := clampi(int(floor(k * frames)), 0, frames - 1)
+    var cols: int = s["cols"]
+    var src := Rect2(Vector2(f % cols, f / cols) * cell, cell)
+    var scale := size / cell.x
+    canvas.draw_set_transform(pos, rot, Vector2(scale, scale))
+    canvas.draw_texture_rect_region(s["tex"], Rect2(-cell / 2.0, cell), src, color)
+    canvas.draw_set_transform_matrix(Transform2D.IDENTITY)
 
 ## Sheet coordinates (column, row) in the packed 1-bit sheet.
 const TILES := {
@@ -79,13 +105,13 @@ const SCRAP_TINT := Color(0.85, 0.72, 0.35)
 
 var _cache: Dictionary = {}
 
-## Readable font for anything small: body text, labels, numbers. The pixel font is for
-## headings and big numbers only, since it falls apart under about 18 px.
+## Body font: the same pixel font, which only reads at 20 px and up, so every piece of
+## text in the game is drawn at 20 or larger and kept short.
 var FONT_BODY: Font
 
 
 func _ready() -> void:
-    FONT_BODY = ThemeDB.fallback_font
+    FONT_BODY = FONT
 
 
 func tile(coord: Vector2i) -> AtlasTexture:

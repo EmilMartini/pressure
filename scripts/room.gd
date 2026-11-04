@@ -281,7 +281,7 @@ func _on_enemy_died(e: Enemy) -> void:
     elif e.is_elite:
         Progress.add("elites")
     if e.last_hit_by != null and is_instance_valid(e.last_hit_by):
-        e.last_hit_by.gain_xp(float(e.scrap_value) * 2.0 + 1.0)
+        e.last_hit_by.gain_xp(float(e.scrap_value) + 1.0)
     _drop_scrap(e.global_position, e.scrap_value, mini(e.scrap_value, 5))
     if e.is_elite and data.type == RoomData.Type.CHALLENGE:
         _elites_alive -= 1
@@ -575,6 +575,22 @@ func _handle_interact() -> void:
             activate(best, pl)
 
 
+## Finish buying a mod once the gun is known.
+func _fit_mod(pl: Player, gun: Gun, o: Dictionary) -> void:
+    if not is_instance_valid(gun) or main.scrap < o["price"]:
+        return
+    main.scrap -= o["price"]
+    pl.equip_mod_on(gun, o["id"])
+    Progress.add("items_picked")
+    Sfx.play("buy")
+    o["taken"] = true
+    if o["price"] == 0 and data.type in [RoomData.Type.TREASURE, RoomData.Type.CHALLENGE]:
+        for other in data.stock:
+            if other["kind"] in ["gun", "item", "boon"]:
+                other["taken"] = true
+    _build_pedestals()
+
+
 func activate(ped: Pedestal, pl: Player) -> void:
     var o := ped.offer
     match o["kind"]:
@@ -612,9 +628,17 @@ func activate(ped: Pedestal, pl: Player) -> void:
                 Sfx.play("error")
                 return
             var item := Items.get_item(o["id"])
-            if item["slot"] == "mod" and pl.mod_target() == null:
-                pl.say("No free mod slot: upgrade a gun" if not pl.guns.is_empty() else "No gun to fit it to")
-                Sfx.play("error")
+            if item["slot"] == "mod":
+                var candidates: Array = pl.mod_candidates()
+                if candidates.is_empty():
+                    pl.say("No free mod slot: upgrade a gun" if not pl.guns.is_empty() else "No gun to fit it to")
+                    Sfx.play("error")
+                    return
+                if candidates.size() == 1 or main.autotest:
+                    _fit_mod(pl, candidates[0], o)
+                else:
+                    # More than one gun could take it: let the player choose.
+                    main.gun_pick.pick(pl, candidates, o["id"], func(g): if g != null: _fit_mod(pl, g, o))
                 return
             main.scrap -= o["price"]
             var replaced := pl.equip(o["id"])

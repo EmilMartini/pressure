@@ -26,7 +26,7 @@ func _init(p_on_close: Callable) -> void:
 
 
 func _ready() -> void:
-    _body_font = ThemeDB.fallback_font
+    _body_font = Art.FONT
     custom_minimum_size = Vector2(1100, 660)
     size = custom_minimum_size
     var v := VBoxContainer.new()
@@ -61,8 +61,8 @@ func _ready() -> void:
     _tooltip.custom_minimum_size = Vector2(420, 120)
     _tooltip.add_theme_font_override("normal_font", _body_font)
     _tooltip.add_theme_font_override("bold_font", _body_font)
-    _tooltip.add_theme_font_size_override("normal_font_size", 15)
-    _tooltip.add_theme_font_size_override("bold_font_size", 16)
+    _tooltip.add_theme_font_size_override("normal_font_size", 20)
+    _tooltip.add_theme_font_size_override("bold_font_size", 22)
     left.add_child(_tooltip)
 
     var scroll := ScrollContainer.new()
@@ -82,7 +82,7 @@ func _hint(text: String) -> Label:
     var l := Label.new()
     l.text = text
     l.add_theme_font_override("font", _body_font)
-    l.add_theme_font_size_override("font_size", 13)
+    l.add_theme_font_size_override("font_size", 20)
     l.add_theme_color_override("font_color", UiTheme.DIM)
     l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
     return l
@@ -262,14 +262,14 @@ func _row(name: String, value: String, color: Color = UiTheme.BONE) -> void:
     var a := Label.new()
     a.text = name
     a.add_theme_font_override("font", _body_font)
-    a.add_theme_font_size_override("font_size", 15)
+    a.add_theme_font_size_override("font_size", 20)
     a.add_theme_color_override("font_color", UiTheme.DIM)
     a.custom_minimum_size = Vector2(230, 0)
     h.add_child(a)
     var b := Label.new()
     b.text = value
     b.add_theme_font_override("font", _body_font)
-    b.add_theme_font_size_override("font_size", 15)
+    b.add_theme_font_size_override("font_size", 20)
     b.add_theme_color_override("font_color", color)
     h.add_child(b)
     _stats.add_child(h)

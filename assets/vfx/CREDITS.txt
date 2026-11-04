@@ -1,0 +1,9 @@
+Effect animations from OpenGameArt, all CC0 (public domain):
+
+fire_loop.png, fire_burst.png   "Fire animation" by BenHickling, 64x64 cells, 10 columns, 60 frames
+                                https://opengameart.org/content/fire-animation
+ring_explosion.png              "Ring Explosion" by BenHickling, 100x100 cells, 10 columns, 56 frames
+                                https://opengameart.org/content/ring-explosion
+fireball_strip.png, icespear_strip.png, thundersphere_strip.png
+                                "Spell Effects" by StarsteelGaming, 64x32 frames packed into one strip each
+                                https://opengameart.org/content/spell-effects

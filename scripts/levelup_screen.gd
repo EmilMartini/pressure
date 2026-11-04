@@ -50,8 +50,8 @@ func _ready() -> void:
     _title = UiTheme.label("", 48)
     v.add_child(_title)
     _hint = UiTheme.label("", 18, UiTheme.DIM)
-    _hint.add_theme_font_override("font", ThemeDB.fallback_font)
-    _hint.add_theme_font_size_override("font_size", 16)
+    _hint.add_theme_font_override("font", Art.FONT)
+    _hint.add_theme_font_size_override("font_size", 20)
     v.add_child(_hint)
     var row := HBoxContainer.new()
     row.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -114,8 +114,8 @@ func _make_card(i: int) -> Button:
     box.add_child(effect)
     _effects.append(effect)
     var desc := UiTheme.label("", 16, UiTheme.BONE)
-    desc.add_theme_font_override("font", ThemeDB.fallback_font)
-    desc.add_theme_font_size_override("font_size", 16)
+    desc.add_theme_font_override("font", Art.FONT)
+    desc.add_theme_font_size_override("font_size", 20)
     desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
     desc.custom_minimum_size = Vector2(CARD_SIZE.x - 32, 0)
     desc.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -269,7 +269,7 @@ func _draw_prompt() -> void:
         return
     var label: String = _player.input.prompt("interact")
     var kind: String = _player.input.last_kind
-    var font: Font = ThemeDB.fallback_font
+    var font: Font = Art.FONT
     var text := "Choose"
     var text_w := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 18).x
     var total := 32.0 + 10.0 + text_w

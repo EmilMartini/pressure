@@ -13,6 +13,7 @@ var _puffs: Array = []     # normal blend
 var _add_puffs: Array = [] # additive blend
 var _corpses: Array = []   # { tex, pos, scale, color, flip, rot, t, life }
 var _scorches: Array = []  # { pos, size, rot, t, life }
+var _books: Array = []     # { sheet, pos, size, color, rot, t, life, add, vel, loops }
 var _add: AddLayer
 var _ground: GroundLayer
 
@@ -21,6 +22,7 @@ class AddLayer extends Node2D:
     var fx: Fx
     func _draw() -> void:
         fx._draw_puffs(fx._add_puffs, self)
+        fx._draw_books(self, true)
 
 
 class GroundLayer extends Node2D:
@@ -55,6 +57,25 @@ func puff(tex: Texture2D, pos: Vector2, color: Color, size: float, life: float, 
     list.append({ "tex": tex, "pos": pos, "color": color, "size": size, "rot": randf() * TAU, "t": life, "life": life, "vel": vel, "spin": spin })
     if list.size() > MAX_PUFFS:
         list.pop_front()
+
+
+## Play an animation sheet once (or `loops` times) at `pos`, `size` pixels wide.
+func book(sheet: String, pos: Vector2, size: float, life: float, color := Color.WHITE, additive := true, rot := 0.0, vel := Vector2.ZERO, loops := 1) -> void:
+    _books.append({ "sheet": sheet, "pos": pos, "size": size, "color": color, "rot": rot, "t": life, "life": life, "add": additive, "vel": vel, "loops": loops })
+    if _books.size() > 60:
+        _books.pop_front()
+
+
+## The ring explosion sheet tinted to a colour, sized to a radius.
+func blast(pos: Vector2, radius: float, color: Color, life := 0.55) -> void:
+    book("ring", pos, radius * 2.3, life, Color(color.lightened(0.25), 0.95), true, randf() * TAU)
+
+
+## A spread of spears or bolts flying out from a point.
+func radial(sheet: String, pos: Vector2, count: int, speed: float, color: Color, life := 0.45, size := 56.0) -> void:
+    for i in count:
+        var a := TAU * float(i) / float(count) + randf_range(-0.2, 0.2)
+        book(sheet, pos, size, life, color, true, a, Vector2.RIGHT.rotated(a) * speed)
 
 
 func corpse(tex: Texture2D, pos: Vector2, scale: float, color: Color, flip: bool) -> void:
@@ -96,8 +117,8 @@ func _on_reaction(reaction_name: String, position: Vector2, color: Color) -> voi
     var P := Art.PARTICLES
     match reaction_name:
         "Chain Lightning":
-            puff(P["spark"], position, Color(color, 0.95), 110.0, 0.3, true)
-            puff(P["light"], position, Color(1, 1, 0.8, 0.7), 80.0, 0.2, true)
+            book("thunder", position, 120.0, 0.35, Color(1.0, 1.0, 0.85, 0.95), true, randf() * TAU)
+            puff(P["light"], position, Color(1, 1, 0.8, 0.6), 80.0, 0.2, true)
             _shake(3.0)
         "Steam":
             for i in 4:
@@ -106,36 +127,32 @@ func _on_reaction(reaction_name: String, position: Vector2, color: Color) -> voi
             _rings.append({ "pos": position, "r": 130.0, "color": Color(0.9, 0.95, 1.0, 0.5), "t": 0.35, "life": 0.35 })
             _shake(2.0)
         "Deep Freeze":
-            puff(P["magic"], position, Color(0.75, 0.95, 1.0, 0.9), 130.0, 0.5, true, Vector2.ZERO, 0.2)
-            for i in 6:
-                var v := Vector2.RIGHT.rotated(randf() * TAU) * randf_range(80, 160)
-                puff(P["circle"], position, Color(0.8, 0.97, 1.0, 0.9), 14.0, 0.45, true, v)
+            book("cold_fire", position, 110.0, 0.5, Color(0.8, 0.97, 1.0, 0.95), true, 0.0, Vector2(0, -20))
+            radial("icespear", position, 6, 140.0, Color(0.85, 0.98, 1.0, 0.95), 0.4, 48.0)
             _shake(3.0)
         "Inferno":
-            puff(P["flame"], position, Color(1.0, 0.55, 0.15, 0.95), 170.0, 0.5, true, Vector2(0, -30))
-            puff(P["flame"], position + Vector2(0, -20), Color(1.0, 0.85, 0.3, 0.8), 110.0, 0.35, true, Vector2(0, -60))
+            blast(position, 70.0, Color(1.0, 0.55, 0.15), 0.5)
             for i in 3:
+                book("fire", position + Vector2(randf_range(-30, 30), randf_range(-10, 10)), randf_range(70, 110), 0.7, Color(1.0, 0.8, 0.5, 0.95), true, 0.0, Vector2(0, -40))
                 puff(P["smoke"], position, Color(0.15, 0.12, 0.12, 0.6), randf_range(80, 120), 1.1, false, Vector2(randf_range(-30, 30), -70), 0.3)
             scorch(position, 120.0)
             _shake(5.0)
         "Ignition":
-            puff(P["spark"], position, Color(1.0, 0.95, 0.5, 0.95), 90.0, 0.25, true)
-            puff(P["flame"], position, Color(1.0, 0.6, 0.2, 0.9), 100.0, 0.4, true, Vector2(0, -40))
+            book("thunder", position, 90.0, 0.25, Color(1.0, 1.0, 0.7, 0.95), true, randf() * TAU)
+            book("fire", position, 90.0, 0.5, Color(1.0, 0.75, 0.4, 0.95), true, 0.0, Vector2(0, -40))
             scorch(position, 70.0)
             _shake(3.0)
         "Fire Nova":
-            puff(P["flame"], position, Color(1.0, 0.5, 0.15, 0.95), 260.0, 0.55, true)
-            puff(P["light"], position, Color(1.0, 0.7, 0.3, 0.6), 320.0, 0.3, true)
+            blast(position, 130.0, Color(1.0, 0.5, 0.15), 0.7)
+            radial("fireball", position, 10, 260.0, Color(1.0, 0.8, 0.5, 0.95), 0.5, 64.0)
             scorch(position, 220.0)
             _shake(9.0)
         "Frost Nova":
-            puff(P["magic"], position, Color(0.75, 0.95, 1.0, 0.95), 280.0, 0.6, true, Vector2.ZERO, 0.15)
-            for i in 10:
-                var v := Vector2.RIGHT.rotated(randf() * TAU) * randf_range(120, 260)
-                puff(P["circle"], position, Color(0.85, 0.98, 1.0, 0.9), 16.0, 0.5, true, v)
+            blast(position, 130.0, Color(0.6, 0.9, 1.0), 0.7)
+            radial("icespear", position, 12, 240.0, Color(0.85, 0.98, 1.0, 0.95), 0.55, 56.0)
             _shake(9.0)
         "Shield broken!":
-            puff(P["light"], position, Color(1, 1, 1, 0.9), 220.0, 0.35, true)
+            blast(position, 90.0, Color(1, 1, 1), 0.4)
             _shake(5.0)
         "Shield restored!":
             puff(P["light"], position, Color(0.8, 0.9, 1.0, 0.8), 180.0, 0.4, true)
@@ -155,24 +172,38 @@ func _on_reaction(reaction_name: String, position: Vector2, color: Color) -> voi
                         if v is float or v is int:
                             size = maxf(size, float(v) * 1.1)
                             break
-            var additive := key != "smoke"
-            puff(P[key], position, Color(color, 0.9 if additive else 0.55), minf(size, 320.0), 0.5, additive, Vector2(0, -20) if key == "smoke" else Vector2.ZERO)
-            if key == "smoke":
-                for i in 2:
-                    puff(P["smoke"], position + Vector2(randf_range(-20, 20), 0), Color(color, 0.4), size * 0.7, 0.9, false, Vector2(randf_range(-30, 30), -60), 0.3)
+            size = minf(size, 320.0)
+            match key:
+                "smoke":
+                    puff(P["smoke"], position, Color(color, 0.55), size, 0.5, false, Vector2(0, -20))
+                    for i in 2:
+                        puff(P["smoke"], position + Vector2(randf_range(-20, 20), 0), Color(color, 0.4), size * 0.7, 0.9, false, Vector2(randf_range(-30, 30), -60), 0.3)
+                "flame":
+                    blast(position, size * 0.45, color, 0.5)
+                    book("fire", position, size * 0.7, 0.55, Color(color.lightened(0.4), 0.95), true, 0.0, Vector2(0, -40))
+                "spark":
+                    book("thunder", position, size * 0.9, 0.3, Color(color.lightened(0.5), 0.95), true, randf() * TAU)
+                    puff(P["spark"], position, Color(color, 0.8), size * 0.8, 0.25, true)
+                "magic":
+                    book("cold_fire", position, size * 0.8, 0.5, Color(color.lightened(0.4), 0.95), true, 0.0, Vector2(0, -20))
+                    radial("icespear", position, 5, size * 1.2, color.lightened(0.3), 0.35, 44.0)
+                _:
+                    blast(position, size * 0.45, color, 0.45)
+                    if key == "twirl":
+                        puff(P["twirl"], position, Color(color, 0.8), size, 0.5, true)
             _shake(3.0)
 
 
 func _on_nova(position: Vector2, radius: float, color: Color) -> void:
     _rings.append({ "pos": position, "r": radius, "color": color, "t": 0.45, "life": 0.45 })
-    puff(Art.PARTICLES["light"], position, Color(color, 0.5), radius * 1.8, 0.35, true)
+    blast(position, radius * 0.9, color, 0.5)
 
 
 # --- Frame -----------------------------------------------------------------
 
 
 func _process(delta: float) -> void:
-    for list in [_arcs, _rings, _texts, _puffs, _add_puffs, _corpses, _scorches]:
+    for list in [_arcs, _rings, _texts, _puffs, _add_puffs, _corpses, _scorches, _books]:
         for i in range(list.size() - 1, -1, -1):
             list[i]["t"] -= delta
             if list[i]["t"] <= 0.0:
@@ -183,6 +214,8 @@ func _process(delta: float) -> void:
         for p in list:
             p["pos"] += p["vel"] * delta
             p["vel"] = p["vel"].move_toward(Vector2.ZERO, 120.0 * delta)
+    for b in _books:
+        b["pos"] += b["vel"] * delta
     queue_redraw()
     _add.queue_redraw()
     _ground.queue_redraw()
@@ -198,6 +231,17 @@ func _draw_puffs(list: Array, canvas: CanvasItem) -> void:
         canvas.draw_set_transform(p["pos"], p["rot"] + k * p["spin"], Vector2(s, s))
         canvas.draw_texture(tex, -tex.get_size() / 2.0, col)
     canvas.draw_set_transform_matrix(Transform2D.IDENTITY)
+
+
+func _draw_books(canvas: CanvasItem, additive: bool) -> void:
+    for b in _books:
+        if b["add"] != additive:
+            continue
+        var k: float = 1.0 - b["t"] / b["life"]
+        var col: Color = b["color"]
+        col.a *= clampf((1.0 - k) * 4.0, 0.0, 1.0)   # hold, then a quick fade at the end
+        var frame_k: float = fmod(k * float(b["loops"]), 1.0)
+        Art.draw_frame(canvas, b["sheet"], frame_k, b["pos"], b["size"], col, b["rot"])
 
 
 func _draw_scorches(canvas: CanvasItem) -> void:
@@ -223,6 +267,7 @@ func _draw() -> void:
         draw_texture(tex, -tex.get_size() / 2.0, col)
     draw_set_transform_matrix(Transform2D.IDENTITY)
     _draw_puffs(_puffs, self)
+    _draw_books(self, false)
     for a in _arcs:
         var alpha: float = clampf(a["t"] / 0.22, 0.0, 1.0)
         var pts := PackedVector2Array()

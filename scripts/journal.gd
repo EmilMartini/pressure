@@ -32,7 +32,7 @@ func _ready() -> void:
         var l := UiTheme.label(TABS[i], 24)
         bar.add_child(l)
         _tab_labels.append(l)
-    v.add_child(UiTheme.label("LB / RB  or  Q / E  switch tabs      stick / arrows scroll      B / Esc back", 15, UiTheme.DIM))
+    v.add_child(UiTheme.label("LB / RB  or  Q / E  switch tabs      stick / arrows scroll      B / Esc back", 20, UiTheme.DIM))
     _scroll = ScrollContainer.new()
     _scroll.custom_minimum_size = Vector2(900, 430)
     _scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
@@ -79,17 +79,18 @@ func set_tab(i: int) -> void:
 
 
 func focus_first() -> void:
-    if _list.get_child_count() > 0:
-        (_list.get_child(0) as Control).grab_focus()
-    else:
-        _back.grab_focus()
+    for c in _list.get_children():
+        if c is Control and (c as Control).focus_mode != Control.FOCUS_NONE:
+            (c as Control).grab_focus()
+            return
+    _back.grab_focus()
 
 
 func _entry(text: String, color: Color) -> void:
     var b := Button.new()
     b.text = text
     b.alignment = HORIZONTAL_ALIGNMENT_LEFT
-    b.add_theme_font_size_override("font_size", 17)
+    b.add_theme_font_size_override("font_size", 20)
     b.add_theme_color_override("font_color", color)
     b.add_theme_color_override("font_focus_color", Color.WHITE)
     b.add_theme_color_override("font_hover_color", Color.WHITE)

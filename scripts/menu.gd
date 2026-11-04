@@ -84,7 +84,7 @@ func _draw() -> void:
         Progress.achievements_count(), Progress.ACHIEVEMENTS.size(),
         Guns.ids().size(), Guns.all_ids().size()]
     draw_string(Art.FONT, Vector2(0, vp.y - 24), stats, HORIZONTAL_ALIGNMENT_CENTER, vp.x, 18, UiTheme.DIM)
-    draw_string(Art.FONT, Vector2(0, vp.y - 6), "Music by Kevin MacLeod (incompetech.com), CC BY 4.0   Art and sound by Kenney (kenney.nl), CC0", HORIZONTAL_ALIGNMENT_CENTER, vp.x, 13, Color(UiTheme.DIM, 0.7))
+    draw_string(Art.FONT, Vector2(0, vp.y - 6), "Music by Alex McCulloch (CC0)   Art and sound by Kenney (CC0)   Effects from OpenGameArt (CC0)", HORIZONTAL_ALIGNMENT_CENTER, vp.x, 20, Color(UiTheme.DIM, 0.8))
 
 
 func _build_main() -> void:

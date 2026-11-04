@@ -177,6 +177,20 @@ func mod_target() -> Gun:
 # --- Gear and level-ups -----------------------------------------------------
 
 
+## Fit a mod to a chosen gun.
+func equip_mod_on(gun: Gun, id: String) -> void:
+    if gun == null or not is_instance_valid(gun):
+        return
+    gun.mods.append(id)
+    say("%s fitted to %s" % [Items.get_item(id)["name"], gun.display_name()])
+    recalc_stats()
+
+
+## Guns that still have a free mod slot.
+func mod_candidates() -> Array:
+    return guns.filter(func(g): return g.mods.size() < g.tier)
+
+
 ## Equip an item. Returns the id it replaced, or "".
 func equip(id: String) -> String:
     var item := Items.get_item(id)
@@ -189,8 +203,8 @@ func equip(id: String) -> String:
         if g == null:
             say("No free mod slot: upgrade a gun")
             return ""
-        g.mods.append(id)
-        say("%s fitted to %s" % [item["name"], g.display_name()])
+        equip_mod_on(g, id)
+        return ""
     else:
         var key := slot
         if slot in ["ring", "trinket"]:
@@ -243,8 +257,11 @@ func stat(key: String) -> float:
     return v
 
 
+## Brotato-shaped: each level costs noticeably more than the last, so a floor gives a
+## few levels, not a dozen.
 func xp_to_next() -> float:
-    return 15.0 + 10.0 * float(level - 1)
+    var n := float(level - 1)
+    return 20.0 + 15.0 * n + 3.0 * n * n
 
 
 func gain_xp(amount: float) -> void:

@@ -43,6 +43,9 @@ raids, loot tables).
   Brotato-like catalog: damage, attack speed, crit chance and damage, bounces, pierce,
   projectiles, health, armour, dodge, regen, speed, range, potency, element duration, chain
   jumps, lifesteal, thorns, scrap, pressure limit and decay, vent size, carry, XP gain.
+- Brotato-shaped curve: the cost of a level rises quadratically (20, 35, 56, 83, 116...)
+  and each upgrade is small (+4% damage, +8 health, +3% crit), so a floor gives three to
+  five levels and no single pick swings a run. Power comes from stacking many of them.
 
 ### Gun tiers and mods
 - Guns have tiers I to IV, Brotato style. Picking up a duplicate merges it into the one
@@ -51,6 +54,9 @@ raids, loot tables).
   tier III a point of pierce.
 - A gun holds as many mods as its tier, and mod effects stack: four Coatings on one gun
   mean every hit applies five elements. That is meant to get absurd late in a run.
+- Picking up a mod with more than one gun that has a free slot opens a small picker:
+  one card per gun with its tier and the mods it already carries. With one candidate the
+  mod goes straight on; with none, the pedestal says so and the mod stays.
 
 ### Weight
 - No gun slots. A **carry budget** (starts at 10, bought up in the shop).
@@ -89,6 +95,21 @@ each one. Fire the pair once and the journal's Reactions tab reveals what it doe
 Rules: an enemy carries states for a few seconds. When a new element lands on an enemy that
 already has a different state, the pair reacts, consumes the existing state, and the new one
 is not applied. Same element refreshes the timer.
+
+**Physical rules on top of the pairs** (what an element does to a body's condition):
+- Water conducts: shock does +50% raw damage to a wet enemy. Water puts fire out: wet
+  bodies take half fire damage, burn for half as long, and a wet hit extinguishes a burn.
+- Oil feeds fire: +25% fire damage and burns last half again as long on an oiled body;
+  a burning body ignites oiled neighbours; shock sparks oil (Ignition).
+- Fire thaws: a fire hit ends a freeze. Cold cracks: stone and shock hit frozen bodies
+  harder (Cryoshock stuns and cracks). Stone grounds shock, so that pair barely reacts.
+- Wind fans: a gale hit on a burning body spreads the burn to neighbours; a gale carries
+  poison, acid, blood and oil onto everyone nearby (Plague Wind, Acid Rain, Spray, Oil
+  Spray) and pushes.
+- Holy scours: +25% against poisoned or void-marked bodies; purges states (Baptism,
+  Cleanse, Neutralize). Poison dissolves in water and spreads (Contamination).
+- Stone weighs: a stone-marked body moves at three quarters speed. Acid corrodes: +50%
+  damage taken while corroded. Void pulls, gale pushes, blood bleeds while they move.
 
 ### Pressure gauge (now: vent charge)
 - One gauge per player, from **cold (-100)** through **neutral (0)** to **hot (+100)**.
@@ -180,6 +201,11 @@ your starting power. That keeps the "overpowered and bored" failure out by const
   three percent or a point of a flat stat, and costs one to three mastery points.
 - Points come from runs: one per floor reached, one per 150 kills, three for a win. They
   are spent from the main menu's Mastery screen. Wipe save clears the tree too.
+- The screen is a literal node graph, Path-of-Exile style: a core showing unspent points,
+  seventeen spokes, each branch a chain of circles with side chains stepping out, edges
+  that light up as you buy along them. The stick or d-pad walks the graph, A buys, the
+  right stick pans, triggers zoom, shoulders jump between branches; mouse drag, wheel and
+  click do the same.
 - This is the one deliberate exception to "nothing makes a run easier": the bonuses are
   small enough to be felt over dozens of runs, not one, and the real growth stays in the
   unlock pool. If it ever trivialises floor 1, shrink the node values, not the tree.
@@ -220,6 +246,15 @@ your starting power. That keeps the "overpowered and bored" failure out by const
 - Art: Kenney CC0 packs, tinted dark. The 1-Bit Pack gives a single white-on-transparent
   sheet, so the whole look is a palette in `art.gd`: bone, blood, rust and stone, with a
   vignette over everything. No generative art.
+- Effects: hand-drawn CC0 animation sheets from OpenGameArt (`assets/vfx`): a looping
+  fire, a cold blue fire, a 56-frame ring explosion and the fireball, ice spear and
+  thunder sphere strips. `Art.draw_frame` plays a frame of any sheet; `Fx.book`,
+  `Fx.blast` and `Fx.radial` spawn them. Fire, ice and shock bullets are the spell
+  sprites, burning and frozen bodies play the fire sheets, every burst reaction is a
+  tinted ring explosion, novas throw spears or fireballs outward.
+- Music: three CC0 synthwave tracks by Alex McCulloch (menu, run, boss).
+- Text: the Kenney Pixel font everywhere, never under 20 px, and as few words as the
+  screen can get away with.
 - Code-driven scenes for now (everything is built in `_ready`), so the project is easy to
   read as plain scripts. Scenes get moved into the editor when they stabilise.
 
