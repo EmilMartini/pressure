@@ -26,6 +26,24 @@ const KINDS := {
         "reaction": "Steam",
         "color": Color(0.45, 0.42, 0.40),
     },
+    "ward": {
+        "label": "Unholy ward. Holy light breaks it.",
+        "element": Element.Kind.HOLY,
+        "reaction": "",
+        "color": Color(0.30, 0.12, 0.40),
+    },
+    "rubble": {
+        "label": "Collapsed rubble. Acid eats through it.",
+        "element": Element.Kind.ACID,
+        "reaction": "",
+        "color": Color(0.40, 0.36, 0.30),
+    },
+    "miasma": {
+        "label": "Choking miasma. Blow it away with a gale.",
+        "element": Element.Kind.GALE,
+        "reaction": "",
+        "color": Color(0.25, 0.40, 0.22),
+    },
 }
 
 var kind: String
@@ -68,6 +86,18 @@ func _ready() -> void:
         "valve":
             var cog := Art.sprite(Art.TILES["cog"], 2.6, Color(0.75, 0.6, 0.4))
             add_child(cog)
+        "ward":
+            var skull := Art.sprite(Art.TILES["decals"][0], 2.6, Color(0.8, 0.5, 1.0))
+            add_child(skull)
+        "rubble":
+            var along := Vector2(1, 0) if size.x > size.y else Vector2(0, 1)
+            for i in 3:
+                var r := Art.sprite(Art.TILES["decals"][3 + (i % 2)], 2.2, Color(0.6, 0.55, 0.45))
+                r.position = along * (float(i) - 1.0) * 36.0
+                add_child(r)
+        "miasma":
+            var m := Art.sprite(Art.TILES["decals"][5], 2.6, Color(0.5, 0.9, 0.4))
+            add_child(m)
 
 
 func apply_element(element: int, _potency: float) -> void:

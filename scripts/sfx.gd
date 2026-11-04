@@ -163,17 +163,21 @@ func stop_all() -> void:
 func reaction(reaction_name: String) -> void:
     if REACTION_SOUNDS.has(reaction_name):
         play(REACTION_SOUNDS[reaction_name])
+        return
+    var d := Elements.def_by_name(reaction_name)
+    if d.has("sound"):
+        play(d["sound"])
 
 
 func shoot(element: int) -> void:
     match element:
-        Element.Kind.WET:
+        Element.Kind.WET, Element.Kind.POISON, Element.Kind.BLOOD:
             play("shoot_wet")
-        Element.Kind.SHOCK:
+        Element.Kind.SHOCK, Element.Kind.HOLY:
             play("shoot_shock")
         Element.Kind.FIRE:
             play("shoot_fire")
-        Element.Kind.ICE:
+        Element.Kind.ICE, Element.Kind.STONE, Element.Kind.ACID:
             play("shoot_ice")
-        Element.Kind.OIL:
+        Element.Kind.OIL, Element.Kind.VOID, Element.Kind.GALE:
             play("shoot_oil")

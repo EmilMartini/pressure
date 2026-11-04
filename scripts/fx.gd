@@ -143,7 +143,22 @@ func _on_reaction(reaction_name: String, position: Vector2, color: Color) -> voi
         "ELITE":
             puff(P["light"], position, Color(1.0, 0.85, 0.3, 0.8), 160.0, 0.6, true)
         _:
-            puff(P["circle"], position, Color(color, 0.8), 90.0, 0.4, true)
+            # Data-driven reactions: the table names a texture; size follows what it does.
+            var d := Elements.def_by_name(reaction_name)
+            var key: String = d.get("fx", "circle")
+            var size := 100.0
+            for act in d.get("do", []):
+                if act[0] in ["burst", "apply", "pull", "push", "cloud", "slow"] and act.size() > 1:
+                    for v in act.slice(1):
+                        if v is float or v is int:
+                            size = maxf(size, float(v) * 1.1)
+                            break
+            var additive := key != "smoke"
+            puff(P[key], position, Color(color, 0.9 if additive else 0.55), minf(size, 320.0), 0.5, additive, Vector2(0, -20) if key == "smoke" else Vector2.ZERO)
+            if key == "smoke":
+                for i in 2:
+                    puff(P["smoke"], position + Vector2(randf_range(-20, 20), 0), Color(color, 0.4), size * 0.7, 0.9, false, Vector2(randf_range(-30, 30), -60), 0.3)
+            _shake(3.0)
 
 
 func _on_nova(position: Vector2, radius: float, color: Color) -> void:

@@ -107,6 +107,37 @@ func _draw() -> void:
         Element.Kind.OIL:
             draw_circle(Vector2.ZERO, radius, Color(0.18, 0.13, 0.11))
             draw_circle(Vector2(-radius * 0.3, -radius * 0.3), radius * 0.35, Color(0.55, 0.45, 0.4, 0.7))
+        Element.Kind.POISON:
+            draw_circle(Vector2.ZERO, radius, color)
+            for i in 3:
+                var a := float(i) * 2.1 + lifetime * 9.0
+                draw_circle(Vector2.RIGHT.rotated(a) * radius * 0.9, radius * 0.3, Color(0.8, 1.0, 0.6, 0.9))
+        Element.Kind.ACID:
+            draw_circle(-dir * radius * 0.5, radius * 0.7, color)
+            draw_circle(Vector2.ZERO, radius, color)
+            draw_circle(dir * radius * 0.4, radius * 0.35, Color(1, 1, 0.8))
+        Element.Kind.BLOOD:
+            draw_circle(-dir * radius * 1.2, radius * 0.5, Color(color, 0.7))
+            draw_circle(-dir * radius * 0.6, radius * 0.75, color)
+            draw_circle(Vector2.ZERO, radius, color)
+        Element.Kind.VOID:
+            draw_circle(Vector2.ZERO, radius * 1.3, Color(color, 0.35))
+            draw_circle(Vector2.ZERO, radius, Color(0.05, 0.02, 0.1))
+            draw_arc(Vector2.ZERO, radius * 1.1, 0.0, TAU, 20, color, 2.0)
+        Element.Kind.HOLY:
+            draw_line(-dir * radius * 1.6, dir * radius * 1.6, Color(1, 1, 1), 2.0)
+            draw_line(-side * radius * 1.2, side * radius * 1.2, Color(1, 1, 1), 2.0)
+            draw_circle(Vector2.ZERO, radius * 0.7, color)
+        Element.Kind.GALE:
+            for i in 3:
+                var off := -dir * radius * float(i) * 1.1
+                draw_arc(off, radius * (0.6 + 0.3 * float(i)), -1.2, 1.2, 10, Color(color, 0.9 - 0.25 * float(i)), 1.5)
+        Element.Kind.STONE:
+            var hex := PackedVector2Array()
+            for i in 6:
+                hex.append(Vector2.RIGHT.rotated(float(i) * TAU / 6.0 + lifetime * 6.0) * radius)
+            draw_colored_polygon(hex, color)
+            draw_polyline(hex, Color(0.3, 0.27, 0.22), 1.5)
         _:
             draw_circle(Vector2.ZERO, radius, color)
     if element != Element.Kind.OIL:

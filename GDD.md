@@ -50,15 +50,21 @@ raids, loot tables).
   reactions everywhere. Few heavy guns = rare huge reactions. Both viable, both feel different.
 
 ### Elements and reactions
-States an enemy can carry: **Wet, Shock, Fire, Ice, Oil** (more later: Acid, Void, Holy...).
+Twelve elements: **Wet, Shock, Fire, Ice, Oil, Poison, Acid, Blood, Void, Holy, Gale, Stone**.
+Sixty-six pairs, sixty-five reactions (water and oil do not mix), all defined as
+data in `scripts/elements.gd` using a small action vocabulary: damage, burst, apply an
+element in a radius, burn, poison, bleed, corrode, freeze, stun, slow, pull, push, chain,
+chain along a state, lingering cloud, purge, spread, decay, heal the source. Adding a
+reaction is one line; adding an element is a colour, a pressure weight and its lines.
 
-| A | B | Reaction | Effect |
-|---|---|---|---|
-| Wet | Shock | Chain Lightning | Jumps between all wet enemies in range |
-| Wet | Fire | Steam | Burst damage, cloud slows enemies inside |
-| Wet | Ice | Deep Freeze | Enemy frozen solid, takes triple damage, shatters on death |
-| Oil | Fire | Inferno | Heavy burn that spreads along oiled enemies |
-| Oil | Shock | Ignition | Shock damage plus a lighter burn |
+Status effects on enemies: burn, stacking poison (a poisoned corpse passes it on),
+bleed (hurts while moving), corrosion (+50% damage taken), freeze (x3 damage, shatters),
+stun, slow, shoves from pulls and pushes, and lingering clouds that keep applying an element.
+
+A few of the sixty-five: Wet + Void is a Whirlpool that drags everything in. Shock + Holy is
+Smite, one enormous strike. Fire + Stone leaves a pool of Magma. Poison + Gale is a Plague
+Wind. Void + Holy is Annihilation. Wet + Holy is Baptism: strips every state and punishes
+each one. Fire the pair once and the journal's Reactions tab reveals what it does.
 
 Rules: an enemy carries states for a few seconds. When a new element lands on an enemy that
 already has a different state, the pair reacts, consumes the existing state, and the new one

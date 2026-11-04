@@ -5,7 +5,7 @@ extends RefCounted
 
 const GRID := 9
 const DIRS: Array[Vector2i] = [Vector2i.UP, Vector2i.DOWN, Vector2i.LEFT, Vector2i.RIGHT]
-const OBSTACLES := ["pool", "thicket", "valve"]
+const OBSTACLES := ["pool", "thicket", "valve", "ward", "rubble", "miasma"]
 
 
 static func generate(floor_number: int) -> Dictionary:
@@ -139,7 +139,7 @@ static func _stock_rooms(rooms: Dictionary, floor_number: int) -> void:
                 r.stock.append(offer("carry", "", 18 + floor_number * 6, 2))
                 r.stock.append(offer("repair", "", 10, 40))
                 var shop_items: Array = []
-                for i in 2:
+                for i in (3 if Progress.has("shop:items") else 2):
                     var iid := Items.roll(floor_number * 3, Items.Rarity.COMMON, shop_items)
                     shop_items.append(iid)
                     r.stock.append(Items.offer(iid, Items.price(Items.get_item(iid), floor_number)))

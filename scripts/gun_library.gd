@@ -5,6 +5,7 @@ extends Node
 const ORDER := [
     "water_pistol", "arc_rifle", "blowtorch", "frost_caster", "oil_slinger",
     "mist_sprayer", "ember_carbine", "hydro_cannon", "glacier_lance", "tar_mortar", "storm_pike",
+    "venom_spitter", "acid_flask", "blood_lance", "void_orb", "radiant_ray", "gale_blaster", "stone_sling",
 ]
 
 
@@ -169,6 +170,97 @@ func make(id: String) -> GunData:
             g.reaction_mult = 2.0
             g.pierce = 5
             g.projectile_radius = 6.0
+        "venom_spitter":
+            g.display_name = "Venom Spitter"
+            g.element = Element.Kind.POISON
+            g.weight = 2
+            g.damage = 2.0
+            g.fire_rate = 8.0
+            g.projectile_speed = 520.0
+            g.spread_deg = 10.0
+            g.max_range = 420.0
+            g.lifetime = 0.8
+            g.pressure_per_shot = 0.0
+            g.projectile_radius = 5.0
+        "acid_flask":
+            g.display_name = "Acid Flask"
+            g.element = Element.Kind.ACID
+            g.weight = 3
+            g.damage = 4.0
+            g.fire_rate = 2.0
+            g.projectile_speed = 480.0
+            g.projectile_count = 5
+            g.spread_deg = 50.0
+            g.max_range = 320.0
+            g.lifetime = 0.65
+            g.pressure_per_shot = 1.0
+            g.projectile_radius = 5.0
+        "blood_lance":
+            g.display_name = "Blood Lance"
+            g.element = Element.Kind.BLOOD
+            g.weight = 4
+            g.damage = 10.0
+            g.fire_rate = 1.6
+            g.projectile_speed = 950.0
+            g.spread_deg = 1.0
+            g.max_range = 650.0
+            g.lifetime = 0.7
+            g.pressure_per_shot = 0.0
+            g.reaction_mult = 1.3
+            g.pierce = 2
+            g.projectile_radius = 6.0
+        "void_orb":
+            g.display_name = "Void Orb"
+            g.element = Element.Kind.VOID
+            g.weight = 5
+            g.damage = 6.0
+            g.fire_rate = 1.2
+            g.projectile_speed = 350.0
+            g.spread_deg = 2.0
+            g.max_range = 500.0
+            g.lifetime = 1.4
+            g.pressure_per_shot = -4.0
+            g.reaction_mult = 1.5
+            g.projectile_radius = 9.0
+        "radiant_ray":
+            g.display_name = "Radiant Ray"
+            g.element = Element.Kind.HOLY
+            g.weight = 3
+            g.damage = 5.0
+            g.fire_rate = 5.0
+            g.projectile_speed = 1300.0
+            g.spread_deg = 1.0
+            g.max_range = 700.0
+            g.lifetime = 0.55
+            g.pressure_per_shot = 6.0
+            g.pierce = 1
+            g.projectile_radius = 4.0
+        "gale_blaster":
+            g.display_name = "Gale Blaster"
+            g.element = Element.Kind.GALE
+            g.weight = 2
+            g.damage = 1.5
+            g.fire_rate = 10.0
+            g.projectile_speed = 700.0
+            g.projectile_count = 2
+            g.spread_deg = 30.0
+            g.max_range = 260.0
+            g.lifetime = 0.4
+            g.pressure_per_shot = -2.0
+            g.projectile_radius = 5.0
+        "stone_sling":
+            g.display_name = "Stone Sling"
+            g.element = Element.Kind.STONE
+            g.weight = 4
+            g.damage = 11.0
+            g.fire_rate = 1.4
+            g.projectile_speed = 600.0
+            g.spread_deg = 3.0
+            g.max_range = 500.0
+            g.lifetime = 0.85
+            g.pressure_per_shot = 0.0
+            g.reaction_mult = 1.2
+            g.projectile_radius = 7.0
         _:
             push_error("Unknown gun id: %s" % id)
     return g

@@ -41,26 +41,33 @@ const SLOT_ICONS := {
 }
 const ELEMENTS := {
     "wet": Element.Kind.WET, "shock": Element.Kind.SHOCK, "fire": Element.Kind.FIRE,
-    "ice": Element.Kind.ICE, "oil": Element.Kind.OIL,
+    "ice": Element.Kind.ICE, "oil": Element.Kind.OIL, "poison": Element.Kind.POISON,
+    "acid": Element.Kind.ACID, "blood": Element.Kind.BLOOD, "void": Element.Kind.VOID,
+    "holy": Element.Kind.HOLY, "gale": Element.Kind.GALE, "stone": Element.Kind.STONE,
 }
 const ELEMENT_KEYS := {
     Element.Kind.WET: "wet", Element.Kind.SHOCK: "shock", Element.Kind.FIRE: "fire",
-    Element.Kind.ICE: "ice", Element.Kind.OIL: "oil", Element.Kind.NONE: "none",
+    Element.Kind.ICE: "ice", Element.Kind.OIL: "oil", Element.Kind.POISON: "poison",
+    Element.Kind.ACID: "acid", Element.Kind.BLOOD: "blood", Element.Kind.VOID: "void",
+    Element.Kind.HOLY: "holy", Element.Kind.GALE: "gale", Element.Kind.STONE: "stone",
+    Element.Kind.NONE: "none",
 }
-const ELEMENT_TITLES := { "wet": "Tide", "shock": "Storm", "fire": "Ember", "ice": "Frost", "oil": "Tar" }
+const ELEMENT_TITLES := {
+    "wet": "Tide", "shock": "Storm", "fire": "Ember", "ice": "Frost", "oil": "Tar",
+    "poison": "Venom", "acid": "Caustic", "blood": "Crimson", "void": "Abyssal",
+    "holy": "Radiant", "gale": "Zephyr", "stone": "Granite",
+}
+## Fourth-piece bonus for each elemental set; the first three are shared.
+const ELEMENT_SET_CAPSTONES := {
+    "wet": { "lifesteal": 1 }, "shock": { "crit": 0.10 }, "fire": { "crit_dmg": 0.5 },
+    "ice": { "armor": 3 }, "oil": { "speed": 0.10 }, "poison": { "state_duration": 0.3 },
+    "acid": { "dmg": 0.10 }, "blood": { "regen": 1 }, "void": { "range": 0.20 },
+    "holy": { "max_hp": 25 }, "gale": { "proj_speed": 0.25 }, "stone": { "armor": 4 },
+}
 
 ## Sets: wear several pieces for bonuses at 2, 3 and 4 pieces. Gun mods count.
-const SETS := {
-    "tide": { "name": "Tide", "items": ["ring_wet", "vial_wet", "gloves_wet", "coating_wet", "mantle_wet"],
-        "bonuses": { 2: { "dmg_wet": 0.10 }, 3: { "state_duration": 0.30 }, 4: { "lifesteal": 1 } } },
-    "storm": { "name": "Storm", "items": ["ring_shock", "vial_shock", "gloves_shock", "coating_shock", "mantle_shock"],
-        "bonuses": { 2: { "dmg_shock": 0.10 }, 3: { "chain_jumps": 2 }, 4: { "crit": 0.10 } } },
-    "ember": { "name": "Ember", "items": ["ring_fire", "vial_fire", "gloves_fire", "coating_fire", "mantle_fire"],
-        "bonuses": { 2: { "dmg_fire": 0.10 }, 3: { "vs_burning": 0.25 }, 4: { "crit_dmg": 0.5 } } },
-    "frost": { "name": "Frost", "items": ["ring_ice", "vial_ice", "gloves_ice", "coating_ice", "mantle_ice"],
-        "bonuses": { 2: { "dmg_ice": 0.10 }, 3: { "vs_frozen": 0.25 }, 4: { "armor": 3 } } },
-    "tar": { "name": "Tar", "items": ["ring_oil", "vial_oil", "gloves_oil", "coating_oil", "mantle_oil"],
-        "bonuses": { 2: { "dmg_oil": 0.10 }, 3: { "vs_oiled": 0.25 }, 4: { "speed": 0.10 } } },
+## Elemental sets are generated per element in _build_sets; these are the hand-made ones.
+const BASE_SETS := {
     "scavenger": { "name": "Scavenger", "items": ["scavenger_hood", "scrap_magnet", "mudwaders", "lucky_cog"],
         "bonuses": { 2: { "scrap_gain": 0.20 }, 3: { "carry": 2 } } },
     "overloader": { "name": "Overloader", "items": ["boiler_cap", "overclock", "signet_of_overload", "hot_rod"],
@@ -69,9 +76,21 @@ const SETS := {
         "bonuses": { 2: { "max_hp": 15 }, 3: { "armor": 2 }, 4: { "regen": 1 } } },
 }
 
+var SETS: Dictionary = {}
 var catalog: Dictionary = {}   # id -> item
 var _by_rarity: Array = [[], [], [], [], []]
 var _depth := 0
+
+
+func _build_sets() -> void:
+    SETS = BASE_SETS.duplicate(true)
+    for e in ELEMENTS.keys():
+        var en: String = e.capitalize()
+        SETS[e] = {
+            "name": ELEMENT_TITLES[e],
+            "items": ["ring_%s" % e, "vial_%s" % e, "gloves_%s" % e, "coating_%s" % e, "mantle_%s" % e],
+            "bonuses": { 2: { "dmg_%s" % e: 0.10 }, 3: { "potency_%s" % e: 0.20 }, 4: ELEMENT_SET_CAPSTONES[e] },
+        }
 
 
 ## set id -> number of that set's pieces the player has equipped.
@@ -109,6 +128,7 @@ func set_of(item_id: String) -> String:
 
 
 func _ready() -> void:
+    _build_sets()
     _build_catalog()
 
 

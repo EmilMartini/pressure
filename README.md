@@ -61,6 +61,7 @@ Three tabs, from the main menu or the pause menu:
   achievement unlocks them.
 - **Gear**: every item grouped by rarity with its slot and effect. Locked rarity tiers
   show how to unlock them.
+- **Reactions**: all sixty-five element pairs. Each shows as ??? until you fire it once.
 
 Player 1 is keyboard + mouse and the first controller, merged. Every other
 controller joins as a new player by pressing Start.

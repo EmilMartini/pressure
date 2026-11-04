@@ -33,6 +33,14 @@ var burn_time := 0.0
 var frozen_time := 0.0
 var slow_time := 0.0
 var slow_factor := 1.0
+var poison_dps := 0.0
+var poison_time := 0.0
+var poison_stacks := 0
+var bleed_dps := 0.0
+var bleed_time := 0.0
+var corroded_time := 0.0
+var stun_time := 0.0
+var shove_vel := Vector2.ZERO
 
 var _contact_cd := 0.0
 var _flash := 0.0
@@ -198,6 +206,8 @@ func take_damage(amount: float, color: Color, flash: bool = true, source: Player
         return
     if frozen_time > 0.0:
         amount *= 3.0
+    if corroded_time > 0.0:
+        amount *= 1.5
     hp -= amount
     if flash:
         _flash = 0.12
@@ -237,6 +247,38 @@ func add_burn(dps: float, seconds: float) -> void:
     queue_redraw()
 
 
+func add_poison(dps: float, seconds: float) -> void:
+    poison_stacks = mini(6, poison_stacks + 1)
+    poison_dps = maxf(poison_dps, dps)
+    poison_time = maxf(poison_time, seconds)
+
+
+func add_bleed(dps: float, seconds: float) -> void:
+    bleed_dps = maxf(bleed_dps, dps)
+    bleed_time = maxf(bleed_time, seconds)
+
+
+func corrode(seconds: float) -> void:
+    corroded_time = maxf(corroded_time, seconds)
+
+
+func stun(seconds: float) -> void:
+    stun_time = maxf(stun_time, seconds)
+
+
+## A one-off kick, decays over a few frames.
+func shove(v: Vector2) -> void:
+    shove_vel += v
+
+
+## Strip every element state; returns how many were removed.
+func purge_states() -> int:
+    var n := states.size()
+    states.clear()
+    queue_redraw()
+    return n
+
+
 func _die() -> void:
     if frozen_time > 0.0:
         Elements.nova.emit(global_position, radius * 2.5, Color(Element.COLORS[Element.Kind.ICE], 0.6))
@@ -245,6 +287,13 @@ func _die() -> void:
         Items.fire(last_hit_by, "kill", ctx)
         if is_elite:
             Items.fire(last_hit_by, "elite_kill", ctx)
+    # Plague: a poisoned corpse passes it on.
+    if poison_time > 0.0:
+        for e in get_tree().get_nodes_in_group("enemies"):
+            if e != self and is_instance_valid(e) and not e.is_queued_for_deletion() \
+                    and e.global_position.distance_to(global_position) <= 110.0:
+                e.add_poison(poison_dps, 3.0)
+        Elements.nova.emit(global_position, 110.0, Color(Element.COLORS[Element.Kind.POISON], 0.5))
     var fx := _fx()
     if fx != null:
         fx.corpse(_sprite.texture, global_position, _sprite_scale, _sprite.modulate, _sprite.flip_h)
@@ -275,21 +324,39 @@ func _physics_process(delta: float) -> void:
     if burn_time > 0.0:
         burn_time -= delta
         take_damage(burn_dps * delta, Element.COLORS[Element.Kind.FIRE], false)
-        if not is_instance_valid(self) or hp <= 0.0:
+        if hp <= 0.0:
             return
+    if poison_time > 0.0:
+        poison_time -= delta
+        take_damage(poison_dps * float(poison_stacks) * delta, Element.COLORS[Element.Kind.POISON], false)
+        if hp <= 0.0:
+            return
+        if poison_time <= 0.0:
+            poison_stacks = 0
+            poison_dps = 0.0
+    if bleed_time > 0.0:
+        bleed_time -= delta
+        if velocity.length() > 10.0:
+            take_damage(bleed_dps * delta, Element.COLORS[Element.Kind.BLOOD], false)
+            if hp <= 0.0:
+                return
     frozen_time = maxf(0.0, frozen_time - delta)
+    stun_time = maxf(0.0, stun_time - delta)
+    corroded_time = maxf(0.0, corroded_time - delta)
     slow_time = maxf(0.0, slow_time - delta)
     _contact_cd = maxf(0.0, _contact_cd - delta)
     _flash = maxf(0.0, _flash - delta)
     _shield_flash = maxf(0.0, _shield_flash - delta)
 
     var target := _nearest_player()
-    if frozen_time > 0.0 or target == null:
+    if frozen_time > 0.0 or stun_time > 0.0 or target == null:
         velocity = Vector2.ZERO
     else:
         var dir := (target.global_position - global_position).normalized()
         var s := speed * (slow_factor if slow_time > 0.0 else 1.0)
         velocity = dir * s
+    velocity += shove_vel
+    shove_vel = shove_vel.move_toward(Vector2.ZERO, 900.0 * delta)
     move_and_slide()
 
     if target != null and _contact_cd <= 0.0:
@@ -309,8 +376,16 @@ func _update_sprite() -> void:
         c = c.lerp(Color(0.15, 0.1, 0.08), 0.5)
     if states.has(Element.Kind.SHOCK) and randf() < 0.5:
         c = c.lerp(Element.COLORS[Element.Kind.SHOCK], 0.5)
+    if poison_time > 0.0:
+        c = c.lerp(Element.COLORS[Element.Kind.POISON], 0.45)
+    if corroded_time > 0.0:
+        c = c.lerp(Element.COLORS[Element.Kind.ACID], 0.3)
+    if bleed_time > 0.0:
+        c = c.lerp(Element.COLORS[Element.Kind.BLOOD], 0.3)
     if frozen_time > 0.0:
         c = c.lerp(Element.COLORS[Element.Kind.ICE], 0.75)
+    if stun_time > 0.0 and fmod(stun_time, 0.2) < 0.1:
+        c = c.lerp(Color.WHITE, 0.5)
     if burn_time > 0.0:
         c = c.lerp(Element.COLORS[Element.Kind.FIRE], 0.35)
     if _flash > 0.0:
@@ -372,6 +447,26 @@ func _draw() -> void:
     if frozen_time > 0.0:
         var f := radius * 3.4
         draw_texture_rect(Art.PARTICLES["magic"], Rect2(Vector2(-f / 2.0, -f / 2.0), Vector2(f, f)), false, Color(0.8, 0.97, 1.0, 0.55))
+    if poison_time > 0.0:
+        for i in poison_stacks:
+            var a := _anim_t * 0.7 + float(i) * 1.1
+            draw_circle(Vector2(cos(a) * radius * 1.1, -radius * 0.5 - fmod(a * 4.0, 14.0)), 2.5, Color(Element.COLORS[Element.Kind.POISON], 0.9))
+    if bleed_time > 0.0:
+        draw_circle(Vector2(radius * 0.5, radius * 0.9), 2.5, Element.COLORS[Element.Kind.BLOOD])
+        draw_circle(Vector2(-radius * 0.3, radius * 1.0), 2.0, Element.COLORS[Element.Kind.BLOOD])
+    if corroded_time > 0.0:
+        draw_arc(Vector2.ZERO, radius + 1.0, 0.0, TAU, 20, Color(Element.COLORS[Element.Kind.ACID], 0.7), 1.5)
+    if stun_time > 0.0:
+        for i in 3:
+            var a := _anim_t * 0.3 + float(i) * TAU / 3.0 + stun_time * 6.0
+            draw_circle(Vector2(cos(a), sin(a) * 0.4) * radius * 1.2 + Vector2(0, -radius - 4.0), 2.5, Color(1, 1, 0.6))
+    # Generic markers for element states beyond the ones drawn above.
+    var i := 0
+    for kind in states.keys():
+        if kind in [Element.Kind.WET, Element.Kind.SHOCK]:
+            continue
+        draw_circle(Vector2(-radius + 4.0 + 7.0 * i, -radius - 8.0), 3.0, Element.COLORS[kind])
+        i += 1
 
     # Attuned shield: the reaction pair it is weak to, and how many cracks remain.
     if shielded():

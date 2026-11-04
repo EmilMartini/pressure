@@ -36,6 +36,22 @@ const ACHIEVEMENTS := [
         "stat": "items_picked", "goal": 10, "rewards": ["rarity:epic"] },
     { "id": "hoarder", "name": "Hoarder", "desc": "Equip 30 pieces of gear",
         "stat": "items_picked", "goal": 30, "rewards": ["rarity:legendary"] },
+    { "id": "chemist", "name": "Chemist", "desc": "Fire 25 Steams",
+        "stat": "reaction:Steam", "goal": 25, "rewards": ["gun:venom_spitter"] },
+    { "id": "alchemist", "name": "Alchemist", "desc": "Fire 25 Infernos",
+        "stat": "reaction:Inferno", "goal": 25, "rewards": ["gun:acid_flask", "obstacle:rubble"] },
+    { "id": "butcher", "name": "Butcher", "desc": "Kill 250 enemies",
+        "stat": "kills", "goal": 250, "rewards": ["gun:blood_lance"] },
+    { "id": "abyss", "name": "Abyss", "desc": "Kill 3 bosses",
+        "stat": "bosses", "goal": 3, "rewards": ["gun:void_orb"] },
+    { "id": "zealot", "name": "Zealot", "desc": "Fire 80 Deep Freezes",
+        "stat": "reaction:Deep Freeze", "goal": 80, "rewards": ["gun:radiant_ray", "obstacle:ward"] },
+    { "id": "stormcaller", "name": "Stormcaller", "desc": "Fire 80 Chain Lightnings",
+        "stat": "reaction:Chain Lightning", "goal": 80, "rewards": ["gun:gale_blaster", "obstacle:miasma"] },
+    { "id": "mason", "name": "Mason", "desc": "Kill 20 elites",
+        "stat": "elites", "goal": 20, "rewards": ["gun:stone_sling"] },
+    { "id": "reactionary", "name": "Reactionary", "desc": "Discover 20 different reactions",
+        "stat": "reactions_discovered", "goal": 20, "rewards": ["shop:items"] },
 ]
 
 var save_path := SAVE_PATH
@@ -68,11 +84,12 @@ func unlock_label(unlock_id: String) -> String:
         "gun":
             return Guns.make(parts[1]).display_name
         "obstacle":
-            return { "pool": "Pool obstacles", "thicket": "Thicket obstacles", "valve": "Valve obstacles" }.get(parts[1], parts[1])
+            return { "pool": "Pool obstacles", "thicket": "Thicket obstacles", "valve": "Valve obstacles",
+                "ward": "Ward obstacles", "rubble": "Rubble obstacles", "miasma": "Miasma obstacles" }.get(parts[1], parts[1])
         "room":
             return "Challenge rooms" if parts[1] == "challenge" else parts[1]
         "shop":
-            return "Fourth shop slot"
+            return "Fourth shop slot" if parts[1] == "extra" else "Third shop item"
         "rarity":
             return "%s gear" % parts[1].capitalize()
     return unlock_id
@@ -125,7 +142,13 @@ func add_reaction(reaction_name: String) -> void:
     stats["reactions"] = stat("reactions") + 1
     if reaction_name in ["Inferno", "Ignition"]:
         stats["reactions_fire"] = stat("reactions_fire") + 1
+    if stat("reaction:" + reaction_name) == 0:
+        stats["reactions_discovered"] = stat("reactions_discovered") + 1
     add("reaction:" + reaction_name)
+
+
+func discovered(reaction_name: String) -> bool:
+    return stat("reaction:" + reaction_name) > 0
 
 
 func start_run() -> void:

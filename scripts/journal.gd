@@ -4,7 +4,7 @@ extends PanelContainer
 ## Tabs: Achievements, Arsenal (guns), Gear (items by rarity). Entries are flat buttons
 ## so a controller can walk the list and the scroll follows focus.
 
-const TABS := ["Achievements", "Arsenal", "Gear"]
+const TABS := ["Achievements", "Arsenal", "Gear", "Reactions"]
 
 var on_close: Callable
 var tab := 0
@@ -70,6 +70,8 @@ func set_tab(i: int) -> void:
             _fill_arsenal()
         2:
             _fill_gear()
+        3:
+            _fill_reactions()
     Sfx.play("ui_move")
     await get_tree().process_frame
     if is_visible_in_tree():
@@ -127,6 +129,22 @@ func _fill_arsenal() -> void:
             _entry(line, Element.COLORS[g.element])
         else:
             _entry(line + "\n      LOCKED   " + Progress.unlock_source("gun:" + id), Color(0.5, 0.48, 0.5))
+
+
+func _fill_reactions() -> void:
+    var defs: Array = Elements.all_defs()
+    var found := 0
+    for d in defs:
+        if Progress.discovered(d["name"]):
+            found += 1
+    _header("Reactions   (%d / %d discovered)   fire one to reveal what it does" % [found, defs.size()], UiTheme.BONE)
+    for d in defs:
+        var pair := "%s + %s" % [Element.NAMES[d["a"]], Element.NAMES[d["b"]]]
+        if Progress.discovered(d["name"]):
+            var col: Color = Element.COLORS[d["b"]].lerp(Element.COLORS[d["a"]], 0.5).lightened(0.2)
+            _entry("%s   %s   x%d\n      %s" % [d["name"], pair, Progress.stat("reaction:" + d["name"]), d["desc"]], col)
+        else:
+            _entry("???   %s\n      undiscovered" % pair, Color(0.45, 0.42, 0.45))
 
 
 func _fill_gear() -> void:

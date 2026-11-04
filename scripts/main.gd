@@ -436,6 +436,8 @@ func _setup_autotest() -> void:
     Progress.save_path = "user://save_autotest.json"
     Progress.reset()
     var p := players[0]
+    p.weight_capacity_base = 80   # carry every gun so every element gets exercised
+    p.recalc_stats()
     for id in Guns.all_ids():
         var owned := false
         for g in p.guns:

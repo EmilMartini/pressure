@@ -54,6 +54,13 @@ const GUN_TILES := {
     "glacier_lance": Vector2i(32, 2),
     "tar_mortar": Vector2i(44, 9),
     "storm_pike": Vector2i(35, 3),
+    "venom_spitter": Vector2i(33, 4),
+    "acid_flask": Vector2i(39, 11),
+    "blood_lance": Vector2i(34, 2),
+    "void_orb": Vector2i(35, 2),
+    "radiant_ray": Vector2i(36, 4),
+    "gale_blaster": Vector2i(34, 5),
+    "stone_sling": Vector2i(37, 7),
 }
 
 ## Palette: dark, desaturated, bone and blood.
