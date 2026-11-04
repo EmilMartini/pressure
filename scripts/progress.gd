@@ -32,6 +32,10 @@ const ACHIEVEMENTS := [
         "stat": "reaction:Deep Freeze", "goal": 40, "rewards": ["gun:glacier_lance"] },
     { "id": "survivor", "name": "Survivor", "desc": "Clear the dungeon",
         "stat": "runs_won", "goal": 1, "rewards": ["gun:storm_pike", "shop:extra"] },
+    { "id": "collector", "name": "Collector", "desc": "Equip 10 pieces of gear",
+        "stat": "items_picked", "goal": 10, "rewards": ["rarity:epic"] },
+    { "id": "hoarder", "name": "Hoarder", "desc": "Equip 30 pieces of gear",
+        "stat": "items_picked", "goal": 30, "rewards": ["rarity:legendary"] },
 ]
 
 var save_path := SAVE_PATH
@@ -69,6 +73,8 @@ func unlock_label(unlock_id: String) -> String:
             return "Challenge rooms" if parts[1] == "challenge" else parts[1]
         "shop":
             return "Fourth shop slot"
+        "rarity":
+            return "%s gear" % parts[1].capitalize()
     return unlock_id
 
 

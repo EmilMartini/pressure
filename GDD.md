@@ -77,9 +77,13 @@ is not applied. Same element refreshes the timer.
 - **Resistance drift.** From wave 3, a growing share of enemies spawn immune to raw damage
   from one element you carry (shown as a ring in that colour). Reactions still work on them.
   Your mono-fire god build meets a wave that only shatters.
-- **Sequence elites.** Shielded elites take no damage until reactions land on them in the
-  order shown above their head (e.g. Chain Lightning, then Deep Freeze). The late game becomes
-  a puzzle at speed.
+- **Attuned shields.** Elites and bosses carry a shield attuned to one reaction, shown as the
+  element pair above their head with crack pips. Only that reaction cracks it; anything else
+  bounces. Bosses re-attune to a different reaction at half health. This replaced an earlier
+  "reactions in order" design, which did not survive contact with auto-fire: you cannot
+  sequence what your arsenal sprays on its own. One named reaction is something you can
+  produce deliberately, and in auto-aim the trigger prefers elites and bosses, so the primary
+  is your tool for landing it.
 - **Dungeon tiers** (see section 4). Difficulty keys to your gear score, like Mythic+ keystones.
 
 ## 3. Run structure: Brotato waves inside an Isaac map
@@ -108,12 +112,23 @@ Principle: **every run starts naked, and nothing you own makes a run easier.** M
 progression widens what can happen in a run and what you are allowed to attempt, never
 your starting power. That keeps the "overpowered and bored" failure out by construction.
 
-### In-run gear (the WoW loot loop, inside one run)
-- Elites and bosses have **loot tables**. Gear drops during the run and is lost at the end,
-  like Isaac items. This is where the WoW itch lives: a rare drop from a specific elite,
-  a build coming together, a "god run" you talk about afterwards.
-- Slots: Barrel, Core, Grip, Rig, Trinket x2, one mod per gun. Mostly horizontal: new
-  reactions, gun behaviours (pierce, ricochet, orbit), vent variants, pressure tolerance.
+### In-run gear (the WoW loot loop, inside one run) — BUILT, first batch
+- Gear drops during the run and is lost at the end, like Isaac items. Elites drop an item
+  55% of the time, bosses always drop rare or better, shops sell two, treasure rooms offer
+  two guns and two items (take one), hidden rooms hold a rare, challenge rooms pay three
+  to choose from. Replacing an equipped item puts the old one back on the floor.
+- Slots: head, chest, hands, feet, two rings, two trinkets, and one mod per gun.
+  Rarities common to legendary with WoW colours; epic and legendary are unlocked.
+- **Items are data.** `scripts/items.gd` has a small vocabulary: flat stat mods, conditional
+  mods (while hot, while cold, below 40% HP, in manual aim), and triggers (on hit, kill,
+  reaction, a specific reaction, vent, room clear, hurt, overheat, freeze-up) that do things
+  (apply an element, nova, heal, scrap, shoot, chain, slow, shield). Seventy items exist today:
+  forty-five hand-written plus five families of five across the elements. Hundreds is an
+  authoring job in that one file, and every new item automatically composes with every other.
+- Synergy examples that already work: a Shock Coating on the Water Pistol makes every shot
+  Chain Lightning on its own. Conductor's Mail plus Hands of the Storm turns hits into
+  arcing chains. Heart of the Forge plus any fire gun makes kills explode in chains.
+  Signet of Overload turns overheating into a weapon, so Overclock stops being a downside.
 - Scrap in the run buys, repairs and rerolls. Nothing carries out except unlocks.
 
 ### Layer 1: the unlock pool (Isaac) — BUILT

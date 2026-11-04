@@ -18,12 +18,16 @@ func _init(p_offer: Dictionary) -> void:
 
 func _ready() -> void:
     var coord: Vector2i
+    var tint := color()
     match kind():
         "gun":
             coord = Art.gun_tile(offer["id"])
+        "item":
+            coord = Items.icon(item())
+            tint = Items.icon_tint(item())
         _:
             coord = Art.TILES.get(kind(), Art.TILES["cog"])
-    _sprite = Art.sprite(coord, 2.5, color())
+    _sprite = Art.sprite(coord, 2.5, tint)
     _sprite.position = Vector2(0, -12)
     add_child(_sprite)
 
@@ -32,8 +36,14 @@ func kind() -> String:
     return offer["kind"]
 
 
+func item() -> Dictionary:
+    return Items.get_item(offer["id"]) if kind() == "item" else {}
+
+
 func title() -> String:
     match kind():
+        "item":
+            return item().get("name", "?")
         "gun":
             var g := Guns.make(offer["id"])
             return "%s  (weight %d)" % [g.display_name, g.weight]
@@ -56,6 +66,8 @@ func price_text() -> String:
 
 func color() -> Color:
     match kind():
+        "item":
+            return Items.rarity_color(item())
         "gun":
             return Element.COLORS[Guns.make(offer["id"]).element]
         "carry":
@@ -90,10 +102,22 @@ func _draw() -> void:
         draw_arc(Vector2(0, 12), 22.0, 0.0, TAU, 32, Color(c, 0.5), 2.0)
     if highlighted:
         draw_arc(Vector2.ZERO, RANGE - 6.0, 0.0, TAU, 40, Color(1, 1, 1, 0.5), 1.5)
-    draw_string(Art.FONT, Vector2(-130, 44), title(), HORIZONTAL_ALIGNMENT_CENTER, 260, 18, Color(0.92, 0.9, 0.85))
+    var y := 44.0
+    var title_col := Color(0.92, 0.9, 0.85)
+    if kind() == "item":
+        title_col = Items.rarity_color(item())
+    draw_string(Art.FONT, Vector2(-130, y), title(), HORIZONTAL_ALIGNMENT_CENTER, 260, 18, title_col)
+    y += 16.0
+    if kind() == "item":
+        var it := item()
+        draw_string(Art.FONT, Vector2(-130, y), "%s %s" % [Items.RARITY_NAMES[it["rarity"]], it["slot"]], HORIZONTAL_ALIGNMENT_CENTER, 260, 13, Color(0.7, 0.68, 0.65))
+        y += 15.0
+        draw_multiline_string(Art.FONT, Vector2(-140, y), it["desc"], HORIZONTAL_ALIGNMENT_CENTER, 280, 14, 2, Color(0.88, 0.86, 0.8))
+        y += 32.0
     var pt := price_text()
     if pt != "":
-        draw_string(Art.FONT, Vector2(-130, 62), pt, HORIZONTAL_ALIGNMENT_CENTER, 260, 16, Art.SCRAP_TINT)
+        draw_string(Art.FONT, Vector2(-130, y), pt, HORIZONTAL_ALIGNMENT_CENTER, 260, 16, Art.SCRAP_TINT)
+        y += 18.0
     if highlighted:
-        var verb := "begin" if kind() == "sigil" else ("descend" if kind() == "stairs" else "take")
-        draw_string(Art.FONT, Vector2(-130, 80), "E / A to %s" % verb, HORIZONTAL_ALIGNMENT_CENTER, 260, 16, Color(0.6, 1.0, 1.0))
+        var verb := "begin" if kind() == "sigil" else ("descend" if kind() == "stairs" else ("equip" if kind() == "item" else "take"))
+        draw_string(Art.FONT, Vector2(-130, y), "E / A to %s" % verb, HORIZONTAL_ALIGNMENT_CENTER, 260, 16, Color(0.6, 1.0, 1.0))

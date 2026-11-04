@@ -99,15 +99,19 @@ func _chain_lightning(enemy: Node2D, potency: float) -> void:
     var damage := potency * 3.0
     var visited := { enemy: true }
     var current: Node2D = enemy
-    enemy.take_damage(damage, COLORS[Kind.SHOCK])
-    for i in 6:
+    var source: Player = enemy.last_hit_by if "last_hit_by" in enemy else null
+    var jumps := 6
+    if source != null and is_instance_valid(source):
+        jumps += int(source.stat("chain_jumps"))
+    enemy.take_damage(damage, COLORS[Kind.SHOCK], true, source)
+    for i in jumps:
         var next := _nearest_with_state(current.global_position, Kind.WET, 240.0, visited)
         if next == null:
             break
         visited[next] = true
         lightning_arc.emit(current.global_position, next.global_position)
         next.clear_state(Kind.WET)
-        next.take_damage(damage, COLORS[Kind.SHOCK])
+        next.take_damage(damage, COLORS[Kind.SHOCK], true, source)
         current = next
 
 

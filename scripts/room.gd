@@ -133,10 +133,11 @@ func _tick_challenge(delta: float) -> void:
         _add_timer = 1.6
         _spawn_group()
     if _elites_alive <= 0:
-        var pool: Array = Guns.ids()
-        pool.shuffle()
-        for i in mini(3, pool.size()):
-            data.stock.append(FloorGen.offer("gun", pool[i], 0))
+        var picked: Array = []
+        for i in 3:
+            var id := Items.roll(main.difficulty() + 2, Items.Rarity.UNCOMMON, picked)
+            picked.append(id)
+            data.stock.append(Items.offer(id, 0))
         _finish_fight(20)
         _build_pedestals()
 
@@ -146,8 +147,13 @@ func _begin_boss() -> void:
     active = true
     boss = _spawn_enemy("boss", Vector2(0, -220))
     var pairs := Elements.available_reactions(main.party_elements())
-    boss.sequence = _random_sequence(pairs, 2)
-    boss.reshield_sequence = _random_sequence(pairs, 2)
+    var hits := 2 + main.difficulty() / 4
+    if not pairs.is_empty():
+        var first: Vector2i = pairs.pick_random()
+        boss.set_shield(first, hits)
+        var others: Array = pairs.filter(func(p): return p != first)
+        boss.reshield_weakness = others.pick_random() if not others.is_empty() else first
+        boss.reshield_hits = hits
     _add_timer = 5.0
     main.announce("BOSS: break the shield in order")
     Sfx.play("boss")
@@ -174,6 +180,9 @@ func _finish_fight(bonus_scrap: int) -> void:
     _drop_scrap(Vector2.ZERO, bonus_scrap, 6)
     main.on_room_cleared(self)
     Sfx.play("cleared")
+    for pl in main.players:
+        if pl.alive:
+            Items.fire(pl, "room_clear", { "pos": pl.global_position })
     _apply_doors()
 
 
@@ -208,20 +217,13 @@ func _spawn_enemy(type: String, pos: Vector2) -> Enemy:
 
 func _spawn_elite(count: int) -> void:
     var diff := main.difficulty()
-    var length := 1 + int(diff >= 4) + int(diff >= 8)
+    var hits := 1 + int(diff >= 5) + int(diff >= 9)
+    var pairs := Elements.available_reactions(main.party_elements())
     for i in count:
         var e := _spawn_enemy("elite", _spawn_point())
-        e.sequence = _random_sequence(Elements.available_reactions(main.party_elements()), length)
+        if not pairs.is_empty():
+            e.set_shield(pairs.pick_random(), hits)
         Elements.reaction_fired.emit("ELITE", e.global_position, Color(1.0, 0.85, 0.3))
-
-
-func _random_sequence(pairs: Array[Vector2i], length: int) -> Array[Vector2i]:
-    var seq: Array[Vector2i] = []
-    if pairs.is_empty():
-        return seq
-    for i in length:
-        seq.append(pairs.pick_random())
-    return seq
 
 
 func _spawn_point() -> Vector2:
@@ -258,6 +260,15 @@ func _on_enemy_died(e: Enemy) -> void:
     _drop_scrap(e.global_position, e.scrap_value, mini(e.scrap_value, 5))
     if e.is_elite and data.type == RoomData.Type.CHALLENGE:
         _elites_alive -= 1
+    # Loot: bosses always drop rare or better, elites drop sometimes.
+    var inner := rect.grow(-90.0)
+    var drop_pos := Vector2(clampf(e.global_position.x, inner.position.x, inner.end.x), clampf(e.global_position.y, inner.position.y, inner.end.y))
+    if e.kind_name == "boss":
+        data.stock.append(Items.offer(Items.roll(main.difficulty() + 4, Items.Rarity.RARE), 0, Vector2(0, 150)))
+        _build_pedestals()
+    elif e.is_elite and randf() < 0.55:
+        data.stock.append(Items.offer(Items.roll(main.difficulty()), 0, drop_pos))
+        _build_pedestals()
 
 
 func _drop_scrap(pos: Vector2, total: int, pieces: int) -> void:
@@ -397,12 +408,19 @@ func _build_pedestals() -> void:
             p.queue_free()
     pedestals.clear()
     var offers: Array = data.stock.filter(func(o): return not o["taken"])
-    var n := offers.size()
+    var row: Array = offers.filter(func(o): return not o.has("pos"))
+    var n := row.size()
     for i in n:
-        var ped := Pedestal.new(offers[i])
+        var ped := Pedestal.new(row[i])
         ped.position = Vector2((float(i) - float(n - 1) / 2.0) * 170.0, 0.0)
         add_child(ped)
         pedestals.append(ped)
+    for o in offers:
+        if o.has("pos"):
+            var ped := Pedestal.new(o)
+            ped.position = o["pos"]
+            add_child(ped)
+            pedestals.append(ped)
 
 
 func _handle_interact() -> void:
@@ -448,13 +466,35 @@ func activate(ped: Pedestal, pl: Player) -> void:
                 for other in data.stock:
                     if other["kind"] == "gun":
                         other["taken"] = true
+        "item":
+            if main.scrap < o["price"]:
+                pl.say("Need %d scrap" % o["price"])
+                Sfx.play("error")
+                return
+            var item := Items.get_item(o["id"])
+            if item["slot"] == "mod" and pl.primary == null:
+                pl.say("No gun to fit it to")
+                Sfx.play("error")
+                return
+            main.scrap -= o["price"]
+            var replaced := pl.equip(o["id"])
+            Progress.add("items_picked")
+            Sfx.play("buy")
+            o["taken"] = true
+            if o["price"] == 0 and data.type in [RoomData.Type.TREASURE, RoomData.Type.CHALLENGE]:
+                for other in data.stock:
+                    if other["kind"] in ["gun", "item"]:
+                        other["taken"] = true
+            if replaced != "":
+                data.stock.append(Items.offer(replaced, 0, ped.position))
         "carry":
             if main.scrap < o["price"]:
                 pl.say("Need %d scrap" % o["price"])
                 Sfx.play("error")
                 return
             main.scrap -= o["price"]
-            pl.weight_capacity += o["amount"]
+            pl.weight_capacity_base += o["amount"]
+            pl.recalc_stats()
             pl.say("Carry capacity %d" % pl.weight_capacity)
             Sfx.play("buy")
             o["taken"] = true

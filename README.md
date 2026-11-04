@@ -44,6 +44,14 @@ challenge room and a fourth shop slot to the pool future runs draw from. Progres
 saved to `user://save.json`; the run-end screen shows what you unlocked and what is next.
 The self-test uses its own save file and never touches yours.
 
+## Gear
+
+Items drop from elites and bosses and sit in shops, treasure, hidden and challenge rooms.
+Eight gear slots plus a mod slot per gun. Every item is a few lines of data in
+[items.gd](scripts/items.gd): stat modifiers, conditional modifiers and triggered effects
+that all compose. To add an item, add one `_add(...)` line; the drop tables, pedestals,
+HUD and effect engine pick it up with no other change.
+
 ## Self-test
 
 ```
@@ -93,6 +101,7 @@ scripts/
   gun_data.gd        gun stats resource
   gun_library.gd     autoload `Guns`: the gun pool, gated by unlocks
   progress.gd        autoload `Progress`: save file, stats, achievements, unlocks
+  items.gd           autoload `Items`: gear catalog and the trigger/stat effect engine
   projectile.gd      bullets: raw damage, then apply element; also hit obstacles
   elements.gd        autoload `Elements` / class `Element`: kinds, colours, reaction table
   enemy.gd           chasing, states, reactions, immunity, elite sequences, boss re-shield

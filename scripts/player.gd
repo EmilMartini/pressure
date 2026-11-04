@@ -1,6 +1,6 @@
 class_name Player
 extends CharacterBody2D
-## One player: movement, aim modes, the carried arsenal, pressure gauge, focus, health.
+## One player: movement, aim modes, the carried arsenal, gear, pressure gauge, focus, health.
 
 signal died(player: Player)
 
@@ -15,6 +15,7 @@ const FOCUS_PER_HIT := 0.07
 const FOCUS_DECAY := 0.12          # per second
 const FOCUS_MISS_PENALTY := 0.15
 const VENT_MIN := 20.0
+const EQUIP_KEYS := ["head", "chest", "hands", "feet", "ring1", "ring2", "trinket1", "trinket2"]
 
 const PLAYER_COLORS := [
     Color(0.40, 0.90, 0.55),
@@ -28,19 +29,25 @@ var input: PlayerInput
 var color := Color.WHITE
 var radius := 14.0
 
+var max_hp_base := 100.0
 var max_hp := 100.0
 var hp := 100.0
 var alive := true
 var invuln := 0.0
 
+var weight_capacity_base := 10
 var weight_capacity := 10
 var guns: Array[Gun] = []
 var primary: Gun = null
 
+## Equipped gear: EQUIP_KEYS -> item id. Gun mods live on the guns.
+var equipment: Dictionary = {}
+var _stats: Dictionary = {}
+
 var auto_aim := true
 var aim_dir := Vector2.RIGHT
 
-var pressure := 0.0        # -100 cold .. +100 hot
+var pressure := 0.0        # -limit cold .. +limit hot
 var overheated := 0.0      # seconds left of stall
 var frozen_up := 0.0       # seconds left of slow fire
 var focus := 0.0           # 0..1, manual-aim reward
@@ -73,6 +80,10 @@ func _ready() -> void:
     var tiles: Array = Art.TILES["player"]
     _sprite = Art.sprite(tiles[index % tiles.size()], 2.0, color.lerp(Color.WHITE, 0.35))
     add_child(_sprite)
+
+
+func main() -> Main:
+    return get_tree().current_scene as Main
 
 
 # --- Arsenal ---------------------------------------------------------------
@@ -119,23 +130,105 @@ func element_kinds() -> Array:
     return kinds
 
 
+# --- Gear ------------------------------------------------------------------
+
+
+## Equip an item. Returns the id it replaced, or "".
+func equip(id: String) -> String:
+    var item := Items.get_item(id)
+    if item.is_empty():
+        return ""
+    var slot: String = item["slot"]
+    var old := ""
+    if slot == "mod":
+        if primary == null:
+            return ""
+        old = primary.mod
+        primary.mod = id
+        say("%s fitted to %s" % [item["name"], primary.data.display_name])
+    else:
+        var key := slot
+        if slot in ["ring", "trinket"]:
+            if not equipment.has(slot + "1"):
+                key = slot + "1"
+            elif not equipment.has(slot + "2"):
+                key = slot + "2"
+            else:
+                key = slot + "1"
+        old = equipment.get(key, "")
+        equipment[key] = id
+        say("Equipped %s" % item["name"])
+    recalc_stats()
+    return old
+
+
+func equipped_item_ids() -> Array:
+    var out: Array = equipment.values().duplicate()
+    for g in guns:
+        if g.mod != "":
+            out.append(g.mod)
+    return out
+
+
+func recalc_stats() -> void:
+    var old_max := max_hp
+    _stats = {}
+    for id in equipment.values():
+        var mods: Dictionary = Items.get_item(id).get("mods", {})
+        for k in mods.keys():
+            _stats[k] = float(_stats.get(k, 0.0)) + float(mods[k])
+    max_hp = maxf(20.0, max_hp_base + stat("max_hp"))
+    hp = clampf(hp + maxf(0.0, max_hp - old_max), 1.0, max_hp)
+    weight_capacity = weight_capacity_base + int(stat("carry"))
+
+
+## Summed modifier for a key, including conditional modifiers that currently hold.
+func stat(key: String) -> float:
+    var v := float(_stats.get(key, 0.0))
+    for id in equipment.values():
+        var cm: Dictionary = Items.get_item(id).get("cond_mods", {})
+        for cond in cm.keys():
+            if cm[cond].has(key) and Items.condition(cond, self, {}):
+                v += float(cm[cond][key])
+    return v
+
+
+func pressure_limit() -> float:
+    return PRESSURE_LIMIT + stat("pressure_limit")
+
+
+func heal(amount: float) -> void:
+    if alive:
+        hp = minf(max_hp, hp + amount)
+
+
+## Called by enemies when a reaction this player caused fires.
+func on_reaction(_reaction_name: String) -> void:
+    var steal := stat("lifesteal")
+    if steal > 0.0:
+        heal(steal)
+
+
 # --- Pressure and focus ----------------------------------------------------
 
 
 func add_pressure(amount: float) -> void:
-    pressure = clampf(pressure + amount, -PRESSURE_LIMIT, PRESSURE_LIMIT)
-    if pressure >= PRESSURE_LIMIT:
+    var limit := pressure_limit()
+    pressure = clampf(pressure + amount, -limit, limit)
+    if pressure >= limit:
         overheated = STALL_SECONDS
-        pressure = 45.0
+        pressure = limit * 0.45
         say("OVERHEAT")
         Sfx.play("overheat")
         _squash = 1.0
-    elif pressure <= -PRESSURE_LIMIT:
+        Items.fire(self, "overheat", { "pos": global_position, "element": Element.Kind.FIRE })
+    elif pressure <= -limit:
         frozen_up = STALL_SECONDS
-        pressure = -45.0
+        pressure = -limit * 0.45
         say("FROZEN UP")
         Sfx.play("frozen")
         _squash = 1.0
+        Items.fire(self, "freeze_up", { "pos": global_position, "element": Element.Kind.ICE })
 
 
 ## Nudge the sprite opposite to a shot; called by Gun.
@@ -153,7 +246,7 @@ func focus_multiplier() -> float:
 
 func on_projectile_hit(manual: bool) -> void:
     if manual and not auto_aim:
-        focus = minf(1.0, focus + FOCUS_PER_HIT)
+        focus = minf(1.0, focus + FOCUS_PER_HIT * (1.0 + stat("focus_gain")))
 
 
 func on_projectile_missed() -> void:
@@ -165,8 +258,8 @@ func vent() -> void:
         say("Nothing to vent")
         return
     var hot := pressure > 0.0
-    var strength := absf(pressure)
-    var vent_radius := 110.0 + strength * 1.6
+    var strength := absf(pressure) * (1.0 + stat("vent_power"))
+    var vent_radius := (110.0 + strength * 1.6) * (1.0 + stat("vent_radius"))
     _squash = 1.0
     var kind: int = Element.Kind.FIRE if hot else Element.Kind.ICE
     var col: Color = Element.COLORS[kind]
@@ -177,18 +270,24 @@ func vent() -> void:
             continue
         if e.global_position.distance_to(global_position) > vent_radius:
             continue
-        e.take_damage(strength * 0.35, col)
+        e.take_damage(strength * 0.35, col, true, self)
         if is_instance_valid(e) and not e.is_queued_for_deletion():
-            e.apply_element(kind, strength * 0.3)
+            e.apply_element(kind, strength * 0.3, self)
     pressure = 0.0
+    Items.fire(self, "vent", { "pos": global_position, "element": kind })
 
 
 # --- Health ----------------------------------------------------------------
 
 
-func take_damage(amount: float) -> void:
+func take_damage(amount: float, attacker: Node2D = null) -> void:
     if not alive or invuln > 0.0:
         return
+    if randf() < stat("dodge"):
+        say("Dodged")
+        invuln = 0.25
+        return
+    amount = maxf(1.0, amount - stat("armor"))
     hp -= amount
     invuln = 0.6
     _squash = 1.0
@@ -196,6 +295,10 @@ func take_damage(amount: float) -> void:
     var scene := get_tree().current_scene
     if scene != null and scene.has_method("shake"):
         scene.shake(5.0)
+    var thorns := stat("thorns")
+    if thorns > 0.0 and attacker != null and is_instance_valid(attacker) and attacker is Enemy:
+        attacker.take_damage(thorns, Color.WHITE, true, self)
+    Items.fire(self, "hurt", { "pos": global_position, "target": attacker })
     if hp <= 0.0:
         hp = 0.0
         alive = false
@@ -220,7 +323,7 @@ func _physics_process(delta: float) -> void:
         return
 
     var mv := input.move_vector()
-    var speed := BASE_SPEED * maxf(0.4, 1.0 - SPEED_LOSS_PER_WEIGHT * total_weight())
+    var speed := BASE_SPEED * (1.0 + stat("speed")) * maxf(0.4, 1.0 - SPEED_LOSS_PER_WEIGHT * total_weight())
     velocity = mv * speed
     move_and_slide()
 
@@ -239,11 +342,14 @@ func _physics_process(delta: float) -> void:
     if input.just_pressed("swap"):
         cycle_primary()
 
-    pressure = move_toward(pressure, 0.0, PRESSURE_DECAY * delta)
+    pressure = move_toward(pressure, 0.0, PRESSURE_DECAY * (1.0 + stat("pressure_decay")) * delta)
     overheated = maxf(0.0, overheated - delta)
     frozen_up = maxf(0.0, frozen_up - delta)
     invuln = maxf(0.0, invuln - delta)
     focus = maxf(0.0, focus - FOCUS_DECAY * delta)
+    var regen := stat("regen")
+    if regen > 0.0:
+        heal(regen * delta)
     _message_time = maxf(0.0, _message_time - delta)
     if _message_time <= 0.0:
         last_message = ""
@@ -275,10 +381,9 @@ func _fire() -> void:
         var is_primary := g == primary
         if is_primary and not trigger:
             continue
-        var target := nearest_enemy(g.data.max_range)
+        # The trigger goes for the big one: in auto-aim the primary prefers elites and bosses.
+        var target := nearest_enemy(g.effective_range(), is_primary)
         if target == null:
-            # Nothing in range: the arsenal stays quiet, but the trigger always fires
-            # along your aim so you can hit obstacles and lead targets.
             if is_primary:
                 g.fire(aim_dir, not auto_aim)
             continue
@@ -288,9 +393,11 @@ func _fire() -> void:
             g.fire(aim_dir, true)
 
 
-func nearest_enemy(max_range: float) -> Node2D:
+func nearest_enemy(max_range: float, prefer_elite: bool = false) -> Node2D:
     var best: Node2D = null
     var best_d := max_range * max_range
+    var best_elite: Node2D = null
+    var best_elite_d := max_range * max_range
     for e in get_tree().get_nodes_in_group("enemies"):
         if not is_instance_valid(e) or e.is_queued_for_deletion():
             continue
@@ -298,7 +405,10 @@ func nearest_enemy(max_range: float) -> Node2D:
         if d < best_d:
             best_d = d
             best = e
-    return best
+        if prefer_elite and e.is_elite and d < best_elite_d:
+            best_elite_d = d
+            best_elite = e
+    return best_elite if best_elite != null else best
 
 
 # --- Drawing ---------------------------------------------------------------
@@ -325,5 +435,4 @@ func _draw() -> void:
     draw_colored_polygon(PackedVector2Array([tip, aim_dir * 4.0 + side, aim_dir * 4.0 - side]), Color.WHITE)
     if not auto_aim:
         draw_line(aim_dir * (radius + 10.0), aim_dir * 90.0, Color(1, 1, 1, 0.25 + focus * 0.5), 1.5)
-    # Player number
     draw_string(Art.FONT, Vector2(-20, -radius - 8), str(index + 1), HORIZONTAL_ALIGNMENT_CENTER, 40, 16, color)

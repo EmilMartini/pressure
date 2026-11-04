@@ -16,6 +16,8 @@ var pierce := 0
 var radius := 4.0
 var color := Color.WHITE
 var manual := false
+var crit := false
+var extra_element: int = Element.Kind.NONE   # from a Coating gun mod
 var shooter: Player = null
 
 var _hit: Dictionary = {}
@@ -127,11 +129,25 @@ func _on_body_entered(body: Node) -> void:
     var raw := damage
     if enemy.immune_to == element:
         raw = 0.0
-    enemy.take_damage(raw, color)
+    if shooter != null and raw > 0.0:
+        if enemy.has_state(Element.Kind.WET):
+            raw *= 1.0 + shooter.stat("vs_wet")
+        if enemy.burn_time > 0.0:
+            raw *= 1.0 + shooter.stat("vs_burning")
+        if enemy.frozen_time > 0.0:
+            raw *= 1.0 + shooter.stat("vs_frozen")
+        if enemy.has_state(Element.Kind.SHOCK):
+            raw *= 1.0 + shooter.stat("vs_shocked")
+        if enemy.has_state(Element.Kind.OIL):
+            raw *= 1.0 + shooter.stat("vs_oiled")
+    enemy.take_damage(raw, color, true, shooter)
     if is_instance_valid(enemy) and not enemy.is_queued_for_deletion():
-        enemy.apply_element(element, potency)
+        enemy.apply_element(element, potency, shooter)
+    if extra_element != Element.Kind.NONE and is_instance_valid(enemy) and not enemy.is_queued_for_deletion():
+        enemy.apply_element(extra_element, potency * 0.8, shooter)
     if shooter != null:
         shooter.on_projectile_hit(manual)
+        Items.fire(shooter, "hit", { "target": enemy, "pos": global_position, "element": element })
     if pierce > 0:
         pierce -= 1
     else:

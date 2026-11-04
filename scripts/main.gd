@@ -145,6 +145,7 @@ func start_floor(n: int) -> void:
 ## or ZERO when dropped in (floor start).
 func enter_room(pos: Vector2i, moved: Vector2i) -> void:
     _transitioning = false
+    Sfx.stop_all()
     if current != null:
         current.collect_all_scrap()
         remove_child(current)
@@ -203,7 +204,10 @@ func difficulty() -> int:
 
 
 func add_scrap(v: int) -> void:
-    scrap += v
+    var gain := 0.0
+    for p in players:
+        gain = maxf(gain, p.stat("scrap_gain"))
+    scrap += ceili(float(v) * (1.0 + gain))
 
 
 func announce(text: String) -> void:
@@ -431,7 +435,7 @@ func _bot_navigate(p: Player) -> void:
                 want = true
             "gun":
                 want = o["price"] <= scrap and p.can_carry(Guns.make(o["id"]))
-            "carry", "repair":
+            "carry", "repair", "item":
                 want = o["price"] <= scrap
         if want:
             var d := ped.global_position - p.global_position

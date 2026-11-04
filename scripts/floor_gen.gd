@@ -134,13 +134,24 @@ static func _stock_rooms(rooms: Dictionary, floor_number: int) -> void:
                     r.stock.append(offer("gun", id, gun_price(Guns.make(id), floor_number)))
                 r.stock.append(offer("carry", "", 18 + floor_number * 6, 2))
                 r.stock.append(offer("repair", "", 10, 40))
+                var shop_items: Array = []
+                for i in 2:
+                    var iid := Items.roll(floor_number * 3, Items.Rarity.COMMON, shop_items)
+                    shop_items.append(iid)
+                    r.stock.append(Items.offer(iid, Items.price(Items.get_item(iid), floor_number)))
             RoomData.Type.TREASURE:
                 var pool: Array = Guns.ids()
                 pool.shuffle()
-                for i in mini(3, pool.size()):
+                for i in mini(2, pool.size()):
                     r.stock.append(offer("gun", pool[i], 0))
+                var picked: Array = []
+                for i in 2:
+                    var iid := Items.roll(floor_number * 3 + 2, Items.Rarity.UNCOMMON, picked)
+                    picked.append(iid)
+                    r.stock.append(Items.offer(iid, 0))
             RoomData.Type.HIDDEN:
                 r.stock.append(offer("carry", "", 0, 3))
+                r.stock.append(Items.offer(Items.roll(floor_number * 3 + 4, Items.Rarity.RARE), 0))
                 r.loose_scrap = 20 + floor_number * 10
             RoomData.Type.CHALLENGE:
                 r.stock.append(offer("sigil", "", 0))

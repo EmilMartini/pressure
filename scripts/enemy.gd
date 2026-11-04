@@ -1,7 +1,7 @@
 class_name Enemy
 extends CharacterBody2D
 ## An enemy: chases the nearest player, carries element states, reacts, can be
-## immune to one element's raw damage, and elites demand a reaction sequence.
+## immune to one element's raw damage, and elites carry a shield attuned to one reaction.
 
 signal died(enemy: Enemy)
 
@@ -17,10 +17,15 @@ var contact_damage := 8.0
 var base_color := Color(0.85, 0.30, 0.30)
 var immune_to: int = Element.Kind.NONE
 var is_elite := false
-var sequence: Array[Vector2i] = []   # required reaction pairs, in order
-var sequence_index := 0
-var reshield_sequence: Array[Vector2i] = []   # bosses re-shield at half health
 var scrap_value := 1
+var last_hit_by: Player = null
+
+## Attuned shield: only the one reaction it is attuned to cracks it, one hit per crack.
+var weakness := Vector2i(-1, -1)
+var shield_hp := 0
+var shield_max := 0
+var reshield_weakness := Vector2i(-1, -1)   # bosses re-shield at half health
+var reshield_hits := 0
 
 var states: Dictionary = {}           # Element.Kind -> seconds remaining
 var burn_dps := 0.0
@@ -122,14 +127,29 @@ func clear_state(kind: int) -> void:
 
 
 func shielded() -> bool:
-    return sequence_index < sequence.size()
+    return shield_hp > 0
+
+
+func set_shield(pair: Vector2i, hits: int) -> void:
+    weakness = pair
+    shield_hp = hits
+    shield_max = hits
+    queue_redraw()
+
+
+func weakness_name() -> String:
+    if weakness.x < 0:
+        return ""
+    return Elements.reaction_name(weakness.x, weakness.y)
 
 
 ## Lands an element on this enemy. If a different state is already present and the
 ## pair reacts, the reaction fires and the old state is consumed. Returns the reaction name.
-func apply_element(kind: int, potency: float) -> String:
+func apply_element(kind: int, potency: float, source: Player = null) -> String:
     if kind == Element.Kind.NONE:
         return ""
+    if source != null:
+        last_hit_by = source
     for existing in states.keys():
         if existing == kind:
             continue
@@ -137,29 +157,41 @@ func apply_element(kind: int, potency: float) -> String:
         if reaction == "":
             continue
         states.erase(existing)
-        _advance_sequence(existing, kind)
+        if source != null:
+            potency *= 1.0 + source.stat("potency:" + reaction)
+        _on_reaction_pair(existing, kind)
         Elements.try_react(self, existing, kind, potency)
+        if source != null and is_instance_valid(source):
+            source.on_reaction(reaction)
+            Items.fire(source, "reaction", { "target": self, "reaction": reaction, "element": kind, "pos": global_position })
         if is_instance_valid(self):
             queue_redraw()
         return reaction
-    states[kind] = Element.DURATION[kind]
+    var duration: float = Element.DURATION[kind]
+    if source != null:
+        duration *= 1.0 + source.stat("state_duration")
+    states[kind] = duration
     queue_redraw()
     return ""
 
 
-func _advance_sequence(a: int, b: int) -> void:
+func _on_reaction_pair(a: int, b: int) -> void:
     if not shielded():
         return
-    if sequence[sequence_index] == Element.pair_key(a, b):
-        sequence_index += 1
-        _shield_flash = 0.3
-        if not shielded():
+    if Element.pair_key(a, b) == weakness:
+        shield_hp -= 1
+        _shield_flash = 0.4
+        if shield_hp <= 0:
             Elements.reaction_fired.emit("Shield broken!", global_position, Color.WHITE)
+        else:
+            Elements.reaction_fired.emit("Shield cracked", global_position, Color(1, 1, 1, 0.9))
 
 
-func take_damage(amount: float, color: Color, flash: bool = true) -> void:
+func take_damage(amount: float, color: Color, flash: bool = true, source: Player = null) -> void:
     if hp <= 0.0:
         return
+    if source != null:
+        last_hit_by = source
     if shielded():
         _shield_flash = maxf(_shield_flash, 0.15)
         queue_redraw()
@@ -175,10 +207,9 @@ func take_damage(amount: float, color: Color, flash: bool = true) -> void:
     if hp <= 0.0:
         _die()
         return
-    if not reshield_sequence.is_empty() and hp <= max_hp * 0.5:
-        sequence = reshield_sequence
-        reshield_sequence = []
-        sequence_index = 0
+    if reshield_hits > 0 and hp <= max_hp * 0.5:
+        set_shield(reshield_weakness, reshield_hits)
+        reshield_hits = 0
         _shield_flash = 0.5
         Elements.reaction_fired.emit("Shield restored!", global_position, Color.WHITE)
     queue_redraw()
@@ -209,6 +240,11 @@ func add_burn(dps: float, seconds: float) -> void:
 func _die() -> void:
     if frozen_time > 0.0:
         Elements.nova.emit(global_position, radius * 2.5, Color(Element.COLORS[Element.Kind.ICE], 0.6))
+    if last_hit_by != null and is_instance_valid(last_hit_by):
+        var ctx := { "target": self, "pos": global_position, "elite": is_elite }
+        Items.fire(last_hit_by, "kill", ctx)
+        if is_elite:
+            Items.fire(last_hit_by, "elite_kill", ctx)
     var fx := _fx()
     if fx != null:
         fx.corpse(_sprite.texture, global_position, _sprite_scale, _sprite.modulate, _sprite.flip_h)
@@ -259,7 +295,7 @@ func _physics_process(delta: float) -> void:
     if target != null and _contact_cd <= 0.0:
         var reach := radius + target.radius + 2.0
         if global_position.distance_squared_to(target.global_position) <= reach * reach:
-            target.take_damage(contact_damage)
+            target.take_damage(contact_damage, self)
             _contact_cd = 0.8
     _update_sprite()
     queue_redraw()
@@ -337,17 +373,15 @@ func _draw() -> void:
         var f := radius * 3.4
         draw_texture_rect(Art.PARTICLES["magic"], Rect2(Vector2(-f / 2.0, -f / 2.0), Vector2(f, f)), false, Color(0.8, 0.97, 1.0, 0.55))
 
-    # Required reaction sequence, each pair as two half-dots.
-    if sequence.size() > 0:
-        var sy := -radius - 24.0
-        var n := sequence.size()
-        for k in n:
-            var x := (float(k) - float(n - 1) / 2.0) * 22.0
-            var done := k < sequence_index
-            var alpha := 0.3 if done else 1.0
-            draw_circle(Vector2(x, sy), 7.5, Color(0, 0, 0, 0.6 * alpha))
-            draw_circle(Vector2(x - 3.5, sy), 5.0, Color(Element.COLORS[sequence[k].x], alpha))
-            draw_circle(Vector2(x + 3.5, sy), 5.0, Color(Element.COLORS[sequence[k].y], alpha))
+    # Attuned shield: the reaction pair it is weak to, and how many cracks remain.
+    if shielded():
+        var sy := -radius - 26.0
+        draw_circle(Vector2(0, sy), 9.0, Color(0, 0, 0, 0.65))
+        draw_circle(Vector2(-4.0, sy), 6.0, Element.COLORS[weakness.x])
+        draw_circle(Vector2(4.0, sy), 6.0, Element.COLORS[weakness.y])
+        for k in shield_max:
+            var px := (float(k) - float(shield_max - 1) / 2.0) * 9.0
+            draw_rect(Rect2(px - 3.0, sy + 11.0, 6.0, 4.0), Color(1, 1, 1, 0.95) if k < shield_hp else Color(1, 1, 1, 0.25))
 
     if (hp < max_hp and hp > 0.0) or is_elite:
         var w := radius * 2.2

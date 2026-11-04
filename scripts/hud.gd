@@ -4,7 +4,7 @@ extends Control
 ## room icons, a large wave timer, scrap with its cog, toasts and announcements.
 
 const PANEL_W := 316.0
-const PANEL_H := 160.0
+const PANEL_H := 190.0
 const CELL := 22.0
 const CELL_GAP := 5.0
 
@@ -96,7 +96,10 @@ func _draw_top(vp: Vector2) -> void:
         _bar(r, room.boss.hp / room.boss.max_hp, Color(0.85, 0.15, 0.25))
         if room.boss.shielded():
             draw_rect(r.grow(3.0), Color(1, 1, 1, 0.5 + 0.4 * absf(sin(_time * 6.0))), false, 3.0)
-            _centered(100, "SHIELDED: land the reactions in order", 20, Color(1, 1, 1, 0.9), vp)
+            var b := room.boss
+            var wn := b.weakness_name()
+            var pair := "%s + %s" % [Element.NAMES[b.weakness.x], Element.NAMES[b.weakness.y]]
+            _centered(100, "SHIELD attuned to %s (%s)   %d / %d cracks" % [wn.to_upper(), pair, b.shield_hp, b.shield_max], 20, Color(1, 1, 1, 0.9), vp)
         else:
             _centered(100, "BOSS", 20, Color(1, 0.8, 0.8), vp)
     elif room.active:
@@ -196,7 +199,7 @@ func _draw_player_panel(p: Player, origin: Vector2) -> void:
     var g := Rect2(bx + 22, gy, PANEL_W - 84 - 44, 14)
     draw_rect(g, Color(0.05, 0.04, 0.05, 0.85))
     var half := g.size.x / 2.0
-    var frac := p.pressure / Player.PRESSURE_LIMIT
+    var frac := p.pressure / p.pressure_limit()
     if frac > 0.0:
         draw_rect(Rect2(g.position.x + half, gy, half * frac, g.size.y), Color(1.0, 0.45, 0.15))
     elif frac < 0.0:
@@ -226,6 +229,8 @@ func _draw_player_panel(p: Player, origin: Vector2) -> void:
         draw_rect(slot, Color(0.08, 0.06, 0.08, 0.9))
         _icon(Art.gun_tile(gun.data.id), slot.grow(-4.0), ec)
         draw_rect(slot, Color.WHITE if is_primary else Color(ec, 0.8), false, 3.0 if is_primary else 1.5)
+        if gun.mod != "":
+            draw_rect(Rect2(gx + 26, gyy + 2, 8, 8), Items.rarity_color(Items.get_item(gun.mod)))
         if is_primary:
             draw_rect(Rect2(gx, gyy + 36, 36, 12), Color.WHITE)
             _text(Vector2(gx, gyy + 46), "RT", 11, Color.BLACK, HORIZONTAL_ALIGNMENT_CENTER, 36, false)
@@ -233,9 +238,25 @@ func _draw_player_panel(p: Player, origin: Vector2) -> void:
         if gx > origin.x + PANEL_W - 60:
             break
 
+    # Gear slots: head, chest, hands, feet, rings, trinkets.
+    var ex := x
+    var ey := y + 136.0
+    for key in Player.EQUIP_KEYS:
+        var gbox := Rect2(ex, ey, 24, 24)
+        var slot_name: String = key.rstrip("12")
+        draw_rect(gbox, Color(0.08, 0.06, 0.08, 0.9))
+        if p.equipment.has(key):
+            var it := Items.get_item(p.equipment[key])
+            _icon(Items.icon(it), gbox.grow(-3.0), Items.icon_tint(it))
+            draw_rect(gbox, Items.rarity_color(it), false, 2.0)
+        else:
+            _icon(Items.SLOT_ICONS[slot_name], gbox.grow(-4.0), Color(0.3, 0.28, 0.3))
+            draw_rect(gbox, Color(0.25, 0.22, 0.24), false, 1.0)
+        ex += 28.0
+
     # Weight pips
     var wx := x
-    var wy := y + 136.0
+    var wy := y + 168.0
     for i in p.weight_capacity:
         var filled := i < p.total_weight()
         draw_rect(Rect2(wx + float(i) * 11.0, wy, 8, 8), UiTheme.BONE if filled else Color(0.25, 0.22, 0.24))
