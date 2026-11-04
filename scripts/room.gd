@@ -29,6 +29,7 @@ var boss: Enemy = null
 var _elites_alive := 0
 var _spawn_timer := 0.0
 var _elite_timer := INF
+var _elite_timer2 := INF
 var _add_timer := 0.0
 var _add_time_left := 0.0
 
@@ -101,6 +102,7 @@ func _begin_arena() -> void:
     wave_time_left = wave_duration
     _spawn_timer = 0.8
     _elite_timer = wave_duration * 0.45 if diff >= 2 else INF
+    _elite_timer2 = wave_duration * 0.78 if main.floor_number >= 3 else INF
     main.announce("Survive %d seconds" % int(wave_duration))
     Sfx.play("wave_start")
 
@@ -117,14 +119,24 @@ func _tick_arena(delta: float) -> void:
         # Pacing by hit-point budget: each group buys itself a pause proportional to its
         # total hp against what a party of this difficulty is expected to put out, so a
         # starter pistol holds floor 1 and a built party gets a flood on floor 5.
-        if enemies.get_child_count() < mini(90, 32 + diff * 3):
+        if enemies.get_child_count() < mini(90, 20 + diff * 3):
+            var before_count := enemies.get_child_count()
             var spawned_hp := _spawn_group()
-            _spawn_timer = clampf(spawned_hp / hp_inflow_target(diff), 0.5, 4.0)
+            var spawned_n := enemies.get_child_count() - before_count
+            # Two budgets: hit points per second, and bodies per second (a swarm of
+            # cheap bodies is a different kind of pressure than one brute).
+            var by_hp := spawned_hp / hp_inflow_target(diff)
+            var by_bodies := float(spawned_n) / (1.2 + 0.15 * float(diff))
+            _spawn_timer = clampf(maxf(by_hp, by_bodies), 0.5, 4.0)
         else:
             _spawn_timer = 1.0
     if _elite_timer <= 0.0:
         _elite_timer = INF
         _spawn_elite(SpawnTable.elite_count(diff))
+    _elite_timer2 -= delta
+    if _elite_timer2 <= 0.0:
+        _elite_timer2 = INF
+        _spawn_elite(1)
     if wave_time_left <= 0.0:
         _finish_fight(6)
         _arena_reward()
@@ -181,6 +193,8 @@ func _begin_boss() -> void:
     active = true
     boss = _spawn_enemy("boss", Vector2(0, -220))
     boss.set_boss(SpawnTable.boss_for(main.floor_number))
+    boss.max_hp *= 1.0 + 0.12 * float(maxi(0, main.floor_number - 2))
+    boss.hp = boss.max_hp
     var pairs := Elements.available_reactions(main.party_elements())
     var hits := 5 + main.difficulty() / 3
     if not pairs.is_empty():
@@ -231,7 +245,13 @@ func _finish_fight(bonus_scrap: int) -> void:
 ## Enemy hit points per second the arena feeds the party at a difficulty. Roughly
 ## 60-70% of what an invested party deals; the gap is where upgrades go.
 static func hp_inflow_target(diff: int) -> float:
-    return 20.0 + 11.0 * float(diff)
+    var d := float(diff)
+    return 20.0 + 11.0 * d + 0.45 * maxf(0.0, d - 6.0) * maxf(0.0, d - 6.0)
+
+
+## Floors three to five hit harder: contact and shot damage x1.15, x1.3, x1.5.
+static func floor_damage_mult(floor_number: int) -> float:
+    return 1.0 + 0.15 * float(maxi(0, floor_number - 2)) + (0.05 if floor_number >= 5 else 0.0)
 
 
 func _spawn_group() -> float:
@@ -251,6 +271,8 @@ func _spawn_group() -> float:
 func _spawn_enemy(type: String, pos: Vector2) -> Enemy:
     var e := Enemy.new()
     e.configure(type, main.difficulty())
+    e.damage_mult = floor_damage_mult(main.floor_number)
+    e.contact_damage *= e.damage_mult
     e.position = pos
     e.died.connect(_on_enemy_died)
     enemies.add_child(e)

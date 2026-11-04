@@ -92,6 +92,7 @@ var hp := 20.0
 var speed := 110.0
 var radius := 12.0
 var contact_damage := 8.0
+var damage_mult := 1.0   # late-floor pressure, set by the room on spawn; scales shots too
 var base_color := Color(0.85, 0.30, 0.30)
 var immune_to: int = Element.Kind.NONE
 var is_elite := false
@@ -662,7 +663,7 @@ func _shoot(dir: Vector2, spd: float, dmg: float, element: int, life: float = 3.
     if w == null:
         return
     var p := EnemyProjectile.new()
-    p.damage = dmg
+    p.damage = dmg * damage_mult
     p.speed = spd
     p.element = element
     p.lifetime = life

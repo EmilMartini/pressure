@@ -219,7 +219,7 @@ func start_floor(n: int) -> void:
         if not p.alive:
             p.alive = true
             p.add_to_group("players")
-        p.hp = maxf(p.hp, p.max_hp * 0.6)
+        p.hp = maxf(p.hp, p.max_hp * (0.6 if n <= 2 else 0.4))   # deeper stairs patch you up less
     enter_room(Vector2i(FloorGen.GRID / 2, FloorGen.GRID / 2), Vector2i.ZERO)
     announce("Floor %d" % n)
 
