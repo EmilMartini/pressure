@@ -272,7 +272,7 @@ func _draw_player_panel(p: Player, origin: Vector2) -> void:
 func _draw_help(vp: Vector2) -> void:
     var lines := [
         "MOVE  WASD / left stick      AIM  mouse / right stick      FIRE PRIMARY  LMB / RT      INTERACT  E / A",
-        "AIM MODE  Tab / Y      VENT  Space / LB      SWAP PRIMARY  Q / X      PAUSE  Esc / Start      JOIN  Start on a new pad",
+        "AIM MODE  Tab / Y      VENT  Space / LB      SWAP PRIMARY  Q / X      CHARACTER  C / Back      PAUSE  Esc / Start",
     ]
     var y := vp.y - 14.0 - 22.0 * lines.size()
     draw_rect(Rect2(0, y - 22, vp.x, 22.0 * lines.size() + 14), Color(0, 0, 0, 0.55))

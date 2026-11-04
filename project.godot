@@ -23,6 +23,7 @@ Guns="*res://scripts/gun_library.gd"
 Art="*res://scripts/art.gd"
 Items="*res://scripts/items.gd"
 Sfx="*res://scripts/sfx.gd"
+Music="*res://scripts/music.gd"
 
 [display]
 

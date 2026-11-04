@@ -47,6 +47,10 @@ static func generate(floor_number: int) -> Dictionary:
     rooms[start].discovered = true
     for d in rooms[start].doors.keys():
         rooms[rooms[start].doors[d]["to"]].discovered = true
+    # The shop and treasure show on the map from the start, so a run can aim for them.
+    for p in rooms.keys():
+        if rooms[p].type in [RoomData.Type.SHOP, RoomData.Type.TREASURE]:
+            rooms[p].discovered = true
     return rooms
 
 

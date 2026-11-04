@@ -1,0 +1,8 @@
+Music by Kevin MacLeod (incompetech.com)
+Licensed under Creative Commons: By Attribution 4.0 License
+http://creativecommons.org/licenses/by/4.0/
+
+menu.mp3    "Lightless Dawn"
+run.mp3     "Darkest Child"
+boss.mp3    "Nightmare Machine"
+ambient.mp3 "Unseen Horrors"

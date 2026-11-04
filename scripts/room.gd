@@ -6,7 +6,7 @@ extends Node2D
 
 signal door_entered(dir: Vector2i)
 
-const SIZE := Vector2(1500, 950)
+const SIZE := Vector2(1120, 720)
 const WALL := 60.0
 const GAP := 150.0
 
@@ -109,13 +109,30 @@ func _tick_arena(delta: float) -> void:
     _spawn_timer -= delta
     _elite_timer -= delta
     if _spawn_timer <= 0.0:
-        _spawn_timer = maxf(0.4, 1.2 - 0.05 * float(diff))
+        _spawn_timer = maxf(0.45, 1.2 - 0.04 * float(diff))
         _spawn_group()
     if _elite_timer <= 0.0:
         _elite_timer = INF
         _spawn_elite(1 + int(diff >= 6))
     if wave_time_left <= 0.0:
         _finish_fight(6)
+        _arena_reward()
+
+
+## Every arena pays out: a free gun or a free item, so power grows with the rooms
+## whether or not the shop turns up.
+func _arena_reward() -> void:
+    var owned: Array = []
+    for pl in main.players:
+        for g in pl.guns:
+            owned.append(g.data.id)
+    var guns: Array = Guns.ids().filter(func(id): return not owned.has(id))
+    if randf() < 0.5 and not guns.is_empty():
+        data.stock.append(FloorGen.offer("gun", guns.pick_random(), 0))
+    else:
+        data.stock.append(Items.offer(Items.roll(main.difficulty(), Items.Rarity.COMMON), 0))
+    _build_pedestals()
+    main.announce("Room cleared: take your reward")
 
 
 func begin_challenge() -> void:
@@ -159,8 +176,9 @@ func _begin_boss() -> void:
         boss.reshield_weakness = others.pick_random() if not others.is_empty() else first
         boss.reshield_hits = hits
     _add_timer = 5.0
-    main.announce("BOSS: break the shield in order")
+    main.announce("BOSS: crack the shield with its reaction")
     Sfx.play("boss")
+    Music.play("boss", 1.0)
     main.shake(10.0)
 
 
@@ -174,6 +192,7 @@ func _tick_boss(delta: float) -> void:
         data.stock.append(FloorGen.offer("stairs", "", 0))
         _finish_fight(30)
         _build_pedestals()
+        Music.play("run", 2.0)
 
 
 func _finish_fight(bonus_scrap: int) -> void:
@@ -195,7 +214,7 @@ func _finish_fight(bonus_scrap: int) -> void:
 
 func _spawn_group() -> void:
     var diff := main.difficulty()
-    var count := mini(8, 3 + diff / 3 + (main.players.size() - 1))
+    var count := mini(8, 3 + diff / 4 + (main.players.size() - 1))
     for i in count:
         var roll := randf()
         var type := "grunt"
@@ -235,7 +254,7 @@ func _spawn_point() -> Vector2:
         var p := _perimeter_point()
         var ok := true
         for pl in main.players:
-            if pl.global_position.distance_to(p) < 320.0:
+            if pl.global_position.distance_to(p) < 260.0:
                 ok = false
         if ok:
             return p

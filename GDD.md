@@ -129,6 +129,9 @@ your starting power. That keeps the "overpowered and bored" failure out by const
   Chain Lightning on its own. Conductor's Mail plus Hands of the Storm turns hits into
   arcing chains. Heart of the Forge plus any fire gun makes kills explode in chains.
   Signet of Overload turns overheating into a weapon, so Overclock stops being a downside.
+- **Sets.** Eight sets (five elemental families, Scavenger, Overloader, Warden) grant
+  bonuses at 2, 3 and 4 pieces; gun mods count as pieces. The character sheet shows every
+  set you have a piece of and which thresholds are active.
 - Scrap in the run buys, repairs and rerolls. Nothing carries out except unlocks.
 
 ### Layer 1: the unlock pool (Isaac) — BUILT
@@ -201,8 +204,13 @@ your starting power. That keeps the "overpowered and bored" failure out by const
   and challenge rooms. One hidden room hangs off an ordinary room behind an obstacle:
   a pool (freeze it), a thicket (burn it) or a rusted valve (Steam it: Wet, then Fire).
 - Arena rooms lock their doors and run a timed wave; the timer grows with difficulty.
-  Difficulty starts at 2 and adds 3 per floor plus one per room cleared, so the first
-  arena already bites and every clear makes the next room harder.
+  Difficulty starts at 2, adds 4 per floor, and creeps up one step every second room
+  cleared, so a floor is one difficulty band and the stairs are the jump.
+- Every arena clear pays out a free gun or item on a pedestal, so power grows with the
+  rooms whether or not the shop turns up. The shop and treasure room are marked on the
+  minimap from the start of the floor.
+- Rooms are 1120 by 720 with the camera zoomed to 1.3x, so a room is about a screen and
+  a half, close to Isaac's one-screen rooms with a little scroll.
 - Enemies drop scrap. The shop sells three guns, a carry upgrade and a repair.
   Treasure rooms give a free pick of one gun from three. Challenge rooms start from a sigil,
   spawn two sequence elites plus adds, and pay out scrap and a free gun pick.

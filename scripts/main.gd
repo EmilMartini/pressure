@@ -38,6 +38,7 @@ var _clock := 0.0
 var _bot_idle := 0.0
 var _bot_obstacle_time := 0.0
 var _bot_skip: Dictionary = {}
+var _bot_tried: Dictionary = {}   # item and gun ids already taken once this run
 var _shots_taken: Dictionary = {}
 var _reaction_counts: Dictionary = {}
 
@@ -52,6 +53,7 @@ func _ready() -> void:
     camera = Camera2D.new()
     camera.position_smoothing_enabled = true
     camera.position_smoothing_speed = 7.0
+    camera.zoom = Vector2(1.3, 1.3)
     add_child(camera)
     camera.make_current()
 
@@ -82,6 +84,7 @@ func _ready() -> void:
         _setup_autotest()
 
     Progress.start_run()
+    Music.play("run")
     start_floor(1)
     if OS.get_cmdline_user_args().has("--obstacle-test"):
         _obstacle_test()
@@ -123,6 +126,7 @@ func _on_unlocked(unlock_id: String, achievement_name: String) -> void:
 
 func _end_run(won: bool) -> void:
     Progress.end_run(won, floor_number, total_kills)
+    Music.play("ambient", 2.5)
     if not autotest:
         get_tree().create_timer(1.6).timeout.connect(pause_menu.show_menu)
 
@@ -212,10 +216,10 @@ func next_floor() -> void:
         call_deferred("start_floor", floor_number + 1)
 
 
-## Enemy scaling input: grows with floors and with every room the party clears.
-## Starts at 2 so the first arena already bites.
+## Enemy scaling input. Mostly a floor number: within a floor it only creeps up every
+## second room, so a floor feels like one difficulty band and the jump is the stairs.
 func difficulty() -> int:
-    return 2 + (floor_number - 1) * 3 + rooms_cleared
+    return 2 + (floor_number - 1) * 4 + rooms_cleared / 2
 
 
 func add_scrap(v: int) -> void:
@@ -306,6 +310,25 @@ func _handle_joins() -> void:
             p.say("Joined!")
 
 
+var _back_was_down: Dictionary = {}
+
+
+## The pad's Back / Select button opens that player's character sheet.
+func _handle_sheet_buttons() -> void:
+    if pause_menu.visible:
+        return
+    for d in Input.get_connected_joypads():
+        if not _joined_devices.has(d):
+            continue
+        var down := Input.is_joy_button_pressed(d, JOY_BUTTON_BACK)
+        if down and not _back_was_down.get(d, false):
+            for p in players:
+                if p.input.device == d:
+                    pause_menu.show_sheet(p, true)
+                    break
+        _back_was_down[d] = down
+
+
 func _on_player_died(_p: Player) -> void:
     for p in players:
         if p.alive:
@@ -321,6 +344,7 @@ func _process(delta: float) -> void:
     if autotest:
         _autotest_tick(delta)
     _handle_joins()
+    _handle_sheet_buttons()
     camera.position = _party_center()
     camera.offset = Vector2(randf_range(-1.0, 1.0), randf_range(-1.0, 1.0)) * _shake
     _shake = move_toward(_shake, 0.0, 28.0 * delta)
@@ -343,6 +367,9 @@ func _input(event: InputEvent) -> void:
         KEY_F1:
             show_help = not show_help
             _help_timer = 0.0
+        KEY_C:
+            if not players.is_empty() and not pause_menu.visible:
+                pause_menu.show_sheet(players[0], true)
         KEY_F9:
             Progress.reset()
             announce("Save wiped: next run starts from nothing")
@@ -425,16 +452,34 @@ func _autotest_tick(delta: float) -> void:
         _bot_navigate(p)
     if fmod(_clock, 6.0) < delta:
         p.vent()
+    if fmod(_clock, 10.0) < delta:
+        _print_stats("TICK")
+        var peds: Array = []
+        for ped in current.pedestals:
+            if is_instance_valid(ped):
+                peds.append("%s@%s" % [ped.offer.get("id", ped.kind()), ped.position.round()])
+        print("    room active=%s wave_left=%.0f enemies=%d paused=%s pos=%s move=%s fire=%s idle=%.1f peds=%s" % [
+            current.active, current.wave_time_left, current.enemies.get_child_count(), get_tree().paused,
+            p.global_position.round(), p.input.force_move, p.input.force_fire, _bot_idle, str(peds)])
     if _clock >= 12.0 and p.auto_aim:
         p.auto_aim = false
     if _clock >= 30.0 and not _shots_taken.has("pause"):
         _shots_taken["pause"] = true
         pause_menu.show_for_test()
+    if _clock >= 45.0 and not _shots_taken.has("sheet"):
+        _shots_taken["sheet"] = true
+        # Give the bot some gear so the sheet has something to show.
+        for id in ["conductors_mail", "ring_shock", "vial_shock", "lucky_cog", "quick_hands"]:
+            p.equip(id)
+        pause_menu.show_for_test("res://autotest/sheet.png", p)
     for shot_time in [15.0, 60.0, 120.0, 180.0, 240.0]:
         if _clock >= shot_time and not _shots_taken.has(shot_time):
             _shots_taken[shot_time] = true
             _screenshot("res://autotest/t%03d.png" % int(shot_time))
     var limit := 70.0 if OS.get_cmdline_user_args().has("--short") else 300.0
+    for a in OS.get_cmdline_user_args():
+        if a.begins_with("--secs="):
+            limit = float(a.substr(7))
     if _clock >= limit or game_over or victory:
         _print_stats("END")
         get_tree().quit()
@@ -452,12 +497,17 @@ func _bot_navigate(p: Player) -> void:
             "sigil", "stairs":
                 want = true
             "gun":
-                want = o["price"] <= scrap and p.can_carry(Guns.make(o["id"]))
-            "carry", "repair", "item":
+                want = o["price"] <= scrap and p.can_carry(Guns.make(o["id"])) and not _bot_tried.has(o["id"])
+            "item":
+                # Replacing gear drops the old piece back on the floor; never chase it twice.
+                want = o["price"] <= scrap and not _bot_tried.has(o["id"])
+            "carry", "repair":
                 want = o["price"] <= scrap
         if want:
             var d := ped.global_position - p.global_position
             if d.length() < 30.0:
+                if o["kind"] in ["gun", "item"]:
+                    _bot_tried[o["id"]] = true
                 room.activate(ped, p)
                 _bot_idle = 0.0
             else:

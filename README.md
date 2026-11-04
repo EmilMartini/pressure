@@ -23,6 +23,7 @@ Controls are shown at the bottom of the screen in game. Press `F1` to hide them.
 | Toggle auto / manual aim | Tab | Y |
 | Vent pressure | Space | LB |
 | Swap primary gun | Q | X |
+| Character sheet | C | Back / Select |
 | Pause | Esc | Start |
 | Join (players 2-4) | | Start on a pad that has not joined |
 | Give player 1 a gun (debug) | 1 to 0 | |
@@ -34,6 +35,21 @@ the run-over screen with the run summary and next goals, and also opens the Jour
 Menus take controller input directly: d-pad or left stick to move, A to press, B to go
 back, shoulders to switch Journal tabs. The help strip at the bottom hides itself after
 20 seconds; F1 brings it back.
+
+## Character sheet
+
+C, the pad's Back button, or the pause menu's Character entry. Shows equipped gear per
+slot, each gun with its mod, every set with which bonus thresholds are active, and the
+full computed stat list: health, armour, dodge, regen, move speed, damage, attack speed,
+crit chance and damage, projectiles, pierce, range, potency per element, state duration,
+chain jumps, lifesteal, thorns, pressure, vent, focus and scrap. Shoulders cycle players.
+
+## Music
+
+Four tracks by Kevin MacLeod (incompetech.com) under CC BY 4.0, see
+`assets/music/CREDITS.txt`: a menu theme, a run theme, a boss theme and an after-run
+ambient. The `Music` autoload crossfades and ducks while paused. The credit line is shown
+on the main menu; keep it in any build you distribute.
 
 ## Journal
 
@@ -125,6 +141,8 @@ scripts/
   menu.gd            main menu (scenes/menu.tscn is the start scene)
   pause_menu.gd      pause overlay, also the run-over screen
   journal.gd         achievements / arsenal / gear journal used by both menus
+  character_sheet.gd gear, set bonuses and computed stats for one player
+  music.gd           autoload `Music`: looping tracks with crossfades
   menu_pad.gd        direct controller polling for menu navigation
   ui_theme.gd        shared dark theme for menus
 ```

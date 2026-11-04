@@ -177,6 +177,9 @@ func recalc_stats() -> void:
         var mods: Dictionary = Items.get_item(id).get("mods", {})
         for k in mods.keys():
             _stats[k] = float(_stats.get(k, 0.0)) + float(mods[k])
+    var set_mods := Items.set_bonus_mods(self)
+    for k in set_mods.keys():
+        _stats[k] = float(_stats.get(k, 0.0)) + float(set_mods[k])
     max_hp = maxf(20.0, max_hp_base + stat("max_hp"))
     hp = clampf(hp + maxf(0.0, max_hp - old_max), 1.0, max_hp)
     weight_capacity = weight_capacity_base + int(stat("carry"))
@@ -195,6 +198,10 @@ func stat(key: String) -> float:
 
 func pressure_limit() -> float:
     return PRESSURE_LIMIT + stat("pressure_limit")
+
+
+func move_speed() -> float:
+    return BASE_SPEED * (1.0 + stat("speed")) * maxf(0.4, 1.0 - SPEED_LOSS_PER_WEIGHT * total_weight())
 
 
 func heal(amount: float) -> void:
@@ -323,8 +330,7 @@ func _physics_process(delta: float) -> void:
         return
 
     var mv := input.move_vector()
-    var speed := BASE_SPEED * (1.0 + stat("speed")) * maxf(0.4, 1.0 - SPEED_LOSS_PER_WEIGHT * total_weight())
-    velocity = mv * speed
+    velocity = mv * move_speed()
     move_and_slide()
 
     var a := input.aim_vector(self)

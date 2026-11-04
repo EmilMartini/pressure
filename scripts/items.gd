@@ -49,9 +49,63 @@ const ELEMENT_KEYS := {
 }
 const ELEMENT_TITLES := { "wet": "Tide", "shock": "Storm", "fire": "Ember", "ice": "Frost", "oil": "Tar" }
 
+## Sets: wear several pieces for bonuses at 2, 3 and 4 pieces. Gun mods count.
+const SETS := {
+    "tide": { "name": "Tide", "items": ["ring_wet", "vial_wet", "gloves_wet", "coating_wet", "mantle_wet"],
+        "bonuses": { 2: { "dmg_wet": 0.10 }, 3: { "state_duration": 0.30 }, 4: { "lifesteal": 1 } } },
+    "storm": { "name": "Storm", "items": ["ring_shock", "vial_shock", "gloves_shock", "coating_shock", "mantle_shock"],
+        "bonuses": { 2: { "dmg_shock": 0.10 }, 3: { "chain_jumps": 2 }, 4: { "crit": 0.10 } } },
+    "ember": { "name": "Ember", "items": ["ring_fire", "vial_fire", "gloves_fire", "coating_fire", "mantle_fire"],
+        "bonuses": { 2: { "dmg_fire": 0.10 }, 3: { "vs_burning": 0.25 }, 4: { "crit_dmg": 0.5 } } },
+    "frost": { "name": "Frost", "items": ["ring_ice", "vial_ice", "gloves_ice", "coating_ice", "mantle_ice"],
+        "bonuses": { 2: { "dmg_ice": 0.10 }, 3: { "vs_frozen": 0.25 }, 4: { "armor": 3 } } },
+    "tar": { "name": "Tar", "items": ["ring_oil", "vial_oil", "gloves_oil", "coating_oil", "mantle_oil"],
+        "bonuses": { 2: { "dmg_oil": 0.10 }, 3: { "vs_oiled": 0.25 }, 4: { "speed": 0.10 } } },
+    "scavenger": { "name": "Scavenger", "items": ["scavenger_hood", "scrap_magnet", "mudwaders", "lucky_cog"],
+        "bonuses": { 2: { "scrap_gain": 0.20 }, 3: { "carry": 2 } } },
+    "overloader": { "name": "Overloader", "items": ["boiler_cap", "overclock", "signet_of_overload", "hot_rod"],
+        "bonuses": { 2: { "pressure_limit": 20 }, 3: { "dmg": 0.15 } } },
+    "warden": { "name": "Warden", "items": ["padded_vest", "rusted_helm", "worn_gloves", "leather_boots", "bone_ring"],
+        "bonuses": { 2: { "max_hp": 15 }, 3: { "armor": 2 }, 4: { "regen": 1 } } },
+}
+
 var catalog: Dictionary = {}   # id -> item
 var _by_rarity: Array = [[], [], [], [], []]
 var _depth := 0
+
+
+## set id -> number of that set's pieces the player has equipped.
+func set_counts(player: Player) -> Dictionary:
+    var out: Dictionary = {}
+    var ids: Array = player.equipped_item_ids()
+    for sid in SETS.keys():
+        var n := 0
+        for id in SETS[sid]["items"]:
+            if ids.has(id):
+                n += 1
+        if n > 0:
+            out[sid] = n
+    return out
+
+
+## Merged mods from every set threshold the player currently meets.
+func set_bonus_mods(player: Player) -> Dictionary:
+    var mods: Dictionary = {}
+    var counts := set_counts(player)
+    for sid in counts.keys():
+        for threshold in SETS[sid]["bonuses"].keys():
+            if counts[sid] >= int(threshold):
+                for k in SETS[sid]["bonuses"][threshold].keys():
+                    mods[k] = float(mods.get(k, 0.0)) + float(SETS[sid]["bonuses"][threshold][k])
+    return mods
+
+
+## Which set an item belongs to, or "".
+func set_of(item_id: String) -> String:
+    for sid in SETS.keys():
+        if SETS[sid]["items"].has(item_id):
+            return sid
+    return ""
 
 
 func _ready() -> void:

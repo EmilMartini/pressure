@@ -52,8 +52,9 @@ func fire(dir: Vector2, manual: bool) -> void:
         potency *= player.focus_multiplier()
     var crit := randf() < player.stat("crit")
     if crit:
-        damage *= 2.0
-        potency *= 1.5
+        var crit_mult := 2.0 + player.stat("crit_dmg")
+        damage *= crit_mult
+        potency *= 1.0 + (crit_mult - 1.0) * 0.5
     var count := data.projectile_count + int(player.stat("proj_count")) + int(_gm("g_count"))
     var pierce := data.pierce + int(player.stat("pierce")) + int(player.stat("pierce_" + ek)) + int(_gm("g_pierce"))
     var speed := data.projectile_speed * (1.0 + player.stat("proj_speed") + _gm("g_speed"))
