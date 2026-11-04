@@ -15,6 +15,7 @@ var obstacle: Obstacle = null
 
 var _blocker_shape: CollisionShape2D
 var _lock: Sprite2D
+var _armed := false   # ignore overlaps until the room has settled
 
 
 func _init(p_dir: Vector2i, gap: float, depth: float) -> void:
@@ -45,6 +46,9 @@ func _ready() -> void:
     _lock = Art.sprite(Art.TILES["lock"], 2.0, Color(0.85, 0.3, 0.3))
     add_child(_lock)
     _apply()
+    # Rooms all live at the origin, so a player who just walked through a door is
+    # still standing where this room's matching door is until the teleport lands.
+    get_tree().create_timer(0.3).timeout.connect(func(): _armed = true)
 
 
 func set_state(s: int) -> void:
@@ -90,8 +94,24 @@ func _apply() -> void:
 
 
 func _on_body_entered(body: Node) -> void:
-    if state == State.OPEN and body is Player and body.alive:
+    if not _armed or state != State.OPEN or not body is Player or not body.alive:
+        return
+    # Trust the body's current position, not a stale overlap from before a teleport.
+    var area := Rect2(global_position - size / 2.0, size).grow(18.0)
+    if area.has_point(body.global_position):
         entered.emit(dir)
+
+
+func _physics_process(_delta: float) -> void:
+    # A player who walks into an open doorway after it armed also counts, even if the
+    # overlap began earlier (for example while the door was still locked).
+    if not _armed or state != State.OPEN:
+        return
+    var area := Rect2(global_position - size / 2.0, size)
+    for body in get_overlapping_bodies():
+        if body is Player and body.alive and area.has_point(body.global_position):
+            entered.emit(dir)
+            return
 
 
 func _draw() -> void:

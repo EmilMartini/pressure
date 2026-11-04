@@ -8,8 +8,11 @@ var _panel: PanelContainer
 var _title: Label
 var _summary: Label
 var _resume: Button
+var _journal: Journal
+var _journal_center: CenterContainer
 var _start_was_down: Dictionary = {}
 var _test_clock := -1.0
+var _pad := MenuPad.new()
 
 
 ## Test hook: open, screenshot after a second, close.
@@ -50,6 +53,22 @@ func _ready() -> void:
     v.add_child(_summary)
     _resume = UiTheme.button("Resume", hide_menu)
     v.add_child(_resume)
+    v.add_child(UiTheme.button("Journal", _show_journal))
+    _journal_center = CenterContainer.new()
+    _journal_center.set_anchors_preset(Control.PRESET_FULL_RECT)
+    root.add_child(_journal_center)
+    _journal = Journal.new(_hide_journal)
+    _journal_center.add_child(_journal)
+    _journal.visible = false
+    MenuPad.strip_joypad_from_ui_actions()
+    _pad.on_cancel = func():
+        if _journal.visible:
+            _hide_journal()
+        elif visible:
+            hide_menu()
+    _pad.on_tab = func(step: int):
+        if _journal.visible:
+            _journal.set_tab(_journal.tab + step)
     v.add_child(UiTheme.button("Restart run", func():
         Sfx.play("ui_confirm")
         get_tree().paused = false
@@ -72,6 +91,8 @@ func _process(delta: float) -> void:
             _test_clock = -1.0
             hide_menu()
         return
+    if visible:
+        _pad.poll(get_viewport(), delta)
     var toggle := Input.is_action_just_pressed("ui_cancel")
     for d in Input.get_connected_joypads():
         if not main.is_device_joined(d):
@@ -81,10 +102,25 @@ func _process(delta: float) -> void:
             toggle = true
         _start_was_down[d] = down
     if toggle:
-        if visible:
+        if _journal.visible:
+            _hide_journal()
+        elif visible:
             hide_menu()
         else:
             show_menu()
+
+
+func _show_journal() -> void:
+    Sfx.play("ui_open")
+    _panel.visible = false
+    _journal.visible = true
+    _journal.set_tab(_journal.tab)
+
+
+func _hide_journal() -> void:
+    _journal.visible = false
+    _panel.visible = true
+    _resume.grab_focus()
 
 
 func show_menu() -> void:
@@ -109,5 +145,7 @@ func show_menu() -> void:
 
 func hide_menu() -> void:
     visible = false
+    _journal.visible = false
+    _panel.visible = true
     get_tree().paused = false
     Sfx.play("ui_back")

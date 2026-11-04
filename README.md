@@ -29,9 +29,21 @@ Controls are shown at the bottom of the screen in game. Press `F1` to hide them.
 | Wipe the save file (debug) | F9 | |
 | Restart | R | |
 
-The game opens on a main menu (Play, Codex, Wipe save, Quit). The pause menu doubles as
-the run-over screen with the run summary and next goals. The help strip at the bottom
-hides itself after 20 seconds; F1 brings it back.
+The game opens on a main menu (Play, Journal, Wipe save, Quit). The pause menu doubles as
+the run-over screen with the run summary and next goals, and also opens the Journal.
+Menus take controller input directly: d-pad or left stick to move, A to press, B to go
+back, shoulders to switch Journal tabs. The help strip at the bottom hides itself after
+20 seconds; F1 brings it back.
+
+## Journal
+
+Three tabs, from the main menu or the pause menu:
+
+- **Achievements**: every achievement, its progress, and what it unlocks.
+- **Arsenal**: every gun with element, weight and stats. Locked guns show which
+  achievement unlocks them.
+- **Gear**: every item grouped by rarity with its slot and effect. Locked rarity tiers
+  show how to unlock them.
 
 Player 1 is keyboard + mouse and the first controller, merged. Every other
 controller joins as a new player by pressing Start.
@@ -110,7 +122,9 @@ scripts/
   hud.gd             floor/room status, boss bar, minimap, player panels, help, banners
   art.gd             autoload `Art`: sheet lookups, particle textures, fonts, palette
   sfx.gd             autoload `Sfx`: one-shot sounds by name
-  menu.gd            main menu and codex (scenes/menu.tscn is the start scene)
+  menu.gd            main menu (scenes/menu.tscn is the start scene)
   pause_menu.gd      pause overlay, also the run-over screen
+  journal.gd         achievements / arsenal / gear journal used by both menus
+  menu_pad.gd        direct controller polling for menu navigation
   ui_theme.gd        shared dark theme for menus
 ```

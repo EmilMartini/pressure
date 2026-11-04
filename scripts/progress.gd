@@ -78,6 +78,16 @@ func unlock_label(unlock_id: String) -> String:
     return unlock_id
 
 
+## Which achievement grants an unlock, as "Name: how", or "Starting pool" for base content.
+func unlock_source(unlock_id: String) -> String:
+    for a in ACHIEVEMENTS:
+        if a["rewards"].has(unlock_id):
+            return "%s: %s" % [a["name"], a["desc"]]
+    if BASE_UNLOCKS.has(unlock_id):
+        return "Starting pool"
+    return "Not yet obtainable"
+
+
 ## The next few achievements still open, with progress, for the run-end screen.
 func next_goals(count: int) -> Array:
     var out: Array = []

@@ -29,6 +29,7 @@ var message := ""
 var _message_time := 0.0
 var _joined_devices: Dictionary = {}
 var _transitioning := false
+var _room_entered_ms := 0
 
 # Self-test: `godot --path . -- --autotest` plays by itself, saves screenshots to
 # res://autotest/ and prints progress. Used to verify builds without a human.
@@ -154,6 +155,7 @@ func start_floor(n: int) -> void:
 ## or ZERO when dropped in (floor start).
 func enter_room(pos: Vector2i, moved: Vector2i) -> void:
     _transitioning = false
+    _room_entered_ms = Time.get_ticks_msec()
     Sfx.stop_all()
     if current != null:
         current.collect_all_scrap()
@@ -186,6 +188,10 @@ func enter_room(pos: Vector2i, moved: Vector2i) -> void:
 
 func _on_door_entered(dir: Vector2i) -> void:
     if _transitioning:
+        return
+    if Time.get_ticks_msec() - _room_entered_ms < 350:
+        if autotest:
+            print("[DOOR] ignored a door event %d ms after entering the room" % (Time.get_ticks_msec() - _room_entered_ms))
         return
     _transitioning = true
     call_deferred("enter_room", current_pos + dir, dir)
