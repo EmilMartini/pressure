@@ -65,11 +65,47 @@ func _ready() -> void:
     Input.joy_connection_changed.connect(_on_joy_connection_changed)
 
     Elements.reaction_fired.connect(_count_reaction)
+    Progress.unlocked.connect(_on_unlocked)
     autotest = OS.get_cmdline_user_args().has("--autotest")
     if autotest:
         _setup_autotest()
 
+    Progress.start_run()
     start_floor(1)
+    if OS.get_cmdline_user_args().has("--obstacle-test"):
+        _obstacle_test()
+
+
+## Headless check that projectiles hit obstacles: `godot --headless --path . -- --obstacle-test`
+func _obstacle_test() -> void:
+    var ob := Obstacle.new("pool", Vector2(60, 150), Vector2.RIGHT)
+    ob.position = Vector2(300, 0)
+    current.add_child(ob)
+    var e := Enemy.new()
+    e.configure("grunt", 1)
+    e.position = Vector2(300, 300)
+    current.enemies.add_child(e)
+    for y in [0.0, 300.0]:
+        var p := Projectile.new()
+        p.velocity = Vector2(600, 0)
+        p.element = Element.Kind.ICE
+        p.damage = 1.0
+        p.potency = 1.0
+        p.lifetime = 1.0
+        p.position = Vector2(100, y)
+        p.body_entered.connect(func(b): print("  projectile at y=%d entered %s" % [y, b.get_class() if not b is Obstacle else "Obstacle"]))
+        add_child(p)
+    await get_tree().create_timer(1.2).timeout
+    print("[OBSTACLE TEST] obstacle alive=%s  enemy states=%s" % [is_instance_valid(ob), e.states if is_instance_valid(e) else "dead"])
+    get_tree().quit()
+
+
+func _on_unlocked(unlock_id: String, achievement_name: String) -> void:
+    hud.toast("%s: unlocked %s" % [achievement_name, Progress.unlock_label(unlock_id)])
+
+
+func _end_run(won: bool) -> void:
+    Progress.end_run(won, floor_number, total_kills)
 
 
 # --- Floors and rooms --------------------------------------------------------
@@ -134,9 +170,11 @@ func on_room_cleared(_room: Room) -> void:
 
 
 func next_floor() -> void:
+    Progress.add("floors")
     if floor_number >= FLOORS:
         victory = true
         announce("You cleared the dungeon!")
+        _end_run(true)
     else:
         call_deferred("start_floor", floor_number + 1)
 
@@ -233,6 +271,7 @@ func _on_player_died(_p: Player) -> void:
         if p.alive:
             return
     game_over = true
+    _end_run(false)
 
 
 # --- Frame -----------------------------------------------------------------
@@ -261,9 +300,14 @@ func _input(event: InputEvent) -> void:
             _restart()
         KEY_F1:
             show_help = not show_help
-        KEY_1, KEY_2, KEY_3, KEY_4, KEY_5:
-            var ids: Array = Guns.ids()
+        KEY_F9:
+            Progress.reset()
+            announce("Save wiped: next run starts from nothing")
+        KEY_1, KEY_2, KEY_3, KEY_4, KEY_5, KEY_6, KEY_7, KEY_8, KEY_9, KEY_0:
+            var ids: Array = Guns.all_ids()
             var n: int = key.physical_keycode - KEY_1
+            if key.physical_keycode == KEY_0:
+                n = 9
             if n < ids.size() and not players.is_empty():
                 players[0].add_gun(ids[n])
 
@@ -298,11 +342,15 @@ func _make_vignette() -> TextureRect:
 
 func _count_reaction(reaction_name: String, _pos: Vector2, _col: Color) -> void:
     _reaction_counts[reaction_name] = _reaction_counts.get(reaction_name, 0) + 1
+    Progress.add_reaction(reaction_name)
 
 
 func _setup_autotest() -> void:
+    # Fresh, separate save so the bot exercises unlocks without touching the real one.
+    Progress.save_path = "user://save_autotest.json"
+    Progress.reset()
     var p := players[0]
-    for id in Guns.ids():
+    for id in Guns.all_ids():
         var owned := false
         for g in p.guns:
             if g.data.id == id:
@@ -458,3 +506,4 @@ func _print_stats(label: String) -> void:
         label, _clock, floor_number, current.data.type_name() if current else "-", visited, rooms.size(),
         rooms_cleared, total_kills, scrap, p.hp, p.total_weight(), p.weight_capacity])
     print("    reactions: %s" % str(_reaction_counts))
+    print("    unlocked this run: %s  (achievements %d/%d)" % [str(Progress.run_unlocks), Progress.achievements_count(), Progress.ACHIEVEMENTS.size()])

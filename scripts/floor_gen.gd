@@ -35,7 +35,9 @@ static func generate(floor_number: int) -> Dictionary:
             fallback.append(p)
     fallback.sort_custom(func(a, b): return _dist(a, start) > _dist(b, start))
     var candidates: Array = leaves + fallback
-    var specials := [RoomData.Type.BOSS, RoomData.Type.TREASURE, RoomData.Type.SHOP, RoomData.Type.CHALLENGE]
+    var specials := [RoomData.Type.BOSS, RoomData.Type.TREASURE, RoomData.Type.SHOP]
+    if Progress.has("room:challenge"):
+        specials.append(RoomData.Type.CHALLENGE)
     for i in mini(specials.size(), candidates.size()):
         rooms[candidates[i]].type = specials[i]
 
@@ -104,8 +106,19 @@ static func _place_hidden_room(rooms: Dictionary, start: Vector2i) -> void:
         return
     var d: Vector2i = links.pick_random()
     var from: RoomData = rooms[best + d]
-    from.doors[-d] = { "to": best, "obstacle": OBSTACLES.pick_random() }
+    from.doors[-d] = { "to": best, "obstacle": unlocked_obstacles().pick_random() }
     hidden.doors[d] = { "to": best + d, "obstacle": "" }
+
+
+## Obstacle kinds the save has unlocked; the pool is always available.
+static func unlocked_obstacles() -> Array:
+    var out: Array = []
+    for kind in OBSTACLES:
+        if Progress.has("obstacle:" + kind):
+            out.append(kind)
+    if out.is_empty():
+        out.append("pool")
+    return out
 
 
 static func _stock_rooms(rooms: Dictionary, floor_number: int) -> void:
@@ -115,7 +128,8 @@ static func _stock_rooms(rooms: Dictionary, floor_number: int) -> void:
             RoomData.Type.SHOP:
                 var shop_pool: Array = Guns.ids()
                 shop_pool.shuffle()
-                for i in mini(3, shop_pool.size()):
+                var slots := 4 if Progress.has("shop:extra") else 3
+                for i in mini(slots, shop_pool.size()):
                     var id: String = shop_pool[i]
                     r.stock.append(offer("gun", id, gun_price(Guns.make(id), floor_number)))
                 r.stock.append(offer("carry", "", 18 + floor_number * 6, 2))

@@ -10,6 +10,7 @@ const CELL_GAP := 3.0
 
 var main: Main
 var _font: Font
+var _toasts: Array = []   # { text, t }
 
 
 func _ready() -> void:
@@ -18,7 +19,15 @@ func _ready() -> void:
     _font = Art.FONT
 
 
-func _process(_delta: float) -> void:
+func toast(text: String) -> void:
+    _toasts.append({ "text": text, "t": 5.0 })
+
+
+func _process(delta: float) -> void:
+    for i in range(_toasts.size() - 1, -1, -1):
+        _toasts[i]["t"] -= delta
+        if _toasts[i]["t"] <= 0.0:
+            _toasts.remove_at(i)
     queue_redraw()
 
 
@@ -30,10 +39,20 @@ func _draw() -> void:
         _draw_player_panel(p, vp)
     if main.show_help:
         _draw_help(vp)
+    _draw_toasts(vp)
     if main.game_over:
         _draw_banner(vp, "RUN OVER", "Floor %d, %d kills.  Press R or Start to restart." % [main.floor_number, main.total_kills], Color(1.0, 0.4, 0.3))
     elif main.victory:
         _draw_banner(vp, "DUNGEON CLEARED", "%d kills, %d scrap left.  Press R or Start for a new run." % [main.total_kills, main.scrap], Color(0.5, 1.0, 0.6))
+
+
+func _draw_toasts(vp: Vector2) -> void:
+    var y := 170.0
+    for t in _toasts:
+        var alpha: float = clampf(t["t"], 0.0, 1.0)
+        draw_rect(Rect2(vp.x / 2.0 - 260, y - 20, 520, 28), Color(0, 0, 0, 0.55 * alpha))
+        _centered(y, t["text"], 20, Color(0.6, 1.0, 0.8, alpha), vp)
+        y += 32.0
 
 
 func _centered(y: float, text: String, size: int, color: Color, vp: Vector2) -> void:
@@ -149,7 +168,7 @@ func _draw_help(vp: Vector2) -> void:
     var lines := [
         "Move WASD / Left stick     Aim Mouse / Right stick     Fire primary LMB / RT     Interact E / A",
         "Toggle aim Tab / Y     Vent Space / LB     Swap primary Q / X     Join: Start on a pad",
-        "Debug: 1-5 give P1 a gun     R restart     F1 hide help",
+        "Debug: 1-0 give P1 a gun     R restart     F1 hide help     F9 wipe save",
     ]
     var y := vp.y - 16.0 - 16.0 * lines.size()
     for line in lines:
@@ -158,6 +177,20 @@ func _draw_help(vp: Vector2) -> void:
 
 
 func _draw_banner(vp: Vector2, title: String, sub: String, color: Color) -> void:
-    draw_rect(Rect2(0, vp.y / 2 - 50, vp.x, 100), Color(0, 0, 0, 0.7))
-    _centered(vp.y / 2 - 8, title, 48, color, vp)
-    _centered(vp.y / 2 + 26, sub, 22, Color.WHITE, vp)
+    var goals: Array = Progress.next_goals(3)
+    var lines: Array = []
+    if not Progress.run_unlocks.is_empty():
+        var names: Array = []
+        for u in Progress.run_unlocks:
+            names.append(Progress.unlock_label(u))
+        lines.append({ "text": "Unlocked this run: " + ", ".join(names), "color": Color(0.6, 1.0, 0.8) })
+    for g in goals:
+        lines.append({ "text": "%s  %d / %d   (%s)" % [g["name"], g["progress"], g["goal"], g["desc"]], "color": Color(0.8, 0.8, 0.85) })
+    var h := 110.0 + 24.0 * lines.size()
+    draw_rect(Rect2(0, vp.y / 2 - 60, vp.x, h), Color(0, 0, 0, 0.75))
+    _centered(vp.y / 2 - 14, title, 48, color, vp)
+    _centered(vp.y / 2 + 18, sub, 22, Color.WHITE, vp)
+    var y := vp.y / 2 + 48
+    for line in lines:
+        _centered(y, line["text"], 18, line["color"], vp)
+        y += 24.0

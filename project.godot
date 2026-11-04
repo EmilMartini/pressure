@@ -18,6 +18,7 @@ config/icon="res://icon.svg"
 [autoload]
 
 Elements="*res://scripts/elements.gd"
+Progress="*res://scripts/progress.gd"
 Guns="*res://scripts/gun_library.gd"
 Art="*res://scripts/art.gd"
 

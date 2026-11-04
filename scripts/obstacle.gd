@@ -41,7 +41,15 @@ func _init(p_kind: String, p_size: Vector2, p_inward: Vector2) -> void:
     name = "Obstacle"
 
 
+## Projectiles test against obstacles directly: a moving Area2D does not reliably
+## report overlaps with a StaticBody2D, so Projectile calls this each physics frame.
+func overlaps(point: Vector2, margin: float) -> bool:
+    var local := to_local(point)
+    return Rect2(-size / 2.0 - Vector2(margin, margin), size + Vector2(margin, margin) * 2.0).has_point(local)
+
+
 func _ready() -> void:
+    add_to_group("obstacles")
     collision_layer = Player.LAYER_WALLS | LAYER_OBSTACLES
     collision_mask = 0
     var shape := CollisionShape2D.new()

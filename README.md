@@ -24,11 +24,20 @@ Controls are shown at the bottom of the screen in game. Press `F1` to hide them.
 | Vent pressure | Space | LB |
 | Swap primary gun | Q | X |
 | Join (players 2-4) | | Start |
-| Give player 1 a gun (debug) | 1 to 5 | |
+| Give player 1 a gun (debug) | 1 to 0 | |
+| Wipe the save file (debug) | F9 | |
 | Restart | R | Start (after game over) |
 
 Player 1 is keyboard + mouse and the first controller, merged. Every other
 controller joins as a new player by pressing Start.
+
+## Progression
+
+Runs start naked: Water Pistol and Arc Rifle. Achievements (50 kills, 20 Chain
+Lightnings, a boss kill, a hidden room opened, ...) add guns, obstacle kinds, the
+challenge room and a fourth shop slot to the pool future runs draw from. Progress is
+saved to `user://save.json`; the run-end screen shows what you unlocked and what is next.
+The self-test uses its own save file and never touches yours.
 
 ## Self-test
 
@@ -72,7 +81,8 @@ scripts/
   player_input.gd    one player's controller / keyboard+mouse reading
   gun.gd             a carried gun, fires projectiles
   gun_data.gd        gun stats resource
-  gun_library.gd     autoload `Guns`: the gun pool
+  gun_library.gd     autoload `Guns`: the gun pool, gated by unlocks
+  progress.gd        autoload `Progress`: save file, stats, achievements, unlocks
   projectile.gd      bullets: raw damage, then apply element; also hit obstacles
   elements.gd        autoload `Elements` / class `Element`: kinds, colours, reaction table
   enemy.gd           chasing, states, reactions, immunity, elite sequences, boss re-shield

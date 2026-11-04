@@ -34,6 +34,10 @@ func _ready() -> void:
 func _physics_process(delta: float) -> void:
     position += velocity * delta
     lifetime -= delta
+    for ob in get_tree().get_nodes_in_group("obstacles"):
+        if is_instance_valid(ob) and not ob.is_queued_for_deletion() and ob.overlaps(global_position, radius):
+            _on_body_entered(ob)
+            return
     if lifetime <= 0.0:
         if manual and shooter != null and _hit.is_empty():
             shooter.on_projectile_missed()

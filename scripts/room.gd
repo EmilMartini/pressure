@@ -243,6 +243,11 @@ func _perimeter_point() -> Vector2:
 
 func _on_enemy_died(e: Enemy) -> void:
     main.total_kills += 1
+    Progress.add("kills")
+    if e.kind_name == "boss":
+        Progress.add("bosses")
+    elif e.is_elite:
+        Progress.add("elites")
     _drop_scrap(e.global_position, e.scrap_value, mini(e.scrap_value, 5))
     if e.is_elite and data.type == RoomData.Type.CHALLENGE:
         _elites_alive -= 1

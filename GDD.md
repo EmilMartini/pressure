@@ -116,11 +116,18 @@ your starting power. That keeps the "overpowered and bored" failure out by const
   reactions, gun behaviours (pierce, ricochet, orbit), vent variants, pressure tolerance.
 - Scrap in the run buys, repairs and rerolls. Nothing carries out except unlocks.
 
-### Layer 1: the unlock pool (Isaac)
-- Guns, gear, obstacles, room types, elite kinds and bosses all start as a small pool.
-- Completing a run, and hitting achievements inside runs (first Chain Lightning kill, clear
-  a floor with only cold guns, vent a full-pressure nova, open a hidden room with Steam),
-  adds entries to the pool. Early runs are simple on purpose, late runs are chaos.
+### Layer 1: the unlock pool (Isaac) — BUILT
+- Every run starts with the Water Pistol and Arc Rifle. The pool of guns a run can offer
+  (shops, treasure, challenge rewards), the obstacle kinds in front of hidden rooms, the
+  challenge room itself and a fourth shop slot are all unlocked by achievements.
+- Ten achievements today, tracked across runs in the save file: kills, specific reaction
+  counts, elites and bosses killed, hidden rooms opened, vents fired, runs won.
+- Unlocks pop as a toast when earned. The run-end screen lists what this run unlocked and
+  the next three achievements with progress, so a lost run still shows a path.
+- Eleven guns in the pool so far. The pool is the lever: adding a gun, obstacle or room type
+  to the game should always come with the achievement that unlocks it.
+- Save file: `user://save.json` (on Windows: `%APPDATA%/Godot/app_userdata/Pressure/`).
+  F9 wipes it for testing a first-ever run.
 
 ### Layer 2: characters (Isaac)
 - Unlockable characters are different *naked starts*, not stronger ones: a different
@@ -168,7 +175,7 @@ your starting power. That keeps the "overpowered and bored" failure out by const
 | 0 | **Combat core** | Done. Guns, five reactions, pressure, vent, focus, resistance drift, sequence elites, couch co-op. |
 | 1 | **Dungeon run** | Done (first pass). Generated floor of rooms, doors, arena waves, shop with scrap, treasure, challenge, hidden room behind an elemental obstacle, boss with re-shield phase, three floors, minimap. |
 | 2 | Tuning & content | Human playtesting, 10+ guns, more enemy types, more obstacles and reactions, room layouts with cover |
-| 3 | Gear & unlocks | Loot tables, inventory, scrap/upgrade, gear score, tiers, achievement unlocks, save file |
+| 3 | Meta progression | Unlock pool done (achievements, save file, gated guns/obstacles/rooms). Next: in-run gear with loot tables, characters, keystone tiers, the hall |
 | 4 | Online co-op | Host-authoritative netcode for the desktop build |
 | 5 | Raids | Multi-boss co-op dungeons with mechanics |
 | 6 | Art & sound pass | First art pass done with Kenney 1-Bit, particles and fonts. Sound, music and juice still to do. |
@@ -188,7 +195,8 @@ your starting power. That keeps the "overpowered and bored" failure out by const
   be shot deliberately. Interact with pedestals using E or the A button.
 
 ## 8. Debug controls in this build
-- `1`..`5` give player 1 a gun (Water Pistol, Arc Rifle, Blowtorch, Frost Caster, Oil Slinger)
+- `1`..`0` give player 1 any gun, unlocked or not
 - `R` restarts the run
 - `F1` toggles the help overlay
+- `F9` wipes the save file
 - `godot --path . -- --autotest` runs the self-test bot through the dungeon
