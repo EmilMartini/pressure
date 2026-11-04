@@ -23,6 +23,7 @@ var current: Room = null
 var current_pos := Vector2i.ZERO
 var scrap := 0
 var rooms_cleared := 0
+var floor_rooms_cleared := 0   # difficulty creeps within a floor, resets at the stairs
 var total_kills := 0
 var game_over := false
 var victory := false
@@ -197,6 +198,7 @@ func is_device_joined(device: int) -> bool:
 
 func start_floor(n: int) -> void:
     floor_number = n
+    floor_rooms_cleared = 0
     if autotest and not players.is_empty():
         print("[FLOOR] %d at t=%.0f kills=%d scrap=%d hp=%.0f level=%d guns=%d items=%d" % [
             n, _clock, total_kills, scrap, players[0].hp, players[0].level, players[0].guns.size(), players[0].equipment.size()])
@@ -216,6 +218,12 @@ func start_floor(n: int) -> void:
 func enter_room(pos: Vector2i, moved: Vector2i) -> void:
     _transitioning = false
     _room_entered_ms = Time.get_ticks_msec()
+    if autotest and rooms.has(pos):
+        var vis: Array = []
+        for rp in rooms.keys():
+            if rooms[rp].visited:
+                vis.append(rp)
+        print("[BOT] enter %s (%s) moved=%s visited=%s doors=%s" % [pos, rooms[pos].type_name(), moved, str(vis), str(rooms[pos].doors)])
     Sfx.stop_all()
     if current != null:
         current.collect_all_scrap()
@@ -259,6 +267,7 @@ func _on_door_entered(dir: Vector2i) -> void:
 
 func on_room_cleared(_room: Room) -> void:
     rooms_cleared += 1
+    floor_rooms_cleared += 1
     announce("Room cleared")
 
 
@@ -275,7 +284,7 @@ func next_floor() -> void:
 ## Enemy scaling input. Mostly a floor number: within a floor it only creeps up every
 ## second room, so a floor feels like one difficulty band and the jump is the stairs.
 func difficulty() -> int:
-    return 2 + (floor_number - 1) * 4 + rooms_cleared / 2
+    return 2 + (floor_number - 1) * 4 + mini(floor_rooms_cleared, 6) / 2
 
 
 ## Best luck in the party: rarer offers for everyone, the way scrap gain works.
@@ -527,7 +536,9 @@ func _autotest_tick(delta: float) -> void:
     var circle := Vector2.RIGHT.rotated(_clock * 0.6)
     if t != null:
         var to_enemy := (t.global_position - p.global_position).normalized()
-        p.input.force_move = (-to_enemy * 0.8 + circle * 0.6).normalized()
+        # Low on health: run, don't orbit. Otherwise circle at range like a player kiting.
+        var flee := p.hp < p.max_hp * 0.5
+        p.input.force_move = (-to_enemy * (1.0 if flee else 0.8) + circle * (0.25 if flee else 0.6)).normalized()
         var inner := current.rect.grow(-120.0)
         if not inner.has_point(p.global_position):
             p.input.force_move = (inner.get_center() - p.global_position).normalized()
@@ -572,25 +583,17 @@ func _autotest_tick(delta: float) -> void:
 
 func _bot_navigate(p: Player) -> void:
     var room := current
+    # Just through a door: step into the room first, so kiting or a door's own trigger
+    # cannot bounce the bot straight back out.
+    if Time.get_ticks_msec() - _room_entered_ms < 1200:
+        p.input.force_move = -p.global_position.normalized() if p.global_position.length() > 80.0 else Vector2.ZERO
+        return
     # Pedestals worth using.
     for ped in room.pedestals:
         if not is_instance_valid(ped) or ped.empty():
             continue
         var o: Dictionary = ped.offer
-        var want := false
-        match o["kind"]:
-            "sigil", "stairs":
-                want = true
-            "gun":
-                want = o["price"] <= scrap and p.can_carry(Guns.make(o["id"])) and not _bot_tried.has(o["id"])
-            "item":
-                # Replacing gear drops the old piece back on the floor; never chase it twice.
-                want = o["price"] <= scrap and not _bot_tried.has(o["id"])
-            "carry", "gunsmith":
-                want = o["price"] <= scrap and scrap > 120
-            "repair":
-                want = o["price"] <= scrap and p.hp < p.max_hp * 0.6
-        if want:
+        if _bot_wants(o, p):
             var d := ped.global_position - p.global_position
             if d.length() < 30.0:
                 if o["kind"] in ["gun", "item"]:
@@ -642,18 +645,76 @@ func _bot_navigate(p: Player) -> void:
     p.input.force_move = (room.door_world_position(dir) - p.global_position).normalized()
 
 
-## Breadth-first search through passable doors to the nearest unvisited room.
+## Whether the bot would use an offer right now (same rule for walking to it and for
+## choosing a shop to walk back to, so it never ping-pongs between rooms).
+func _bot_wants(o: Dictionary, p: Player) -> bool:
+    if o.get("taken", false):
+        return false
+    match o["kind"]:
+        "sigil":
+            return true
+        "stairs":
+            # Like a player: see the whole floor (shop, treasure) before going down.
+            return _bot_next_dir() == Vector2i.ZERO
+        "gun":
+            return o["price"] <= scrap and p.can_carry(Guns.make(o["id"])) and not _bot_tried.has(o["id"])
+        "item":
+            # Replacing gear drops the old piece back on the floor; never chase it twice.
+            return o["price"] <= scrap and not _bot_tried.has(o["id"])
+        "carry":
+            return o["price"] <= scrap and scrap > 120
+        "gunsmith":
+            if o["price"] > scrap or scrap <= 120:
+                return false
+            for g in p.guns:
+                if g.tier < Gun.MAX_TIER:
+                    return true
+            return false
+        "reroll":
+            return o["price"] <= scrap and scrap > 200 and o.get("amount", 0) < 3
+        "repair":
+            return o["price"] <= scrap and p.hp < p.max_hp * 0.6
+    return false
+
+
+## Where to go next: a shop when scrap burns a hole in the pocket, else the nearest
+## unvisited room, leaving the boss room for last the way a player reads the minimap.
+const NO_STEP := Vector2i(99, 99)   # BFS sentinel: a real step can be (-1, 0)
+
+
 func _bot_next_dir() -> Vector2i:
+    var goal := NO_STEP
+    if scrap > 150:
+        goal = _bot_bfs(func(r: RoomData) -> bool:
+            if r.type != RoomData.Type.SHOP:
+                return false
+            for o in r.stock:
+                if o["kind"] != "stairs" and _bot_wants(o, players[0]):
+                    return true
+            return false)
+    if goal == NO_STEP:
+        goal = _bot_bfs(func(r: RoomData) -> bool: return not r.visited and r.type != RoomData.Type.BOSS)
+    if goal == NO_STEP:
+        goal = _bot_bfs(func(r: RoomData) -> bool: return not r.visited)
+    if goal == NO_STEP:
+        return Vector2i.ZERO
+    return goal
+
+
+## Breadth-first search through passable doors; returns the first step toward the
+## nearest room (other than the current one) that satisfies `pred`, or NO_STEP.
+func _bot_bfs(pred: Callable) -> Vector2i:
     var start := current_pos
     var prev: Dictionary = { start: start }
     var queue: Array = [start]
-    var goal := Vector2i(-1, -1)
     while not queue.is_empty():
         var cur: Vector2i = queue.pop_front()
         var r: RoomData = rooms[cur]
-        if cur != start and not r.visited:
-            goal = cur
-            break
+        if cur != start and pred.call(r):
+            var step := cur
+            while prev[step] != start:
+                step = prev[step]
+            return step - start
         for d in r.doors.keys():
             if r.doors[d]["obstacle"] != "":
                 continue
@@ -662,12 +723,7 @@ func _bot_next_dir() -> Vector2i:
                 continue
             prev[n] = cur
             queue.append(n)
-    if goal.x < 0:
-        return Vector2i.ZERO
-    var step := goal
-    while prev[step] != start:
-        step = prev[step]
-    return step - start
+    return NO_STEP
 
 
 func _screenshot(path: String) -> void:

@@ -112,9 +112,9 @@ func _tick_arena(delta: float) -> void:
         # Pacing by hit-point budget: each group buys itself a pause proportional to its
         # total hp against what a party of this difficulty is expected to put out, so a
         # starter pistol holds floor 1 and a built party gets a flood on floor 5.
-        if enemies.get_child_count() < mini(70, 24 + diff * 2):
+        if enemies.get_child_count() < mini(90, 32 + diff * 3):
             var spawned_hp := _spawn_group()
-            _spawn_timer = clampf(spawned_hp / hp_inflow_target(diff), 0.8, 6.0)
+            _spawn_timer = clampf(spawned_hp / hp_inflow_target(diff), 0.5, 4.0)
         else:
             _spawn_timer = 1.0
     if _elite_timer <= 0.0:
@@ -133,7 +133,9 @@ func _arena_reward() -> void:
         for g in pl.guns:
             owned.append(g.data.id)
     var guns: Array = Guns.ids().filter(func(id): return not owned.has(id))
-    if randf() < 0.5 and not guns.is_empty():
+    # A naked start needs guns first: until the party carries three, the arena pays a gun.
+    var few_guns := owned.size() < 3 * main.players.size()
+    if (few_guns or randf() < 0.5) and not guns.is_empty():
         data.stock.append(FloorGen.offer("gun", guns.pick_random(), 0))
     else:
         data.stock.append(Items.offer(Items.roll(main.difficulty(), Items.Rarity.COMMON, [], main.party_luck(), "arena"), 0))
@@ -224,7 +226,7 @@ func _finish_fight(bonus_scrap: int) -> void:
 ## Enemy hit points per second the arena feeds the party at a difficulty. Roughly
 ## 60-70% of what an invested party deals; the gap is where upgrades go.
 static func hp_inflow_target(diff: int) -> float:
-    return 11.0 + 7.0 * float(diff)
+    return 20.0 + 11.0 * float(diff)
 
 
 func _spawn_group() -> float:
@@ -703,7 +705,7 @@ func activate(ped: Pedestal, pl: Player) -> void:
                 return
             main.scrap -= o["price"]
             Sfx.play("buy")
-            o["price"] = int(float(o["price"]) * 1.6)   # stays on offer, dearer each time
+            o["taken"] = true
         "carry":
             if main.scrap < o["price"]:
                 pl.say("Need %d scrap" % o["price"])
@@ -714,7 +716,7 @@ func activate(ped: Pedestal, pl: Player) -> void:
             pl.recalc_stats()
             pl.say("Carry capacity %d" % pl.weight_capacity)
             Sfx.play("buy")
-            o["price"] = int(float(o["price"]) * 1.5)
+            o["taken"] = true
         "repair":
             if main.scrap < o["price"]:
                 pl.say("Need %d scrap" % o["price"])
@@ -724,7 +726,21 @@ func activate(ped: Pedestal, pl: Player) -> void:
             pl.hp = minf(pl.max_hp, pl.hp + o["amount"])
             pl.say("Repaired")
             Sfx.play("buy")
-            o["price"] += 10
+            o["taken"] = true
+        "reroll":
+            if main.scrap < o["price"]:
+                pl.say("Need %d scrap" % o["price"])
+                Sfx.play("error")
+                return
+            main.scrap -= o["price"]
+            o["amount"] += 1   # uses so far
+            o["price"] = FloorGen.reroll_price(main.floor_number, o["amount"])
+            for i in data.stock.size():
+                var w: Dictionary = data.stock[i]
+                if w.get("ware", false) and not w["taken"]:
+                    data.stock[i] = FloorGen.roll_ware(main.floor_number, main.party_luck(), data.stock)
+            pl.say("Rerolled")
+            Sfx.play("buy")
         "stairs":
             Sfx.play("stairs")
             main.next_floor()

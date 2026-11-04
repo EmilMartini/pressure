@@ -137,7 +137,11 @@ Borrowed from Brotato and tuned by the bot:
   bounce, pierce and chain live, epic adds projectiles or big conditionals with a cost,
   legendary is run-defining. Level-ups use the same tiers keyed on level and luck.
 - **Waves** last 18 s to 60 s with difficulty; elites get affixes from difficulty 6 and
-  come in twos from 8, threes from 16.
+  come in twos from 8, threes from 16. The arena feeds 20 + 11 x difficulty enemy hit
+  points per second: each spawned group buys a pause of its total hp over that rate.
+- **Shops** are Brotato shops: four wares (guns or gear from the shop pool), a Reroll
+  plinth whose price climbs with every use, and carry, repair and gunsmith once each.
+  Arena rewards pay a gun until the party carries three, so a naked start ramps up.
 
 ## Isaac layer: pools, no repeats, active items
 

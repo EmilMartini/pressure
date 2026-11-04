@@ -43,7 +43,7 @@ var _landed := false
 func _ready() -> void:
     collision_layer = 0
     collision_mask = LAYER_ENEMIES | Obstacle.LAYER_OBSTACLES
-    monitorable = false
+    set_deferred("monitorable", false)   # may be spawned from inside a collision callback
     var shape := CollisionShape2D.new()
     var circle := CircleShape2D.new()
     circle.radius = radius
@@ -55,7 +55,7 @@ func _ready() -> void:
     _pierce0 = pierce
     if behaviour == "lob":
         # In the air: no contact with anything until it lands.
-        monitoring = false
+        set_deferred("monitoring", false)
         z_index = 6
     if element != Element.Kind.OIL:
         if _add_material == null:

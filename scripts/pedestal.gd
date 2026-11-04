@@ -38,6 +38,8 @@ func _ready() -> void:
             coord = { "vitality": Vector2i(40, 10), "haul": Vector2i(47, 4), "boiler": Vector2i(45, 16), "hoard": Vector2i(45, 16) }.get(offer["id"], Vector2i(45, 16))
         "gunsmith":
             coord = Vector2i(41, 5)
+        "reroll":
+            coord = Vector2i(45, 16)
         _:
             coord = Art.TILES.get(kind(), Art.TILES["cog"])
     _sprite = Art.sprite(coord, 2.5, tint)
@@ -61,6 +63,8 @@ func title() -> String:
             return "%s  (+%d)" % [FloorGen.BOONS[offer["id"]]["name"], offer["amount"]]
         "gunsmith":
             return "Gunsmith"
+        "reroll":
+            return "Reroll wares"
         "gun":
             var g := Guns.make(offer["id"])
             return "%s  (weight %d)" % [g.display_name, g.weight]
@@ -89,6 +93,8 @@ func color() -> Color:
             return Color(1.0, 0.85, 0.4)
         "gunsmith":
             return Color(0.85, 0.8, 0.7)
+        "reroll":
+            return Color(0.95, 0.75, 0.3)
         "gun":
             return Element.COLORS[Guns.make(offer["id"]).element]
         "carry":
@@ -169,6 +175,8 @@ func _draw() -> void:
                 desc = FloorGen.BOONS[offer["id"]]["desc"]
             "gunsmith":
                 desc = "Raise your lowest-tier gun one tier."
+            "reroll":
+                desc = "New wares in every slot still on offer. Dearer each time."
             "gun":
                 var gd := Guns.make(offer["id"])
                 desc = "%s.  %.0f damage, %.1f shots/s.  A duplicate merges into a higher tier." % [Element.NAMES[gd.element], gd.damage, gd.fire_rate]

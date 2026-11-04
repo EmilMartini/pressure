@@ -24,7 +24,7 @@ const STATS := {
     "warden": [160.0, 24.0, 60.0, 22.0, 14.0, 5],
     "wisp": [16.0, 3.0, 170.0, 9.0, 6.0, 2],
     "elite": [240.0, 36.0, 95.0, 17.0, 14.0, 10],
-    "boss": [700.0, 130.0, 85.0, 30.0, 20.0, 40],
+    "boss": [450.0, 130.0, 85.0, 30.0, 20.0, 40],
 }
 
 ## Sprite tiles (column, row) in the 1-bit sheet; boss kinds are keyed by boss_kind.

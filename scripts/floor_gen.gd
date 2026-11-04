@@ -126,20 +126,15 @@ static func _stock_rooms(rooms: Dictionary, floor_number: int, luck: float = 0.0
         var r: RoomData = rooms[p]
         match r.type:
             RoomData.Type.SHOP:
-                var shop_pool: Array = Guns.ids()
-                shop_pool.shuffle()
+                # Brotato shop: four wares (guns or gear) you can reroll for scrap, then one
+                # of each service. Wares carry "ware" so a reroll knows what to replace.
                 var slots := 4 if Progress.has("shop:extra") else 3
-                for i in mini(slots, shop_pool.size()):
-                    var id: String = shop_pool[i]
-                    r.stock.append(offer("gun", id, gun_price(Guns.make(id), floor_number)))
+                for i in slots:
+                    r.stock.append(roll_ware(floor_number, luck, r.stock))
+                r.stock.append(offer("reroll", "", reroll_price(floor_number, 0)))
                 r.stock.append(offer("carry", "", 30 + floor_number * 10, 2))
                 r.stock.append(offer("repair", "", 15, 40))
                 r.stock.append(offer("gunsmith", "", 28 + floor_number * 12))
-                var shop_items: Array = []
-                for i in (3 if Progress.has("shop:items") else 2):
-                    var iid := Items.roll(floor_number * 4, Items.Rarity.COMMON, shop_items, luck, "shop")
-                    shop_items.append(iid)
-                    r.stock.append(Items.offer(iid, Items.price(Items.get_item(iid), floor_number * 4)))
             RoomData.Type.TREASURE:
                 # A chest, Slay the Spire style: one pick from gear, a gun, or a run boon.
                 # Chest size grows with the floor and a little luck.
@@ -157,6 +152,29 @@ static func _stock_rooms(rooms: Dictionary, floor_number: int, luck: float = 0.0
                 r.loose_scrap = 20 + floor_number * 10
             RoomData.Type.CHALLENGE:
                 r.stock.append(offer("sigil", "", 0))
+
+
+## One shop ware: a gun (unlocked, not already on offer) or a piece of gear from the shop pool.
+static func roll_ware(floor_number: int, luck: float, stock: Array) -> Dictionary:
+    var on_offer: Array = []
+    for o in stock:
+        if not o["taken"] and o["kind"] in ["gun", "item"]:
+            on_offer.append(o["id"])
+    var guns: Array = Guns.ids().filter(func(id): return not on_offer.has(id))
+    var o: Dictionary
+    if randf() < 0.45 and not guns.is_empty():
+        var id: String = guns.pick_random()
+        o = offer("gun", id, gun_price(Guns.make(id), floor_number))
+    else:
+        var iid := Items.roll(floor_number * 4, Items.Rarity.COMMON, on_offer, luck, "shop")
+        o = Items.offer(iid, Items.price(Items.get_item(iid), floor_number * 4))
+    o["ware"] = true
+    return o
+
+
+## Reroll cost: Brotato's shape, a floor-based start that climbs with every use.
+static func reroll_price(floor_number: int, uses: int) -> int:
+    return 6 + floor_number * 4 + uses * (3 + floor_number * 2)
 
 
 ## Brotato's shape: base + difficulty + 8% of base per difficulty step.
