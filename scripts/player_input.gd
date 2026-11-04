@@ -20,6 +20,62 @@ var _cur: Dictionary = {}
 var _last_mouse := Vector2.INF
 var _mouse_active_until := 0.0
 
+## "pad" or "kb": whichever this player touched last. Drives on-screen prompts.
+var last_kind := "kb"
+var _last_mouse_screen := Vector2i(-1, -1)
+
+const PROMPTS := {
+    "interact": ["A", "E"],
+    "fire": ["RT", "LMB"],
+    "vent": ["LB", "Space"],
+    "swap": ["X", "Q"],
+    "aim": ["Y", "Tab"],
+    "pause": ["Start", "Esc"],
+    "sheet": ["Back", "C"],
+}
+const PAD_BUTTONS := [JOY_BUTTON_A, JOY_BUTTON_B, JOY_BUTTON_X, JOY_BUTTON_Y, JOY_BUTTON_LEFT_SHOULDER,
+    JOY_BUTTON_RIGHT_SHOULDER, JOY_BUTTON_START, JOY_BUTTON_BACK, JOY_BUTTON_DPAD_UP, JOY_BUTTON_DPAD_DOWN,
+    JOY_BUTTON_DPAD_LEFT, JOY_BUTTON_DPAD_RIGHT]
+const KB_KEYS := [KEY_W, KEY_A, KEY_S, KEY_D, KEY_E, KEY_Q, KEY_TAB, KEY_SPACE, KEY_C, KEY_ESCAPE]
+
+
+## The label to show for an action on this player's current device.
+func prompt(action: String) -> String:
+    var pair: Array = PROMPTS.get(action, ["?", "?"])
+    return pair[0] if last_kind == "pad" else pair[1]
+
+
+func _update_kind() -> void:
+    var pad := false
+    if device >= 0:
+        pad = Vector2(Input.get_joy_axis(device, JOY_AXIS_LEFT_X), Input.get_joy_axis(device, JOY_AXIS_LEFT_Y)).length() > STICK_DEADZONE \
+            or Vector2(Input.get_joy_axis(device, JOY_AXIS_RIGHT_X), Input.get_joy_axis(device, JOY_AXIS_RIGHT_Y)).length() > STICK_DEADZONE \
+            or Input.get_joy_axis(device, JOY_AXIS_TRIGGER_RIGHT) > 0.5
+        if not pad:
+            for b in PAD_BUTTONS:
+                if Input.is_joy_button_pressed(device, b):
+                    pad = true
+                    break
+    var kb := false
+    if use_keyboard:
+        for k in KB_KEYS:
+            if Input.is_physical_key_pressed(k):
+                kb = true
+                break
+        if not kb:
+            kb = Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT) or Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT)
+        if not kb:
+            var m := DisplayServer.mouse_get_position()
+            if m != _last_mouse_screen and _last_mouse_screen.x >= 0:
+                kb = true
+            _last_mouse_screen = m
+    if pad:
+        last_kind = "pad"
+    elif kb:
+        last_kind = "kb"
+    elif device >= 0 and not use_keyboard:
+        last_kind = "pad"
+
 
 func _init(p_device: int, p_keyboard: bool) -> void:
     device = p_device
@@ -28,6 +84,7 @@ func _init(p_device: int, p_keyboard: bool) -> void:
 
 ## Call once per physics frame before reading anything else.
 func poll() -> void:
+    _update_kind()
     _prev = _cur.duplicate()
     _cur = {
         "toggle_aim": _button(JOY_BUTTON_Y, KEY_TAB),

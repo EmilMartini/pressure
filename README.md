@@ -33,8 +33,9 @@ Controls are shown at the bottom of the screen in game. Press `F1` to hide them.
 The game opens on a main menu (Play, Journal, Wipe save, Quit). The pause menu doubles as
 the run-over screen with the run summary and next goals, and also opens the Journal.
 Menus take controller input directly: d-pad or left stick to move, A to press, B to go
-back, shoulders to switch Journal tabs. The help strip at the bottom hides itself after
-20 seconds; F1 brings it back.
+back, shoulders to switch Journal tabs. Prompts appear on the things themselves: walk up
+to a pedestal and a key cap shows A or E depending on whether you last touched the pad
+or the keyboard. F1 shows a full control strip if you want one.
 
 ## Character sheet
 

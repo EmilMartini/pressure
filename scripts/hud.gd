@@ -233,7 +233,7 @@ func _draw_player_panel(p: Player, origin: Vector2) -> void:
             draw_rect(Rect2(gx + 26, gyy + 2, 8, 8), Items.rarity_color(Items.get_item(gun.mod)))
         if is_primary:
             draw_rect(Rect2(gx, gyy + 36, 36, 12), Color.WHITE)
-            _text(Vector2(gx, gyy + 46), "RT", 11, Color.BLACK, HORIZONTAL_ALIGNMENT_CENTER, 36, false)
+            _text(Vector2(gx, gyy + 46), p.input.prompt("fire"), 11, Color.BLACK, HORIZONTAL_ALIGNMENT_CENTER, 36, false)
         gx += 40.0
         if gx > origin.x + PANEL_W - 60:
             break
@@ -270,9 +270,14 @@ func _draw_player_panel(p: Player, origin: Vector2) -> void:
 
 
 func _draw_help(vp: Vector2) -> void:
+    var inp: PlayerInput = main.players[0].input if not main.players.is_empty() else null
+    var pad := inp != null and inp.last_kind == "pad"
     var lines := [
-        "MOVE  WASD / left stick      AIM  mouse / right stick      FIRE PRIMARY  LMB / RT      INTERACT  E / A",
-        "AIM MODE  Tab / Y      VENT  Space / LB      SWAP PRIMARY  Q / X      CHARACTER  C / Back      PAUSE  Esc / Start",
+        "MOVE  %s      AIM  %s      FIRE PRIMARY  %s      INTERACT  %s" % [
+            "left stick" if pad else "WASD", "right stick" if pad else "mouse",
+            "RT" if pad else "LMB", "A" if pad else "E"],
+        "AIM MODE  %s      VENT  %s      SWAP PRIMARY  %s      CHARACTER  %s      PAUSE  %s      F1 hides this" % [
+            "Y" if pad else "Tab", "LB" if pad else "Space", "X" if pad else "Q", "Back" if pad else "C", "Start" if pad else "Esc"],
     ]
     var y := vp.y - 14.0 - 22.0 * lines.size()
     draw_rect(Rect2(0, y - 22, vp.x, 22.0 * lines.size() + 14), Color(0, 0, 0, 0.55))

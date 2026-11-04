@@ -7,6 +7,7 @@ const RANGE := 52.0
 
 var offer: Dictionary
 var highlighted := false
+var prompt_key := "E"   # set by the room from the nearest player's device
 var _sprite: Sprite2D
 var _t := randf() * TAU
 
@@ -120,4 +121,11 @@ func _draw() -> void:
         y += 18.0
     if highlighted:
         var verb := "begin" if kind() == "sigil" else ("descend" if kind() == "stairs" else ("equip" if kind() == "item" else "take"))
-        draw_string(Art.FONT, Vector2(-130, y), "E / A to %s" % verb, HORIZONTAL_ALIGNMENT_CENTER, 260, 16, Color(0.6, 1.0, 1.0))
+        # Key cap over the item, in the player's own device's key.
+        var w := 14.0 + 9.0 * float(prompt_key.length())
+        var cap := Rect2(-w / 2.0, -58.0 + sin(_t * 5.0) * 2.0, w, 22.0)
+        draw_rect(cap.grow(2.0), Color(0, 0, 0, 0.8))
+        draw_rect(cap, Color(0.92, 0.9, 0.85))
+        draw_rect(Rect2(cap.position + Vector2(0, cap.size.y - 3), Vector2(cap.size.x, 3)), Color(0.6, 0.58, 0.55))
+        draw_string(Art.FONT, Vector2(cap.position.x, cap.position.y + 16), prompt_key, HORIZONTAL_ALIGNMENT_CENTER, cap.size.x, 16, Color(0.08, 0.06, 0.08))
+        draw_string(Art.FONT, Vector2(-130, y), verb, HORIZONTAL_ALIGNMENT_CENTER, 260, 15, Color(0.6, 1.0, 1.0))

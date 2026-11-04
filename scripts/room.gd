@@ -478,6 +478,8 @@ func _handle_interact() -> void:
             continue
         var near := main.nearest_alive_player(ped.global_position)
         ped.highlighted = near != null and near.global_position.distance_to(ped.global_position) <= Pedestal.RANGE
+        if near != null:
+            ped.prompt_key = near.input.prompt("interact")
     for pl in main.players:
         if not pl.alive or not pl.input.just_pressed("interact"):
             continue

@@ -13,7 +13,6 @@ var hud: Hud
 var camera: Camera2D
 var pause_menu: PauseMenu
 var _shake := 0.0
-var _help_timer := 20.0
 
 var floor_number := 0
 var rooms: Dictionary = {}          # Vector2i -> RoomData
@@ -24,7 +23,7 @@ var rooms_cleared := 0
 var total_kills := 0
 var game_over := false
 var victory := false
-var show_help := true
+var show_help := false   # F1 toggles the control strip; prompts live on the things themselves
 var message := ""
 var _message_time := 0.0
 var _joined_devices: Dictionary = {}
@@ -92,6 +91,17 @@ func _ready() -> void:
         DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path("res://autotest"))
         await get_tree().create_timer(0.8).timeout
         await _screenshot("res://autotest/start.png")
+        # Stand next to the first pedestal to show the key cap, once per device kind.
+        if current != null and not current.pedestals.is_empty():
+            var ped: Pedestal = current.pedestals[0]
+            players[0].global_position = ped.global_position + Vector2(0, 30)
+            players[0].input.last_kind = "kb"
+            await get_tree().create_timer(0.3).timeout
+            await _screenshot("res://autotest/prompt_kb.png")
+            players[0].input.last_kind = "pad"
+            players[0].input.device = 99   # pretend a pad is the live device for the shot
+            await get_tree().create_timer(0.3).timeout
+            await _screenshot("res://autotest/prompt_pad.png")
         get_tree().quit()
 
 
@@ -351,10 +361,6 @@ func _process(delta: float) -> void:
     _message_time = maxf(0.0, _message_time - delta)
     if _message_time <= 0.0:
         message = ""
-    if show_help and _help_timer > 0.0:
-        _help_timer -= delta
-        if _help_timer <= 0.0:
-            show_help = false
 
 
 func _input(event: InputEvent) -> void:
@@ -366,7 +372,6 @@ func _input(event: InputEvent) -> void:
             _restart()
         KEY_F1:
             show_help = not show_help
-            _help_timer = 0.0
         KEY_C:
             if not players.is_empty() and not pause_menu.visible:
                 pause_menu.show_sheet(players[0], true)
