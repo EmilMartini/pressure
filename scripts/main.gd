@@ -564,7 +564,7 @@ func _bot_navigate(p: Player) -> void:
             "item":
                 # Replacing gear drops the old piece back on the floor; never chase it twice.
                 want = o["price"] <= scrap and not _bot_tried.has(o["id"])
-            "carry", "repair":
+            "carry", "repair", "gunsmith":
                 want = o["price"] <= scrap
         if want:
             var d := ped.global_position - p.global_position

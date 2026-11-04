@@ -79,6 +79,14 @@ const SCRAP_TINT := Color(0.85, 0.72, 0.35)
 
 var _cache: Dictionary = {}
 
+## Readable font for anything small: body text, labels, numbers. The pixel font is for
+## headings and big numbers only, since it falls apart under about 18 px.
+var FONT_BODY: Font
+
+
+func _ready() -> void:
+    FONT_BODY = ThemeDB.fallback_font
+
 
 func tile(coord: Vector2i) -> AtlasTexture:
     if _cache.has(coord):

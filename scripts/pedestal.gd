@@ -29,6 +29,8 @@ func _ready() -> void:
             tint = Items.icon_tint(item())
         "boon":
             coord = { "vitality": Vector2i(40, 10), "haul": Vector2i(47, 4), "boiler": Vector2i(45, 16), "hoard": Vector2i(45, 16) }.get(offer["id"], Vector2i(45, 16))
+        "gunsmith":
+            coord = Vector2i(41, 5)
         _:
             coord = Art.TILES.get(kind(), Art.TILES["cog"])
     _sprite = Art.sprite(coord, 2.5, tint)
@@ -50,6 +52,8 @@ func title() -> String:
             return item().get("name", "?")
         "boon":
             return "%s  (+%d)" % [FloorGen.BOONS[offer["id"]]["name"], offer["amount"]]
+        "gunsmith":
+            return "Gunsmith"
         "gun":
             var g := Guns.make(offer["id"])
             return "%s  (weight %d)" % [g.display_name, g.weight]
@@ -76,6 +80,8 @@ func color() -> Color:
             return Items.rarity_color(item())
         "boon":
             return Color(1.0, 0.85, 0.4)
+        "gunsmith":
+            return Color(0.85, 0.8, 0.7)
         "gun":
             return Element.COLORS[Guns.make(offer["id"]).element]
         "carry":
@@ -121,27 +127,43 @@ func _draw() -> void:
         draw_circle(Vector2(0, -14), 10.0, Color(0, 0, 0, 0.35))
         if highlighted:
             draw_rect(Rect2(-18, -12, 36, 6), Color(c, 0.6))
+    # Name and price always; the description only when you are close enough to take it,
+    # so a row of plinths does not turn into a wall of overlapping text.
     var y := 44.0
     var title_col := Color(0.92, 0.9, 0.85)
     if kind() == "item":
         title_col = Items.rarity_color(item())
-    draw_string(Art.FONT, Vector2(-130, y), title(), HORIZONTAL_ALIGNMENT_CENTER, 260, 18, title_col)
-    y += 16.0
-    if kind() == "item":
-        var it := item()
-        draw_string(Art.FONT, Vector2(-130, y), "%s %s" % [Items.RARITY_NAMES[it["rarity"]], it["slot"]], HORIZONTAL_ALIGNMENT_CENTER, 260, 13, Color(0.7, 0.68, 0.65))
-        y += 15.0
-        draw_multiline_string(Art.FONT, Vector2(-140, y), it["desc"], HORIZONTAL_ALIGNMENT_CENTER, 280, 14, 2, Color(0.88, 0.86, 0.8))
-        y += 32.0
-    elif kind() == "boon":
-        draw_string(Art.FONT, Vector2(-130, y), FloorGen.BOONS[offer["id"]]["desc"], HORIZONTAL_ALIGNMENT_CENTER, 260, 14, Color(0.88, 0.86, 0.8))
-        y += 18.0
+    var body: Font = Art.FONT_BODY
+    draw_string(body, Vector2(-141, y + 1), title(), HORIZONTAL_ALIGNMENT_CENTER, 280, 18, Color(0, 0, 0, 0.8))
+    draw_string(body, Vector2(-140, y), title(), HORIZONTAL_ALIGNMENT_CENTER, 280, 18, title_col)
+    y += 20.0
     var pt := price_text()
     if pt != "":
-        draw_string(Art.FONT, Vector2(-130, y), pt, HORIZONTAL_ALIGNMENT_CENTER, 260, 16, Art.SCRAP_TINT)
-        y += 18.0
+        draw_string(body, Vector2(-140, y), pt, HORIZONTAL_ALIGNMENT_CENTER, 280, 16, Art.SCRAP_TINT)
+        y += 20.0
     if highlighted:
+        var desc := ""
+        match kind():
+            "item":
+                var it := item()
+                desc = "%s %s.  %s" % [Items.RARITY_NAMES[it["rarity"]], it["slot"], it["desc"]]
+            "boon":
+                desc = FloorGen.BOONS[offer["id"]]["desc"]
+            "gunsmith":
+                desc = "Raise your lowest-tier gun one tier."
+            "gun":
+                var gd := Guns.make(offer["id"])
+                desc = "%s.  %.0f damage, %.1f shots/s.  A duplicate merges into a higher tier." % [Element.NAMES[gd.element], gd.damage, gd.fire_rate]
+            "carry":
+                desc = "More guns before the weight slows you."
+            "repair":
+                desc = "Patch yourself up."
+        if desc != "":
+            var box_h := 44.0
+            draw_rect(Rect2(-160, y - 4, 320, box_h), Color(0, 0, 0, 0.7))
+            draw_multiline_string(body, Vector2(-152, y + 14), desc, HORIZONTAL_ALIGNMENT_CENTER, 304, 15, 2, Color(0.92, 0.9, 0.85))
+            y += box_h + 4.0
         var verb := "begin" if kind() == "sigil" else ("descend" if kind() == "stairs" else ("equip" if kind() == "item" else "take"))
         # The player's own device's button, floating over the item.
         Prompts.draw(self, Vector2(0, -78.0 + sin(_t * 5.0) * 2.0), prompt_key, prompt_kind, 24.0)
-        draw_string(Art.FONT, Vector2(-130, y), verb, HORIZONTAL_ALIGNMENT_CENTER, 260, 15, Color(0.6, 1.0, 1.0))
+        draw_string(body, Vector2(-140, y), verb, HORIZONTAL_ALIGNMENT_CENTER, 280, 16, Color(0.6, 1.0, 1.0))

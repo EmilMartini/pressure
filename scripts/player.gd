@@ -12,7 +12,6 @@ const BASE_SPEED := 320.0
 const SPEED_LOSS_PER_WEIGHT := 0.025
 const PRESSURE_DECAY := 7.0        # per second, toward neutral
 const PRESSURE_LIMIT := 100.0
-const STALL_SECONDS := 3.0
 const VENT_MIN := 20.0
 const GUN_RING := 26.0
 const EQUIP_KEYS := ["head", "chest", "hands", "feet", "ring1", "ring2", "trinket1", "trinket2"]
@@ -49,10 +48,8 @@ var level := 1
 var bonus_stats: Dictionary = {}
 
 var aim_dir := Vector2.RIGHT      # where the figure faces: the nearest enemy, else movement
-var pressure := 0.0               # -limit cold .. +limit hot
+var pressure := 0.0               # -limit cold .. +limit hot: vent charge, nothing more
 var pressure_limit_bonus := 0.0   # from run boons
-var overheated := 0.0             # seconds left of stall
-var frozen_up := 0.0              # seconds left of slow fire
 var kills := 0
 var last_message := ""
 var _message_time := 0.0
@@ -105,7 +102,15 @@ func can_carry(data: GunData) -> bool:
     return total_weight() + data.weight <= weight_capacity
 
 
+## Pick up a gun. A duplicate of a gun you carry merges into it one tier higher, Brotato
+## style, instead of taking weight.
 func add_gun(id: String) -> bool:
+    for g in guns:
+        if g.data.id == id and g.tier < Gun.MAX_TIER:
+            g.tier += 1
+            say("%s" % g.display_name())
+            Sfx.play("unlock")
+            return true
     var data := Guns.make(id)
     if not can_carry(data):
         say("Too heavy: %s needs %d, %d free" % [data.display_name, data.weight, weight_capacity - total_weight()])
@@ -116,6 +121,18 @@ func add_gun(id: String) -> bool:
     _layout_guns()
     say("Picked up %s" % data.display_name)
     return true
+
+
+## The gunsmith raises your lowest-tier gun. Returns it, or null when nothing can rise.
+func upgrade_lowest_gun() -> Gun:
+    var best: Gun = null
+    for g in guns:
+        if g.tier < Gun.MAX_TIER and (best == null or g.tier < best.tier):
+            best = g
+    if best != null:
+        best.tier += 1
+        say("%s" % best.display_name())
+    return best
 
 
 ## Take a gun off the player. Returns its id so the room can put it on the floor.
@@ -148,14 +165,13 @@ func element_kinds() -> Array:
     return kinds
 
 
-## The gun a new mod goes on: the first without one, else the first.
+## The gun a new mod goes on: the first with a free slot (a gun holds as many mods as
+## its tier), or null when every slot is full.
 func mod_target() -> Gun:
-    if guns.is_empty():
-        return null
     for g in guns:
-        if g.mod == "":
+        if g.mods.size() < g.tier:
             return g
-    return guns[0]
+    return null
 
 
 # --- Gear and level-ups -----------------------------------------------------
@@ -171,10 +187,10 @@ func equip(id: String) -> String:
     if slot == "mod":
         var g := mod_target()
         if g == null:
+            say("No free mod slot: upgrade a gun")
             return ""
-        old = g.mod
-        g.mod = id
-        say("%s fitted to %s" % [item["name"], g.data.display_name])
+        g.mods.append(id)
+        say("%s fitted to %s" % [item["name"], g.display_name()])
     else:
         var key := slot
         if slot in ["ring", "trinket"]:
@@ -194,8 +210,7 @@ func equip(id: String) -> String:
 func equipped_item_ids() -> Array:
     var out: Array = equipment.values().duplicate()
     for g in guns:
-        if g.mod != "":
-            out.append(g.mod)
+        out.append_array(g.mods)
     return out
 
 
@@ -275,32 +290,15 @@ func on_reaction(_reaction_name: String) -> void:
 # --- Pressure --------------------------------------------------------------
 
 
+## Pressure is vent charge. Hot and cold guns push it either way; it never stalls you.
 func add_pressure(amount: float) -> void:
     var limit := pressure_limit()
     pressure = clampf(pressure + amount, -limit, limit)
-    if pressure >= limit:
-        overheated = STALL_SECONDS
-        pressure = limit * 0.45
-        say("OVERHEAT")
-        Sfx.play("overheat")
-        _squash = 1.0
-        Items.fire(self, "overheat", { "pos": global_position, "element": Element.Kind.FIRE })
-    elif pressure <= -limit:
-        frozen_up = STALL_SECONDS
-        pressure = -limit * 0.45
-        say("FROZEN UP")
-        Sfx.play("frozen")
-        _squash = 1.0
-        Items.fire(self, "freeze_up", { "pos": global_position, "element": Element.Kind.ICE })
 
 
 ## Nudge the figure opposite to a shot; called by Gun.
 func kick(dir: Vector2, strength: float) -> void:
     _recoil = -dir * strength
-
-
-func cooldown_multiplier() -> float:
-    return 3.0 if frozen_up > 0.0 else 1.0
 
 
 func vent() -> void:
@@ -384,8 +382,6 @@ func _physics_process(delta: float) -> void:
         vent()
 
     pressure = move_toward(pressure, 0.0, PRESSURE_DECAY * (1.0 + stat("pressure_decay")) * delta)
-    overheated = maxf(0.0, overheated - delta)
-    frozen_up = maxf(0.0, frozen_up - delta)
     invuln = maxf(0.0, invuln - delta)
     var regen := stat("regen")
     if regen > 0.0:
@@ -417,19 +413,12 @@ func _animate(delta: float, mv: Vector2) -> void:
     _sprite.rotation = sin(_anim_t) * 0.08 if moving else 0.0
 
 
-## Every gun picks its own nearest target in range and fires. Elites and bosses are
-## preferred by the heaviest gun you carry, so your big hitter goes for the big one.
+## Every gun picks its own nearest target in range and fires.
 func _fire() -> void:
-    if overheated > 0.0:
-        return
-    var heaviest: Gun = null
-    for g in guns:
-        if heaviest == null or g.data.weight > heaviest.data.weight:
-            heaviest = g
     for g in guns:
         if not g.can_fire():
             continue
-        var target := nearest_enemy(g.effective_range(), g == heaviest)
+        var target := nearest_enemy(g.effective_range())
         if target == null:
             # Nothing to shoot: an obstacle in range gets the gun's element instead.
             target = nearest_obstacle(g.effective_range())
@@ -479,10 +468,6 @@ func _draw() -> void:
         return
     if invuln > 0.0 and fmod(invuln, 0.2) < 0.1:
         body = Color(body, 0.35)
-    if overheated > 0.0:
-        body = body.lerp(Color(1, 0.3, 0.1), 0.6)
-    elif frozen_up > 0.0:
-        body = body.lerp(Color(0.6, 0.9, 1.0), 0.6)
     _sprite.modulate = body
     if absf(aim_dir.x) > 0.05:
         _sprite.flip_h = aim_dir.x < 0.0

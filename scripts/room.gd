@@ -168,7 +168,7 @@ func _begin_boss() -> void:
     active = true
     boss = _spawn_enemy("boss", Vector2(0, -220))
     var pairs := Elements.available_reactions(main.party_elements())
-    var hits := 2 + main.difficulty() / 4
+    var hits := 5 + main.difficulty() / 3
     if not pairs.is_empty():
         var first: Vector2i = pairs.pick_random()
         boss.set_shield(first, hits)
@@ -240,7 +240,7 @@ func _spawn_enemy(type: String, pos: Vector2) -> Enemy:
 
 func _spawn_elite(count: int) -> void:
     var diff := main.difficulty()
-    var hits := 1 + int(diff >= 5) + int(diff >= 9)
+    var hits := 2 + diff / 4
     var pairs := Elements.available_reactions(main.party_elements())
     for i in count:
         var e := _spawn_enemy("elite", _spawn_point())
@@ -503,7 +503,7 @@ func _build_pedestals() -> void:
         var r := i / per_row
         var in_row := mini(per_row, n - r * per_row)
         var c := i % per_row
-        ped.position = Vector2((float(c) - float(in_row - 1) / 2.0) * 150.0, 90.0 + (float(r) - float(rows - 1) / 2.0) * 200.0)
+        ped.position = Vector2((float(c) - float(in_row - 1) / 2.0) * 210.0, 90.0 + (float(r) - float(rows - 1) / 2.0) * 220.0)
         add_child(ped)
         pedestals.append(ped)
     for o in offers:
@@ -612,8 +612,8 @@ func activate(ped: Pedestal, pl: Player) -> void:
                 Sfx.play("error")
                 return
             var item := Items.get_item(o["id"])
-            if item["slot"] == "mod" and pl.guns.is_empty():
-                pl.say("No gun to fit it to")
+            if item["slot"] == "mod" and pl.mod_target() == null:
+                pl.say("No free mod slot: upgrade a gun" if not pl.guns.is_empty() else "No gun to fit it to")
                 Sfx.play("error")
                 return
             main.scrap -= o["price"]
@@ -648,6 +648,19 @@ func activate(ped: Pedestal, pl: Player) -> void:
                 for other in data.stock:
                     if other["kind"] in ["gun", "item", "boon"]:
                         other["taken"] = true
+        "gunsmith":
+            if main.scrap < o["price"]:
+                pl.say("Need %d scrap" % o["price"])
+                Sfx.play("error")
+                return
+            var upgraded := pl.upgrade_lowest_gun()
+            if upgraded == null:
+                pl.say("Nothing to upgrade")
+                Sfx.play("error")
+                return
+            main.scrap -= o["price"]
+            Sfx.play("buy")
+            o["taken"] = true
         "carry":
             if main.scrap < o["price"]:
                 pl.say("Need %d scrap" % o["price"])

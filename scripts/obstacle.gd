@@ -151,4 +151,5 @@ func _draw() -> void:
         draw_circle(badge_pos + Vector2(-10.0 + 10.0 * i, 14), 3.5, Element.COLORS[k])
         i += 1
     var label_pos := badge_pos + inward * 26.0 + Vector2(-180, 6)
-    draw_string(Art.FONT, label_pos, spec["label"], HORIZONTAL_ALIGNMENT_CENTER, 360, 16, Color(0.9, 0.88, 0.8, 0.9))
+    draw_string(Art.FONT_BODY, label_pos + Vector2(1, 1), spec["label"], HORIZONTAL_ALIGNMENT_CENTER, 360, 17, Color(0, 0, 0, 0.8))
+    draw_string(Art.FONT_BODY, label_pos, spec["label"], HORIZONTAL_ALIGNMENT_CENTER, 360, 17, Color(0.92, 0.9, 0.85))

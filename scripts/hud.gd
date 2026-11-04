@@ -1,12 +1,35 @@
 class_name Hud
 extends Control
-## In-run HUD, Brotato and Isaac style: big readable bars, gun icons, a minimap with
-## room icons, a large wave timer, scrap with its cog, toasts and announcements.
+## In-run HUD split across the screen like a traditional action game: vitals cards top
+## left, room title, wave timer and boss bar top centre, minimap with scrap and kills top
+## right, gear bottom left, gun hotbars bottom centre and the vent gauge bottom right.
+## Every label uses the readable body font; the pixel font is kept for headings and big
+## numbers only.
 
-const PANEL_W := 316.0
-const PANEL_H := 190.0
 const CELL := 22.0
 const CELL_GAP := 5.0
+const MARGIN := 16.0
+
+const CARD_W := 300.0
+const CARD_H := 84.0
+const CARD_GAP := 12.0
+
+const SLOT := 44.0
+const SLOT_GAP := 6.0
+const SLOTS_PER_ROW := 10
+const GEAR_BIG := 30.0
+const GEAR_SMALL := 22.0
+
+const VENT_W := 240.0
+const VENT_H := 16.0
+const VENT_STACK := 68.0
+
+## How far the bottom widgets lift while the F1 help strip is showing.
+const HELP_LIFT := 84.0
+
+const HOT := Color(1.0, 0.45, 0.15)
+const COLD := Color(0.45, 0.75, 1.0)
+const ANNOUNCE := Color(1.0, 0.9, 0.4)
 
 const ROOM_ICONS := {
     RoomData.Type.START: Vector2i(41, 16),
@@ -44,10 +67,17 @@ func _process(delta: float) -> void:
 
 func _draw() -> void:
     var vp := get_viewport_rect().size
+    var bottom := vp.y - MARGIN - (HELP_LIFT if main.show_help else 0.0)
+
     _draw_top(vp)
-    _draw_minimap(vp)
+    var map_bottom := _draw_minimap(vp)
+    _draw_scrap(vp, map_bottom)
     for i in main.players.size():
-        _draw_player_panel(main.players[i], Vector2(16, 16 + float(i) * (PANEL_H + 10.0)))
+        _draw_vitals(main.players[i], Vector2(MARGIN, MARGIN + float(i) * (CARD_H + CARD_GAP)))
+    if not main.players.is_empty():
+        _draw_hotbars(vp, bottom)
+        _draw_main_gear(main.players[0], bottom)
+        _draw_vents(vp, bottom)
     if main.show_help:
         _draw_help(vp)
     _draw_toasts(vp)
@@ -56,14 +86,45 @@ func _draw() -> void:
 # --- Helpers ---------------------------------------------------------------
 
 
-func _text(pos: Vector2, text: String, size: int, color: Color, align := HORIZONTAL_ALIGNMENT_LEFT, width := -1.0, shadow := true) -> void:
+func _body_font() -> Font:
+    return Art.FONT_BODY if Art.FONT_BODY != null else _font
+
+
+## Draws text with a drop shadow. Pixel-font text is never smaller than 22 px and body
+## text never smaller than 15 px, so everything stays readable.
+func _text(pos: Vector2, text: String, size: int, color: Color, align := HORIZONTAL_ALIGNMENT_LEFT, width := -1.0, shadow := true, pixel := false) -> void:
+    var font := _font if pixel else _body_font()
+    size = maxi(size, 22 if pixel else 15)
     if shadow:
-        draw_string(_font, pos + Vector2(2, 2), text, align, width, size, Color(0, 0, 0, 0.7 * color.a))
-    draw_string(_font, pos, text, align, width, size, color)
+        var off := Vector2(2, 2) if pixel else Vector2(1, 1)
+        draw_string(font, pos + off, text, align, width, size, Color(0, 0, 0, 0.75 * color.a))
+    draw_string(font, pos, text, align, width, size, color)
 
 
-func _centered(y: float, text: String, size: int, color: Color, vp: Vector2) -> void:
-    _text(Vector2(0, y), text, size, color, HORIZONTAL_ALIGNMENT_CENTER, vp.x)
+## Body text at a baseline.
+func _body(pos: Vector2, text: String, size: int, color: Color, align := HORIZONTAL_ALIGNMENT_LEFT, width := -1.0, shadow := true) -> void:
+    _text(pos, text, size, color, align, width, shadow, false)
+
+
+## Pixel-font heading or big number at a baseline.
+func _title(pos: Vector2, text: String, size: int, color: Color, align := HORIZONTAL_ALIGNMENT_LEFT, width := -1.0) -> void:
+    _text(pos, text, size, color, align, width, true, true)
+
+
+## Body text vertically centred in a rect, aligned horizontally inside it.
+func _body_in(rect: Rect2, text: String, size: int, color: Color, align := HORIZONTAL_ALIGNMENT_CENTER, shadow := true) -> void:
+    var font := _body_font()
+    var s := maxi(size, 15)
+    var base := rect.position.y + (rect.size.y + font.get_ascent(s) - font.get_descent(s)) / 2.0
+    _body(Vector2(rect.position.x, base), text, s, color, align, rect.size.x, shadow)
+
+
+func _body_width(text: String, size: int) -> float:
+    return _body_font().get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, maxi(size, 15)).x
+
+
+func _centered(y: float, text: String, size: int, color: Color, vp: Vector2, pixel := false) -> void:
+    _text(Vector2(0, y), text, size, color, HORIZONTAL_ALIGNMENT_CENTER, vp.x, true, pixel)
 
 
 func _bar(rect: Rect2, fraction: float, color: Color, border := Color(0, 0, 0, 0.8)) -> void:
@@ -76,7 +137,15 @@ func _icon(coord: Vector2i, rect: Rect2, color: Color) -> void:
     draw_texture_rect(Art.tile(coord), rect, false, color)
 
 
-# --- Top: room, timer, boss, scrap ----------------------------------------
+func _backdrop(rect: Rect2, alpha := 0.4) -> void:
+    draw_rect(rect, Color(0.03, 0.02, 0.04, alpha))
+
+
+func _pulse(speed: float) -> float:
+    return 0.5 + 0.5 * sin(_time * speed)
+
+
+# --- Top centre: room, timer, boss, hints, announcements ------------------
 
 
 func _draw_top(vp: Vector2) -> void:
@@ -84,26 +153,26 @@ func _draw_top(vp: Vector2) -> void:
     if room == null:
         return
     var cx := vp.x / 2.0
-    _centered(30, "FLOOR %d   %s" % [main.floor_number, room.data.type_name().to_upper()], 24, Color(room.data.color(), 0.95), vp)
+    _centered(34, "FLOOR %d   %s" % [main.floor_number, room.data.type_name().to_upper()], 28, Color(room.data.color(), 0.95), vp, true)
     if room.active and room.data.type == RoomData.Type.ARENA:
         var secs := ceili(room.wave_time_left)
         var col := Color(1.0, 0.35, 0.3) if secs <= 5 else UiTheme.BONE
         var size := 64 if secs > 5 else 72 + int(8.0 * absf(sin(_time * 8.0)))
-        _centered(92, str(secs), size, col, vp)
+        _centered(96, str(secs), size, col, vp, true)
     elif room.boss != null and is_instance_valid(room.boss):
+        var b := room.boss
         var w := 560.0
-        var r := Rect2(cx - w / 2.0, 54, w, 20)
-        _bar(r, room.boss.hp / room.boss.max_hp, Color(0.85, 0.15, 0.25))
-        if room.boss.shielded():
-            draw_rect(r.grow(3.0), Color(1, 1, 1, 0.5 + 0.4 * absf(sin(_time * 6.0))), false, 3.0)
-            var b := room.boss
-            var wn := b.weakness_name()
-            var pair := "%s + %s" % [Element.NAMES[b.weakness.x], Element.NAMES[b.weakness.y]]
-            _centered(100, "SHIELD attuned to %s (%s)   %d / %d cracks" % [wn.to_upper(), pair, b.shield_hp, b.shield_max], 20, Color(1, 1, 1, 0.9), vp)
+        var r := Rect2(cx - w / 2.0, 52, w, 22)
+        _bar(r, b.hp / b.max_hp, Color(0.85, 0.15, 0.25))
+        _body_in(r, "%d / %d" % [int(b.hp), int(b.max_hp)], 15, Color.WHITE)
+        if b.shielded():
+            draw_rect(r.grow(4.0), Color(1, 1, 1, 0.5 + 0.4 * absf(sin(_time * 6.0))), false, 3.0)
+            var line := "SHIELD  %d / %d cracks   any reaction cracks it, %s cracks twice" % [b.shield_hp, b.shield_max, b.weakness_name()]
+            _centered(100, line, 17, Color(1, 1, 1, 0.92), vp)
         else:
-            _centered(100, "BOSS", 20, Color(1, 0.8, 0.8), vp)
+            _centered(104, "BOSS", 24, Color(1, 0.8, 0.8), vp, true)
     elif room.active:
-        _centered(80, "FIGHT", 40, Color(1.0, 0.5, 0.4), vp)
+        _centered(86, "FIGHT", 40, Color(1.0, 0.5, 0.4), vp, true)
     else:
         var hint := ""
         match room.data.type:
@@ -118,27 +187,22 @@ func _draw_top(vp: Vector2) -> void:
             _:
                 hint = "Cleared" if room.data.cleared else ""
         if hint != "":
-            _centered(70, hint, 20, UiTheme.DIM, vp)
-
-    # Scrap with its cog, to the right of the title.
-    var sx := cx + 230.0
-    _icon(Art.TILES["scrap"], Rect2(sx, 10, 34, 34), Art.SCRAP_TINT)
-    _text(Vector2(sx + 42, 40), str(main.scrap), 36, Art.SCRAP_TINT)
-    _text(Vector2(sx, 66), "KILLS %d" % main.total_kills, 16, UiTheme.DIM)
+            _centered(66, hint, 18, UiTheme.DIM, vp)
 
     if main.message != "":
         var pop: float = clampf((3.0 - main._message_time) / 0.15, 0.0, 1.0)
-        _centered(150, main.message, int(26 + 12 * pop), Color(1.0, 0.9, 0.4), vp)
+        _centered(150, main.message, int(26 + 12 * pop), ANNOUNCE, vp, true)
 
 
-# --- Minimap ---------------------------------------------------------------
+# --- Top right: minimap, scrap, kills -------------------------------------
 
 
-func _draw_minimap(vp: Vector2) -> void:
+## Draws the minimap and returns the y of its bottom edge.
+func _draw_minimap(vp: Vector2) -> float:
     var pitch := CELL + CELL_GAP
     var grid := float(FloorGen.GRID)
     var size := grid * pitch
-    var origin := Vector2(vp.x - 16.0 - size, 16.0)
+    var origin := Vector2(vp.x - MARGIN - size, MARGIN)
     draw_rect(Rect2(origin - Vector2(6, 6), Vector2(size + 12, size + 12)), Color(0, 0, 0, 0.45))
     for pos in main.rooms.keys():
         var r: RoomData = main.rooms[pos]
@@ -161,111 +225,224 @@ func _draw_minimap(vp: Vector2) -> void:
             draw_rect(Rect2(c - Vector2(2, 2), Vector2(4, 4)), Color(1, 1, 1, 0.6 * col.a))
         if pos == main.current_pos:
             draw_rect(cell.grow(3.0), Color(1, 1, 1, 0.6 + 0.4 * absf(sin(_time * 4.0))), false, 2.0)
+    return origin.y + size + 6.0
 
 
-# --- Player panel ----------------------------------------------------------
+func _draw_scrap(vp: Vector2, top: float) -> void:
+    var right := vp.x - MARGIN
+    var y := top + 10.0
+    var num := str(main.scrap)
+    var size := 32
+    var tw := _font.get_string_size(num, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
+    var icon := Rect2(right - tw - 40.0, y, 32, 32)
+    _backdrop(Rect2(icon.position.x - 8.0, y - 6.0, right - icon.position.x + 14.0, 70.0))
+    _icon(Art.TILES["scrap"], icon, Art.SCRAP_TINT)
+    _title(Vector2(right - tw, y + 27.0), num, size, Art.SCRAP_TINT)
+    _body(Vector2(right - 200.0, y + 54.0), "KILLS %d" % main.total_kills, 16, UiTheme.DIM, HORIZONTAL_ALIGNMENT_RIGHT, 200.0)
 
 
-func _draw_player_panel(p: Player, origin: Vector2) -> void:
-    var gun_rows := maxi(1, int(ceil(float(p.guns.size()) / 8.0)))
-    var pip_rows := maxi(1, int(ceil(float(p.weight_capacity) / 20.0)))
-    var panel_h := PANEL_H + 14.0 + 34.0 * float(gun_rows - 1) + 11.0 * float(pip_rows - 1)
-    draw_rect(Rect2(origin, Vector2(PANEL_W, panel_h)), Color(0.03, 0.02, 0.04, 0.72))
-    draw_rect(Rect2(origin, Vector2(PANEL_W, panel_h)), Color(p.color, 0.5), false, 2.0)
-    var x := origin.x + 10.0
-    var y := origin.y + 10.0
+# --- Top left: vitals card per player --------------------------------------
+
+
+func _draw_vitals(p: Player, origin: Vector2) -> void:
+    var card := Rect2(origin, Vector2(CARD_W, CARD_H))
+    draw_rect(card, Color(0.03, 0.02, 0.04, 0.72))
+    draw_rect(card, Color(p.color, 0.5), false, 2.0)
 
     # Portrait
-    var box := Rect2(x, y, 48, 48)
+    var box := Rect2(origin + Vector2(10, 10), Vector2(64, 64))
     draw_rect(box, Color(0.08, 0.06, 0.08))
     draw_rect(box, p.color, false, 2.0)
     var tiles: Array = Art.TILES["player"]
     var tint := p.color.lerp(Color.WHITE, 0.35) if p.alive else Color(0.3, 0.3, 0.3)
-    _icon(tiles[p.index % tiles.size()], box.grow(-6.0), tint)
-    _text(Vector2(x + 2, y + 62), "P%d" % (p.index + 1), 18, p.color)
+    _icon(tiles[p.index % tiles.size()], box.grow(-8.0), tint)
 
-    # Level badge
-    var bx := x + 64.0
-    var badge := Rect2(origin.x + PANEL_W - 96, y, 86, 20)
-    draw_rect(badge, Color(0.55, 0.4, 0.15, 0.9))
-    _text(Vector2(badge.position.x, badge.position.y + 15), "LEVEL %d" % p.level, 15, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, badge.size.x, false)
+    var x := origin.x + 84.0
+    var w := CARD_W - 84.0 - 10.0
+
+    # Name and level pill
+    var name_rect := Rect2(x, origin.y + 8.0, 30.0, 22.0)
+    _body_in(name_rect, "P%d" % (p.index + 1), 18, p.color, HORIZONTAL_ALIGNMENT_LEFT)
+    var pill := Rect2(x + 34.0, origin.y + 9.0, 58.0, 20.0)
+    draw_rect(pill, Color(0.55, 0.4, 0.15, 0.9))
+    draw_rect(pill, Color(0, 0, 0, 0.6), false, 1.0)
+    _body_in(pill, "LV %d" % p.level, 15, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, false)
+    if not p.alive:
+        _body_in(Rect2(x, origin.y + 8.0, w, 22.0), "DOWN", 16, Color(1.0, 0.35, 0.3), HORIZONTAL_ALIGNMENT_RIGHT)
 
     # Health
-    var hp_rect := Rect2(bx, y + 24, PANEL_W - 84, 20)
-    var hp_frac := p.hp / p.max_hp
+    var hp_rect := Rect2(x, origin.y + 36.0, w, 20.0)
+    var hp_frac := clampf(p.hp / p.max_hp, 0.0, 1.0)
     _bar(hp_rect, hp_frac, Color(0.85, 0.2, 0.2).lerp(Color(0.35, 0.85, 0.4), hp_frac))
-    _text(Vector2(hp_rect.position.x, hp_rect.position.y + 15), "%d / %d" % [int(p.hp), int(p.max_hp)], 15, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, hp_rect.size.x)
-
-    # Pressure gauge with cold and hot ends
-    var gy := y + 50.0
-    var g := Rect2(bx + 22, gy, PANEL_W - 84 - 44, 14)
-    draw_rect(g, Color(0.05, 0.04, 0.05, 0.85))
-    var half := g.size.x / 2.0
-    var frac := p.pressure / p.pressure_limit()
-    if frac > 0.0:
-        draw_rect(Rect2(g.position.x + half, gy, half * frac, g.size.y), Color(1.0, 0.45, 0.15))
-    elif frac < 0.0:
-        draw_rect(Rect2(g.position.x + half + half * frac, gy, -half * frac, g.size.y), Color(0.45, 0.75, 1.0))
-    draw_rect(g.grow(1.0), Color(0, 0, 0, 0.8), false, 2.0)
-    draw_rect(Rect2(g.position.x + half - 1.5, gy - 3, 3, g.size.y + 6), Color.WHITE)
-    _icon(Vector2i(40, 11), Rect2(bx, gy - 3, 20, 20), Color(0.6, 0.85, 1.0))
-    draw_texture_rect(Art.PARTICLES["flame"], Rect2(g.end.x + 2, gy - 5, 24, 24), false, Color(1.0, 0.55, 0.2))
-    if p.overheated > 0.0:
-        _text(Vector2(g.position.x, gy + 12), "OVERHEATED", 14, Color(1, 0.3, 0.1), HORIZONTAL_ALIGNMENT_CENTER, g.size.x)
-    elif p.frozen_up > 0.0:
-        _text(Vector2(g.position.x, gy + 12), "FROZEN UP", 14, Color(0.6, 0.9, 1.0), HORIZONTAL_ALIGNMENT_CENTER, g.size.x)
+    _body_in(hp_rect, "%d / %d" % [int(ceilf(p.hp)), int(p.max_hp)], 15, Color.WHITE)
 
     # Experience toward the next level
-    var f := Rect2(bx, y + 70, PANEL_W - 84, 6)
-    _bar(f, p.xp / p.xp_to_next(), Color(0.85, 0.65, 0.2))
+    _bar(Rect2(x, origin.y + 64.0, w, 6.0), p.xp / p.xp_to_next(), Color(0.85, 0.65, 0.2))
 
-    # Gun icons with element frames, wrapping into rows.
-    var gx := x
-    var gyy := y + 84.0
-    var per_row := 8
-    for i in p.guns.size():
-        var gun: Gun = p.guns[i]
-        if i > 0 and i % per_row == 0:
-            gx = x
-            gyy += 34.0
-        var slot := Rect2(gx, gyy, 30, 30)
-        var ec: Color = gun.data.color()
-        draw_rect(slot, Color(0.08, 0.06, 0.08, 0.9))
-        _icon(Art.gun_tile(gun.data.id), slot.grow(-3.0), ec)
-        draw_rect(slot, Color(ec, 0.8), false, 1.5)
-        if gun.mod != "":
-            draw_rect(Rect2(gx + 21, gyy + 2, 7, 7), Items.rarity_color(Items.get_item(gun.mod)))
-        gx += 34.0
-    # Rows below follow however many gun rows there were.
-    y += 34.0 * float(gun_rows - 1)
+    if p.last_message != "":
+        _body_in(Rect2(card.end.x + 10.0, origin.y + 30.0, 420.0, 24.0), p.last_message, 16, ANNOUNCE, HORIZONTAL_ALIGNMENT_LEFT)
 
-    # Gear slots: head, chest, hands, feet, rings, trinkets.
-    var ex := x
-    var ey := y + 136.0
-    for key in Player.EQUIP_KEYS:
-        var gbox := Rect2(ex, ey, 24, 24)
-        var slot_name: String = key.rstrip("12")
+
+# --- Bottom centre: gun hotbars --------------------------------------------
+
+
+func _draw_hotbars(vp: Vector2, bottom: float) -> void:
+    var y := bottom
+    var many := main.players.size() > 1
+    for i in main.players.size():
+        var p: Player = main.players[i]
+        var n := p.guns.size()
+        var cols := clampi(n, 1, SLOTS_PER_ROW)
+        var rows := maxi(1, ceili(float(n) / float(SLOTS_PER_ROW)))
+        var block_h := float(rows) * SLOT + float(rows - 1) * SLOT_GAP
+        var guns_w := float(cols) * SLOT + float(cols - 1) * SLOT_GAP
+
+        var weight := "WEIGHT %d / %d" % [p.total_weight(), p.weight_capacity]
+        var weight_w := _body_width(weight, 16)
+        var tag_w := 32.0 if many else 0.0
+        var gear_w := 0.0
+        if i > 0:
+            gear_w = 14.0 + _gear_width(GEAR_SMALL)
+        var total := tag_w + guns_w + 12.0 + weight_w + gear_w
+        var x := (vp.x - total) / 2.0
+        var top := y - block_h
+        _backdrop(Rect2(x - 8.0, top - 8.0, total + 16.0, block_h + 16.0))
+
+        if many:
+            _body_in(Rect2(x, top, 26.0, block_h), "P%d" % (p.index + 1), 16, p.color)
+            draw_rect(Rect2(x + 27.0, top, 2.0, block_h), Color(p.color, 0.6))
+            x += tag_w
+
+        if n == 0:
+            var empty := Rect2(x, top, SLOT, SLOT)
+            draw_rect(empty, Color(0.08, 0.06, 0.08, 0.6))
+            draw_rect(empty, Color(0.25, 0.22, 0.24), false, 1.0)
+        for k in n:
+            var gun: Gun = p.guns[k]
+            var col := k % SLOTS_PER_ROW
+            var row := k / SLOTS_PER_ROW
+            var slot := Rect2(x + float(col) * (SLOT + SLOT_GAP), top + float(row) * (SLOT + SLOT_GAP), SLOT, SLOT)
+            _draw_gun_slot(gun, slot)
+        x += guns_w + 12.0
+
+        var heavy := p.total_weight() >= p.weight_capacity
+        _body_in(Rect2(x, top, weight_w, block_h), weight, 16, UiTheme.FOCUS if heavy else UiTheme.BONE, HORIZONTAL_ALIGNMENT_LEFT)
+        x += weight_w
+
+        if i > 0:
+            _draw_gear(p, Vector2(x + 14.0, top + (block_h - GEAR_SMALL) / 2.0), GEAR_SMALL)
+
+        y = top - 8.0 - 12.0 - 8.0
+
+
+func _draw_gun_slot(gun: Gun, slot: Rect2) -> void:
+    var ec: Color = gun.data.color()
+    draw_rect(slot, Color(0.08, 0.06, 0.08, 0.9))
+    _icon(Art.gun_tile(gun.data.id), slot.grow(-6.0), ec)
+    draw_rect(slot, Color(ec, 0.85), false, 1.5)
+    # Tier pips, bottom-left.
+    for t in gun.tier:
+        var pip := Rect2(slot.position.x + 4.0 + float(t) * 6.0, slot.end.y - 8.0, 4.0, 4.0)
+        draw_rect(pip.grow(1.0), Color(0, 0, 0, 0.7))
+        draw_rect(pip, UiTheme.BONE)
+    # One rarity dot per fitted mod, top-right, filling leftward.
+    var m := 0
+    for id in gun.mods:
+        var c := Vector2(slot.end.x - 6.0 - float(m) * 8.0, slot.position.y + 6.0)
+        draw_circle(c, 4.0, Color(0, 0, 0, 0.8))
+        draw_circle(c, 3.0, Items.rarity_color(Items.get_item(str(id))))
+        m += 1
+
+
+# --- Bottom left: gear -----------------------------------------------------
+
+
+func _gear_width(s: float) -> float:
+    var gap := 4.0 if s >= GEAR_BIG else 3.0
+    return float(Player.EQUIP_KEYS.size()) * (s + gap) - gap
+
+
+func _draw_main_gear(p: Player, bottom: float) -> void:
+    var origin := Vector2(MARGIN, bottom - GEAR_BIG)
+    _backdrop(Rect2(origin - Vector2(8, 8), Vector2(_gear_width(GEAR_BIG) + 16.0, GEAR_BIG + 16.0)))
+    _draw_gear(p, origin, GEAR_BIG)
+
+
+func _draw_gear(p: Player, origin: Vector2, s: float) -> void:
+    var gap := 4.0 if s >= GEAR_BIG else 3.0
+    for k in Player.EQUIP_KEYS.size():
+        var key: String = Player.EQUIP_KEYS[k]
+        var gbox := Rect2(origin.x + float(k) * (s + gap), origin.y, s, s)
         draw_rect(gbox, Color(0.08, 0.06, 0.08, 0.9))
         if p.equipment.has(key):
             var it := Items.get_item(p.equipment[key])
             _icon(Items.icon(it), gbox.grow(-3.0), Items.icon_tint(it))
             draw_rect(gbox, Items.rarity_color(it), false, 2.0)
         else:
-            _icon(Items.SLOT_ICONS[slot_name], gbox.grow(-4.0), Color(0.3, 0.28, 0.3))
+            _icon(Items.SLOT_ICONS[key.rstrip("12")], gbox.grow(-4.0), Color(0.3, 0.28, 0.3))
             draw_rect(gbox, Color(0.25, 0.22, 0.24), false, 1.0)
-        ex += 28.0
 
-    # Weight pips, wrapping at twenty per row.
-    var wx := x
-    var wy := y + 168.0
-    var per := 20
-    for i in p.weight_capacity:
-        var filled := i < p.total_weight()
-        draw_rect(Rect2(wx + float(i % per) * 11.0, wy + float(i / per) * 11.0, 8, 8), UiTheme.BONE if filled else Color(0.25, 0.22, 0.24))
-    _text(Vector2(wx, wy + 11.0 * float(pip_rows) + 10.0), "WEIGHT %d/%d" % [p.total_weight(), p.weight_capacity], 14, UiTheme.DIM)
 
-    if p.last_message != "":
-        _text(Vector2(origin.x + PANEL_W - 10, y + 68), p.last_message, 14, Color(1.0, 0.9, 0.4), HORIZONTAL_ALIGNMENT_RIGHT, -1)
+# --- Bottom right: vent gauge ----------------------------------------------
+
+
+func _draw_vents(vp: Vector2, bottom: float) -> void:
+    var many := main.players.size() > 1
+    for i in main.players.size():
+        var by := bottom - 8.0 - VENT_H - float(i) * VENT_STACK
+        var g := Rect2(vp.x - MARGIN - 32.0 - VENT_W, by, VENT_W, VENT_H)
+        _draw_vent(main.players[i], g, many)
+
+
+func _draw_vent(p: Player, g: Rect2, tagged: bool) -> void:
+    var limit := maxf(p.pressure_limit(), 0.001)
+    var frac := clampf(p.pressure / limit, -1.0, 1.0)
+    var hot := p.pressure > 0.0
+    var side := HOT if hot else COLD
+    var ready := absf(p.pressure) >= Player.VENT_MIN
+
+    _backdrop(Rect2(g.position - Vector2(32, 36), Vector2(g.size.x + 64.0, g.size.y + 44.0)))
+
+    # Ready glow: soft rings around the bar, breathing.
+    if ready:
+        var breath := 0.45 + 0.55 * _pulse(6.0)
+        for k in 4:
+            draw_rect(g.grow(3.0 + float(k) * 2.5), Color(side, (0.32 - float(k) * 0.07) * breath), false, 2.5)
+
+    # Bar, filling outward from the centre.
+    draw_rect(g, Color(0.05, 0.04, 0.05, 0.85))
+    var half := g.size.x / 2.0
+    if frac > 0.0:
+        draw_rect(Rect2(g.position.x + half, g.position.y, half * frac, g.size.y), HOT)
+    elif frac < 0.0:
+        draw_rect(Rect2(g.position.x + half + half * frac, g.position.y, -half * frac, g.size.y), COLD)
+    draw_rect(g.grow(1.0), Color(0, 0, 0, 0.8), false, 2.0)
+    draw_rect(Rect2(g.position.x + half - 1.5, g.position.y - 3.0, 3.0, g.size.y + 6.0), Color.WHITE)
+
+    # Cold and hot ends.
+    _icon(Vector2i(40, 11), Rect2(g.position.x - 24.0, g.position.y - 2.0, 20, 20), COLD)
+    draw_texture_rect(Art.PARTICLES["flame"], Rect2(g.end.x + 3.0, g.position.y - 4.0, 22, 22), false, HOT)
+
+    # Label and prompt.
+    var label := "P%d VENT" % (p.index + 1) if tagged else "VENT"
+    var label_y := g.position.y - 10.0
+    _body(Vector2(g.position.x, label_y), label, 16, UiTheme.BONE)
+    var prompt := p.input.prompt("vent")
+    var kind := p.input.last_kind
+    var pw := _prompt_width(prompt, kind, 20.0)
+    var lw := _body_width(label, 16)
+    Prompts.draw(self, Vector2(g.position.x + lw + 10.0 + pw / 2.0, g.position.y - 16.0), prompt, kind, 20.0)
+    if ready:
+        _body(Vector2(g.end.x - 120.0, label_y), "READY", 15, Color(side, 0.6 + 0.4 * _pulse(6.0)), HORIZONTAL_ALIGNMENT_RIGHT, 120.0)
+
+
+## Width Prompts.draw uses for a label, so the icon can sit flush after the VENT word.
+func _prompt_width(label: String, kind: String, size: float) -> float:
+    if kind == "pad":
+        if Prompts.FACE.has(label):
+            return size
+        return size * 0.55 * float(label.length()) + size * 0.6
+    return maxf(size, size * 0.5 * float(label.length()) + size * 0.5)
 
 
 # --- Overlays --------------------------------------------------------------
@@ -275,11 +452,10 @@ func _draw_help(vp: Vector2) -> void:
     var inp: PlayerInput = main.players[0].input if not main.players.is_empty() else null
     var pad := inp != null and inp.last_kind == "pad"
     var lines := [
-        "MOVE  %s      AIM  %s      FIRE PRIMARY  %s      INTERACT  %s" % [
-            "left stick" if pad else "WASD", "right stick" if pad else "mouse",
-            "RT" if pad else "LMB", "A" if pad else "E"],
-        "AIM MODE  %s      VENT  %s      SWAP PRIMARY  %s      CHARACTER  %s      PAUSE  %s      F1 hides this" % [
-            "Y" if pad else "Tab", "LB" if pad else "Space", "X" if pad else "Q", "Back" if pad else "C", "Start" if pad else "Esc"],
+        "MOVE  %s      INTERACT  %s      VENT  %s      guns aim and fire on their own" % [
+            "left stick" if pad else "WASD", "A" if pad else "E", "LB" if pad else "Space"],
+        "CHARACTER  %s      PAUSE  %s      F1 hides this" % [
+            "Back" if pad else "C", "Start" if pad else "Esc"],
     ]
     var y := vp.y - 14.0 - 22.0 * lines.size()
     draw_rect(Rect2(0, y - 22, vp.x, 22.0 * lines.size() + 14), Color(0, 0, 0, 0.55))
@@ -293,7 +469,8 @@ func _draw_toasts(vp: Vector2) -> void:
     for t in _toasts:
         var alpha: float = clampf(t["t"], 0.0, 1.0)
         var pop: float = clampf((5.0 - t["t"]) / 0.15, 0.0, 1.0)
-        draw_rect(Rect2(vp.x / 2.0 - 300, y - 24, 600, 34), Color(0, 0, 0, 0.6 * alpha))
-        draw_rect(Rect2(vp.x / 2.0 - 300, y - 24, 600, 34), Color(0.6, 1.0, 0.8, 0.5 * alpha), false, 2.0)
-        _centered(y, t["text"], int(16 + 6 * pop), Color(0.6, 1.0, 0.8, alpha), vp)
+        var box := Rect2(vp.x / 2.0 - 300, y - 24, 600, 34)
+        draw_rect(box, Color(0, 0, 0, 0.6 * alpha))
+        draw_rect(box, Color(0.6, 1.0, 0.8, 0.5 * alpha), false, 2.0)
+        _body_in(box, t["text"], int(16 + 4 * pop), Color(0.6, 1.0, 0.8, alpha))
         y += 40.0

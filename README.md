@@ -106,6 +106,19 @@ challenge room and a fourth shop slot to the pool future runs draw from. Progres
 saved to `user://save.json`; the run-end screen shows what you unlocked and what is next.
 The self-test uses its own save file and never touches yours.
 
+## HUD
+
+Vitals top-left (portrait, level, health, XP), room and timer top-centre, minimap with
+scrap and kills top-right, the gun hotbar bottom-centre (tier pips and mod dots on each
+gun, weight beside it), gear slots bottom-left, the vent gauge bottom-right with its
+prompt. All small text uses a readable body font; the pixel font is for headings only.
+
+## Guns
+
+Tiers I to IV: a duplicate merges into the gun you carry one tier up, and the shop's
+Gunsmith raises your lowest-tier gun. A gun holds one mod per tier and mod effects stack.
+Reactions crack elite and boss shields; the attuned reaction cracks twice.
+
 ## Gear
 
 Items drop from elites and bosses and sit in shops, treasure, hidden and challenge rooms.

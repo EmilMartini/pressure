@@ -221,14 +221,15 @@ func _build_guns() -> void:
 
 func _gun_tooltip(g: Gun) -> String:
     var ec := g.data.color().to_html(false)
-    var text := "[b][color=#%s]%s[/color][/b]   [color=#9a948f]%s, weight %d[/color]\n%.1f shots/s, %.0f damage" % [
-        ec, g.data.display_name, Element.NAMES[g.data.element], g.data.weight, g.fire_rate(), g.data.damage]
+    var text := "[b][color=#%s]%s[/color][/b]   [color=#9a948f]%s, weight %d, tier %d of %d[/color]\n%.1f shots/s, %.0f damage" % [
+        ec, g.display_name(), Element.NAMES[g.data.element], g.data.weight, g.tier, Gun.MAX_TIER, g.fire_rate(), g.data.damage * g.tier_mult()]
     if g.data.projectile_count > 1:
         text += ", %d projectiles" % g.data.projectile_count
     if g.data.pierce > 0:
         text += ", pierce %d" % g.data.pierce
-    if g.mod != "":
-        var m := Items.get_item(g.mod)
+    text += "\n[color=#9a948f]Mod slots %d / %d[/color]" % [g.mods.size(), g.tier]
+    for mid in g.mods:
+        var m := Items.get_item(mid)
         text += "\n[color=#%s]%s[/color]: %s" % [Items.rarity_color(m).to_html(false), m["name"], m["desc"]]
     text += "\n[color=#78d6d6]Press to drop it on the floor here.[/color]"
     return text

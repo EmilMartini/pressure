@@ -31,10 +31,10 @@ raids, loot tables).
 - **Swap primary** (X / Q) cycles which carried gun is on the trigger.
 
 ### Firing model
-- Every gun you carry aims and fires on its own at its nearest target in range, Brotato
+- Every gun you carry aims and fires on its own at the nearest enemy in range, Brotato
   style. Guns orbit the figure and point where they shoot, so your loadout is visible.
-  The heaviest gun you carry prefers elites and bosses. With nothing to shoot, a gun in range
-  of an obstacle fires its element at that instead, which is how hidden rooms open.
+  With nothing to shoot, a gun in range of an obstacle fires its element at that instead,
+  which is how hidden rooms open.
 - Manual aim, the trigger and focus were cut: play showed they added input without adding
   decisions. The decisions are what you carry, what you wear, where you stand, and when you vent.
 
@@ -43,6 +43,14 @@ raids, loot tables).
   Brotato-like catalog: damage, attack speed, crit chance and damage, bounces, pierce,
   projectiles, health, armour, dodge, regen, speed, range, potency, element duration, chain
   jumps, lifesteal, thorns, scrap, pressure limit and decay, vent size, carry, XP gain.
+
+### Gun tiers and mods
+- Guns have tiers I to IV, Brotato style. Picking up a duplicate merges it into the one
+  you carry one tier higher (no extra weight); the shop's Gunsmith raises your lowest-tier
+  gun for scrap. Each tier adds 35% damage, 12% fire rate, a bigger projectile, and from
+  tier III a point of pierce.
+- A gun holds as many mods as its tier, and mod effects stack: four Coatings on one gun
+  mean every hit applies five elements. That is meant to get absurd late in a run.
 
 ### Weight
 - No gun slots. A **carry budget** (starts at 10, bought up in the shop).
@@ -62,12 +70,16 @@ Status effects on enemies: burn, stacking poison (a poisoned corpse passes it on
 bleed (hurts while moving), corrosion (+50% damage taken), freeze (x3 damage, shatters),
 stun, slow, shoves from pulls and pushes, and lingering clouds that keep applying an element.
 
-**Clouds chain.** A cloud is an element hanging in the air, and anything that enters it
-reacts with the whole cloud: a projectile, a vent, another cloud. The pair's reaction plays
-out over everyone inside, and the cloud takes on the incoming element. So Steam (a wet
-cloud) hit by Shock becomes a lightning field that keeps shocking; Fire into Toxic Mist is a
-Noxious Flame over the crowd; a Blizzard drifting into a Magma pool is a Thermal Shock. This
-is the layer that makes the game its own thing: reactions are not a lookup, they are weather.
+**Patches, contained.** A few reactions leave something on the floor or in the air: Steam
+leaves a puddle, Toxic Mist and Noxious Flame a poison cloud, Magma a lava pool, Blizzard an
+ice cloud, Consecrate hallowed ground. A patch keeps applying its element to whoever is in
+it, and anything of another element that enters it (a projectile, a vent, another patch)
+plays that pair's reaction once over everyone inside, then the patch is used up. Lightning
+through a steam puddle shocks everyone standing in it, fire into a poison cloud burns the
+crowd, and then it is gone. A patch never spawns another patch, so there is no recursion.
+Water is a puddle that drenches, not weather. Fire spreads only where there is fuel: a
+burning enemy ignites oiled neighbours. An earlier version let clouds transform and chain
+into each other; it produced spectacular nonsense, so it was pulled back to one step.
 
 A few of the sixty-five: Wet + Void is a Whirlpool that drags everything in. Shock + Holy is
 Smite, one enormous strike. Fire + Stone leaves a pool of Magma. Poison + Gale is a Plague
@@ -78,26 +90,26 @@ Rules: an enemy carries states for a few seconds. When a new element lands on an
 already has a different state, the pair reacts, consumes the existing state, and the new one
 is not applied. Same element refreshes the timer.
 
-### Pressure gauge
+### Pressure gauge (now: vent charge)
 - One gauge per player, from **cold (-100)** through **neutral (0)** to **hot (+100)**.
-- Fire and Shock guns push hot. Wet and Ice guns push cold. Oil is neutral. It drifts back
-  toward neutral slowly.
-- **Overheat** (hits +100): all guns stall for 3 s. **Freeze-up** (hits -100): fire rate crawls for 3 s.
-- A balanced loadout self-regulates, which rewards the synergies the game is about.
+  Fire and Shock guns push hot, Wet and Ice push cold, it drifts back toward neutral.
 - **Vent** turns the gauge into a weapon: a fire nova when hot, a frost nova when cold,
-  scaled by how far from neutral you are. Mono-element builds live on the vent button.
+  scaled by how far from neutral you are, and a vent sweeping through a cloud or puddle
+  reacts with it.
+- The overheat and freeze-up stalls were cut. Watching the bot play showed the gauge was
+  being managed rather than used: a penalty you avoid is a chore, a charge you spend is a
+  decision. Pressure is now purely the fuel for the one active ability.
 
 ### What keeps it hard
 - **Resistance drift.** From wave 3, a growing share of enemies spawn immune to raw damage
   from one element you carry (shown as a ring in that colour). Reactions still work on them.
   Your mono-fire god build meets a wave that only shatters.
-- **Attuned shields.** Elites and bosses carry a shield attuned to one reaction, shown as the
-  element pair above their head with crack pips. Only that reaction cracks it; anything else
-  bounces. Bosses re-attune to a different reaction at half health. This replaced an earlier
-  "reactions in order" design, which did not survive contact with auto-fire: you cannot
-  sequence what your arsenal sprays on its own. One named reaction is something you can
-  produce deliberately, and in auto-aim the trigger prefers elites and bosses, so the primary
-  is your tool for landing it.
+- **Reaction shields.** Elites and bosses carry a shield with crack pips. Any reaction cracks
+  it; the one it is attuned to (shown as the element pair above its head) cracks it twice;
+  raw damage leaks through at a fifth. Bosses re-attune at half health. Two earlier designs
+  died here: "reactions in order" could not survive auto-fire, and "only the attuned
+  reaction" turned bosses into lotteries once a run carried many elements. The shield is now
+  a test of whether you are reacting at all, with a bonus for the right one.
 - **Dungeon tiers** (see section 4). Difficulty keys to your gear score, like Mythic+ keystones.
 
 ## 3. Run structure: Brotato waves inside an Isaac map

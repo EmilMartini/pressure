@@ -43,6 +43,7 @@ var stun_time := 0.0
 var shove_vel := Vector2.ZERO
 
 var _contact_cd := 0.0
+var _spread_cd := 0.0
 var _flash := 0.0
 var _flash_color := Color.WHITE
 var _shield_flash := 0.0
@@ -183,16 +184,17 @@ func apply_element(kind: int, potency: float, source: Player = null) -> String:
     return ""
 
 
+## Any reaction cracks a shield; the one it is attuned to cracks it twice.
 func _on_reaction_pair(a: int, b: int) -> void:
     if not shielded():
         return
-    if Element.pair_key(a, b) == weakness:
-        shield_hp -= 1
-        _shield_flash = 0.4
-        if shield_hp <= 0:
-            Elements.reaction_fired.emit("Shield broken!", global_position, Color.WHITE)
-        else:
-            Elements.reaction_fired.emit("Shield cracked", global_position, Color(1, 1, 1, 0.9))
+    shield_hp -= 2 if Element.pair_key(a, b) == weakness else 1
+    _shield_flash = 0.4
+    if shield_hp <= 0:
+        shield_hp = 0
+        Elements.reaction_fired.emit("Shield broken!", global_position, Color.WHITE)
+    else:
+        Elements.reaction_fired.emit("Shield cracked", global_position, Color(1, 1, 1, 0.9))
 
 
 func take_damage(amount: float, color: Color, flash: bool = true, source: Player = null) -> void:
@@ -201,9 +203,9 @@ func take_damage(amount: float, color: Color, flash: bool = true, source: Player
     if source != null:
         last_hit_by = source
     if shielded():
+        # A shield blocks most raw damage, never all of it: reactions are the fast way in.
         _shield_flash = maxf(_shield_flash, 0.15)
-        queue_redraw()
-        return
+        amount *= 0.2
     if frozen_time > 0.0:
         amount *= 3.0
     if corroded_time > 0.0:
@@ -326,6 +328,15 @@ func _physics_process(delta: float) -> void:
         take_damage(burn_dps * delta, Element.COLORS[Element.Kind.FIRE], false)
         if hp <= 0.0:
             return
+        # Fire spreads when there is fuel: an oiled neighbour catches.
+        _spread_cd -= delta
+        if _spread_cd <= 0.0:
+            _spread_cd = 0.5
+            for e in get_tree().get_nodes_in_group("enemies"):
+                if e != self and is_instance_valid(e) and not e.is_queued_for_deletion() \
+                        and e.burn_time <= 0.0 and e.has_state(Element.Kind.OIL) \
+                        and e.global_position.distance_to(global_position) <= 80.0:
+                    e.apply_element(Element.Kind.FIRE, burn_dps, last_hit_by)
     if poison_time > 0.0:
         poison_time -= delta
         take_damage(poison_dps * float(poison_stacks) * delta, Element.COLORS[Element.Kind.POISON], false)

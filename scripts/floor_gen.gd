@@ -134,6 +134,7 @@ static func _stock_rooms(rooms: Dictionary, floor_number: int) -> void:
                     r.stock.append(offer("gun", id, gun_price(Guns.make(id), floor_number)))
                 r.stock.append(offer("carry", "", 30 + floor_number * 10, 2))
                 r.stock.append(offer("repair", "", 15, 40))
+                r.stock.append(offer("gunsmith", "", 28 + floor_number * 12))
                 var shop_items: Array = []
                 for i in (3 if Progress.has("shop:items") else 2):
                     var iid := Items.roll(floor_number * 3, Items.Rarity.COMMON, shop_items)

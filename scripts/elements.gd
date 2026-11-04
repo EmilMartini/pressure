@@ -71,7 +71,7 @@ const DEFS := [
     { "a": Kind.WET, "b": Kind.VOID, "name": "Whirlpool", "desc": "Drags nearby enemies into the target", "sound": "react_steam", "fx": "twirl", "do": [["pull", 220, 320], ["damage", 1.5]] },
     { "a": Kind.WET, "b": Kind.HOLY, "name": "Baptism", "desc": "Strips every state and punishes each one", "sound": "shield_break", "fx": "light", "do": [["purge", 3.0]] },
     { "a": Kind.WET, "b": Kind.GALE, "name": "Monsoon", "desc": "Soaks and shoves everything nearby", "sound": "react_steam", "fx": "smoke", "do": [["apply", Kind.WET, 180], ["push", 180, 380], ["damage", 1.0]] },
-    { "a": Kind.WET, "b": Kind.STONE, "name": "Mud", "desc": "A mire that bogs enemies down", "sound": "die", "fx": "smoke", "do": [["damage", 1.0], ["slow", 0.3, 5.0, 150], ["cloud", Kind.STONE, 130, 4.0]] },
+    { "a": Kind.WET, "b": Kind.STONE, "name": "Mud", "desc": "A mire that bogs enemies down", "sound": "die", "fx": "smoke", "do": [["damage", 1.0], ["slow", 0.3, 5.0, 150]] },
     # --- Shock
     { "a": Kind.SHOCK, "b": Kind.FIRE, "name": "Plasma", "desc": "A searing detonation", "sound": "react_inferno", "fx": "flame", "do": [["burst", 120, 3.5]] },
     { "a": Kind.SHOCK, "b": Kind.ICE, "name": "Static Frost", "desc": "Freezes, then arcs to every frozen enemy", "sound": "react_freeze", "fx": "spark", "do": [["freeze", 2.0], ["chain_state", Kind.ICE, 2.0]] },
@@ -90,7 +90,7 @@ const DEFS := [
     { "a": Kind.FIRE, "b": Kind.BLOOD, "name": "Cauterize", "desc": "Seals the wound with a brutal flash", "sound": "react_ignition", "fx": "flame", "do": [["damage", 5.0], ["burn", 1.0, 2.0]] },
     { "a": Kind.FIRE, "b": Kind.VOID, "name": "Dark Flame", "desc": "A fire that hungers for neighbours", "sound": "react_inferno", "fx": "flame", "do": [["burn", 2.0, 4.0], ["apply", Kind.FIRE, 170]] },
     { "a": Kind.FIRE, "b": Kind.HOLY, "name": "Holy Fire", "desc": "Purifying flame", "sound": "shield_break", "fx": "light", "do": [["purge", 2.0], ["burn", 2.0, 4.0]] },
-    { "a": Kind.FIRE, "b": Kind.GALE, "name": "Firestorm", "desc": "A spreading sheet of flame", "sound": "nova_fire", "fx": "flame", "do": [["cloud", Kind.FIRE, 170, 3.0], ["burst", 170, 1.0]] },
+    { "a": Kind.FIRE, "b": Kind.GALE, "name": "Firestorm", "desc": "Flame fanned onto everything nearby", "sound": "nova_fire", "fx": "flame", "do": [["apply", Kind.FIRE, 200], ["burst", 170, 1.0]] },
     { "a": Kind.FIRE, "b": Kind.STONE, "name": "Magma", "desc": "A pool of lava", "sound": "nova_fire", "fx": "flame", "do": [["cloud", Kind.FIRE, 120, 6.0], ["damage", 2.0]] },
     # --- Ice
     { "a": Kind.ICE, "b": Kind.OIL, "name": "Black Ice", "desc": "Enemies slip and stall", "sound": "react_freeze", "fx": "magic", "do": [["slow", 0.25, 4.0, 150], ["stun", 0.8]] },
@@ -103,7 +103,7 @@ const DEFS := [
     { "a": Kind.ICE, "b": Kind.STONE, "name": "Glacier", "desc": "Locked in ice for a long time", "sound": "react_freeze", "fx": "magic", "do": [["freeze", 5.0]] },
     # --- Oil
     { "a": Kind.OIL, "b": Kind.SHOCK, "name": "Ignition", "desc": "Shock damage plus a lighter burn", "sound": "react_ignition", "fx": "spark", "do": [["damage", 2.0], ["burn", 1.0, 3.0]] },
-    { "a": Kind.OIL, "b": Kind.POISON, "name": "Tar Pit", "desc": "A slow, poisonous bog", "sound": "die", "fx": "smoke", "do": [["cloud", Kind.POISON, 130, 5.0], ["slow", 0.4, 5.0, 130]] },
+    { "a": Kind.OIL, "b": Kind.POISON, "name": "Tar Pit", "desc": "A slow, poisonous bog", "sound": "die", "fx": "smoke", "do": [["slow", 0.4, 5.0, 130], ["apply", Kind.POISON, 130]] },
     { "a": Kind.OIL, "b": Kind.ACID, "name": "Dissolve", "desc": "Eaten away", "sound": "react_steam", "fx": "circle", "do": [["poison", 2.0, 5.0], ["corrode", 5.0]] },
     { "a": Kind.OIL, "b": Kind.BLOOD, "name": "Slick", "desc": "Enemies lose their footing", "sound": "hit", "fx": "circle", "do": [["slow", 0.3, 4.0, 140], ["bleed", 1.5, 4.0]] },
     { "a": Kind.OIL, "b": Kind.VOID, "name": "Black Hole", "desc": "A pull that leaves everything oiled", "sound": "nova_frost", "fx": "twirl", "do": [["pull", 240, 400], ["apply", Kind.OIL, 160]] },
@@ -136,7 +136,7 @@ const DEFS := [
     { "a": Kind.HOLY, "b": Kind.GALE, "name": "Divine Wind", "desc": "A holy gust that scours states", "sound": "shield_break", "fx": "light", "do": [["push", 200, 400], ["purge", 1.5]] },
     { "a": Kind.HOLY, "b": Kind.STONE, "name": "Consecrate", "desc": "Hallowed ground that burns the unholy", "sound": "shield_break", "fx": "light", "do": [["cloud", Kind.HOLY, 140, 5.0]] },
     # --- Gale
-    { "a": Kind.GALE, "b": Kind.STONE, "name": "Sandstorm", "desc": "Grinding wind", "sound": "react_steam", "fx": "smoke", "do": [["cloud", Kind.STONE, 160, 3.0], ["burst", 160, 1.0]] },
+    { "a": Kind.GALE, "b": Kind.STONE, "name": "Sandstorm", "desc": "Grinding wind", "sound": "react_steam", "fx": "smoke", "do": [["burst", 160, 1.5], ["slow", 0.5, 3.0, 160]] },
 ]
 
 signal reaction_fired(reaction_name: String, position: Vector2, color: Color)
@@ -196,9 +196,10 @@ func try_react(enemy: Node2D, existing: int, incoming: int, potency: float) -> S
     return name
 
 
-## An element meets a cloud: the pair's reaction plays out over everyone inside the cloud,
-## and the cloud takes on the incoming element, so steam charged with lightning keeps
-## shocking whoever walks through it. Clouds also meet other clouds this way.
+## An element meets a cloud or puddle: the pair's reaction plays out once over everyone
+## inside, and the patch is used up. Lightning through a steam puddle shocks everyone
+## standing in it; fire into a poison cloud burns the crowd; then it is gone. One step,
+## never a chain of its own.
 func react_cloud(cloud: Cloud, incoming: int, potency: float, source: Player) -> String:
     if cloud == null or not is_instance_valid(cloud) or cloud.element == incoming or cloud.cooldown > 0.0:
         return ""
@@ -230,7 +231,7 @@ func react_cloud(cloud: Cloud, incoming: int, potency: float, source: Player) ->
                 continue
             _act(e, potency * 0.7, act)
         area_done = true
-    cloud.transform_to(incoming)
+    cloud.dissipate()
     return name
 
 

@@ -391,7 +391,7 @@ func _build_catalog() -> void:
     _add("band_of_lingering", "Band of Lingering", "ring", R, "Elements linger 50% longer on enemies", { "state_duration": 0.5 })
     _add("vampiric_loop", "Vampiric Loop", "ring", R, "Heal 2 per reaction", { "lifesteal": 2 })
     _add("ring_of_multiplicity", "Ring of Multiplicity", "ring", E, "20% of hits fire an extra shot of the same element", {}, [{ "on": "hit", "chance": 0.20, "do": "shoot", "element": "last", "count": 1, "potency": 5 }])
-    _add("signet_of_overload", "Signet of Overload", "ring", L, "Overheating and freezing up detonate instead of stalling you", {}, [{ "on": "overheat", "do": "nova", "element": "fire", "radius": 300, "potency": 24 }, { "on": "freeze_up", "do": "nova", "element": "ice", "radius": 300, "potency": 24 }])
+    _add("signet_of_overload", "Signet of Overload", "ring", L, "Venting also detonates a huge nova of the vented element", {}, [{ "on": "vent", "do": "nova", "element": "last", "radius": 300, "potency": 24 }])
 
     # --- Gun mods
     _add("heavy_barrel", "Heavy Barrel", "mod", C, "This gun: +30% damage, -10% fire rate", { "g_dmg": 0.3, "g_fire_rate": -0.1 })

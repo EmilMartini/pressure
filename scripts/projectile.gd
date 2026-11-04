@@ -18,7 +18,7 @@ var bounces := 0
 var radius := 4.0
 var color := Color.WHITE
 var crit := false
-var extra_element: int = Element.Kind.NONE   # from a Coating gun mod
+var extra_elements: Array = []   # from Coating gun mods, one element each
 var shooter: Player = null
 
 var _hit: Dictionary = {}
@@ -178,8 +178,9 @@ func _on_body_entered(body: Node) -> void:
     enemy.take_damage(raw, color, true, shooter)
     if is_instance_valid(enemy) and not enemy.is_queued_for_deletion():
         enemy.apply_element(element, potency, shooter)
-    if extra_element != Element.Kind.NONE and is_instance_valid(enemy) and not enemy.is_queued_for_deletion():
-        enemy.apply_element(extra_element, potency * 0.8, shooter)
+    for extra in extra_elements:
+        if is_instance_valid(enemy) and not enemy.is_queued_for_deletion():
+            enemy.apply_element(extra, potency * 0.8, shooter)
     if shooter != null:
         Items.fire(shooter, "hit", { "target": enemy, "pos": global_position, "element": element })
     if bounces > 0:
