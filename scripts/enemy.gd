@@ -19,6 +19,8 @@ var immune_to: int = Element.Kind.NONE
 var is_elite := false
 var sequence: Array[Vector2i] = []   # required reaction pairs, in order
 var sequence_index := 0
+var reshield_sequence: Array[Vector2i] = []   # bosses re-shield at half health
+var scrap_value := 1
 
 var states: Dictionary = {}           # Element.Kind -> seconds remaining
 var burn_dps := 0.0
@@ -35,7 +37,7 @@ var _shield_flash := 0.0
 
 func configure(type: String, wave: int) -> void:
     kind_name = type
-    var scale := 1.0 + 0.18 * float(wave - 1)
+    var scale := 1.0 + 0.12 * float(wave)
     match type:
         "runner":
             max_hp = 10.0 * scale
@@ -56,12 +58,23 @@ func configure(type: String, wave: int) -> void:
             contact_damage = 14.0
             base_color = Color(0.75, 0.25, 0.60)
             is_elite = true
+            scrap_value = 10
+        "boss":
+            max_hp = 700.0 * scale
+            speed = 85.0
+            radius = 30.0
+            contact_damage = 20.0
+            base_color = Color(0.55, 0.10, 0.20)
+            is_elite = true
+            scrap_value = 40
         _:
             max_hp = 22.0 * scale
             speed = 115.0
             radius = 11.0
             contact_damage = 8.0
             base_color = Color(0.85, 0.30, 0.30)
+    if type == "brute":
+        scrap_value = 3
     hp = max_hp
 
 
@@ -140,8 +153,20 @@ func take_damage(amount: float, color: Color, flash: bool = true) -> void:
         _flash_color = color
     if hp <= 0.0:
         _die()
-    else:
-        queue_redraw()
+        return
+    if not reshield_sequence.is_empty() and hp <= max_hp * 0.5:
+        sequence = reshield_sequence
+        reshield_sequence = []
+        sequence_index = 0
+        _shield_flash = 0.5
+        Elements.reaction_fired.emit("Shield restored!", global_position, Color.WHITE)
+    queue_redraw()
+
+
+## Removed without dying: no scrap, no kill credit (room cleared, party left).
+func vanish() -> void:
+    remove_from_group("enemies")
+    queue_free()
 
 
 func freeze(seconds: float) -> void:

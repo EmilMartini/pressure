@@ -1,60 +1,53 @@
 class_name Main
 extends Node2D
-## The arena: players, waves, elites, resistance drift, camera, HUD, couch co-op joins.
-## Everything is built in code for now so the project reads as plain scripts.
+## Run orchestrator: players, floors, the current room, scrap, camera, HUD,
+## couch co-op joins, and the self-test bot.
 
-const ARENA := Rect2(-1100, -700, 2200, 1400)
-const WALL := 60.0
-const INTERMISSION := 5.0
-const START_DELAY := 3.0
 const MAX_PLAYERS := 4
+const FLOORS := 3
 const STARTING_GUNS := ["water_pistol", "arc_rifle"]
+const CAMERA_PAD := 90.0
 
 var players: Array[Player] = []
 var fx: Fx
 var hud: Hud
 var camera: Camera2D
 
-var wave := 0
-var wave_duration := 0.0
-var wave_time_left := 0.0
-var intermission := START_DELAY
+var floor_number := 0
+var rooms: Dictionary = {}          # Vector2i -> RoomData
+var current: Room = null
+var current_pos := Vector2i.ZERO
+var scrap := 0
+var rooms_cleared := 0
 var total_kills := 0
 var game_over := false
+var victory := false
 var show_help := true
-
-var _spawn_timer := 0.0
-var _elite_timer := 0.0
-var _enemies: Node2D
+var message := ""
+var _message_time := 0.0
 var _joined_devices: Dictionary = {}
+var _transitioning := false
 
 # Self-test: `godot --path . -- --autotest` plays by itself, saves screenshots to
-# res://autotest/ and prints reaction counts. Used to verify builds without a human.
+# res://autotest/ and prints progress. Used to verify builds without a human.
 var autotest := false
-var _frame := 0
 var _clock := 0.0
+var _bot_idle := 0.0
+var _bot_obstacle_time := 0.0
+var _bot_skip: Dictionary = {}
 var _shots_taken: Dictionary = {}
 var _reaction_counts: Dictionary = {}
 
 
 func _ready() -> void:
     randomize()
-    _build_walls()
-
-    _enemies = Node2D.new()
-    _enemies.name = "Enemies"
-    add_child(_enemies)
 
     fx = Fx.new()
     add_child(fx)
 
     camera = Camera2D.new()
     camera.position_smoothing_enabled = true
-    camera.position_smoothing_speed = 6.0
-    camera.limit_left = int(ARENA.position.x)
-    camera.limit_top = int(ARENA.position.y)
-    camera.limit_right = int(ARENA.end.x)
-    camera.limit_bottom = int(ARENA.end.y)
+    camera.position_smoothing_speed = 7.0
     add_child(camera)
     camera.make_current()
 
@@ -73,72 +66,126 @@ func _ready() -> void:
     if autotest:
         _setup_autotest()
 
-
-func _count_reaction(reaction_name: String, _pos: Vector2, _col: Color) -> void:
-    _reaction_counts[reaction_name] = _reaction_counts.get(reaction_name, 0) + 1
+    start_floor(1)
 
 
-func _setup_autotest() -> void:
-    var p := players[0]
-    p.input.force_fire = true
-    for id in Guns.ids():
-        var owned := false
-        for g in p.guns:
-            if g.data.id == id:
-                owned = true
-        if not owned:
-            p.add_gun(id)
-    intermission = 0.5
-    DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path("res://autotest"))
+# --- Floors and rooms --------------------------------------------------------
 
 
-func _autotest_tick(delta: float) -> void:
-    var p := players[0]
-    _clock += delta
-    # Kite: back away from the nearest enemy while circling, aim at it for real hits.
-    var t := p._nearest_enemy(900.0)
-    var circle := Vector2.RIGHT.rotated(_clock * 0.6)
-    if t != null:
-        var to_enemy := (t.global_position - p.global_position).normalized()
-        p.input.force_aim = to_enemy
-        p.input.force_move = (-to_enemy * 0.8 + circle * 0.6).normalized()
+func start_floor(n: int) -> void:
+    floor_number = n
+    rooms = FloorGen.generate(n)
+    for p in players:
+        p.pressure = 0.0
+        if not p.alive:
+            p.alive = true
+            p.add_to_group("players")
+        p.hp = maxf(p.hp, p.max_hp * 0.6)
+    enter_room(Vector2i(FloorGen.GRID / 2, FloorGen.GRID / 2), Vector2i.ZERO)
+    announce("Floor %d" % n)
+
+
+## Load the room at `pos`. `moved` is the direction the party travelled to get there,
+## or ZERO when dropped in (floor start).
+func enter_room(pos: Vector2i, moved: Vector2i) -> void:
+    _transitioning = false
+    if current != null:
+        current.collect_all_scrap()
+        remove_child(current)
+        current.queue_free()
+    for c in get_children():
+        if c is Projectile:
+            c.queue_free()
+
+    current_pos = pos
+    current = Room.new(rooms[pos], self)
+    add_child(current)
+    move_child(current, 0)
+    current.door_entered.connect(_on_door_entered)
+
+    var base := Vector2.ZERO if moved == Vector2i.ZERO else current.entry_position(-moved)
+    var across := Vector2(moved).orthogonal() if moved != Vector2i.ZERO else Vector2.RIGHT
+    for i in players.size():
+        players[i].global_position = base + across * (float(i) - float(players.size() - 1) / 2.0) * 40.0
+        players[i].velocity = Vector2.ZERO
+
+    var r := current.rect.grow(Room.WALL + CAMERA_PAD)
+    camera.limit_left = int(r.position.x)
+    camera.limit_top = int(r.position.y)
+    camera.limit_right = int(r.end.x)
+    camera.limit_bottom = int(r.end.y)
+    camera.position = _party_center()
+    camera.reset_smoothing()
+
+
+func _on_door_entered(dir: Vector2i) -> void:
+    if _transitioning:
+        return
+    _transitioning = true
+    call_deferred("enter_room", current_pos + dir, dir)
+
+
+func on_room_cleared(_room: Room) -> void:
+    rooms_cleared += 1
+    announce("Room cleared")
+
+
+func next_floor() -> void:
+    if floor_number >= FLOORS:
+        victory = true
+        announce("You cleared the dungeon!")
     else:
-        p.input.force_aim = Vector2.ZERO
-        p.input.force_move = circle
-    # Stay off the walls.
-    var inner := ARENA.grow(-150.0)
-    if not inner.has_point(p.global_position):
-        p.input.force_move = (inner.get_center() - p.global_position).normalized()
-    if fmod(_clock, 6.0) < delta:
-        p.vent()
-    if _clock >= 12.0 and p.auto_aim:
-        p.auto_aim = false
-        p.say("Manual aim")
-    for shot_time in [10.0, 45.0, 75.0, 95.0]:
-        if _clock >= shot_time and not _shots_taken.has(shot_time):
-            _shots_taken[shot_time] = true
-            _screenshot("res://autotest/t%03d.png" % int(shot_time))
-    if _clock >= 110.0 or game_over:
-        _print_stats("END")
-        get_tree().quit()
+        call_deferred("start_floor", floor_number + 1)
 
 
-func _screenshot(path: String) -> void:
-    await RenderingServer.frame_post_draw
-    var img := get_viewport().get_texture().get_image()
-    if img != null:
-        img.save_png(path)
+## Enemy scaling input: grows with floors and with every room the party clears.
+func difficulty() -> int:
+    return (floor_number - 1) * 3 + rooms_cleared
 
 
-func _print_stats(label: String) -> void:
-    var p := players[0]
-    print("[%s] frame=%d wave=%d kills=%d enemies=%d hp=%.0f pressure=%.0f focus=%.2f weight=%d/%d" % [
-        label, _frame, wave, total_kills, enemy_count(), p.hp, p.pressure, p.focus, p.total_weight(), p.weight_capacity])
-    print("    reactions: %s" % str(_reaction_counts))
+func add_scrap(v: int) -> void:
+    scrap += v
 
 
-func enemy_count() -> int:
-    return _enemies.get_child_count()
+func announce(text: String) -> void:
+    message = text
+    _message_time = 3.0
+
+
+func party_elements() -> Array:
+    var kinds := []
+    for p in players:
+        for k in p.element_kinds():
+            if not kinds.has(k):
+                kinds.append(k)
+    return kinds
+
+
+func nearest_alive_player(pos: Vector2) -> Player:
+    var best: Player = null
+    var best_d := INF
+    for p in players:
+        if not p.alive:
+            continue
+        var d := p.global_position.distance_squared_to(pos)
+        if d < best_d:
+            best_d = d
+            best = p
+    return best
+
+
+func _party_center() -> Vector2:
+    var sum := Vector2.ZERO
+    var n := 0
+    for p in players:
+        if p.alive:
+            sum += p.global_position
+            n += 1
+    if n == 0:
+        for p in players:
+            sum += p.global_position
+        n = players.size()
+    return sum / float(maxi(1, n))
 
 
 # --- Players ---------------------------------------------------------------
@@ -146,7 +193,7 @@ func enemy_count() -> int:
 
 func _spawn_player(device: int, keyboard: bool) -> Player:
     var p := Player.new(players.size(), PlayerInput.new(device, keyboard))
-    p.position = Vector2(randf_range(-60, 60), randf_range(-60, 60))
+    p.position = _party_center() + Vector2(randf_range(-40, 40), randf_range(-40, 40))
     add_child(p)
     players.append(p)
     p.died.connect(_on_player_died)
@@ -161,7 +208,6 @@ func _spawn_player(device: int, keyboard: bool) -> Player:
 
 
 func _on_joy_connection_changed(device: int, connected: bool) -> void:
-    # Pad 0 belongs to player 1 alongside the keyboard, even if it shows up late.
     if device == 0 and connected and not players.is_empty() and players[0].input.device < 0:
         players[0].input.device = 0
         _joined_devices[0] = true
@@ -186,193 +232,21 @@ func _on_player_died(_p: Player) -> void:
     game_over = true
 
 
-func _alive_players() -> Array[Player]:
-    var out: Array[Player] = []
-    for p in players:
-        if p.alive:
-            out.append(p)
-    return out
-
-
-func _party_center() -> Vector2:
-    var group := _alive_players()
-    if group.is_empty():
-        group = players
-    var sum := Vector2.ZERO
-    for p in group:
-        sum += p.global_position
-    return sum / float(maxi(1, group.size()))
-
-
-func _party_elements() -> Array:
-    var kinds := []
-    for p in players:
-        for k in p.element_kinds():
-            if not kinds.has(k):
-                kinds.append(k)
-    return kinds
-
-
-# --- Waves -----------------------------------------------------------------
+# --- Frame -----------------------------------------------------------------
 
 
 func _process(delta: float) -> void:
-    _frame += 1
     if autotest:
         _autotest_tick(delta)
     _handle_joins()
     camera.position = _party_center()
-
-    if game_over:
+    _message_time = maxf(0.0, _message_time - delta)
+    if _message_time <= 0.0:
+        message = ""
+    if game_over or victory:
         for p in players:
             if p.input.just_pressed("start"):
                 _restart()
-        return
-
-    if intermission > 0.0:
-        intermission -= delta
-        if intermission <= 0.0:
-            _start_wave()
-        return
-
-    wave_time_left -= delta
-    _spawn_timer -= delta
-    _elite_timer -= delta
-    if _spawn_timer <= 0.0:
-        _spawn_timer = maxf(0.3, 1.2 - 0.08 * float(wave))
-        _spawn_group()
-    if _elite_timer <= 0.0 and wave >= 2:
-        _elite_timer = maxf(12.0, 28.0 - float(wave))
-        _spawn_elite()
-    if wave_time_left <= 0.0:
-        _end_wave()
-
-
-func _start_wave() -> void:
-    wave += 1
-    wave_duration = 20.0 + 5.0 * float(wave)
-    wave_time_left = wave_duration
-    _spawn_timer = 0.0
-    _elite_timer = 8.0
-    for p in players:
-        if not p.alive:
-            p.alive = true
-            p.hp = p.max_hp * 0.5
-            p.add_to_group("players")
-            p.say("Back up!")
-
-
-func _end_wave() -> void:
-    if autotest:
-        _print_stats("WAVE %d END" % wave)
-    for e in _enemies.get_children():
-        e.queue_free()
-    intermission = INTERMISSION
-    for p in players:
-        p.pressure = 0.0
-        p.say("Wave %d cleared" % wave)
-
-
-func _spawn_group() -> void:
-    var count := 2 + (wave + 1) / 2 + (players.size() - 1)
-    for i in count:
-        var roll := randf()
-        var type := "grunt"
-        if roll < 0.25:
-            type = "runner"
-        elif roll < 0.37 and wave >= 2:
-            type = "brute"
-        _spawn_enemy(type)
-
-
-func _spawn_enemy(type: String) -> Enemy:
-    var e := Enemy.new()
-    e.configure(type, wave)
-    # Resistance drift: from wave 3 a growing share is immune to an element the party carries.
-    if wave >= 3 and randf() < minf(0.6, 0.05 * float(wave)):
-        var kinds := _party_elements()
-        if not kinds.is_empty():
-            e.immune_to = kinds.pick_random()
-    e.position = _spawn_point()
-    e.died.connect(_on_enemy_died)
-    _enemies.add_child(e)
-    return e
-
-
-func _spawn_elite() -> void:
-    var e := _spawn_enemy("elite")
-    var pairs := Elements.available_reactions(_party_elements())
-    if pairs.is_empty():
-        return
-    var length := 1
-    if wave >= 4:
-        length += 1
-    if wave >= 7:
-        length += 1
-    var seq: Array[Vector2i] = []
-    for i in length:
-        seq.append(pairs.pick_random())
-    e.sequence = seq
-    Elements.reaction_fired.emit("ELITE", e.global_position, Color(1.0, 0.85, 0.3))
-
-
-func _spawn_point() -> Vector2:
-    var center := _party_center()
-    var dir := Vector2.RIGHT.rotated(randf() * TAU)
-    var pos := center + dir * randf_range(640.0, 820.0)
-    var inner := ARENA.grow(-30.0)
-    pos.x = clampf(pos.x, inner.position.x, inner.end.x)
-    pos.y = clampf(pos.y, inner.position.y, inner.end.y)
-    return pos
-
-
-func _on_enemy_died(e: Enemy) -> void:
-    total_kills += 1
-
-
-# --- Arena -----------------------------------------------------------------
-
-
-func _build_walls() -> void:
-    var body := StaticBody2D.new()
-    body.name = "Walls"
-    body.collision_layer = Player.LAYER_WALLS
-    body.collision_mask = 0
-    add_child(body)
-    var cx := ARENA.get_center().x
-    var cy := ARENA.get_center().y
-    var w := ARENA.size.x + WALL * 2.0
-    var h := ARENA.size.y + WALL * 2.0
-    _wall(body, Vector2(cx, ARENA.position.y - WALL / 2.0), Vector2(w, WALL))
-    _wall(body, Vector2(cx, ARENA.end.y + WALL / 2.0), Vector2(w, WALL))
-    _wall(body, Vector2(ARENA.position.x - WALL / 2.0, cy), Vector2(WALL, h))
-    _wall(body, Vector2(ARENA.end.x + WALL / 2.0, cy), Vector2(WALL, h))
-
-
-func _wall(body: StaticBody2D, center: Vector2, size: Vector2) -> void:
-    var shape := CollisionShape2D.new()
-    var rect := RectangleShape2D.new()
-    rect.size = size
-    shape.shape = rect
-    shape.position = center
-    body.add_child(shape)
-
-
-func _draw() -> void:
-    draw_rect(ARENA, Color(0.10, 0.11, 0.14))
-    var grid := Color(1, 1, 1, 0.04)
-    var x := ARENA.position.x
-    while x <= ARENA.end.x:
-        draw_line(Vector2(x, ARENA.position.y), Vector2(x, ARENA.end.y), grid, 1.0)
-        x += 100.0
-    var y := ARENA.position.y
-    while y <= ARENA.end.y:
-        draw_line(Vector2(ARENA.position.x, y), Vector2(ARENA.end.x, y), grid, 1.0)
-        y += 100.0
-    draw_rect(ARENA, Color(0.5, 0.5, 0.6, 0.6), false, 4.0)
-
-
-# --- Debug input -----------------------------------------------------------
 
 
 func _input(event: InputEvent) -> void:
@@ -393,3 +267,169 @@ func _input(event: InputEvent) -> void:
 
 func _restart() -> void:
     get_tree().reload_current_scene()
+
+
+# --- Self-test bot ---------------------------------------------------------
+
+
+func _count_reaction(reaction_name: String, _pos: Vector2, _col: Color) -> void:
+    _reaction_counts[reaction_name] = _reaction_counts.get(reaction_name, 0) + 1
+
+
+func _setup_autotest() -> void:
+    var p := players[0]
+    for id in Guns.ids():
+        var owned := false
+        for g in p.guns:
+            if g.data.id == id:
+                owned = true
+        if not owned:
+            p.add_gun(id)
+    DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path("res://autotest"))
+
+
+func _autotest_tick(delta: float) -> void:
+    _clock += delta
+    if current == null or players.is_empty():
+        return
+    var p := players[0]
+    var t := p.nearest_enemy(900.0)
+    var circle := Vector2.RIGHT.rotated(_clock * 0.6)
+    p.input.force_fire = t != null
+    if t != null:
+        var to_enemy := (t.global_position - p.global_position).normalized()
+        p.input.force_aim = to_enemy
+        p.input.force_move = (-to_enemy * 0.8 + circle * 0.6).normalized()
+        var inner := current.rect.grow(-120.0)
+        if not inner.has_point(p.global_position):
+            p.input.force_move = (inner.get_center() - p.global_position).normalized()
+        _bot_idle = 0.0
+    else:
+        p.input.force_aim = Vector2.ZERO
+        _bot_idle += delta
+        _bot_navigate(p)
+    if fmod(_clock, 6.0) < delta:
+        p.vent()
+    if _clock >= 12.0 and p.auto_aim:
+        p.auto_aim = false
+    for shot_time in [15.0, 60.0, 120.0, 180.0, 240.0]:
+        if _clock >= shot_time and not _shots_taken.has(shot_time):
+            _shots_taken[shot_time] = true
+            _screenshot("res://autotest/t%03d.png" % int(shot_time))
+    if _clock >= 300.0 or game_over or victory:
+        _print_stats("END")
+        get_tree().quit()
+
+
+func _bot_navigate(p: Player) -> void:
+    var room := current
+    # Pedestals worth using.
+    for ped in room.pedestals:
+        if not is_instance_valid(ped):
+            continue
+        var o: Dictionary = ped.offer
+        var want := false
+        match o["kind"]:
+            "sigil", "stairs":
+                want = true
+            "gun":
+                want = o["price"] <= scrap and p.can_carry(Guns.make(o["id"]))
+            "carry", "repair":
+                want = o["price"] <= scrap
+        if want:
+            var d := ped.global_position - p.global_position
+            if d.length() < 30.0:
+                room.activate(ped, p)
+                _bot_idle = 0.0
+            else:
+                p.input.force_move = d.normalized()
+            return
+    # Obstacles the bot can clear with what it carries.
+    for dir in room.data.doors.keys():
+        var ob: String = room.data.doors[dir]["obstacle"]
+        if ob == "" or _bot_skip.has([current_pos, dir]):
+            continue
+        _bot_obstacle_time += get_process_delta_time()
+        if _bot_obstacle_time > 25.0:
+            _print_stats("Gave up on %s obstacle" % ob)
+            _bot_skip[[current_pos, dir]] = true
+            _bot_obstacle_time = 0.0
+            continue
+        var spec: Dictionary = Obstacle.KINDS[ob]
+        var want_kind: int = spec["element"]
+        if spec["reaction"] == "Steam":
+            want_kind = Element.Kind.WET if fmod(_clock, 1.6) < 0.8 else Element.Kind.FIRE
+        var gun: Gun = null
+        for g in p.guns:
+            if g.data.element == want_kind:
+                gun = g
+        if gun == null:
+            continue
+        p.primary = gun
+        var target := room.door_world_position(dir)
+        var to := target - p.global_position
+        p.input.force_aim = to.normalized()
+        p.input.force_fire = true
+        p.input.force_move = to.normalized() if to.length() > 130.0 else Vector2.ZERO
+        return
+    _bot_obstacle_time = 0.0
+    if not room.data.cleared:
+        p.input.force_move = -p.global_position.normalized() if p.global_position.length() > 60.0 else Vector2.ZERO
+        return
+    var dir := _bot_next_dir()
+    if dir == Vector2i.ZERO:
+        p.input.force_move = Vector2.ZERO
+        return
+    if _bot_idle > 12.0:
+        _print_stats("STUCK, teleporting")
+        _bot_idle = 0.0
+        enter_room(current_pos + dir, dir)
+        return
+    p.input.force_move = (room.door_world_position(dir) - p.global_position).normalized()
+
+
+## Breadth-first search through passable doors to the nearest unvisited room.
+func _bot_next_dir() -> Vector2i:
+    var start := current_pos
+    var prev: Dictionary = { start: start }
+    var queue: Array = [start]
+    var goal := Vector2i(-1, -1)
+    while not queue.is_empty():
+        var cur: Vector2i = queue.pop_front()
+        var r: RoomData = rooms[cur]
+        if cur != start and not r.visited:
+            goal = cur
+            break
+        for d in r.doors.keys():
+            if r.doors[d]["obstacle"] != "":
+                continue
+            var n: Vector2i = r.doors[d]["to"]
+            if prev.has(n):
+                continue
+            prev[n] = cur
+            queue.append(n)
+    if goal.x < 0:
+        return Vector2i.ZERO
+    var step := goal
+    while prev[step] != start:
+        step = prev[step]
+    return step - start
+
+
+func _screenshot(path: String) -> void:
+    await RenderingServer.frame_post_draw
+    var img := get_viewport().get_texture().get_image()
+    if img != null:
+        img.save_png(path)
+
+
+func _print_stats(label: String) -> void:
+    var p := players[0]
+    var visited := 0
+    for r in rooms.values():
+        if r.visited:
+            visited += 1
+    print("[%s] t=%.0f floor=%d room=%s visited=%d/%d cleared=%d kills=%d scrap=%d hp=%.0f weight=%d/%d" % [
+        label, _clock, floor_number, current.data.type_name() if current else "-", visited, rooms.size(),
+        rooms_cleared, total_kills, scrap, p.hp, p.total_weight(), p.weight_capacity])
+    print("    reactions: %s" % str(_reaction_counts))

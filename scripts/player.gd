@@ -239,16 +239,20 @@ func _fire() -> void:
         var is_primary := g == primary
         if is_primary and not trigger:
             continue
-        var target := _nearest_enemy(g.data.max_range)
+        var target := nearest_enemy(g.data.max_range)
         if target == null:
-            continue   # nothing in range: neither mode sprays at nothing
+            # Nothing in range: the arsenal stays quiet, but the trigger always fires
+            # along your aim so you can hit obstacles and lead targets.
+            if is_primary:
+                g.fire(aim_dir, not auto_aim)
+            continue
         if auto_aim:
             g.fire((target.global_position - global_position).normalized(), false)
         else:
             g.fire(aim_dir, true)
 
 
-func _nearest_enemy(max_range: float) -> Node2D:
+func nearest_enemy(max_range: float) -> Node2D:
     var best: Node2D = null
     var best_d := max_range * max_range
     for e in get_tree().get_nodes_in_group("enemies"):

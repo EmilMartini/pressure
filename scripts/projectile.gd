@@ -20,7 +20,7 @@ var _hit: Dictionary = {}
 
 func _ready() -> void:
     collision_layer = 0
-    collision_mask = LAYER_ENEMIES
+    collision_mask = LAYER_ENEMIES | Obstacle.LAYER_OBSTACLES
     monitorable = false
     var shape := CollisionShape2D.new()
     var circle := CircleShape2D.new()
@@ -46,6 +46,12 @@ func _draw() -> void:
 
 
 func _on_body_entered(body: Node) -> void:
+    if body is Obstacle:
+        body.apply_element(element, potency)
+        if shooter != null:
+            shooter.on_projectile_hit(manual)
+        queue_free()
+        return
     if not body is Enemy or _hit.has(body):
         return
     var enemy := body as Enemy

@@ -137,17 +137,32 @@ must die in element order). Designed for 2-4 players. Only reachable at a gear s
 
 ## 7. Milestones
 
-| # | Milestone | Done when |
+| # | Milestone | Status |
 |---|---|---|
-| 0 | **Combat core** (this build) | Two players on one machine, guns, five reactions, pressure, vent, focus, waves, resistance drift, sequence elites. Answers: is shooting fun? |
-| 1 | Shop & economy | Scrap drops, between-wave shop, carry budget upgrades, 10+ guns |
-| 2 | Dungeon map | Node map, room types, doors, hidden rooms with environmental reactions, floor bosses |
+| 0 | **Combat core** | Done. Guns, five reactions, pressure, vent, focus, resistance drift, sequence elites, couch co-op. |
+| 1 | **Dungeon run** | Done (first pass). Generated floor of rooms, doors, arena waves, shop with scrap, treasure, challenge, hidden room behind an elemental obstacle, boss with re-shield phase, three floors, minimap. |
+| 2 | Tuning & content | Human playtesting, 10+ guns, more enemy types, more obstacles and reactions, room layouts with cover |
 | 3 | Gear & unlocks | Loot tables, inventory, scrap/upgrade, gear score, tiers, achievement unlocks, save file |
 | 4 | Online co-op | Host-authoritative netcode for the desktop build |
 | 5 | Raids | Multi-boss co-op dungeons with mechanics |
 | 6 | Art & sound pass | Kenney packs, juice, music |
 
+### What the dungeon run does today
+- A floor is a tree of 9 to 13 rooms on a grid. Dead ends become the boss, treasure, shop
+  and challenge rooms. One hidden room hangs off an ordinary room behind an obstacle:
+  a pool (freeze it), a thicket (burn it) or a rusted valve (Steam it: Wet, then Fire).
+- Arena rooms lock their doors and run a timed wave; the timer grows with difficulty.
+  Difficulty = 3 per floor plus one per room cleared, so every clear makes the next room harder.
+- Enemies drop scrap. The shop sells three guns, a carry upgrade and a repair.
+  Treasure rooms give a free pick of one gun from three. Challenge rooms start from a sigil,
+  spawn two sequence elites plus adds, and pay out scrap and a free gun pick.
+- The boss has a reaction sequence shield, re-shields with a new sequence at half health,
+  and summons adds. Killing it spawns the stairs. Three floors, then the run is won.
+- The trigger always fires along your aim even with no enemy in range, so obstacles can
+  be shot deliberately. Interact with pedestals using E or the A button.
+
 ## 8. Debug controls in this build
 - `1`..`5` give player 1 a gun (Water Pistol, Arc Rifle, Blowtorch, Frost Caster, Oil Slinger)
 - `R` restarts the run
 - `F1` toggles the help overlay
+- `godot --path . -- --autotest` runs the self-test bot through the dungeon

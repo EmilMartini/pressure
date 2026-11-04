@@ -1,0 +1,87 @@
+class_name Door
+extends Area2D
+## A doorway in a room wall. Locked while a fight runs, open when the room is clear,
+## or blocked by an elemental Obstacle on the way to a hidden room.
+
+signal entered(dir: Vector2i)
+signal obstacle_cleared(dir: Vector2i)
+
+enum State { LOCKED, OPEN, OBSTACLE }
+
+var dir: Vector2i
+var state: int = State.OPEN
+var size: Vector2
+var obstacle: Obstacle = null
+
+var _blocker_shape: CollisionShape2D
+
+
+func _init(p_dir: Vector2i, gap: float, depth: float) -> void:
+    dir = p_dir
+    size = Vector2(gap, depth) if dir.y != 0 else Vector2(depth, gap)
+    name = "Door_%d_%d" % [dir.x, dir.y]
+
+
+func _ready() -> void:
+    collision_layer = 0
+    collision_mask = Player.LAYER_PLAYERS
+    var shape := CollisionShape2D.new()
+    var rect := RectangleShape2D.new()
+    rect.size = size
+    shape.shape = rect
+    add_child(shape)
+    body_entered.connect(_on_body_entered)
+
+    var blocker := StaticBody2D.new()
+    blocker.collision_layer = Player.LAYER_WALLS
+    blocker.collision_mask = 0
+    _blocker_shape = CollisionShape2D.new()
+    var brect := RectangleShape2D.new()
+    brect.size = size
+    _blocker_shape.shape = brect
+    blocker.add_child(_blocker_shape)
+    add_child(blocker)
+    _apply()
+
+
+func set_state(s: int) -> void:
+    state = s
+    _apply()
+
+
+func set_obstacle(kind: String) -> void:
+    state = State.OBSTACLE
+    obstacle = Obstacle.new(kind, size, -Vector2(dir))
+    add_child(obstacle)
+    obstacle.cleared.connect(_on_obstacle_cleared)
+    _apply()
+
+
+func _on_obstacle_cleared() -> void:
+    obstacle = null
+    set_state(State.OPEN)
+    obstacle_cleared.emit(dir)
+
+
+func _apply() -> void:
+    if _blocker_shape != null:
+        _blocker_shape.set_deferred("disabled", state != State.LOCKED)
+    queue_redraw()
+
+
+func _on_body_entered(body: Node) -> void:
+    if state == State.OPEN and body is Player and body.alive:
+        entered.emit(dir)
+
+
+func _draw() -> void:
+    var r := Rect2(-size / 2.0, size)
+    match state:
+        State.LOCKED:
+            draw_rect(r, Color(0.45, 0.12, 0.12))
+            draw_rect(r.grow(-6.0), Color(0.8, 0.2, 0.2), false, 2.0)
+        State.OPEN:
+            draw_rect(r, Color(0.06, 0.07, 0.09))
+            draw_rect(r.grow(-4.0), Color(0.5, 0.9, 1.0, 0.6), false, 2.0)
+        State.OBSTACLE:
+            draw_rect(r, Color(0.06, 0.07, 0.09))

@@ -33,6 +33,7 @@ func poll() -> void:
         "toggle_aim": _button(JOY_BUTTON_Y, KEY_TAB),
         "vent": _button(JOY_BUTTON_LEFT_SHOULDER, KEY_SPACE),
         "swap": _button(JOY_BUTTON_X, KEY_Q),
+        "interact": _button(JOY_BUTTON_A, KEY_E),
         "start": _button(JOY_BUTTON_START, KEY_ENTER),
     }
 
