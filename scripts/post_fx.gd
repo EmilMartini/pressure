@@ -3,6 +3,12 @@ extends CanvasLayer
 ## Screen-space post-processing that works on the Compatibility renderer (so the web
 ## build keeps it): bloom from a thresholded multi-tap blur of the screen, a little
 ## contrast and saturation, and a vignette. Sits below the HUD layer.
+##
+## Impact hooks (static, safe to call when no PostFx is in the tree):
+##   PostFx.shockwave(world_pos, strength, world_radius)  a ripple ring expanding over 0.4 s
+##   PostFx.aberration_pulse(amount)                      chromatic aberration spike, 0.2 s
+##   PostFx.bloom_pulse(amount)                           extra bloom, 0.25 s
+## Pulses decay on real time, so they play out the same during a hit-stop.
 
 const SHADER := """
 shader_type canvas_item;
@@ -17,6 +23,13 @@ uniform float crt_curve : hint_range(0.0, 0.3) = 0.06;
 uniform float scanline : hint_range(0.0, 0.5) = 0.16;
 uniform float aberration : hint_range(0.0, 3.0) = 0.9;
 uniform float grain : hint_range(0.0, 0.2) = 0.035;
+// Impact pulses, driven from GDScript.
+uniform vec2 wave_center = vec2(0.5, 0.5);
+uniform float wave_radius = 0.0;
+uniform float wave_strength = 0.0;
+uniform float wave_width = 0.05;
+uniform float aberration_boost = 0.0;
+uniform float bloom_boost = 0.0;
 
 vec3 bright(vec2 uv) {
     vec3 c = texture(screen_tex, uv).rgb;
@@ -35,8 +48,22 @@ void fragment() {
     vec2 uv = SCREEN_UV + cc * rr * crt_curve;
     vec2 px = SCREEN_PIXEL_SIZE;
     vec2 aspect = vec2(px.y / px.x, 1.0);
-    // Chromatic aberration: red and blue sampled a hair apart, more toward the edges.
-    vec2 ab = cc * aberration * px * 2.0;
+    // Shockwave: UVs pushed along the ring normal, outward ahead of it and inward behind,
+    // so the picture ripples like a pressure front. wave_center is screen UV, wave_radius
+    // and wave_width are in screen heights.
+    float ring_amt = 0.0;
+    if (wave_strength > 0.0) {
+        vec2 wd = (uv - wave_center) * aspect;
+        float dist = length(wd);
+        float x = (dist - wave_radius) / wave_width;
+        float prof = -x * exp(-x * x * 1.5);
+        ring_amt = exp(-x * x * 2.0) * wave_strength;
+        vec2 dir = dist > 0.0001 ? wd / dist : vec2(0.0);
+        uv += dir / aspect * prof * wave_strength * 0.018;
+    }
+    // Chromatic aberration: red and blue sampled a hair apart, more toward the edges,
+    // spiked by aberration_boost and along the shockwave ring.
+    vec2 ab = cc * (aberration + aberration_boost + ring_amt * 3.0) * px * 2.0;
     vec3 col = vec3(texture(screen_tex, uv + ab).r, texture(screen_tex, uv).g, texture(screen_tex, uv - ab).b);
     vec3 bloom = bright(uv) * 2.0;
     float total = 2.0;
@@ -51,7 +78,8 @@ void fragment() {
         }
     }
     bloom /= total;
-    col += bloom * bloom_strength;
+    col += bloom * (bloom_strength + bloom_boost);
+    col += vec3(ring_amt * 0.05);
     float l = dot(col, vec3(0.299, 0.587, 0.114));
     col = mix(vec3(l), col, saturation);
     col = (col - 0.5) * contrast + 0.5;
@@ -72,6 +100,23 @@ void fragment() {
 }
 """
 
+const WAVE_LIFE := 0.4
+const ABERRATION_LIFE := 0.2
+const BLOOM_LIFE := 0.25
+
+## The PostFx currently in the tree (the latest one to enter), for the static hooks.
+static var instance: PostFx = null
+
+var _mat: ShaderMaterial
+var _last_us := 0
+var _wave_t := 0.0          # seconds left
+var _wave_max := 0.0        # final radius, screen heights
+var _wave_str := 0.0
+var _ab_t := 0.0
+var _ab_amt := 0.0
+var _bloom_t := 0.0
+var _bloom_amt := 0.0
+
 
 func _init() -> void:
     layer = 1
@@ -84,7 +129,84 @@ func _ready() -> void:
     rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
     var shader := Shader.new()
     shader.code = SHADER
-    var mat := ShaderMaterial.new()
-    mat.shader = shader
-    rect.material = mat
+    _mat = ShaderMaterial.new()
+    _mat.shader = shader
+    rect.material = _mat
     add_child(rect)
+    _last_us = Time.get_ticks_usec()
+
+
+func _enter_tree() -> void:
+    instance = self
+
+
+func _exit_tree() -> void:
+    if instance == self:
+        instance = null
+
+
+# --- Static hooks ------------------------------------------------------------
+
+
+## A ripple ring expanding from a world position over 0.4 s. `strength` about 0.3 for a
+## small burst up to 1.5 for a boss death; `world_radius` is how far the ring travels.
+static func shockwave(world_pos: Vector2, strength: float, world_radius: float = 220.0) -> void:
+    if instance != null and is_instance_valid(instance):
+        instance._shockwave(world_pos, strength, world_radius)
+
+
+## Spike chromatic aberration by `amount` (1 = doubles the default) for 0.2 s.
+static func aberration_pulse(amount: float) -> void:
+    if instance != null and is_instance_valid(instance):
+        instance._ab_amt = maxf(instance._ab_amt * instance._ab_t / ABERRATION_LIFE, amount)
+        instance._ab_t = ABERRATION_LIFE
+
+
+## Extra bloom by `amount` (0.5 to 1.5 reads well) for 0.25 s.
+static func bloom_pulse(amount: float) -> void:
+    if instance != null and is_instance_valid(instance):
+        instance._bloom_amt = maxf(instance._bloom_amt * instance._bloom_t / BLOOM_LIFE, amount)
+        instance._bloom_t = BLOOM_LIFE
+
+
+func _shockwave(world_pos: Vector2, strength: float, world_radius: float) -> void:
+    # A weaker wave does not cut off a stronger one still travelling.
+    var live := _wave_str * (_wave_t / WAVE_LIFE)
+    if strength < live:
+        return
+    var vp := get_viewport()
+    if vp == null or _mat == null:
+        return
+    var size := vp.get_visible_rect().size
+    if size.y <= 0.0:
+        return
+    var xf := vp.get_canvas_transform()
+    var screen := xf * world_pos
+    var uv := Vector2(screen.x / size.x, screen.y / size.y)
+    var zoom := xf.get_scale().y
+    _mat.set_shader_parameter("wave_center", uv)
+    _wave_max = clampf(world_radius * zoom / size.y, 0.05, 0.9)
+    _wave_str = clampf(strength, 0.0, 2.0)
+    _wave_t = WAVE_LIFE
+
+
+func _process(_delta: float) -> void:
+    if _mat == null:
+        return
+    # Real time, unaffected by Engine.time_scale (hit-stop).
+    var now := Time.get_ticks_usec()
+    var dt := minf(float(now - _last_us) / 1000000.0, 0.1)
+    _last_us = now
+    if _wave_t > 0.0:
+        _wave_t = maxf(0.0, _wave_t - dt)
+        var k := 1.0 - _wave_t / WAVE_LIFE
+        var grow := 1.0 - (1.0 - k) * (1.0 - k) * (1.0 - k)
+        var fade := (1.0 - k) * (1.0 - k)
+        _mat.set_shader_parameter("wave_radius", _wave_max * grow)
+        _mat.set_shader_parameter("wave_strength", _wave_str * fade if _wave_t > 0.0 else 0.0)
+    if _ab_t > 0.0:
+        _ab_t = maxf(0.0, _ab_t - dt)
+        _mat.set_shader_parameter("aberration_boost", _ab_amt * _ab_t / ABERRATION_LIFE)
+    if _bloom_t > 0.0:
+        _bloom_t = maxf(0.0, _bloom_t - dt)
+        _mat.set_shader_parameter("bloom_boost", _bloom_amt * _bloom_t / BLOOM_LIFE)

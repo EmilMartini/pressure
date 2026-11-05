@@ -103,6 +103,8 @@ func _ready() -> void:
     if autotest:
         _setup_autotest()
 
+    Settings.apply()
+    show_help = Settings.flag("controls_hint")
     Progress.start_run()
     Music.play("run")
     Items.new_run()
@@ -201,12 +203,12 @@ func _end_run(won: bool) -> void:
 
 
 func shake(amount: float) -> void:
-    _shake = maxf(_shake, amount)
+    _shake = maxf(_shake, amount * Settings.shake_mult())
 
 
 ## Hit-stop: freeze the world for a beat on a big moment (unscaled, HUD keeps drawing).
 func hitstop(secs: float, scale: float = 0.05) -> void:
-    if secs <= 0.0:
+    if secs <= 0.0 or not Settings.flag("hit_stop"):
         return
     _hitstop_left = maxf(_hitstop_left, secs)
     Engine.time_scale = scale
@@ -238,11 +240,12 @@ func is_device_joined(device: int) -> bool:
 
 func start_floor(n: int) -> void:
     floor_number = n
+    Music.set_floor(n)
     floor_rooms_cleared = 0
     if autotest and not players.is_empty():
         print("[FLOOR] %d at t=%.0f kills=%d scrap=%d hp=%.0f level=%d guns=%d items=%d" % [
             n, _clock, total_kills, scrap, players[0].hp, players[0].level, players[0].guns.size(), players[0].equipment.size()])
-    rooms = FloorGen.generate(n, party_luck())
+    rooms = FloorGen.generate(n, party_luck(), players)
     for p in players:
         p.pressure = 0.0
         if not p.alive:
@@ -525,6 +528,13 @@ func _input(event: InputEvent) -> void:
                 n = 9
             if n < ids.size() and not players.is_empty():
                 players[0].add_gun(ids[n])
+
+
+## Leave the run for the hub (pause menu, run-over screen).
+func return_to_hub() -> void:
+    get_tree().paused = false
+    Engine.time_scale = 1.0
+    get_tree().change_scene_to_file("res://scenes/hub.tscn")
 
 
 func _restart() -> void:

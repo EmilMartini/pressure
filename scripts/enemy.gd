@@ -12,19 +12,19 @@ const LAYER_WALLS := 4
 
 ## Per kind: [hp base, hp per difficulty, speed, radius, contact damage base, scrap].
 const STATS := {
-    "grunt": [22.0, 4.0, 115.0, 11.0, 8.0, 1],
-    "runner": [10.0, 2.0, 215.0, 8.0, 5.0, 1],
-    "brute": [95.0, 14.0, 70.0, 20.0, 16.0, 3],
-    "swarmer": [6.0, 1.0, 190.0, 6.0, 4.0, 1],
-    "spitter": [30.0, 5.0, 75.0, 12.0, 6.0, 2],
-    "charger": [45.0, 7.0, 100.0, 14.0, 12.0, 3],
-    "splitter": [60.0, 9.0, 95.0, 15.0, 9.0, 3],
-    "shaman": [35.0, 6.0, 85.0, 11.0, 5.0, 4],
-    "bomber": [25.0, 4.0, 160.0, 10.0, 6.0, 2],
-    "warden": [160.0, 24.0, 60.0, 22.0, 14.0, 5],
-    "wisp": [16.0, 3.0, 170.0, 9.0, 6.0, 2],
-    "elite": [240.0, 36.0, 95.0, 17.0, 14.0, 10],
-    "boss": [450.0, 130.0, 85.0, 30.0, 20.0, 40],
+    "grunt": [26.0, 5.5, 115.0, 11.0, 8.0, 1],
+    "runner": [12.0, 2.7, 215.0, 8.0, 5.0, 1],
+    "brute": [110.0, 19.0, 70.0, 20.0, 16.0, 3],
+    "swarmer": [7.0, 1.35, 190.0, 6.0, 4.0, 1],
+    "spitter": [35.0, 6.8, 75.0, 12.0, 6.0, 2],
+    "charger": [53.0, 9.5, 100.0, 14.0, 12.0, 3],
+    "splitter": [70.0, 12.0, 95.0, 15.0, 9.0, 3],
+    "shaman": [41.0, 8.0, 85.0, 11.0, 5.0, 4],
+    "bomber": [29.0, 5.4, 160.0, 10.0, 6.0, 2],
+    "warden": [190.0, 32.0, 60.0, 22.0, 14.0, 5],
+    "wisp": [19.0, 4.0, 170.0, 9.0, 6.0, 2],
+    "elite": [420.0, 70.0, 95.0, 17.0, 14.0, 10],
+    "boss": [1800.0, 420.0, 85.0, 30.0, 20.0, 40],
 }
 
 ## Sprite tiles (column, row) in the 1-bit sheet; boss kinds are keyed by boss_kind.
@@ -198,6 +198,8 @@ func configure(type: String, wave: int) -> void:
     if type == "elite" or type == "boss":
         per = 0.6
         is_elite = true
+    if type == "boss":
+        per = 0.8   # boss contact: 20 + 0.8 per difficulty
     contact_damage = float(s[4]) + per * float(wave)
     scrap_value = int(s[5])
     base_color = KIND_COLORS.get(type, base_color)

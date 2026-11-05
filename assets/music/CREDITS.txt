@@ -1,7 +1,11 @@
-Music: synthwave tracks by Alex McCulloch (Pro Sensory), released CC0 on OpenGameArt.
-The license requires nothing; the author asks for a credit, which we give gladly.
+All music is CC0 (public domain) from OpenGameArt. Credits are given gladly.
 
-menu.mp3     "Synth Wave by Alex"    https://opengameart.org/content/synth-wave-by-alex
-run.mp3      "Synth Wave 3 by Alex"  https://opengameart.org/content/synth-wave-3-by-alex
-boss.mp3     "Dark Night"            https://opengameart.org/content/dark-night
-ambient.mp3  "Synth Wave by Alex"    (same as menu)
+menu.ogg, run.ogg, boss.ogg, ambient.ogg
+    Alex McCulloch (Pro Sensory): "Synth Wave by Alex", "Synth Wave 3 by Alex", "Dark Night"
+    https://opengameart.org/content/synth-wave-by-alex  https://opengameart.org/content/synth-wave-3-by-alex  https://opengameart.org/content/dark-night
+run2.ogg "Cyber Anxiety", run3.ogg "Night Life", boss3.ogg "Drama", menu2.ogg "Day Dreams", hub.ogg "Retro Soundtrack"
+    Holizna (HoliznaCC0), "Retro Wave (Collection)"  https://opengameart.org/content/retro-wave-collection
+run4.ogg "Cyber March"  by iamoneabe  https://opengameart.org/content/cyber-march
+run5.ogg "Space City"   by MintoDog   https://opengameart.org/content/space-city
+run6.ogg "Midnight Drive" by congusbongus  https://opengameart.org/content/midnight-drive
+boss2.ogg "Boss Fight 2" by Luis Zuno (ansimuz)  https://opengameart.org/content/boss-fight-2

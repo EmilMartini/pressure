@@ -184,6 +184,32 @@ Eight gear slots plus a mod slot per gun. Every item is a few lines of data in
 that all compose. To add an item, add one `_add(...)` line; the drop tables, pedestals,
 HUD and effect engine pick it up with no other change.
 
+## The hub, the tutorial and the loop
+
+The game starts in a hub room (Enter the Gungeon's Breach): walk to a station and press
+A or E. The Gate starts a run (pick a class first), the Armory is the Journal, the Shrine
+the Mastery tree, the Mirror sets names, the Workshop opens Options, the Ledger shows
+your last runs and totals, and the Trophy Wall lights one tile per achievement with the
+next three goals under it. The first time you play, a short tutorial room runs before the
+hub (replayable from the hub's Esc menu). A one-time explainer card states the loop:
+runs are five floors ending in bosses; dying keeps achievements, unlocks and mastery;
+unlocks widen the pool, mastery adds small permanent power; classes change the start
+only. The run-over screen reports this run, what you unlocked and the next goals.
+
+Options (saved to `user://settings.json`): master, music and sound volume, fullscreen,
+vsync, screen shake, hit-stop, damage numbers, post-processing, CRT and its intensity,
+bloom, the controls strip, pause when a pad drops.
+
+## Props that react
+
+Arenas, shops and treasure rooms carry props that react to every element: crates burn
+and break, oil barrels leak and explode, fountains boil into steam, freeze over, conduct
+a shock, spray in a gale, bless when holy; braziers set walkers alight and spill fire
+when tipped; ice crystals shatter into shards on a shock; poison pots and acid vats
+break into clouds and puddles; lightning rods arc to every enemy nearby; wind chimes
+push; blood altars heal, purge or summon; stone pillars block shots until void or acid
+takes them. Broken props stay broken. See `scripts/prop.gd` for the full table.
+
 ## Play in the browser
 
 The game exports to a single-page web build (GL Compatibility, single-threaded, so it
@@ -202,11 +228,27 @@ The web build keeps controllers (browser Gamepad API: press a button once so the
 sees the pad), keyboard and mouse. Co-op is local, so friends on their own machines each
 play their own run.
 
+## Guns: six slots, duplicates, combining
+
+Brotato's shape: six gun slots (a few items add one), duplicates allowed so three oil
+slingers and a fire gun is a build, and two copies of the same gun at the same tier
+combine into one a tier higher from the character sheet (Combine prompt). Drops are
+weighted toward your build: the element you carry most, its best reaction partners, and
+items that feed it are two to three times as likely; a quarter of every roll stays
+off-build so you can pivot.
+
 ## Names
 
 Main menu > Names: a field per player, saved with the rest of the profile. The name
 replaces P1..P4 on the HUD, the character sheet and the level-up screen. Typing needs a
 keyboard; the field is still reachable with a pad.
+
+## Music
+
+Thirteen CC0 synthwave tracks (Alex McCulloch, Holizna, iamoneabe, MintoDog,
+congusbongus, ansimuz; see `assets/music/CREDITS.txt`) in shuffle bags per mood (hub,
+menu, run, boss, ambient) that never repeat the last track, crossfade before a track ends,
+lean toward later tracks on deeper floors, and open a low-pass as a fight heats up.
 
 ## Damage numbers
 

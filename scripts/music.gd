@@ -1,56 +1,90 @@
 extends Node
-## Autoload "Music": looping tracks with crossfades and a duck while paused.
+## Autoload "Music": a playlist player. Each mood has a pool of tracks; play(mood) picks
+## one from a shuffle bag (never the one that just played in that pool), crossfades to it,
+## and when it nears its end moves on to the next pick instead of looping the same file.
+## Deeper floors lean the run pool toward its later tracks (set_floor). An intensity knob
+## (set_intensity, 0 calm .. 1 fight) closes a low-pass filter and dips the level a little
+## when the room is calm. Missing files are skipped, never an error.
 ## Tracks by Kevin MacLeod (incompetech.com), CC BY 4.0; see assets/music/CREDITS.txt.
 
-const TRACKS := {
-    "menu": "res://assets/music/menu.mp3",
-    "run": "res://assets/music/run.mp3",
-    "boss": "res://assets/music/boss.mp3",
-    "ambient": "res://assets/music/ambient.mp3",
+const DIR := "res://assets/music/"
+const POOLS := {
+    "menu": ["menu.ogg", "menu2.ogg"],
+    "hub": ["hub.ogg", "menu2.ogg", "menu.ogg"],
+    "run": ["run.ogg", "run2.ogg", "run3.ogg", "run4.ogg", "run5.ogg", "run6.ogg"],
+    "boss": ["boss.ogg", "boss2.ogg", "boss3.ogg"],
+    "ambient": ["ambient.ogg", "menu2.ogg"],
 }
 const VOLUME_DB := -10.0
 const DUCK_DB := -22.0
 const SILENT_DB := -50.0
+const CROSSFADE := 2.0
+const BUS := "Music"
+## Intensity 0 dips the level by this much and closes the low-pass to CUTOFF_CALM.
+const CALM_DB := -4.0
+const CUTOFF_CALM := 1100.0
+const CUTOFF_OPEN := 20000.0
 
 var enabled := true
-var current := ""
+var current := ""         # mood playing ("" when stopped)
+var track := ""           # file name playing
+var floor_number := 1
+var intensity := 1.0      # target, 0..1
+var _intensity_now := 1.0 # smoothed
+var _volume_db := VOLUME_DB
 var _players: Array[AudioStreamPlayer] = []
 var _active := 0
 var _ducked := false
 var _tweens: Array = [null, null]
+var _bags: Dictionary = {}    # mood -> Array[String] still to play this cycle
+var _last: Dictionary = {}    # mood -> file played last in that pool
+var _streams: Dictionary = {} # path -> AudioStream
+var _advancing := false       # the active track already handed over to the next
+var _lpf: AudioEffectLowPassFilter
+var _amp: AudioEffectAmplify
 
 
 func _ready() -> void:
     process_mode = Node.PROCESS_MODE_ALWAYS
+    _setup_bus()
     for i in 2:
         var p := AudioStreamPlayer.new()
-        p.bus = "Master"
+        p.bus = BUS if AudioServer.get_bus_index(BUS) >= 0 else "Master"
         p.volume_db = SILENT_DB
+        p.finished.connect(_on_finished.bind(i))
         add_child(p)
         _players.append(p)
+    _apply_intensity()
 
 
-func play(track: String, fade: float = 1.6) -> void:
-    if not enabled or track == current or not TRACKS.has(track):
+# --- Public API ----------------------------------------------------------------
+
+
+## Switch to a mood's pool. Same mood as now: keeps the track that is playing.
+func play(mood: String, fade: float = CROSSFADE) -> void:
+    if not enabled or mood == current or not POOLS.has(mood):
         return
-    var stream = load(TRACKS[track])
-    if stream == null:
+    var file := _pick(mood)
+    if file == "":
+        stop(fade)
         return
-    if stream is AudioStreamMP3:
-        stream.loop = true
-    current = track
-    var old := _players[_active]
-    _active = 1 - _active
-    var new := _players[_active]
-    new.stream = stream
-    new.volume_db = SILENT_DB
-    new.play()
-    _fade(_active, _target_db(), fade)
-    _fade(1 - _active, SILENT_DB, fade, true)
+    current = mood
+    _start(file, fade)
+
+
+## Skip to the next pick of the current pool.
+func next(fade: float = CROSSFADE) -> void:
+    if current == "":
+        return
+    var file := _pick(current)
+    if file != "":
+        _start(file, fade)
 
 
 func stop(fade: float = 1.2) -> void:
     current = ""
+    track = ""
+    _advancing = true
     for i in 2:
         _fade(i, SILENT_DB, fade, true)
 
@@ -61,8 +95,144 @@ func duck(on: bool) -> void:
         _fade(_active, _target_db(), 0.4)
 
 
+## Base music level in dB (default VOLUME_DB). The user's volume slider lives on the bus.
+func set_volume_db(db: float) -> void:
+    _volume_db = db
+    if current != "":
+        _fade(_active, _target_db(), 0.3)
+
+
+## Deeper floors make the run pool prefer its later tracks.
+func set_floor(n: int) -> void:
+    floor_number = maxi(1, n)
+
+
+## 0 = calm (filtered and a little quieter), 1 = full fight (default). Eased over ~1 s.
+func set_intensity(v: float) -> void:
+    intensity = clampf(v, 0.0, 1.0)
+
+
+# --- Picking ---------------------------------------------------------------------
+
+
+func _available(mood: String) -> Array[String]:
+    var out: Array[String] = []
+    var files: Array = POOLS.get(mood, [])
+    for f in files:
+        var fname := String(f)
+        if ResourceLoader.exists(DIR + fname):
+            out.append(fname)
+    return out
+
+
+## Shuffle bag per pool: every track plays once per cycle, never the same one twice in a
+## row; the run pool weights later tracks more on deeper floors.
+func _pick(mood: String) -> String:
+    var avail := _available(mood)
+    if avail.is_empty():
+        return ""
+    var last := String(_last.get(mood, ""))
+    var bag: Array = _bags.get(mood, [])
+    # Drop entries whose file vanished.
+    for i in range(bag.size() - 1, -1, -1):
+        if not avail.has(String(bag[i])):
+            bag.remove_at(i)
+    if bag.is_empty() or (bag.size() == 1 and String(bag[0]) == last and avail.size() > 1):
+        bag = []
+        for f in avail:
+            if f != last or avail.size() == 1:
+                bag.append(f)
+    var files: Array = POOLS[mood]
+    var n := files.size()
+    var depth := clampf(float(floor_number - 1) / 4.0, 0.0, 1.0)
+    var weights: Array[float] = []
+    var total := 0.0
+    for f in bag:
+        var w := 1.0
+        if mood == "run" and n > 1:
+            var t := float(files.find(f)) / float(n - 1)
+            w = lerpf(1.0 + 2.0 * (1.0 - t), 1.0 + 3.0 * t, depth)
+        if String(f) == last and bag.size() > 1:
+            w = 0.0
+        weights.append(w)
+        total += w
+    var idx := 0
+    if total > 0.0:
+        var r := randf() * total
+        for i in weights.size():
+            r -= weights[i]
+            if r <= 0.0:
+                idx = i
+                break
+    var chosen := String(bag[idx])
+    bag.remove_at(idx)
+    _bags[mood] = bag
+    _last[mood] = chosen
+    return chosen
+
+
+func _stream(file: String) -> AudioStream:
+    var path := DIR + file
+    if _streams.has(path):
+        return _streams[path]
+    if not ResourceLoader.exists(path):
+        return null
+    var res := load(path)
+    var s := res as AudioStream
+    if s == null:
+        return null
+    # Playlist: tracks end and hand over instead of looping.
+    if "loop" in s:
+        s.set("loop", false)
+    _streams[path] = s
+    return s
+
+
+# --- Playback --------------------------------------------------------------------
+
+
+func _start(file: String, fade: float) -> void:
+    var stream := _stream(file)
+    if stream == null:
+        return
+    track = file
+    _advancing = false
+    _active = 1 - _active
+    var p := _players[_active]
+    p.stream = stream
+    p.volume_db = SILENT_DB
+    p.play()
+    _fade(_active, _target_db(), fade)
+    _fade(1 - _active, SILENT_DB, fade, true)
+
+
+func _on_finished(i: int) -> void:
+    if i != _active or current == "" or _advancing:
+        return
+    _advancing = true
+    next(0.6)
+
+
+func _process(delta: float) -> void:
+    # Real time, so a hit-stop or pause does not stall the music logic.
+    var real := delta / maxf(Engine.time_scale, 0.001)
+    if not is_equal_approx(_intensity_now, intensity):
+        _intensity_now = move_toward(_intensity_now, intensity, real * 1.2)
+        _apply_intensity()
+    # Hand over to the next track a crossfade before this one ends.
+    if current == "" or _advancing or _players.is_empty():
+        return
+    var p := _players[_active]
+    if not p.playing or p.stream == null:
+        return
+    var length := p.stream.get_length()
+    if length > CROSSFADE * 3.0 and length - p.get_playback_position() <= CROSSFADE:
+        _advancing = true
+        next(CROSSFADE)
+
+
 func _target_db() -> float:
-    return DUCK_DB if _ducked else VOLUME_DB
+    return _volume_db + (DUCK_DB - VOLUME_DB if _ducked else 0.0)
 
 
 func _fade(i: int, to_db: float, seconds: float, stop_after: bool = false) -> void:
@@ -71,7 +241,43 @@ func _fade(i: int, to_db: float, seconds: float, stop_after: bool = false) -> vo
     var p := _players[i]
     var tw := create_tween()
     tw.set_process_mode(Tween.TWEEN_PROCESS_IDLE)
-    tw.tween_property(p, "volume_db", to_db, seconds)
+    tw.set_ignore_time_scale(true)
+    tw.tween_property(p, "volume_db", to_db, maxf(seconds, 0.01))
     if stop_after:
         tw.tween_callback(p.stop)
     _tweens[i] = tw
+
+
+# --- Bus -------------------------------------------------------------------------
+
+
+## A Music bus sending into Master, with a low-pass and an amplify for intensity. The
+## user's music volume is the bus volume (Settings); intensity never touches it.
+func _setup_bus() -> void:
+    var idx := AudioServer.get_bus_index(BUS)
+    if idx < 0:
+        AudioServer.add_bus()
+        idx = AudioServer.bus_count - 1
+        AudioServer.set_bus_name(idx, BUS)
+        AudioServer.set_bus_send(idx, "Master")
+    for e in AudioServer.get_bus_effect_count(idx):
+        var fx := AudioServer.get_bus_effect(idx, e)
+        if fx is AudioEffectLowPassFilter and _lpf == null:
+            _lpf = fx
+        elif fx is AudioEffectAmplify and _amp == null:
+            _amp = fx
+    if _lpf == null:
+        _lpf = AudioEffectLowPassFilter.new()
+        _lpf.cutoff_hz = CUTOFF_OPEN
+        AudioServer.add_bus_effect(idx, _lpf)
+    if _amp == null:
+        _amp = AudioEffectAmplify.new()
+        AudioServer.add_bus_effect(idx, _amp)
+
+
+func _apply_intensity() -> void:
+    var k := _intensity_now
+    if _lpf != null:
+        _lpf.cutoff_hz = CUTOFF_CALM * pow(CUTOFF_OPEN / CUTOFF_CALM, k)
+    if _amp != null:
+        _amp.volume_db = lerpf(CALM_DB, 0.0, k)

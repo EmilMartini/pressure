@@ -59,6 +59,15 @@ func poll(viewport: Viewport, delta: float) -> void:
 
 
 ## True on the press, and again on repeat while held when `repeat` is set.
+## True while any connected pad holds a shoulder button (for screens where the d-pad
+## means something else and only LB/RB should switch tabs or players).
+func shoulder_held() -> bool:
+    for d in Input.get_connected_joypads():
+        if Input.is_joy_button_pressed(d, JOY_BUTTON_LEFT_SHOULDER) or Input.is_joy_button_pressed(d, JOY_BUTTON_RIGHT_SHOULDER):
+            return true
+    return false
+
+
 func _edge(key: String, down: bool, delta: float, repeat: bool) -> bool:
     var was: bool = _was.get(key, false)
     _was[key] = down

@@ -94,9 +94,11 @@ func _physics_process(delta: float) -> void:
         return
     if _ob_grace <= 0.0 and not spectral:
         for ob in get_tree().get_nodes_in_group("obstacles"):
-            if is_instance_valid(ob) and not ob.is_queued_for_deletion() and ob.overlaps(global_position, radius):
+            if is_instance_valid(ob) and not ob.is_queued_for_deletion() and not _hit.has(ob) and ob.overlaps(global_position, radius):
                 _on_body_entered(ob)
-                return
+                if is_queued_for_deletion():
+                    return
+                break   # a prop let the shot through (pierce): fly on
     if element != Element.Kind.NONE:
         for c in get_tree().get_nodes_in_group("clouds"):
             if not is_instance_valid(c) or _clouds_hit.has(c) or c.element == element:
@@ -152,7 +154,10 @@ func _land() -> void:
             _deal_hit(en, damage, potency)
     for ob in get_tree().get_nodes_in_group("obstacles"):
         if is_instance_valid(ob) and not ob.is_queued_for_deletion() and ob.overlaps(global_position, r * 0.5):
-            ob.apply_element(element, potency)
+            if ob is Prop:
+                _hit_prop(ob as Prop)
+            else:
+                ob.apply_element(element, potency)
     if element != Element.Kind.NONE:
         for c in get_tree().get_nodes_in_group("clouds"):
             if is_instance_valid(c) and c.element != element and c.global_position.distance_to(global_position) <= c.radius + r * 0.5:
@@ -330,10 +335,19 @@ func _draw() -> void:
 func _on_body_entered(body: Node) -> void:
     if _landed or behaviour == "lob":
         return
-    if body is Obstacle:
-        if _ob_grace > 0.0 or spectral:
+    if body is Obstacle or (body.is_in_group("obstacles") and body.has_method("apply_element")):
+        if _ob_grace > 0.0 or spectral or _hit.has(body):
             return
-        body.apply_element(element, potency)
+        if body is Prop:
+            var prop := body as Prop
+            _hit[prop] = true
+            _hit_prop(prop)
+            # Props (not pillars) let piercing shots through, one pierce each.
+            if not prop.blocks_shots and pierce > 0:
+                pierce -= 1
+                return
+        else:
+            body.apply_element(element, potency)
         if behaviour == "boomerang" and not _returning:
             _turn_back()
             return
@@ -368,6 +382,18 @@ func _on_body_entered(body: Node) -> void:
             _burst_shards(enemy)
         _splash(enemy)
         queue_free()
+
+
+## A prop takes the element (and any coatings); when none of them did anything to it,
+## the shot is a plain hit and chips it instead.
+func _hit_prop(prop: Prop) -> void:
+    var dir := velocity.normalized()
+    var used := prop.apply_element(element, potency, dir)
+    for extra in extra_elements:
+        if is_instance_valid(prop) and not prop.is_queued_for_deletion():
+            used = prop.apply_element(int(extra), potency * 0.8, dir) or used
+    if not used and is_instance_valid(prop) and not prop.is_queued_for_deletion():
+        prop.take_damage(damage)
 
 
 ## The shared hit path: raw damage (with element-vs-state multipliers), then the element.

@@ -11,6 +11,8 @@ var prompt_key := "E"      # set by the room from the nearest player's device
 var prompt_kind := "kb"    # "pad" or "kb"
 var _sprite: Sprite2D
 var _t := randf() * TAU
+var _card: Node2D           # the ItemCard layer, above players and shots
+var _gun_data: GunData      # cached for gun offers
 
 
 func _init(p_offer: Dictionary) -> void:
@@ -45,6 +47,11 @@ func _ready() -> void:
     _sprite = Art.sprite(coord, 2.5, tint)
     _sprite.position = Vector2(0, -36)
     add_child(_sprite)
+    _card = Node2D.new()
+    _card.z_index = 80
+    _card.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+    _card.draw.connect(_draw_card)
+    add_child(_card)
 
 
 func kind() -> String:
@@ -116,6 +123,8 @@ func _process(delta: float) -> void:
     elif _sprite != null:
         _sprite.position.y = -12.0
     queue_redraw()
+    if _card != null:
+        _card.queue_redraw()
 
 
 func _draw() -> void:
@@ -158,38 +167,89 @@ func _draw() -> void:
     if kind() == "item":
         title_col = Items.rarity_color(item())
     var body: Font = Art.FONT_BODY
-    draw_string(body, Vector2(-141, y + 1), title(), HORIZONTAL_ALIGNMENT_CENTER, 280, 18, Color(0, 0, 0, 0.8))
-    draw_string(body, Vector2(-140, y), title(), HORIZONTAL_ALIGNMENT_CENTER, 280, 18, title_col)
-    y += 20.0
+    draw_string(body, Vector2(-141, y + 1), title(), HORIZONTAL_ALIGNMENT_CENTER, 280, 20, Color(0, 0, 0, 0.8))
+    draw_string(body, Vector2(-140, y), title(), HORIZONTAL_ALIGNMENT_CENTER, 280, 20, title_col)
+    y += 22.0
     var pt := price_text()
     if pt != "":
-        draw_string(body, Vector2(-140, y), pt, HORIZONTAL_ALIGNMENT_CENTER, 280, 16, Art.SCRAP_TINT)
-        y += 20.0
+        draw_string(body, Vector2(-141, y + 1), pt, HORIZONTAL_ALIGNMENT_CENTER, 280, 20, Color(0, 0, 0, 0.8))
+        draw_string(body, Vector2(-140, y), pt, HORIZONTAL_ALIGNMENT_CENTER, 280, 20, Art.SCRAP_TINT)
+        y += 22.0
     if highlighted:
+        # Items and guns show their full ItemCard beside the plinth (see _draw_card).
         var desc := ""
         match kind():
-            "item":
-                var it := item()
-                desc = "%s %s.  %s" % [Items.RARITY_NAMES[it["rarity"]], it["slot"], it["desc"]]
             "boon":
                 desc = FloorGen.BOONS[offer["id"]]["desc"]
             "gunsmith":
                 desc = "Raise your lowest-tier gun one tier."
             "reroll":
                 desc = "New wares in every slot still on offer. Dearer each time."
-            "gun":
-                var gd := Guns.make(offer["id"])
-                desc = "%s.  %.0f damage, %.1f shots/s.  A duplicate merges into a higher tier." % [Element.NAMES[gd.element], gd.damage, gd.fire_rate]
             "carry":
                 desc = "More guns before the weight slows you."
             "repair":
                 desc = "Patch yourself up."
         if desc != "":
-            var box_h := 44.0
-            draw_rect(Rect2(-160, y - 4, 320, box_h), Color(0, 0, 0, 0.7))
-            draw_multiline_string(body, Vector2(-152, y + 14), desc, HORIZONTAL_ALIGNMENT_CENTER, 304, 15, 2, Color(0.92, 0.9, 0.85))
+            var box_h := 52.0
+            draw_rect(Rect2(-170, y - 4, 340, box_h), Color(0.05, 0.04, 0.06, 0.92))
+            draw_multiline_string(body, Vector2(-162, y + 16), desc, HORIZONTAL_ALIGNMENT_CENTER, 324, 20, 2, Color(0.92, 0.9, 0.85))
             y += box_h + 4.0
         var verb := "begin" if kind() == "sigil" else ("descend" if kind() == "stairs" else ("equip" if kind() == "item" else "take"))
         # The player's own device's button, floating over the item.
         Prompts.draw(self, Vector2(0, -78.0 + sin(_t * 5.0) * 2.0), prompt_key, prompt_kind, 24.0)
-        draw_string(body, Vector2(-140, y), verb, HORIZONTAL_ALIGNMENT_CENTER, 280, 16, Color(0.6, 1.0, 1.0))
+        draw_string(body, Vector2(-140, y + 4.0), verb, HORIZONTAL_ALIGNMENT_CENTER, 280, 20, Color(0.6, 1.0, 1.0))
+
+
+## The item or gun card, beside the plinth on whichever side keeps it on screen, compared
+## against what the nearest player wears in that slot.
+func _draw_card() -> void:
+    if not highlighted or empty() or not (kind() in ["item", "gun"]):
+        return
+    var p := _nearest_player()
+    var price := int(offer.get("price", 0))
+    var opts := { "player": p, "price": price, "width": ItemCard.DEFAULT_WIDTH }
+    if p != null and p.main() != null:
+        opts["afford"] = p.main().scrap >= price
+    var h := 0.0
+    var it := item()
+    if kind() == "item":
+        var rival := ItemCard.rival_for(p, it)
+        if not rival.is_empty():
+            opts["compare"] = rival
+        h = ItemCard.height_for(it, opts)
+    else:
+        if _gun_data == null:
+            _gun_data = Guns.make(offer["id"])
+        h = ItemCard.gun_height(_gun_data, opts)
+    var w: float = ItemCard.DEFAULT_WIDTH
+    # Screen placement: right of the plinth, flipped left near the right edge, clamped
+    # vertically inside the view.
+    var xf := get_global_transform_with_canvas()
+    var s := maxf(0.05, xf.get_scale().x)
+    var vp := get_viewport_rect().size
+    var x := 64.0
+    if xf.origin.x + (x + w) * s > vp.x - 12.0:
+        x = -64.0 - w
+    var y := -40.0 - h / 2.0
+    if xf.origin.y + y * s < 12.0:
+        y = (12.0 - xf.origin.y) / s
+    if xf.origin.y + (y + h) * s > vp.y - 12.0:
+        y = (vp.y - 12.0 - xf.origin.y) / s - h
+    var rect := Rect2(Vector2(x, y), Vector2(w, h))
+    if kind() == "item":
+        ItemCard.draw(_card, rect, it, opts)
+    else:
+        ItemCard.draw_gun(_card, rect, _gun_data, opts)
+
+
+func _nearest_player() -> Player:
+    var best: Player = null
+    var best_d := INF
+    for n in get_tree().get_nodes_in_group("players"):
+        if not n is Player or not is_instance_valid(n):
+            continue
+        var d: float = (n as Player).global_position.distance_squared_to(global_position)
+        if d < best_d:
+            best_d = d
+            best = n
+    return best

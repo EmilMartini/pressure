@@ -44,6 +44,13 @@ var main: Main
 var _font: Font
 var _toasts: Array = []   # { text, t }
 var _time := 0.0
+## Last thing picked up, shown in one line over the gear row for PICK_TIME seconds:
+## { name, effect, col, icon, icon_tint, who, t }.
+var _pick: Dictionary = {}
+var _seen_items: Dictionary = {}   # player instance id -> item ids worn last frame
+var _seen_guns: Dictionary = {}    # player instance id -> gun ids carried last frame
+
+const PICK_TIME := 3.0
 
 
 func _ready() -> void:
@@ -62,7 +69,66 @@ func _process(delta: float) -> void:
         _toasts[i]["t"] -= delta
         if _toasts[i]["t"] <= 0.0:
             _toasts.remove_at(i)
+    _watch_pickups(delta)
     queue_redraw()
+
+
+## Notices new gear and guns on any player and keeps the newest for the pickup label.
+func _watch_pickups(delta: float) -> void:
+    if not _pick.is_empty():
+        _pick["t"] = float(_pick["t"]) - delta
+        if float(_pick["t"]) <= 0.0:
+            _pick = {}
+    if main == null:
+        return
+    for p in main.players:
+        if not is_instance_valid(p):
+            continue
+        var pid: int = p.get_instance_id()
+        var items: Array = p.equipped_item_ids()
+        var guns: Array = []
+        for g in p.guns:
+            guns.append(g.data.id)
+        if _seen_items.has(pid):
+            var before_items: Array = _seen_items[pid].duplicate()
+            for id in items:
+                if before_items.has(id):
+                    before_items.erase(id)
+                else:
+                    _announce_item(p, String(id))
+            var before_guns: Array = _seen_guns[pid].duplicate()
+            for gi in p.guns.size():
+                var gid: String = p.guns[gi].data.id
+                if before_guns.has(gid):
+                    before_guns.erase(gid)
+                else:
+                    _announce_gun(p, p.guns[gi])
+        _seen_items[pid] = items
+        _seen_guns[pid] = guns
+
+
+func _announce_item(p: Player, id: String) -> void:
+    var it: Dictionary = Items.get_item(id)
+    if it.is_empty():
+        return
+    var lines := ItemCard.describe_mods(it)
+    var effect := ", ".join(lines.slice(0, 2))
+    if lines.size() > 2:
+        effect += ", ..."
+    _pick = {
+        "name": String(it["name"]), "effect": effect, "col": Items.rarity_color(it),
+        "icon": Items.icon(it), "icon_tint": Items.icon_tint(it), "who": p.display_name(), "t": PICK_TIME,
+    }
+
+
+func _announce_gun(p: Player, g: Gun) -> void:
+    var dmg: float = g.data.damage * g.tier_mult()
+    var dps: float = dmg * g.fire_rate() * float(g.data.projectile_count * g.data.burst_count)
+    _pick = {
+        "name": g.display_name(), "effect": "%s, DPS %.0f, weight %d" % [Element.NAMES[g.data.element], dps, g.data.weight],
+        "col": g.data.color(), "icon": Art.gun_tile(g.data.id), "icon_tint": g.data.color(),
+        "who": p.display_name(), "t": PICK_TIME,
+    }
 
 
 func _draw() -> void:
@@ -77,6 +143,7 @@ func _draw() -> void:
     if not main.players.is_empty():
         _draw_hotbars(vp, bottom)
         _draw_main_gear(main.players[0], bottom)
+        _draw_pick(bottom)
         _draw_vents(vp, bottom)
     if main.show_help:
         _draw_help(vp)
@@ -253,9 +320,9 @@ func _draw_vitals(p: Player, origin: Vector2) -> void:
     var box := Rect2(origin + Vector2(10, 10), Vector2(64, 64))
     draw_rect(box, Color(0.08, 0.06, 0.08))
     draw_rect(box, p.color, false, 2.0)
-    var tiles: Array = Art.TILES["player"]
-    var tint := p.color.lerp(Color.WHITE, 0.35) if p.alive else Color(0.3, 0.3, 0.3)
-    _icon(tiles[p.index % tiles.size()], box.grow(-8.0), tint)
+    var form: Dictionary = Items.form_for(p)
+    var tint: Color = form["tint"] if p.alive else Color(0.3, 0.3, 0.3)
+    _icon(form["tile"], box.grow(-8.0), tint)
 
     var x := origin.x + 84.0
     var w := CARD_W - 84.0 - 10.0
@@ -391,6 +458,32 @@ func _draw_gear(p: Player, origin: Vector2, s: float) -> void:
         else:
             _icon(Items.SLOT_ICONS[key.rstrip("12")], gbox.grow(-4.0), Color(0.3, 0.28, 0.3))
             draw_rect(gbox, Color(0.25, 0.22, 0.24), false, 1.0)
+
+
+## The last pickup in one line over the gear row: icon, name in its rarity colour, then
+## what it does. Fades over its last half second.
+func _draw_pick(bottom: float) -> void:
+    if _pick.is_empty():
+        return
+    var a := clampf(float(_pick["t"]) / 0.5, 0.0, 1.0)
+    var y := bottom - GEAR_BIG - 16.0 - 34.0
+    var name_text := String(_pick["name"])
+    if main.players.size() > 1:
+        name_text = "%s: %s" % [_pick["who"], name_text]
+    var effect := String(_pick["effect"])
+    var name_w := _body_width(name_text, 20)
+    var eff_w := _body_width(effect, 20)
+    var w := minf(30.0 + name_w + 14.0 + eff_w + 16.0, 760.0)
+    var box := Rect2(MARGIN - 8.0, y, w, 30.0)
+    draw_rect(box, Color(0.05, 0.04, 0.06, 0.88 * a))
+    var col: Color = _pick["col"]
+    draw_rect(Rect2(box.position, Vector2(4.0, box.size.y)), Color(col, a))
+    draw_rect(box, Color(col, 0.6 * a), false, 1.5)
+    _icon(_pick["icon"], Rect2(box.position + Vector2(10, 4), Vector2(22, 22)), Color(_pick["icon_tint"], a))
+    var x := box.position.x + 38.0
+    _body_in(Rect2(x, y, name_w, 30.0), name_text, 20, Color(col, a), HORIZONTAL_ALIGNMENT_LEFT)
+    x += name_w + 14.0
+    _body_in(Rect2(x, y, box.end.x - x - 8.0, 30.0), effect, 20, Color(UiTheme.BONE, a), HORIZONTAL_ALIGNMENT_LEFT)
 
 
 ## A row of charge pips along the bottom edge of the active item's box.

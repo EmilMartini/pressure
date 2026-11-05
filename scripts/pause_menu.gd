@@ -7,7 +7,13 @@ var main: Main
 var _panel: PanelContainer
 var _title: Label
 var _summary: Label
+var _report: VBoxContainer
 var _resume: Button
+var _options: OptionsMenu
+var _options_center: CenterContainer
+var _options_closed_ms := -100000
+var _run_start_ms := 0
+var _mastery_start := 0
 var _journal: Journal
 var _journal_center: CenterContainer
 var _sheet: CharacterSheet
@@ -31,11 +37,15 @@ func show_for_test(path: String = "res://autotest/pause.png", sheet_player: Play
 
 func _init(p_main: Main) -> void:
     main = p_main
+    _run_start_ms = Time.get_ticks_msec()
     layer = 50   # above the post-process (1) and the HUD (2)
     process_mode = Node.PROCESS_MODE_ALWAYS
 
 
 func _ready() -> void:
+    var mastery := get_node_or_null("/root/Mastery")
+    if mastery != null:
+        _mastery_start = int(mastery.earned)
     var root := Control.new()
     root.set_anchors_preset(Control.PRESET_FULL_RECT)
     root.theme = UiTheme.make()
@@ -48,21 +58,34 @@ func _ready() -> void:
     center.set_anchors_preset(Control.PRESET_FULL_RECT)
     root.add_child(center)
     _panel = PanelContainer.new()
-    _panel.custom_minimum_size = Vector2(560, 460)
+    _panel.custom_minimum_size = Vector2(440, 0)
     center.add_child(_panel)
+    var outer := VBoxContainer.new()
+    outer.add_theme_constant_override("separation", 8)
+    _panel.add_child(outer)
+    _title = UiTheme.label("PAUSED", 44)
+    outer.add_child(_title)
+    _summary = UiTheme.label("", 20, UiTheme.DIM)
+    _summary.visible = false
+    outer.add_child(_summary)
+    var cols := HBoxContainer.new()
+    cols.add_theme_constant_override("separation", 24)
+    outer.add_child(cols)
+    # Run over: what happened, what it unlocked, what is next. Hidden while paused.
+    _report = VBoxContainer.new()
+    _report.add_theme_constant_override("separation", 4)
+    _report.custom_minimum_size = Vector2(640, 0)
+    _report.visible = false
+    cols.add_child(_report)
     var v := VBoxContainer.new()
     v.add_theme_constant_override("separation", 10)
-    _panel.add_child(v)
-    _title = UiTheme.label("PAUSED", 44)
-    v.add_child(_title)
-    _summary = UiTheme.label("", 18, UiTheme.DIM)
-    _summary.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-    _summary.custom_minimum_size = Vector2(500, 0)
-    v.add_child(_summary)
-    _resume = UiTheme.button("Resume", hide_menu)
+    v.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+    cols.add_child(v)
+    _resume = UiTheme.button("Resume", _on_resume)
     v.add_child(_resume)
     v.add_child(UiTheme.button("Character", func(): show_sheet(main.players[0], false)))
     v.add_child(UiTheme.button("Journal", _show_journal))
+    v.add_child(UiTheme.button("Options", _show_options))
     _sheet_center = CenterContainer.new()
     _sheet_center.set_anchors_preset(Control.PRESET_FULL_RECT)
     root.add_child(_sheet_center)
@@ -75,6 +98,12 @@ func _ready() -> void:
     _journal = Journal.new(_hide_journal)
     _journal_center.add_child(_journal)
     _journal.visible = false
+    _options_center = CenterContainer.new()
+    _options_center.set_anchors_preset(Control.PRESET_FULL_RECT)
+    root.add_child(_options_center)
+    _options = OptionsMenu.new(_hide_options)
+    _options_center.add_child(_options)
+    _options_center.visible = false
     MenuPad.strip_joypad_from_ui_actions()
     _pad.on_cancel = func():
         if _sheet.visible:
@@ -86,16 +115,15 @@ func _ready() -> void:
     _pad.on_tab = func(step: int):
         if _journal.visible:
             _journal.set_tab(_journal.tab + step)
-        elif _sheet.visible:
-            _cycle_sheet(step)
+        elif _sheet.visible and _pad.shoulder_held():
+            _cycle_sheet(step)   # the sheet walks its grid with the d-pad; shoulders switch player
     v.add_child(UiTheme.button("Restart run", func():
         Sfx.play("ui_confirm")
         get_tree().paused = false
         get_tree().reload_current_scene()))
-    v.add_child(UiTheme.button("Main menu", func():
+    v.add_child(UiTheme.button("Return to hub", func():
         Sfx.play("ui_back")
-        get_tree().paused = false
-        get_tree().change_scene_to_file("res://scenes/menu.tscn")))
+        main.return_to_hub()))
     v.add_child(UiTheme.button("Quit game", func(): get_tree().quit()))
     visible = false
 
@@ -110,6 +138,10 @@ func _process(delta: float) -> void:
             _test_clock = -1.0
             hide_menu()
         return
+    if _options_center.visible:
+        return   # the options card polls pads and handles Esc itself
+    if Time.get_ticks_msec() - _options_closed_ms < 200:
+        return   # the Esc / B that closed the options card must not also close the pause
     if visible:
         _pad.poll(get_viewport(), delta)
     if main.gun_pick != null and main.gun_pick.is_open():
@@ -186,20 +218,88 @@ func _hide_journal() -> void:
     _resume.grab_focus()
 
 
-func show_menu() -> void:
-    _title.text = "RUN OVER" if main.game_over else ("DUNGEON CLEARED" if main.victory else "PAUSED")
-    _summary.text = ""
+func _on_resume() -> void:
     if main.game_over or main.victory:
-        var lines: Array = ["Floor %d   %d kills   %d scrap" % [main.floor_number, main.total_kills, main.scrap]]
+        Sfx.play("ui_confirm")
+        main.return_to_hub()
+    else:
+        hide_menu()
+
+
+func _show_options() -> void:
+    Sfx.play("ui_open")
+    _panel.visible = false
+    _options_center.visible = true
+
+
+func _hide_options() -> void:
+    _options_center.visible = false
+    _options_closed_ms = Time.get_ticks_msec()
+    _panel.visible = true
+    _resume.grab_focus()
+
+
+const FANFARE := Color(1.0, 0.82, 0.35)
+const UNLOCK_KINDS := {
+    "gun": "a new gun in the pool",
+    "class": "a new class at the Gate",
+    "obstacle": "a new door obstacle",
+    "room": "a new room type",
+    "shop": "bigger shops",
+    "rarity": "rarer gear can drop",
+}
+
+
+func _section(text: String) -> void:
+    var l := UiTheme.label(text, 26, UiTheme.FOCUS)
+    l.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+    _report.add_child(l)
+
+
+func _line(text: String, color: Color, px: int = 22) -> void:
+    var l := UiTheme.label(text, px, color)
+    l.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+    l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+    l.custom_minimum_size = Vector2(640, 0)
+    _report.add_child(l)
+
+
+## The run-over report: This run / You unlocked / Next.
+func _fill_report() -> void:
+    for c in _report.get_children():
+        c.queue_free()
+    _section("THIS RUN")
+    var secs: int = (Time.get_ticks_msec() - _run_start_ms) / 1000
+    var cls := String(Classes.get_def(Progress.chosen_class).get("name", Progress.chosen_class))
+    var levels: Array = []
+    for p in main.players:
+        levels.append("%s lv %d" % [p.display_name(), p.level])
+    _line("Floor %d of %d    %d kills    %d:%02d    %s    %s" % [main.floor_number, Main.FLOORS, main.total_kills, secs / 60, secs % 60, cls, "   ".join(levels)], UiTheme.BONE)
+    _section("YOU UNLOCKED")
+    if Progress.run_unlocks.is_empty():
+        _line("Nothing new this time. Every run still counts toward the goals below.", UiTheme.DIM, 20)
+    for u in Progress.run_unlocks:
+        var kind := String(u).split(":")[0]
+        _line("%s   %s" % [Progress.unlock_label(u), UNLOCK_KINDS.get(kind, "")], FANFARE)
+    _section("NEXT")
+    for g in Hub.goal_rows(3):
+        _report.add_child(Hub.goal_bar(g, 640.0))
+    var mastery := get_node_or_null("/root/Mastery")
+    if mastery != null:
+        var gained: int = int(mastery.earned) - _mastery_start
+        _line("Mastery +%d this run    %d to spend at the Shrine    %d earned in all" % [gained, int(mastery.points), int(mastery.earned)], Color(0.8, 0.6, 1.0), 20)
+
+
+func show_menu() -> void:
+    var over := main.game_over or main.victory
+    _title.text = "RUN OVER" if main.game_over else ("DUNGEON CLEARED" if main.victory else "PAUSED")
+    _title.add_theme_color_override("font_color", FANFARE if main.victory else UiTheme.BONE)
+    _report.visible = over
+    if over:
+        _fill_report()
         if not Progress.run_unlocks.is_empty():
-            var names: Array = []
-            for u in Progress.run_unlocks:
-                names.append(Progress.unlock_label(u))
-            lines.append("Unlocked: " + ", ".join(names))
-        for g in Progress.next_goals(3):
-            lines.append("Next: %s  %d / %d  (%s)" % [g["name"], g["progress"], g["goal"], g["desc"]])
-        _summary.text = "\n".join(lines)
-    _resume.text = "Continue" if (main.game_over or main.victory) else "Resume"
+            Sfx.play("unlock")
+    _resume.text = "Back to hub" if over else "Resume"
     visible = true
     get_tree().paused = true
     Sfx.play("ui_open")
@@ -211,6 +311,7 @@ func hide_menu() -> void:
     visible = false
     _journal.visible = false
     _sheet.visible = false
+    _options_center.visible = false
     _panel.visible = true
     get_tree().paused = false
     Music.duck(false)

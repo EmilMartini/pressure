@@ -18,6 +18,9 @@ var _names: Array[Label] = []
 var _rarities: Array[Label] = []
 var _effects: Array[Label] = []
 var _descs: Array[Label] = []
+var _card_icons: Array = []    # Vector2i per card
+var _card_tints: Array = []    # icon tint per card
+var _card_cols: Array = []     # rarity colour per card (the frame)
 var _title: Label
 var _hint: Label
 var _prompt: Control
@@ -58,6 +61,9 @@ func _ready() -> void:
     row.add_theme_constant_override("separation", CARD_GAP)
     v.add_child(row)
     for i in 3:
+        _card_icons.append(Vector2i(45, 16))
+        _card_tints.append(Color.WHITE)
+        _card_cols.append(Items.RARITY_COLORS[0])
         var card := _make_card(i)
         row.add_child(card)
         _cards.append(card)
@@ -84,14 +90,10 @@ func _make_card(i: int) -> Button:
     var b := Button.new()
     b.custom_minimum_size = CARD_SIZE
     b.focus_mode = Control.FOCUS_ALL
-    b.expand_icon = true
-    b.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
-    b.vertical_icon_alignment = VERTICAL_ALIGNMENT_TOP
-    # The content margins squeeze the icon into the top of the card; the labels sit below.
-    b.add_theme_stylebox_override("normal", _card_box(Color(0.10, 0.08, 0.10, 0.96), Color(0.35, 0.30, 0.30), 2))
-    b.add_theme_stylebox_override("hover", _card_box(Color(0.15, 0.12, 0.14, 0.97), UiTheme.BONE, 2))
-    b.add_theme_stylebox_override("focus", _card_box(Color(0.15, 0.12, 0.14, 0.97), UiTheme.FOCUS, 4))
-    b.add_theme_stylebox_override("pressed", _card_box(Color(0.25, 0.12, 0.10, 0.97), UiTheme.FOCUS, 4))
+    # The card is drawn like every ItemCard: rarity frame, icon, then the labels on top.
+    for state in ["normal", "hover", "focus", "pressed", "disabled"]:
+        b.add_theme_stylebox_override(state, StyleBoxEmpty.new())
+    b.draw.connect(_draw_card.bind(i))
     b.pressed.connect(_choose.bind(i))
     b.mouse_entered.connect(func():
         if visible and not b.has_focus():
@@ -105,9 +107,9 @@ func _make_card(i: int) -> Button:
     box.add_theme_constant_override("separation", 6)
     box.mouse_filter = Control.MOUSE_FILTER_IGNORE
     b.add_child(box)
-    var rarity_label := UiTheme.label("", 16, UiTheme.DIM)
+    var rarity_label := UiTheme.label("", 20, UiTheme.DIM)
     rarity_label.add_theme_font_override("font", Art.FONT)
-    rarity_label.add_theme_font_size_override("font_size", 16)
+    rarity_label.add_theme_font_size_override("font_size", 20)
     rarity_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
     box.add_child(rarity_label)
     _rarities.append(rarity_label)
@@ -115,7 +117,9 @@ func _make_card(i: int) -> Button:
     name_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
     box.add_child(name_label)
     _names.append(name_label)
-    var effect := UiTheme.label("", 26, UiTheme.FOCUS)
+    var effect := UiTheme.label("", 30, Color.WHITE)
+    effect.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+    effect.custom_minimum_size = Vector2(CARD_SIZE.x - 32, 0)
     effect.mouse_filter = Control.MOUSE_FILTER_IGNORE
     box.add_child(effect)
     _effects.append(effect)
@@ -130,17 +134,22 @@ func _make_card(i: int) -> Button:
     return b
 
 
-func _card_box(fill: Color, border: Color, width: int) -> StyleBoxFlat:
-    var s := StyleBoxFlat.new()
-    s.bg_color = fill
-    s.border_color = border
-    s.set_border_width_all(width)
-    s.set_corner_radius_all(4)
-    s.content_margin_top = 22
-    s.content_margin_left = 20
-    s.content_margin_right = 20
-    s.content_margin_bottom = CARD_SIZE.y - 22 - ICON_BOX
-    return s
+## Frame and icon of card `i`, drawn before its labels (they are children).
+func _draw_card(i: int) -> void:
+    if i >= _cards.size():
+        return
+    var b: Button = _cards[i]
+    var r := Rect2(Vector2.ZERO, b.size)
+    var col: Color = _card_cols[i]
+    var focused := b.has_focus()
+    ItemCard.draw_frame(b, r, col, focused)
+    # Icon well at the top, the tile at 6x.
+    var well := Rect2(Vector2((r.size.x - ICON_BOX) / 2.0, 20.0), Vector2(ICON_BOX, ICON_BOX))
+    b.draw_texture_rect(Art.PARTICLES["light"], well.grow(30.0), false, Color(col, 0.22 if focused else 0.12))
+    b.draw_rect(well, Color(0, 0, 0, 0.45))
+    b.draw_rect(well, Color(col, 0.5), false, 2.0)
+    b.draw_texture_rect(Art.tile(_card_icons[i]), well.grow(-12.0), false, _card_tints[i])
+    b.draw_line(Vector2(20, well.end.y + 6.0), Vector2(r.size.x - 20.0, well.end.y + 6.0), Color(col, 0.4), 2.0)
 
 
 ## Queue a level-up for `player`; shows at once when nothing else is showing.
@@ -180,11 +189,10 @@ func _show_next() -> void:
         var rarity: int = clampi(int(opt.get("rarity", 0)), 0, Items.RARITY_COLORS.size() - 1)
         var rarity_col: Color = Items.RARITY_COLORS[rarity]
         card.visible = true
-        card.add_theme_stylebox_override("normal", _card_box(Color(0.10, 0.08, 0.10, 0.96), rarity_col.darkened(0.25), 2))
-        card.icon = Art.tile(opt["icon"])
-        var tint := LevelUps.tint(opt)
-        for state in ["icon_normal_color", "icon_hover_color", "icon_focus_color", "icon_pressed_color"]:
-            card.add_theme_color_override(state, tint)
+        _card_icons[i] = opt["icon"]
+        _card_tints[i] = LevelUps.tint(opt)
+        _card_cols[i] = rarity_col
+        card.queue_redraw()
         _names[i].text = opt["name"]
         _names[i].add_theme_color_override("font_color", rarity_col)
         _rarities[i].text = String(Items.RARITY_NAMES[rarity]).to_upper()
@@ -246,6 +254,8 @@ func _process(delta: float) -> void:
     if not get_tree().paused:
         get_tree().paused = true
     _prompt.queue_redraw()
+    for c in _cards:
+        c.queue_redraw()
     var focus := get_viewport().gui_get_focus_owner()
     if focus != null and _cards.find(focus) < 0:
         return   # another overlay (the pause menu) owns focus; leave the input to it
@@ -281,9 +291,9 @@ func _draw_prompt() -> void:
     var kind: String = _player.input.last_kind
     var font: Font = Art.FONT
     var text := "Choose"
-    var text_w := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 18).x
+    var text_w := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 20).x
     var total := 32.0 + 10.0 + text_w
     var x := (_prompt.size.x - total) / 2.0
     var cy := _prompt.size.y / 2.0
     Prompts.draw(_prompt, Vector2(x + 16.0, cy), label, kind, 24.0)
-    _prompt.draw_string(font, Vector2(x + 42.0, cy + 6.0), text, HORIZONTAL_ALIGNMENT_LEFT, -1, 18, UiTheme.BONE)
+    _prompt.draw_string(font, Vector2(x + 42.0, cy + 7.0), text, HORIZONTAL_ALIGNMENT_LEFT, -1, 20, UiTheme.BONE)

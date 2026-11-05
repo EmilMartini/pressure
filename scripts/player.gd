@@ -544,6 +544,8 @@ func nearest_obstacle(max_range: float) -> Node2D:
     for ob in get_tree().get_nodes_in_group("obstacles"):
         if not is_instance_valid(ob) or ob.is_queued_for_deletion():
             continue
+        if ob is Prop:
+            continue   # props are for deliberate shots and reactions, not idle auto-fire
         var d: float = ob.global_position.distance_squared_to(global_position)
         if d < best_d:
             best_d = d
@@ -573,17 +575,33 @@ func nearest_enemy(max_range: float, prefer_elite: bool = false) -> Node2D:
 
 
 func _draw() -> void:
-    var body := Items.body_tint(self, color.lerp(Color.WHITE, 0.35))
+    # The body sprite is the current form (Isaac / Brotato): the figure itself changes
+    # with the gear, rather than wearing overlays.
+    var form: Dictionary = Items.form_for(self)
+    _sprite.texture = Art.tile(form["tile"])
+    var body: Color = form["tint"]
     if not alive:
         _sprite.modulate = Color(0.35, 0.3, 0.3, 0.7)
         return
+    # A new form pops in: a squash and a flash of its colour.
+    var fid := String(form["id"])
+    var now := float(Time.get_ticks_msec()) / 1000.0
+    if String(get_meta("form_id", fid)) != fid:
+        set_meta("form_t", now)
+        _squash = 1.0
+    set_meta("form_id", fid)
+    var since := now - float(get_meta("form_t", -10.0))
+    if since < 0.5:
+        var k := 1.0 - since / 0.5
+        draw_texture_rect(Art.PARTICLES["light"], Rect2(_sprite.position - Vector2(60, 60), Vector2(120, 120)), false, Color(body, 0.7 * k))
+        draw_arc(_sprite.position, 18.0 + 30.0 * (1.0 - k), 0.0, TAU, 24, Color(body, k), 2.0)
     if invuln > 0.0 and fmod(invuln, 0.2) < 0.1:
         body = Color(body, 0.35)
     _sprite.modulate = body
     if absf(aim_dir.x) > 0.05:
         _sprite.flip_h = aim_dir.x < 0.0
     draw_circle(Vector2(0, radius * 0.7), radius * 0.9, Color(0, 0, 0, 0.35))
-    # Costume back layer (auras, ring sparkles) sits under the body sprite.
+    # Back layer (form and item auras, ring sparkles, the active item) under the body.
     Items.draw_costume(self, self, _sprite.position, 2.0, _facing(), false)
     draw_string(Art.FONT, Vector2(-20, -radius - 8), str(index + 1), HORIZONTAL_ALIGNMENT_CENTER, 40, 16, color)
 
@@ -592,7 +610,7 @@ func _facing() -> float:
     return -1.0 if _sprite.flip_h else 1.0
 
 
-## Front costume layer (hat, gloves, boots, charms, active item) and the orbitals.
+## Front layer (a hat on a bare-headed form) and the orbitals.
 func _draw_costume() -> void:
     if not alive:
         return

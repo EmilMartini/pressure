@@ -8,7 +8,8 @@ const DIRS: Array[Vector2i] = [Vector2i.UP, Vector2i.DOWN, Vector2i.LEFT, Vector
 const OBSTACLES := ["pool", "thicket", "valve", "ward", "rubble", "miasma"]
 
 
-static func generate(floor_number: int, luck: float = 0.0) -> Dictionary:
+## `players` (optional) biases the stock toward the party's build through Drops.
+static func generate(floor_number: int, luck: float = 0.0, players: Array = []) -> Dictionary:
     var target := 7 + floor_number * 2
     var start := Vector2i(GRID / 2, GRID / 2)
     var rooms: Dictionary = {}
@@ -42,7 +43,7 @@ static func generate(floor_number: int, luck: float = 0.0) -> Dictionary:
         rooms[candidates[i]].type = specials[i]
 
     _place_hidden_room(rooms, start)
-    _stock_rooms(rooms, floor_number, luck)
+    _stock_rooms(rooms, floor_number, luck, players)
 
     rooms[start].discovered = true
     for d in rooms[start].doors.keys():
@@ -121,7 +122,7 @@ static func unlocked_obstacles() -> Array:
     return out
 
 
-static func _stock_rooms(rooms: Dictionary, floor_number: int, luck: float = 0.0) -> void:
+static func _stock_rooms(rooms: Dictionary, floor_number: int, luck: float = 0.0, players: Array = []) -> void:
     for p in rooms.keys():
         var r: RoomData = rooms[p]
         match r.type:
@@ -130,7 +131,7 @@ static func _stock_rooms(rooms: Dictionary, floor_number: int, luck: float = 0.0
                 # of each service. Wares carry "ware" so a reroll knows what to replace.
                 var slots := 4 if Progress.has("shop:extra") else 3
                 for i in slots:
-                    r.stock.append(roll_ware(floor_number, luck, r.stock))
+                    r.stock.append(roll_ware(floor_number, luck, r.stock, players))
                 r.stock.append(offer("reroll", "", reroll_price(floor_number, 0)))
                 r.stock.append(offer("carry", "", 50 + floor_number * 18, 2))
                 r.stock.append(offer("repair", "", 24 + floor_number * 10, 40))
@@ -140,33 +141,32 @@ static func _stock_rooms(rooms: Dictionary, floor_number: int, luck: float = 0.0
                 # Chest size grows with the floor and a little luck.
                 var tier := floor_number + (1 if randf() < 0.3 else 0)
                 var min_rarity: int = clampi(tier, Items.Rarity.UNCOMMON, Items.Rarity.EPIC)
-                r.stock.append(Items.offer(Items.roll(floor_number * 4 + tier * 2, maxi(min_rarity, Items.pool_min_rarity("treasure")), [], luck, "treasure"), 0))
-                var pool: Array = Guns.ids()
-                if not pool.is_empty():
-                    r.stock.append(offer("gun", pool.pick_random(), 0))
+                r.stock.append(Items.offer(Drops.roll_item(floor_number * 4 + tier * 2, maxi(min_rarity, Items.pool_min_rarity("treasure")), [], luck, "treasure", players), 0))
+                var gun_id := Drops.roll_gun(players, [])
+                if gun_id != "":
+                    r.stock.append(offer("gun", gun_id, 0))
                 r.stock.append(boon_offer(tier))
                 r.chest_tier = tier
             RoomData.Type.HIDDEN:
                 r.stock.append(offer("carry", "", 0, 3))
-                r.stock.append(Items.offer(Items.roll(floor_number * 4 + 4, Items.Rarity.RARE, [], luck, "hidden"), 0))
+                r.stock.append(Items.offer(Drops.roll_item(floor_number * 4 + 4, Items.Rarity.RARE, [], luck, "hidden", players), 0))
                 r.loose_scrap = 20 + floor_number * 10
             RoomData.Type.CHALLENGE:
                 r.stock.append(offer("sigil", "", 0))
 
 
 ## One shop ware: a gun (unlocked, not already on offer) or a piece of gear from the shop pool.
-static func roll_ware(floor_number: int, luck: float, stock: Array) -> Dictionary:
+static func roll_ware(floor_number: int, luck: float, stock: Array, players: Array = []) -> Dictionary:
     var on_offer: Array = []
     for o in stock:
         if not o["taken"] and o["kind"] in ["gun", "item"]:
             on_offer.append(o["id"])
-    var guns: Array = Guns.ids().filter(func(id): return not on_offer.has(id))
+    var gun_id := Drops.roll_gun(players, on_offer) if randf() < 0.45 else ""
     var o: Dictionary
-    if randf() < 0.45 and not guns.is_empty():
-        var id: String = guns.pick_random()
-        o = offer("gun", id, gun_price(Guns.make(id), floor_number))
+    if gun_id != "":
+        o = offer("gun", gun_id, gun_price(Guns.make(gun_id), floor_number))
     else:
-        var iid := Items.roll(floor_number * 4, Items.Rarity.COMMON, on_offer, luck, "shop")
+        var iid := Drops.roll_item(floor_number * 4, Items.Rarity.COMMON, on_offer, luck, "shop", players)
         o = Items.offer(iid, Items.price(Items.get_item(iid), floor_number * 4))
     o["ware"] = true
     return o

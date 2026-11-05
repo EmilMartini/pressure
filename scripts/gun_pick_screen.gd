@@ -5,7 +5,7 @@ extends CanvasLayer
 ## Confirming calls back with the chosen gun; cancelling (B / Esc) calls back with null so
 ## the mod stays on its plinth. Keeps processing while the tree is paused.
 
-const CARD_SIZE := Vector2(190, 236)
+const CARD_SIZE := Vector2(196, 268)
 const CARD_GAP := 14
 const ROW_GAP := 14
 const PAD_TOP := 14            # card content margin above the icon
@@ -142,22 +142,14 @@ func _make_card(i: int, gun) -> Button:
     var b := Button.new()
     b.custom_minimum_size = CARD_SIZE
     b.focus_mode = Control.FOCUS_ALL
-    b.expand_icon = true
-    b.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
-    b.vertical_icon_alignment = VERTICAL_ALIGNMENT_TOP
-    # The content margins squeeze the icon into the top of the card; the labels sit below.
-    b.add_theme_stylebox_override("normal", _card_box(Color(0.10, 0.08, 0.10, 0.96), Color(0.35, 0.30, 0.30), 2))
-    b.add_theme_stylebox_override("hover", _card_box(Color(0.15, 0.12, 0.14, 0.97), UiTheme.BONE, 2))
-    b.add_theme_stylebox_override("focus", _card_box(Color(0.15, 0.12, 0.14, 0.97), UiTheme.FOCUS, 4))
-    b.add_theme_stylebox_override("pressed", _card_box(Color(0.25, 0.12, 0.10, 0.97), UiTheme.FOCUS, 4))
+    # Drawn like every ItemCard: an element-coloured frame and the icon, labels on top.
+    for state in ["normal", "hover", "focus", "pressed", "disabled"]:
+        b.add_theme_stylebox_override(state, StyleBoxEmpty.new())
+    b.draw.connect(_draw_card.bind(b, gun))
     b.pressed.connect(_choose.bind(i))
     b.mouse_entered.connect(func():
         if visible and not b.has_focus():
             b.grab_focus())
-    b.icon = Art.tile(Art.gun_tile(gun.data.id))
-    var tint: Color = gun.data.color()
-    for state in ["icon_normal_color", "icon_hover_color", "icon_focus_color", "icon_pressed_color"]:
-        b.add_theme_color_override(state, tint)
     var box := VBoxContainer.new()
     box.set_anchors_preset(Control.PRESET_FULL_RECT)
     box.offset_top = PAD_TOP + ICON_BOX + 8
@@ -167,7 +159,11 @@ func _make_card(i: int, gun) -> Button:
     box.add_theme_constant_override("separation", 2)
     box.mouse_filter = Control.MOUSE_FILTER_IGNORE
     b.add_child(box)
-    box.add_child(_card_label(gun.display_name(), 24, UiTheme.BONE))
+    box.add_child(_card_label(gun.display_name(), 24, gun.data.color().lightened(0.25)))
+    var dmg: float = gun.data.damage * gun.tier_mult()
+    var rate: float = gun.fire_rate()
+    var dps: float = dmg * rate * float(gun.data.projectile_count * gun.data.burst_count) * (1.0 + 0.5 * float(gun.data.pierce))
+    box.add_child(_card_label("%s   DPS %.0f" % [Element.NAMES[gun.data.element], dps], 20, UiTheme.BONE))
     var fitted: int = gun.mods.size()
     var cap: int = gun.tier
     box.add_child(_card_label("mods %d / %d" % [fitted, cap], 20, FULL_COLOR if fitted >= cap else UiTheme.DIM))
@@ -192,17 +188,19 @@ func _card_label(text: String, size: int, color: Color) -> Label:
     return l
 
 
-func _card_box(fill: Color, border: Color, width: int) -> StyleBoxFlat:
-    var s := StyleBoxFlat.new()
-    s.bg_color = fill
-    s.border_color = border
-    s.set_border_width_all(width)
-    s.set_corner_radius_all(4)
-    s.content_margin_top = PAD_TOP
-    s.content_margin_left = 20
-    s.content_margin_right = 20
-    s.content_margin_bottom = CARD_SIZE.y - PAD_TOP - ICON_BOX
-    return s
+## Frame and icon of a gun card, drawn before its labels (they are children).
+func _draw_card(b: Button, gun) -> void:
+    if not is_instance_valid(b) or gun == null or not is_instance_valid(gun):
+        return
+    var r := Rect2(Vector2.ZERO, b.size)
+    var col: Color = gun.data.color()
+    var focused := b.has_focus()
+    ItemCard.draw_frame(b, r, col, focused)
+    var well := Rect2(Vector2((r.size.x - ICON_BOX) / 2.0, PAD_TOP), Vector2(ICON_BOX, ICON_BOX))
+    b.draw_texture_rect(Art.PARTICLES["light"], well.grow(24.0), false, Color(col, 0.22 if focused else 0.1))
+    b.draw_rect(well, Color(0, 0, 0, 0.45))
+    b.draw_rect(well, Color(col, 0.5), false, 2.0)
+    b.draw_texture_rect(Art.tile(Art.gun_tile(gun.data.id)), well.grow(-8.0), false, col)
 
 
 func _close() -> void:
@@ -259,6 +257,8 @@ func _process(delta: float) -> void:
     if not get_tree().paused:
         get_tree().paused = true
     _prompt.queue_redraw()
+    for c in _cards:
+        c.queue_redraw()
     var focus := get_viewport().gui_get_focus_owner()
     if focus != null and _cards.find(focus) < 0:
         return   # another overlay (the pause menu) owns focus; leave the input to it

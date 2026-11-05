@@ -1,6 +1,7 @@
 extends Control
-## Main menu: play, journal (achievements, arsenal, gear), wipe save, quit.
-## Keyboard, mouse and controller all work; pads are polled directly through MenuPad.
+## Fallback title menu (the hub, scenes/hub.tscn, is the start scene): play, journal,
+## mastery, names, options, wipe save, quit. Play starts a run the same way the hub's
+## Gate does. Keyboard, mouse and controller all work; pads are polled through MenuPad.
 
 var _root: VBoxContainer
 var _journal: Journal
@@ -8,6 +9,8 @@ var _journal_center: CenterContainer
 var _mastery: MasteryScreen
 var _mastery_center: CenterContainer
 var _names: PanelContainer
+var _options: OptionsMenu
+var _options_center: CenterContainer
 var _class_select: ClassSelect = null
 var _name_edits: Array = []
 var _wipe_armed := false
@@ -40,12 +43,18 @@ func _ready() -> void:
     _mastery.visible = false
     _build_names()
     _names.visible = false
+    _options_center = CenterContainer.new()
+    _options_center.set_anchors_preset(Control.PRESET_FULL_RECT)
+    add_child(_options_center)
+    _options = OptionsMenu.new(_close_options)
+    _options_center.add_child(_options)
+    _options_center.visible = false
+    Settings.apply()
     Music.duck(false)
     Music.play("menu")
     if OS.get_cmdline_user_args().has("--menu-shot"):
-        Progress.save_path = "user://save_autotest.json"
-        Progress.load_save()
-        _menu_shot()
+        # The captures live in the hub now.
+        get_tree().change_scene_to_file.call_deferred("res://scenes/hub.tscn")
 
 
 func _process(delta: float) -> void:
@@ -53,6 +62,8 @@ func _process(delta: float) -> void:
     queue_redraw()
     if _class_select != null:
         return   # the class picker polls pads and handles Esc itself
+    if _options_center.visible:
+        return   # the options card polls pads and handles Esc itself
     _pad.poll(get_viewport(), delta)
     if _journal.visible and Input.is_action_just_pressed("ui_cancel"):
         _show_main()
@@ -107,7 +118,7 @@ func _build_main() -> void:
     _root.add_theme_constant_override("separation", 12)
     center.add_child(_root)
     var spacer := Control.new()
-    spacer.custom_minimum_size = Vector2(0, 140)
+    spacer.custom_minimum_size = Vector2(0, 110)
     _root.add_child(spacer)
     var play := UiTheme.button("Play", _on_play)
     _root.add_child(play)
@@ -118,6 +129,8 @@ func _build_main() -> void:
     _root.add_child(_buttons["mastery"])
     _buttons["names"] = UiTheme.button("Names", _show_names)
     _root.add_child(_buttons["names"])
+    _buttons["options"] = UiTheme.button("Options", _show_options)
+    _root.add_child(_buttons["options"])
     _wipe_button = UiTheme.button("Wipe save", _on_wipe)
     _root.add_child(_wipe_button)
     _root.add_child(UiTheme.button("Quit", func(): get_tree().quit()))
@@ -205,6 +218,18 @@ func _close_names() -> void:
     (_buttons["names"] as Button).grab_focus()
 
 
+func _show_options() -> void:
+    Sfx.play("ui_open")
+    _root.visible = false
+    _options_center.visible = true
+
+
+func _close_options() -> void:
+    _options_center.visible = false
+    _root.visible = true
+    (_buttons["options"] as Button).grab_focus()
+
+
 func _show_main() -> void:
     var was_journal := _journal.visible
     _journal.visible = false
@@ -250,34 +275,3 @@ func _on_wipe() -> void:
     _wipe_armed = false
     _wipe_button.text = "Wipe save"
     Sfx.play("ui_back")
-
-
-## Test hook: save screenshots of the menu and each journal tab, then quit.
-func _menu_shot() -> void:
-    DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path("res://autotest"))
-    await get_tree().create_timer(0.8).timeout
-    await RenderingServer.frame_post_draw
-    get_viewport().get_texture().get_image().save_png("res://autotest/menu.png")
-    _show_journal()
-    for i in Journal.TABS.size():
-        _journal.set_tab(i)
-        await get_tree().create_timer(0.3).timeout
-        await RenderingServer.frame_post_draw
-        get_viewport().get_texture().get_image().save_png("res://autotest/journal_%d.png" % i)
-    _show_main()
-    _show_mastery()
-    await get_tree().create_timer(0.4).timeout
-    await RenderingServer.frame_post_draw
-    get_viewport().get_texture().get_image().save_png("res://autotest/mastery.png")
-    _show_main()
-    _show_names()
-    (_name_edits[0] as LineEdit).text = "Emil"
-    await get_tree().create_timer(0.3).timeout
-    await RenderingServer.frame_post_draw
-    get_viewport().get_texture().get_image().save_png("res://autotest/names.png")
-    _close_names()
-    _show_class_select()
-    await get_tree().create_timer(0.4).timeout
-    await RenderingServer.frame_post_draw
-    get_viewport().get_texture().get_image().save_png("res://autotest/classes.png")
-    get_tree().quit()
