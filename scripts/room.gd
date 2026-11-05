@@ -41,6 +41,23 @@ var _elite_timer := INF
 var _elite_timer2 := INF
 var _add_timer := 0.0
 var _add_time_left := 0.0
+var _dealt0 := 0.0                  # Enemy.dealt_total when the arena wave began
+var _boss_secs := 0.0               # game seconds since the boss rose
+var _boss_p2 := -1.0                # game seconds when it reached phase two
+
+## Floors 2+: the boss is sized to what the party's build actually deals. Its health is at
+## least BOSS_DPS_SECS seconds of the party's measured arena output (damage per second of
+## the floor's last arenas, every tier and DoT included), never under the old formula and
+## at most BOSS_HP_MAX_MULT times it. Floor 1 keeps the formula alone.
+const BOSS_DPS_SECS := 30.0
+const BOSS_HP_MAX_MULT := 9.0
+## Floors 2+: the boss rallies at two thirds and one third of its health. A rally guard holds
+## RALLY_SECS (it breaks early when its adds die) and calls RALLY_GROUPS spawn groups; the
+## boss room also keeps BOSS_CROWD of the arena crowd alive.
+const RALLY_AT := [0.66, 0.33]
+const RALLY_SECS := 8.0
+const RALLY_GROUPS := 3
+const BOSS_CROWD := 0.4
 
 # Layout: interior walls, chasms and terrain on a NAV grid (see RoomLayouts).
 var layout_name := "open"
@@ -160,6 +177,7 @@ func _begin_arena() -> void:
     _spawn_timer = 0.8
     _elite_timer = wave_duration * 0.45 if diff >= 2 else INF
     _elite_timer2 = wave_duration * 0.78 if main.floor_number >= 2 else INF
+    _dealt0 = Enemy.dealt_total
     main.announce("Survive %d seconds" % int(wave_duration))
     Sfx.play("wave_start")
 
@@ -195,6 +213,7 @@ func _tick_arena(delta: float) -> void:
         _elite_timer2 = INF
         _spawn_elite(SpawnTable.elite_count(diff))
     if wave_time_left <= 0.0:
+        main.note_arena_dps((Enemy.dealt_total - _dealt0) / maxf(1.0, wave_duration))
         _finish_fight(6)
         _arena_reward()
 
@@ -280,6 +299,13 @@ func _begin_boss() -> void:
     boss_pos = nearest_open(boss_pos, 40.0)
     boss = _spawn_enemy("boss", boss_pos)
     boss.set_boss(SpawnTable.boss_for(main.floor_number))
+    if main.floor_number >= 2 and not Main.old_balance:
+        var want := BOSS_DPS_SECS * main.floor_arena_dps()
+        boss.max_hp = clampf(want, boss.max_hp, boss.max_hp * BOSS_HP_MAX_MULT)
+        boss.hp = boss.max_hp
+        boss.rally_secs = RALLY_SECS
+        boss.rally_at = RALLY_AT.duplicate()
+        boss.rallied.connect(_on_boss_rallied)
     Telemetry.boss_start(boss)
     var pairs := Elements.available_reactions(main.party_elements())
     var hits := 5 + main.difficulty() / 3
@@ -297,16 +323,40 @@ func _begin_boss() -> void:
 
 
 func _tick_boss(delta: float) -> void:
+    _boss_secs += delta
+    if _boss_p2 < 0.0 and boss != null and is_instance_valid(boss) and boss.hp <= boss.max_hp * 0.5:
+        _boss_p2 = _boss_secs
     _add_timer -= delta
     if _add_timer <= 0.0:
         _add_timer = maxf(4.0, 8.0 - 0.3 * float(main.difficulty()))
         _spawn_group()
+    if main.floor_number >= 2 and not Main.old_balance and boss != null and is_instance_valid(boss):
+        # Floors 2+: the boss room keeps a share of the arena crowd alive, so a build that
+        # melts hordes meets one here too, not a lone target.
+        _spawn_timer -= delta
+        if _spawn_timer <= 0.0:
+            _spawn_timer = 0.7
+            if enemies.get_child_count() < int(float(crowd_target(main.difficulty())) * BOSS_CROWD):
+                _spawn_group()
     if boss == null or not is_instance_valid(boss):
         boss = null
         data.stock.append(FloorGen.offer("stairs", "", 0))
         _finish_fight(30)
         _build_pedestals()
         Music.play("run", 2.0)
+
+
+## A rally on floors 2+: the boss calls RALLY_GROUPS groups and holds its guard while they
+## live (Enemy.rally_secs).
+func _on_boss_rallied(b: Enemy) -> void:
+    if not active or not is_instance_valid(b) or b.hp <= 0.0:
+        return
+    var adds: Array = []
+    for i in RALLY_GROUPS:
+        _spawn_group(adds)
+    b.set_ward_adds(adds)
+    main.announce("The boss rallies: kill its guard")
+    Sfx.play("boss_phase")
 
 
 func _finish_fight(bonus_scrap: int) -> void:
@@ -385,12 +435,20 @@ func party_guns_factor() -> float:
     return 1.0 + 0.14 * float(maxi(0, n - 1))
 
 
-## Floors three to five hit harder: contact and shot damage x1.15, x1.3, x1.5.
+## Late floors hit harder: contact, shot and blast damage, summons included. Floor 1 is x1.0
+## (tuned on its own); floors 2 to 5 were x1.0, 1.15, 1.3, 1.5 (blasts flat) and are now
+## FLOOR_DAMAGE (GDD "Late-floor balance": with Leech capped, a replay of run 4487a37a's own
+## hits puts its low point on floors 2 to 5 near 51, 62, 42 and 28%).
+const FLOOR_DAMAGE := [1.0, 1.0, 1.3, 1.55, 1.55, 1.55]
+
+
 static func floor_damage_mult(floor_number: int) -> float:
-    return 1.0 + 0.15 * float(maxi(0, floor_number - 2)) + (0.05 if floor_number >= 5 else 0.0)
+    if Main.old_balance:
+        return 1.0 + 0.15 * float(maxi(0, floor_number - 2)) + (0.05 if floor_number >= 5 else 0.0)
+    return float(FLOOR_DAMAGE[clampi(floor_number, 0, FLOOR_DAMAGE.size() - 1)]) * (1.0 + 0.1 * float(maxi(0, floor_number - 5)))
 
 
-func _spawn_group() -> float:
+func _spawn_group(out: Array = []) -> float:
     var diff := main.difficulty()
     var total_hp := 0.0
     var ring := randf() < 0.55 and main.floor_number >= 1
@@ -416,6 +474,7 @@ func _spawn_group() -> float:
         var e := _spawn_enemy(type, pos)
         e.emerge = 0.75
         total_hp += e.max_hp
+        out.append(e)
         if e.immune_to == Element.Kind.NONE and diff >= 2 and randf() < minf(0.5, 0.05 * float(diff)):
             # Never immune to the party's only element: that would be unkillable.
             var kinds := main.party_elements()
@@ -496,6 +555,10 @@ func _on_enemy_died(e: Enemy) -> void:
     Progress.add("kills")
     if e.kind_name == "boss":
         Progress.add("bosses")
+        if main.autotest:
+            var pl: Player = main.players[0]
+            print("[BOSS] floor=%d kind=%s secs=%.1f phase2=%.1f max_hp=%.0f arena_dps=%.0f player_hp=%.0f/%.0f" % [
+                main.floor_number, e.boss_kind, _boss_secs, _boss_p2, e.max_hp, main.floor_arena_dps(), pl.hp, pl.max_hp])
         if e.boss_kind != "":
             Progress.add("boss:" + e.boss_kind)   # the Shrine's first-kill bounties
     elif e.is_elite:

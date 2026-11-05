@@ -47,6 +47,9 @@ var _room_entered_ms := 0
 # Self-test: `godot --path . -- --autotest` plays by itself, saves screenshots to
 # res://autotest/ and prints progress. Used to verify builds without a human.
 var autotest := false
+## Balance probe `--old-balance`: the late-floor tuning of 2026-11-05 off (uncapped Leech,
+## formula bosses without the rally, old floor damage), for like-for-like bot comparisons.
+static var old_balance := false
 var _clock := 0.0
 var _bot_idle := 0.0
 var _bot_obstacle_time := 0.0
@@ -88,6 +91,7 @@ func _ready() -> void:
 
     var args := OS.get_cmdline_user_args()
     autotest = args.has("--autotest")
+    old_balance = autotest and args.has("--old-balance")
     if autotest:
         # Fresh, separate save so the bot never touches the real one. `--veteran` unlocks
         # every gun and class first, to measure a player whose pool is wide open.
@@ -129,6 +133,9 @@ func _ready() -> void:
             print("[VETERAN] pool: %d guns" % Guns.ids().size())
         # The bot plays the Vagrant unless told otherwise: `-- --autotest --class=pyromancer`.
         Progress.chosen_class = "vagrant"
+        var build := _bot_build()
+        if not build.is_empty():
+            Progress.chosen_class = String(build["class"])
         for a in args:
             if a.begins_with("--class="):
                 Progress.chosen_class = a.substr(8)
@@ -155,7 +162,7 @@ func _ready() -> void:
     Telemetry.run_start(self)
     Music.play("run")
     Items.new_run()
-    start_floor(1)
+    start_floor(_bot_start_floor() if autotest else 1)
     if OS.get_cmdline_user_args().has("--obstacle-test"):
         _obstacle_test()
     if OS.get_cmdline_user_args().has("--layouts-shot"):
@@ -447,9 +454,17 @@ func is_device_joined(device: int) -> bool:
 
 
 func start_floor(n: int) -> void:
+    if autotest and OS.get_cmdline_user_args().has("--one-floor") and floor_number > 0 and n > floor_number:
+        # Balance probe: one floor per instance, so late floors can be measured in parallel.
+        print("[FLOOR] %d reached at t=%.0f hp=%.0f/%.0f level=%d: --one-floor stops here" % [n, _clock, players[0].hp, players[0].max_hp, players[0].level])
+        Telemetry.floor_start(self)
+        _print_stats("END")
+        get_tree().quit()
+        return
     floor_number = n
     Music.set_floor(n)
     floor_rooms_cleared = 0
+    _arena_dps = []
     if autotest and not players.is_empty():
         print("[FLOOR] %d at t=%.0f kills=%d scrap=%d hp=%.0f level=%d guns=%d items=%d" % [
             n, _clock, total_kills, scrap, players[0].hp, players[0].level, players[0].guns.size(), players[0].equipment.size()])
@@ -569,6 +584,26 @@ func next_floor() -> void:
 ## second room, so a floor feels like one difficulty band and the jump is the stairs.
 func difficulty() -> int:
     return 2 + (floor_number - 1) * 4 + mini(floor_rooms_cleared, 6) / 2
+
+
+## Damage per second the party dealt in each arena cleared on this floor (Room measures it
+## with Enemy.dealt_total); sizes the boss from floor 2.
+var _arena_dps: Array = []
+
+
+func note_arena_dps(dps: float) -> void:
+    _arena_dps.append(dps)
+
+
+## Mean output of the floor's last three arenas, 0 when none was fought.
+func floor_arena_dps() -> float:
+    var recent: Array = _arena_dps.slice(-3)
+    if recent.is_empty():
+        return 0.0
+    var sum := 0.0
+    for v in recent:
+        sum += float(v)
+    return sum / float(recent.size())
 
 
 ## Best luck in the party: rarer offers for everyone, the way scrap gain works.
@@ -826,8 +861,109 @@ const FUSION_LOADOUTS := [
 ]
 
 
+## --build=<id> profiles for late-floor probes. "storm" replays the human run 4487a37a46b6c384
+## (Stormcaller, won all five floors): each floor entry is the build at the START of that
+## floor, i.e. what the player carried when the previous floor ended: guns as id@tier, gear,
+## mods as item@gun, and the level-up picks made on the previous floor (LevelUps.options()
+## ids, "<stat>_<rarity>"). With --start-floor=N the bot begins on floor N with
+## every earlier floor's picks applied. "mid" is a mediocre build at the same levels: four
+## tier-one guns of four elements, starter gear, bot-random level-ups and no healing items.
+const BOT_BUILDS := {
+    "storm": {
+        "class": "stormcaller",
+        2: { "guns": ["blowtorch@2", "blood_lance@1", "frost_caster@1", "spark_needler@2", "venom_spitter@1"],
+            "gear": ["charm_shock", "hobnail_boots", "charm_stone", "vampiric_loop"],
+            "mods": ["coating_void@frost_caster"],
+            "picks": ["xp_gain_0", "crit_dmg_0", "damage_0", "proj_speed_2", "luck_2", "armor_1", "xp_gain_1", "vent_charge_2", "speed_2", "xp_gain_1"] },
+        3: { "guns": ["blowtorch@2", "blood_lance@2", "frost_caster@1", "spark_needler@2", "venom_spitter@1", "gravel_shotgun@1"],
+            "gear": ["vial_fire", "hobnail_boots", "charm_stone", "band_of_lingering", "ring_fire", "overpressure", "gloves_stone", "leech_mail"],
+            "mods": ["coating_shock@blowtorch", "coating_stone@blood_lance", "coating_void@frost_caster", "oiled_bolt@venom_spitter"],
+            "picks": ["regen_2", "crit_dmg_2", "regen_2", "attack_speed_1", "thorns_0", "lifesteal_3", "damage_2", "proj_speed_3", "proj_speed_0", "state_duration_1"] },
+        4: { "guns": ["blowtorch@2", "blood_lance@2", "frost_caster@1", "spark_needler@2", "venom_spitter@1", "gravel_shotgun@1"],
+            "gear": ["vial_fire", "hobnail_boots", "charm_stone", "signet_of_overload", "ring_fire", "overpressure", "gloves_stone", "leech_mail"],
+            "mods": ["coating_shock@blowtorch", "coating_stone@blood_lance", "coating_ice@blood_lance", "coating_void@frost_caster", "oiled_bolt@venom_spitter"],
+            "picks": ["damage_2", "max_hp_2", "state_duration_0", "xp_gain_2", "state_duration_1", "scrap_gain_3"] },
+        5: { "guns": ["blowtorch@2", "blood_lance@2", "frost_caster@1", "spark_needler@2", "venom_spitter@1", "gravel_shotgun@1"],
+            "gear": ["vial_acid", "hobnail_boots", "charm_stone", "signet_of_overload", "ring_fire", "overpressure", "gloves_stone", "leech_mail", "seer_circlet"],
+            "mods": ["coating_shock@blowtorch", "coating_stone@blood_lance", "coating_ice@blood_lance", "coating_void@frost_caster", "oiled_bolt@venom_spitter"],
+            "picks": ["luck_2", "vent_charge_1", "pressure_limit_1", "dodge_0", "pressure_limit_1", "damage_2", "proj_speed_1"] },
+    },
+    "mid": {
+        "class": "stormcaller",
+        2: { "guns": ["spark_needler@1", "blowtorch@1", "frost_caster@1", "venom_spitter@1"], "gear": ["hobnail_boots"], "mods": [], "random_levels": 10 },
+        3: { "guns": ["spark_needler@1", "blowtorch@1", "frost_caster@1", "venom_spitter@1", "blood_lance@1"], "gear": ["hobnail_boots"], "mods": [], "random_levels": 10 },
+        4: { "guns": ["spark_needler@2", "blowtorch@1", "frost_caster@1", "venom_spitter@1", "blood_lance@1"], "gear": ["hobnail_boots", "ring_fire"], "mods": [], "random_levels": 6 },
+        5: { "guns": ["spark_needler@2", "blowtorch@1", "frost_caster@1", "venom_spitter@1", "blood_lance@1", "gravel_shotgun@1"], "gear": ["hobnail_boots", "ring_fire"], "mods": [], "random_levels": 7 },
+    },
+}
+
+
+func _bot_build() -> Dictionary:
+    for a in OS.get_cmdline_user_args():
+        if a.begins_with("--build="):
+            return BOT_BUILDS.get(a.substr(8), {})
+    return {}
+
+
+func _bot_start_floor() -> int:
+    for a in OS.get_cmdline_user_args():
+        if a.begins_with("--start-floor="):
+            return clampi(int(a.substr(14)), 1, FLOORS)
+    return 1
+
+
+## Fit the bot out as the --build profile stood at the start of floor `n`: guns and tiers,
+## gear, mods, and every level-up the profile made before that floor.
+func _apply_bot_build(build: Dictionary, n: int) -> void:
+    if n < 2 or not build.has(n):
+        return
+    var p := players[0]
+    var entry: Dictionary = build[n]
+    p.weight_capacity_base = 40
+    p.recalc_stats()
+    for g in p.guns.duplicate():
+        p.drop_gun(g)
+    for spec in entry["guns"]:
+        var parts: PackedStringArray = String(spec).split("@")
+        if p.add_gun(parts[0]):
+            p.guns[p.guns.size() - 1].tier = int(parts[1]) if parts.size() > 1 else 1
+    for slot in p.equipment.keys():
+        p.equipment.erase(slot)
+    for id in entry["gear"]:
+        p.equip(id)
+    for spec in entry["mods"]:
+        var parts: PackedStringArray = String(spec).split("@")
+        for g in p.guns:
+            if g.data.id == parts[1] and g.mods.size() < g.tier:
+                p.equip_mod_on(g, parts[0])
+                break
+    var by_id := {}
+    for opt in LevelUps.options():
+        by_id[opt["id"]] = opt
+    for f in range(2, n + 1):
+        var e: Dictionary = build.get(f, {})
+        for pick in e.get("picks", []):
+            if by_id.has(pick):
+                p.apply_upgrade(by_id[pick])
+                p.level += 1
+        for i in int(e.get("random_levels", 0)):
+            var opts: Array = LevelUps.roll(p, 1)
+            if not opts.is_empty():
+                p.apply_upgrade(opts[0])
+            p.level += 1
+    p.xp = 0.0
+    p.hp = p.max_hp
+    scrap = 60
+    var guns: Array = []
+    for g in p.guns:
+        guns.append("%s@%d%s" % [g.data.id, g.tier, ("+" + "+".join(g.mods)) if not g.mods.is_empty() else ""])
+    print("[BUILD] floor %d: level %d, max hp %.0f, lifesteal %.0f, regen %.1f, armor %.0f, guns %s, gear %s" % [
+        n, p.level, p.max_hp, p.stat("lifesteal"), p.stat("regen"), p.stat("armor"), ", ".join(guns), str(p.equipment.values())])
+
+
 func _setup_autotest() -> void:
     _bot_idle_fights = OS.get_cmdline_user_args().has("--idle")
+    _apply_bot_build(_bot_build(), _bot_start_floor())
     # Default: a real naked start, so the run measures the progression loop. `--arsenal`
     # hands over every gun to stress every element and effect at once.
     for a in OS.get_cmdline_user_args():
@@ -980,6 +1116,11 @@ func _bot_navigate(p: Player) -> void:
             continue
         var o: Dictionary = ped.offer
         if _bot_wants(o, p):
+            if _bot_idle > 15.0 and o["kind"] in ["gun", "item"]:
+                # A layout can wall a pedestal off from the bot's straight path: give it up.
+                _bot_tried[o["id"]] = true
+                _bot_idle = 0.0
+                continue
             var d := ped.global_position - p.global_position
             if d.length() < 30.0:
                 if o["kind"] in ["gun", "item"]:
@@ -1049,7 +1190,17 @@ func _bot_wants(o: Dictionary, p: Player) -> bool:
             return o["price"] <= scrap and p.can_carry(Guns.make(o["id"])) and not _bot_tried.has(o["id"])
         "item":
             # Replacing gear drops the old piece back on the floor; never chase it twice.
-            return o["price"] <= scrap and not _bot_tried.has(o["id"])
+            if o["price"] > scrap or _bot_tried.has(o["id"]):
+                return false
+            if not _bot_build().is_empty():
+                # A --build profile keeps its kit: only free slots and free mod slots fill.
+                var slot: String = String(Items.get_item(o["id"]).get("slot", ""))
+                if slot == "mod":
+                    return p.mod_target() != null
+                if slot in ["ring", "trinket"]:
+                    return not (p.equipment.has(slot + "1") and p.equipment.has(slot + "2"))
+                return not p.equipment.has(slot)
+            return true
         "carry":
             return o["price"] <= scrap and scrap > 120
         "gunsmith":

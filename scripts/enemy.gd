@@ -6,6 +6,7 @@ extends CharacterBody2D
 ## carry an affix, and bosses pick one of five scripted patterns with set_boss().
 
 signal died(enemy: Enemy)
+signal rallied(enemy: Enemy)   # a boss raised its rally guard (see rally_secs)
 
 const LAYER_ENEMIES := 2
 const LAYER_WALLS := 4
@@ -198,6 +199,19 @@ var _ring_warn := 0.0
 var _tele_warn := 0.0
 var _tele_pos := Vector2.ZERO
 var _pending: Array = []    # [{ "pos": Vector2, "t": float, "type": String }] summons being telegraphed
+## Rally (floors 2+, set by the room): at each health fraction in rally_at the boss raises a
+## guard and calls a wave of adds. Guarded it takes RALLY_LEAK of every hit until the adds
+## are dead or the guard times out, so the fight turns to the horde for a while instead of
+## to more health.
+var rally_secs := 0.0
+var rally_at: Array = []
+var _ward_t := 0.0
+var _ward_adds: Array = []
+const RALLY_LEAK := 0.05
+
+## Damage every enemy has actually lost (overkill trimmed), all sources: the room reads it to
+## measure the party's output per arena second, which sizes the boss (Room._begin_boss).
+static var dealt_total := 0.0
 var _hazards: Array = []    # [{ "pos": Vector2, "t": float }] boss fire patches that hurt players
 var _hazard_tick := 0.0
 
@@ -482,7 +496,17 @@ func take_damage(amount: float, color: Color, flash: bool = true, source: Player
         amount *= 1.6   # shatter bonus; it was x3, which made freeze builds trivial
     if corroded_time > 0.0:
         amount *= 1.5
+    if _ward_t > 0.0:
+        amount *= RALLY_LEAK
+        _shield_flash = maxf(_shield_flash, 0.15)
+    elif rally_secs > 0.0 and not rally_at.is_empty() and hp - amount <= max_hp * float(rally_at[0]):
+        # A rally threshold stops the hit there: no burst skips a rally.
+        amount = maxf(0.0, hp - max_hp * float(rally_at[0]))
+        rally_at.pop_front()
+        _ward_t = rally_secs
+        rallied.emit.call_deferred(self)
     hp -= amount
+    dealt_total += amount + minf(hp, 0.0)
     Telemetry.hit(amount + minf(hp, 0.0), color, flash, source)
     _since_hit = 0.0
     if flash:
@@ -686,9 +710,12 @@ func _explode(dmg: float, rad: float) -> void:
     if fx != null:
         fx.blast(pos, rad, Element.COLORS[Element.Kind.FIRE])
         fx._shake(4.0)
+    # Blasts scale with the floor like contact and shots (they were flat 18 and the top
+    # damage source of floors 2 to 4 in run 4487a37a).
+    var hit := dmg if Main.old_balance else dmg * damage_mult
     for p in get_tree().get_nodes_in_group("players"):
         if is_instance_valid(p) and p.alive and p.global_position.distance_to(pos) <= rad + p.radius:
-            p.take_damage(dmg, self)
+            p.take_damage(hit, self)
     var potency := 5.0 + 0.3 * float(_wave)
     for e in get_tree().get_nodes_in_group("enemies"):
         if e != self and is_instance_valid(e) and not e.is_queued_for_deletion() \
@@ -753,6 +780,10 @@ func _summon(type: String, pos: Vector2, check_cap: bool = true) -> Enemy:
         pos = Vector2(clampf(pos.x, inner.position.x, inner.end.x), clampf(pos.y, inner.position.y, inner.end.y))
     var e := Enemy.new()
     e.configure(type, _wave)
+    if not Main.old_balance:
+        # Summons hit as hard as the floor's own spawns (they were always x1.0).
+        e.damage_mult = damage_mult
+        e.contact_damage *= damage_mult
     if parent is Node2D:
         e.position = (parent as Node2D).to_local(pos)
     else:
@@ -1085,6 +1116,15 @@ func _tick_boss_passive(delta: float) -> void:
         var fx := _fx()
         if fx != null:
             fx._shake(8.0)
+    if _ward_t > 0.0:
+        _ward_t -= delta
+        _ward_adds = _ward_adds.filter(func(e): return is_instance_valid(e) and not e.is_queued_for_deletion() and e.hp > 0.0)
+        if _ward_adds.is_empty() and _ward_t < rally_secs - 1.5:
+            _ward_t = 0.0
+        if _ward_t <= 0.0:
+            _ward_t = 0.0
+            Elements.reaction_fired.emit("Guard broken!", global_position, Color.WHITE)
+        queue_redraw()
     # Telegraphed summons land when their timer runs out.
     for i in range(_pending.size() - 1, -1, -1):
         var s: Dictionary = _pending[i]
@@ -1118,6 +1158,11 @@ func _tick_boss_passive(delta: float) -> void:
                         if p.global_position.distance_to(hz["pos"]) <= 55.0:
                             p.take_damage(5.0 + 0.25 * float(_wave), self)
                             break
+
+
+## The adds that hold a rally guard up: once they are all dead the guard breaks.
+func set_ward_adds(adds: Array) -> void:
+    _ward_adds = adds.duplicate()
 
 
 func _queue_summons(type: String, count: int, warn: float) -> void:
@@ -1324,6 +1369,10 @@ func _draw() -> void:
         draw_arc(Vector2.ZERO, radius + 5.0, 0.0, TAU, 32, Color(0, 0, 0, 0.4), 1.0)
     if shielded():
         draw_arc(Vector2.ZERO, radius + 11.0, 0.0, TAU, 40, Color(1, 1, 1, 0.45 + _shield_flash), 2.5)
+    if _ward_t > 0.0:
+        # Rally guard: a thick gold ring that pulses while the adds live.
+        var pulse := 0.5 + 0.5 * sin(_fx_t * 8.0)
+        draw_arc(Vector2.ZERO, radius + 16.0, 0.0, TAU, 48, Color(1.0, 0.8, 0.3, 0.45 + 0.4 * pulse), 4.0)
     if armour_time > 0.0:
         draw_arc(Vector2.ZERO, radius + 3.0, 0.0, TAU, 24, Color(0.5, 1.0, 0.5, 0.6), 2.0)
     if affix != "":

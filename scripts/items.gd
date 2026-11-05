@@ -893,7 +893,7 @@ func _build_catalog() -> void:
     _add("chain_shirt", "Chainmail Shirt", "chest", U, "+15 max HP, +1 armour", { "max_hp": 15, "armor": 1 })
     # Rare
     _add("conductors_mail", "Conductor's Mail", "chest", R, "Chain Lightning +40% potency and +2 jumps", { "potency:Chain Lightning": 0.4, "chain_jumps": 2 })
-    _add("leech_mail", "Leech Mail", "chest", R, "Heal 1 per reaction, +15 max HP", { "lifesteal": 1, "max_hp": 15 })
+    _add("leech_mail", "Leech Mail", "chest", R, "Heal 1 per reaction (3 a second), +15 max HP", { "lifesteal": 1, "max_hp": 15 })
     _add("spiked_cuirass", "Spiked Cuirass", "chest", R, "Attackers take 10. Hurt: 20% to slow all nearby", { "thorns": 10 }, [{ "on": "hurt", "chance": 0.20, "do": "slow", "radius": 180 }])
     # Epic
     _add("glacier_plate", "Glacier Plate", "chest", E, "4 armour, -8% speed. When hurt, frost nova", { "armor": 4, "speed": -0.08 }, [{ "on": "hurt", "do": "nova", "element": "ice", "radius": 130, "potency": 6 }])
@@ -1000,7 +1000,7 @@ func _build_catalog() -> void:
     _add("ring_of_embers", "Ring of Embers", "ring", U, "+12% vs burning, +6% fire potency", { "vs_burning": 0.12, "potency_fire": 0.06 })
     # Rare
     _add("band_of_lingering", "Band of Lingering", "ring", R, "Elements linger 35% longer on enemies", { "state_duration": 0.35 })
-    _add("vampiric_loop", "Vampiric Loop", "ring", R, "Heal 2 per reaction", { "lifesteal": 2 })
+    _add("vampiric_loop", "Vampiric Loop", "ring", R, "Heal 2 per reaction (3 a second)", { "lifesteal": 2 })
     _add("quicksilver_band", "Quicksilver Band", "ring", R, "6% dodge. +15% fire rate while moving", { "dodge": 0.06 }, [], { "cond_mods": { "moving": { "fire_rate": 0.15 } } })
     _add("bloodstone", "Bloodstone", "ring", R, "+0.8 regen. Below 40% HP: +20% damage", { "regen": 0.8 }, [], { "cond_mods": { "low_hp": { "dmg": 0.20 } } })
     _add("echo_loop", "Echo Loop", "ring", R, "Reactions have 15% to fling 2 elemental shards", {}, [{ "on": "reaction", "chance": 0.15, "do": "shoot", "element": "last", "count": 2, "potency": 4 }])

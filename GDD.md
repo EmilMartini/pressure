@@ -51,7 +51,8 @@ raids, loot tables).
   5 min, floor 3 at 10, floor 4 at 18 with level 19, ten guns and 141 max health, never
   in danger past floor 1; a human who skips rooms is faster and leaner. The arena feeds
   20 + 11 x difficulty enemy hp per second; every spawned group buys itself a pause of
-  its hp over that rate. Floors 3 to 5 are the next tuning target once play says so.
+  its hp over that rate. Floors 2 to 5 were retuned from a won human run (see "Late-floor
+  balance" below).
 
 ### Gun tiers and mods
 - Guns have tiers I to IV, Brotato style. Picking up a duplicate merges it into the one
@@ -392,6 +393,57 @@ contexts `heal_source` runs once, like other area actions.
   a test of whether you are reacting at all, with a bonus for the right one.
 - **Dungeon tiers** (see section 4). Difficulty keys to your gear score, like Mythic+ keystones.
 
+### Late-floor balance (measured, 2026-11-05)
+The ground truth is a human Stormcaller run (telemetry `4487a37a46b6c384`): six guns of six
+elements, coatings, Leech Mail, Vampiric Loop, a Leech pick; won all five floors, never
+downed, every floor ended at 100% health, every boss died in 6 to 10 s at full health.
+Analysis scripts: per-floor table from telemetry, and a replay that re-runs the run's own
+hits under another sustain and damage model.
+- **Cause 1, Leech had no ceiling.** Lifesteal healed its amount on every reaction, and a
+  six-element build causes thousands: 1,100 reactions on floor 1, 8,600 on floor 2, 10,100,
+  15,100 and 34,800 on floors 3 to 5. At 2 to 3 per reaction that is 17,000 to 70,000 HP of
+  healing a floor against 760 to 3,670 damage taken; inferred healing matched damage taken
+  on every floor, so any hit was undone within a second. Damage taken per arena grew from 23
+  (floor 1) to 524 (floor 5) and the player never noticed. Now only `Player.LEECH_PER_SEC`
+  (3) reactions a second heal: Leech is 3 HP/s per point, strong but outpaceable. Regen
+  (2 to 2.6 HP/s in that run) and the heal reactions (60 to 190 HP a floor) were never the
+  problem and are unchanged.
+- **Cause 2, bosses did not scale with the build.** Boss health was 1,800 + 420 x
+  difficulty (x1.25 at most), about 7k to 13k, while the party's measured arena output
+  rose from 200/s on floor 1 to 800, 1,500, 2,400 and 3,800/s (bots, same build), and the
+  boss as a single target takes several times the arena rate (fusions, DoTs, shatter and
+  corrode all land on one body). From floor 2 a boss has at least `Room.BOSS_DPS_SECS`
+  (30) seconds of the floor's measured arena output (the mean of the last three arenas,
+  every tier and DoT included; `Enemy.dealt_total`), never under the old formula and at most
+  9 times it. The time goes to the horde, not only to health: at two thirds and one third
+  the boss **rallies**, a gold guard (5% of damage gets through) for up to 8 s that breaks
+  early once the three spawn groups it calls are dead, and the boss room keeps 40% of the
+  arena crowd alive. Floor 1 bosses are unchanged.
+- **Cause 3, late damage was flat where it mattered.** Bomber and volatile blasts were a
+  flat 18 on every floor and the top damage source of floors 2 to 4; boss and splitter
+  summons always hit at x1.0. Blasts and summons now take the floor multiplier, which is
+  x1.3 on floor 2 and x1.55 on floors 3 to 5 (was 1.0, 1.15, 1.3, 1.5; floor 1 stays x1.0).
+  The multipliers come from the replay: with Leech capped, the run's own hits put its low
+  point near 51% (floor 2), 62% (3), 42% (4) and 28% (5).
+- Measured with bots replaying that build (`--build=storm --start-floor=N`, gear kept,
+  `--old-balance` for before; low point from 5 s health samples). Before (3 runs a floor):
+  low point 93 to 97% (floor 2), 92 to 100% (3), 89 to 96% (4), 88 to 91% (5); bosses 1 to
+  9 s, always at full health. After (5 to 8 runs a floor): 85 to 92%, 70 to 83%, 45 to 86%,
+  73 to 84% with one death in eight on floor 5's last arena; bosses 18 to 41 s (floor 2),
+  25 to 74 s (3), 17 to 66 s (4), 15 to 32 s (5 at the 9x cap), phase two every time. Arena
+  length is the wave timer and kills per arena moved under 5%. The bot kites more carefully
+  than the human (it loses a third to half of the human's health per arena on floors 2 and
+  3), so its dips are shallower; the replay above is the estimate for a human. A mediocre
+  build (`--build=mid`: tier-one guns, random picks, no healing gear) died on floor 3 in one
+  run of three after (it survived its one run before) and early on floors 4 and 5 in every
+  run, before and after. Floor 1 is unchanged
+  (its code paths are untouched): idle six guns die there, four-element fusion bots clear it
+  with a median low point of 76% (67% before, 9 runs each, same spread).
+- Telemetry's clock overcounted around hit-stops (delta divided by a time_scale that changed
+  mid-frame): room, boss and elite seconds read about 1.4x long for bots and up to
+  2x on the human's late floors (127 s "arenas" on floor 5 were 60 s waves). It now counts
+  wall-clock time.
+
 ## 3. Run structure: Brotato waves inside an Isaac map
 
 The run is a **dungeon**: a node map of rooms, Isaac style. Most rooms are **arenas** that play
@@ -699,7 +751,9 @@ ranks per side, active sides, survival ranks, bounties paid and lifetime Embers 
   Treasure rooms give a free pick of one gun from three. Challenge rooms start from a sigil,
   spawn two sequence elites plus adds, and pay out scrap and a free gun pick.
 - The boss has a reaction sequence shield, re-shields with a new sequence at half health,
-  and summons adds. Killing it spawns the stairs. Five floors, then the run is won.
+  and summons adds. From floor 2 its health is sized to the party's measured output and it
+  rallies twice (a guard held by a wave of adds). Killing it spawns the stairs. Five
+  floors, then the run is won.
 - The trigger always fires along your aim even with no enemy in range, so obstacles can
   be shot deliberately. Interact with pedestals using E or the A button.
 
@@ -715,6 +769,9 @@ power estimate; every run prints `[EMBERS]` with what it paid (or would have pai
 the time cap ended it),
 `--arsenal` (every gun), `--gear` (equip shock gear at 45 s for the sheet screenshot),
 `--fusion-probe[=K]` (four w1 guns of four elements, rotating with `--instance`),
+`--build=storm|mid --start-floor=N` (start on floor N with the human run's build at that
+floor, or a mediocre one; profile gear is kept), `--one-floor` (quit at the next floor),
+`--old-balance` (the late-floor tuning off, for before/after),
 `--no-fusions` (the tier ladder off: the pre-fusion game, for baselines), `--perf` (fps and
 frame-time lines every 2 s), `--instance=N` (own save, Shrine and telemetry per parallel
 run). Every run ends with `[FUSION]` (counts, damage by tier, top names) and

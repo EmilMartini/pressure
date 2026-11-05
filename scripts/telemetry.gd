@@ -55,6 +55,7 @@ var _scrap_spent := 0
 var _last_source: String = ""
 var _hp_history: Array = []
 var _wave_t := 0.0
+var _last_us := 0                # Time.get_ticks_usec() at the last _process
 var _fps_t := 0.0
 
 # Current room.
@@ -146,7 +147,13 @@ func _process(delta: float) -> void:
         # The run scene went away without an ending (quit to hub, restart).
         _finish_run(false, true)
         return
-    var dt := delta / maxf(Engine.time_scale, 0.001)
+    # Real seconds from the wall clock. delta / time_scale overcounted around hit-stops (a
+    # frame whose delta was taken at time_scale 1.0 but divided by the 0.05 a hit-stop set
+    # mid-frame counts 20 times): bot arena secs read 1.4x their wave, late human floors
+    # about 2x. Clamped so a pause (this node does not process while paused) never counts.
+    var now_us := Time.get_ticks_usec()
+    var dt := clampf(float(now_us - _last_us) / 1000000.0, 0.0, 0.25) if _last_us > 0 else delta
+    _last_us = now_us
     _clock += dt
     var room: Node = main.get("current")
     var fighting: bool = room != null and bool(room.get("active"))
@@ -193,6 +200,7 @@ func run_start(main: Node) -> void:
     _flush_session(true)
     _main_ref = weakref(main)
     _clock = 0.0
+    _last_us = 0
     _floor = 0
     _run_kills = 0
     _kills_by_kind_run = {}

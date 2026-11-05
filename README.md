@@ -359,6 +359,17 @@ Now:
 - Result: six guns standing still die in the first arena; six guns moving clear floor 1
   through about 600 kills of a 20-strong horde, dipping to three quarters health.
 
+Late floors (retuned from a won human run, details in GDD.md "Late-floor balance"):
+- **Leech is capped**: lifesteal heals per reaction, but only three reactions a second
+  count. A six-element build causes 40 to 80 reactions a second late in a run, so uncapped
+  Leech healed 20 times the damage the floor dealt and nothing could threaten it.
+- **Bosses scale with the build** from floor 2: at least 30 s of the party's measured arena
+  output (capped at 9x the old health), and two **rallies** at two thirds and one third: a
+  guard that holds up to 8 s while a wave of adds lives, with 40% of the arena crowd kept
+  alive in the boss room.
+- **Late damage**: x1.3 on floor 2 and x1.55 on floors 3 to 5, now also on bomber blasts
+  and on summons (both used to be flat). Floor 1 is unchanged.
+
 The vent gauge is the vent's charge, so "pressure decay" upgrades were a trap: they are
 now vent charge speed (the vent fills faster), and pressure limit reads as vent capacity.
 
@@ -451,7 +462,14 @@ loadout and its power estimate. The log prints `[FLOOR]`, `[DEATH]` and `[EMBERS
 cataclysms actually happen; the loadout rotates with `--instance` (wet/fire/shock/gale,
 oil/fire/shock/gale, wet/fire/shock/blood, oil/fire/blood/gale), or pick one with
 `--fusion-probe=K`. `--no-fusions` turns the tier ladder off (reactions leave no compounds),
-which is the game before fusions for a like-for-like baseline. Every run ends with a
+which is the game before fusions for a like-for-like baseline. Late floors:
+`--build=storm --start-floor=N` starts on floor N (2 to 5) with the build a human Stormcaller
+carried there in a won run (guns and tiers, gear, gun mods, every level-up pick; the bot then
+only fills free slots), `--build=mid` is a mediocre build at the same levels (tier-one guns,
+random picks, no healing gear), `--one-floor` quits when the next floor starts, and
+`--old-balance` turns the late-floor tuning off (uncapped Leech, formula bosses without the
+rally, the old floor damage) for before/after comparisons. Each boss kill prints a `[BOSS]`
+line (game seconds, phase two, max health, the arena output it was sized from). Every run ends with a
 `[FUSION]` line (fusions and cataclysms fired, compounds and fields made, damage share by
 tier 0 to 4, the top names by count and by share of fusion damage, a `[FUSION-JSON]` dump
 for scripts) and a `[FUSION-CHECK] PASS/FAIL` line: the termination proof (no context

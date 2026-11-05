@@ -599,7 +599,7 @@ func _build_stats() -> void:
     _nz("Dodge", p.stat("dodge"), "%d%%" % roundi(p.stat("dodge") * 100.0))
     _nz("Regen", p.stat("regen"), "%.1f / s" % p.stat("regen"))
     _nz("Thorns", p.stat("thorns"), "%d" % int(p.stat("thorns")))
-    _nz("Lifesteal", p.stat("lifesteal"), "%d / reaction" % int(p.stat("lifesteal")))
+    _nz("Lifesteal", p.stat("lifesteal"), "%d / reaction, max %d/s" % [int(p.stat("lifesteal")), int(p.stat("lifesteal") * Player.LEECH_PER_SEC)])
     _add("Speed", "%d  (%s)" % [int(p.move_speed()), _pct(p.stat("speed"))])
     groups.append(["DEFENCE", _stats_end()])
 

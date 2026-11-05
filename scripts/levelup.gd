@@ -103,7 +103,7 @@ const CATALOG: Array = [
         "key": "state_duration", "amounts": PCT, "weight": 6, "icon": "gui/spells/enchantment/extension.png" },
     { "id": "chain_jumps", "name": "Conductor", "desc": "Chains leap to one more enemy.",
         "key": "chain_jumps", "amounts": [null, null, 1, null], "weight": 3, "icon": "gui/spells/air/chain_lightning_new.png" },
-    { "id": "lifesteal", "name": "Leech", "desc": "Heal whenever you cause a reaction.",
+    { "id": "lifesteal", "name": "Leech", "desc": "Heal whenever you cause a reaction, up to three times a second.",
         "key": "lifesteal", "amounts": [null, null, 1, 2], "weight": 4, "icon": "gui/spells/necromancy/vampiric_draining_new.png" },
     { "id": "thorns", "name": "Spikes", "desc": "Enemies that hit you take damage back.",
         "key": "thorns", "amounts": [2, 4, 7, 10], "weight": 6, "icon": "gui/spells/earth/lehudibs_crystal_spear_old.png" },

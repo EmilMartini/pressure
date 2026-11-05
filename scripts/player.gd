@@ -72,6 +72,14 @@ var _orbit_hits: Dictionary = {}  # enemy instance id -> msec when an orbital ma
 var _floor_t := 0.0               # next floor-material check
 var _on_ice := false
 var _wading := false               # deep water in a room layout slows us
+var _leech_budget := LEECH_PER_SEC  # reactions that may still heal right now (refills per second)
+
+## Lifesteal heals its amount per reaction, but only LEECH_PER_SEC reactions a second count
+## (a small bucket, so a burst can spend it at once). A six-element build causes 40 to 80
+## reactions a second late in a run (telemetry, run 4487a37a), which made any lifesteal a
+## full heal every second: 10 to 20 times the damage the floor dealt. Capped, Leech is a
+## strong sustain (3 HP/s per point) that a hard moment can still outpace.
+const LEECH_PER_SEC := 3.0
 
 const ORBIT_RADIUS := 60.0
 const ORBIT_HIT := 10.0
@@ -375,7 +383,8 @@ func heal(amount: float) -> void:
 ## Called by enemies when a reaction this player caused fires.
 func on_reaction(_reaction_name: String) -> void:
     var steal := stat("lifesteal")
-    if steal > 0.0:
+    if steal > 0.0 and (_leech_budget >= 1.0 or Main.old_balance):
+        _leech_budget -= 1.0
         heal(steal)
 
 
@@ -522,6 +531,7 @@ func _physics_process(delta: float) -> void:
     var regen := stat("regen")
     if regen > 0.0:
         heal(regen * delta)
+    _leech_budget = minf(LEECH_PER_SEC, _leech_budget + LEECH_PER_SEC * delta)
     _message_time = maxf(0.0, _message_time - delta)
     if _message_time <= 0.0:
         last_message = ""
