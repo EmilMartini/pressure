@@ -161,30 +161,40 @@ lord, void herald).
 mechanics (split the party, soak zones, interrupt casts with a specific reaction, adds that
 must die in element order). Designed for 2-4 players. Only reachable at a gear score threshold.
 
-## 4. Meta progression — BUILT, rework pending
+## 4. Meta progression — BUILT (Shrine rework R4 to R8 done, R9 to R12 pending)
 
 Principle: **every run starts naked, and nothing you own makes a run easier.** Meta
 progression widens what can happen in a run and what you are allowed to attempt, never
 your starting power. That keeps the "overpowered and bored" failure out by construction.
 
-**Status (2026-11-05, measured from code and bot telemetry; see
-`reports/Roguelite meta progression analysis.md`).** The built meta layer contradicts this
-principle in one place: the Mastery tree sells permanent stat power (326 points, +21%
-damage and +32 max HP at completion), while 39 of 43 guns and 12 of 13 classes start
-locked, so a new save sees 4 guns that pair into 5 of the 65 reactions. The reference
-games do the opposite: Hades keeps combat talents to about 18% of its Mirror cost as
+**Status (2026-11-05; see `reports/Roguelite meta progression analysis.md`).** The audit
+found the meta layer generous where the reference games are stingy and stingy where they
+are generous: a 212-node, 326-point Mastery tree sold +21% damage, +12% fire rate, +32
+max HP and 6 armour (a bot probe with it bought reached floor 2 in all three runs at
+120-147 HP, while two of three naked runs died on floor 1; 6 armour alone cut the
+measured ~6.5 HP average hit to ~1.5-2.7), while 39 of 43 guns started locked and holy
+arrived at a median run of about 45. Hades keeps its combat talents to a cheap core of
 swappable A/B pairs, Dead Cells caps permanent power at four flask charges, Risk of Rain 2
-has none. The structural rework (recommendations R4 to R9 in the report) is next; the
-measured defects (R1, R2, R3, R10) are fixed.
+sells no stats and teaches with challenges. The defects (R1, R2, R3, R10) were fixed
+first; the structural rework R4 to R8 is now built: the Shrine below replaces the tree
+(R4 slots, R5 survival, R6 element sidegrades, R7 Embers for play quality) and the first
+achievements hand out a new element per run (R8). R9 (opt-in difficulty ladder), R11
+(pool curation) and R12 (co-op meta rules) are next. Every number is provisional until
+real-player telemetry exists.
 
 **Target pacing to tune against** (provisional until real-player telemetry exists): one
 visible unlock per run for the first five runs, then one every one to two runs to run 20;
 every element available by run 5; first win around runs 8 to 15; meta stat power at most
-+10% damage and +20 max HP at completion, the rest of progression being options.
++10% damage and +20 max HP at completion, the rest of progression being options. The
+Shrine at completion: at most +9.7% damage-equivalent and +15 HP-equivalent per floor from
+talents, plus up to three revives per run (25 HP each) from the survival track; one side
+of every slot plus the survival track is about 470 Embers (around run 20 at 20-25 Embers a
+run), everything 928.
 
-**Current counts:** 55 achievements with 61 unlock rewards (39 guns, 12 classes, 5
-obstacle kinds, 2 rarity tiers, 2 shop upgrades, 1 room type); 43 guns; 238 items (55
-common, 65 uncommon, 63 rare, 39 epic, 16 legendary); 13 classes; 65 reactions.
+**Current counts:** 58 achievements with 64 unlock rewards (39 guns, 12 classes, 5
+obstacle kinds, 2 rarity tiers, 2 shop upgrades, 1 room type, 3 secret upgrades); 43 guns;
+238 items (55 common, 65 uncommon, 63 rare, 39 epic, 16 legendary); 13 classes; 65
+reactions; 11 Shrine slots (22 talents, 57 ranks) and a 3-rank survival track.
 
 ### Itemization model (Brotato tiers, Isaac pools) — BUILT
 - Rarity is the quality axis and gates power: commons are one small stat, uncommons two,
@@ -224,9 +234,27 @@ common, 65 uncommon, 63 rare, 39 epic, 16 legendary); 13 classes; 65 reactions.
   unlocked guns on pedestals; take one. The pool of guns a run can offer
   (shops, treasure, challenge rewards), the obstacle kinds in front of hidden rooms, the
   challenge room itself and a fourth shop slot are all unlocked by achievements.
-- 55 achievements tracked across runs in the save file: kills, specific reaction counts,
-  elites and bosses killed, floors cleared, hidden rooms opened, vents fired, gear equipped,
-  runs won. Descriptions always state the real goal; only real reactions count (popups like
+- 58 achievements tracked across runs in the save file: kills, reactions discovered,
+  specific reaction counts, rooms cleared, elites and bosses killed, floors cleared, hidden
+  rooms opened, secrets, vents fired, gear equipped, runs started and won.
+- **Teach the basics, one element per run (R8, Risk of Rain 2's early challenges).** The
+  first ten achievements are cumulative goals any run moves, each giving a gun of a new
+  element: Chemistry (discover 3 reactions, ice, run 1), Blow-off (vent 10 times, acid,
+  run 1-2), Regular (start 2 runs), Housekeeper (clear 5 rooms, poison, run 2), Field
+  Notes (discover 6 reactions, gale, run 2-3), Headhunter (kill 3 elites, blood, run 2-4),
+  Persistent (start 3 runs, stone, run 3), Catalyst (fire 250 reactions, void, run 3),
+  Pilgrim (start 5 runs, holy, run 5). Expected runs come from the bot's floor-1 rates
+  (6 distinct reactions, 7 vents, 3 rooms, 0-3 elites, ~100 reactions a run); three of
+  them count runs started, so ice, stone and holy are guaranteed by runs 1, 3 and 5 for
+  anyone. They reuse the ids whose rewards they took (conductor, bloodied, chemist,
+  stormcaller, butcher, veteran, catalyst, zealot), so saves keep their progress; no
+  reward moved, all 64 stay assigned.
+- **Reaction goals were 50 to 90 and swung 5-10x between runs** (142 Infernos in one run,
+  a median of 4). They are now about one to three median runs of their pairing: class
+  unlocks 15 to 40 (Pyromancer 15 Infernos, Stormcaller 40 Chain Lightnings, the
+  off-element classes 20-25), gun goals 10 to 25, the long tail 50 to 90 instead of 120 to
+  240. On load, an achievement whose goal the save already meets is granted quietly and a
+  done achievement always has all its rewards. Descriptions always state the real goal; only real reactions count (popups like
   "Shield cracked" do not). The "next goals" shown in the hub and the run-over screen are
   the closest to done that the current gun pool can actually progress.
 - Unlocks pop as a toast when earned. The run-end screen lists what this run unlocked and
@@ -239,24 +267,82 @@ common, 65 uncommon, 63 rare, 39 epic, 16 legendary); 13 classes; 65 reactions.
 - Save file: `user://save.json` (on Windows: `%APPDATA%/Godot/app_userdata/Pressure/`).
   F9 wipes it for testing a first-ever run.
 
-### Layer 1b: the Mastery tree — BUILT
-- A permanent, idle-game sized tree: 212 nodes in 17 branches (offense, defense,
-  pressure, economy, utility, and one per element). Each node is a small bonus, one to
-  three percent or a point of a flat stat, and costs one to three mastery points.
-- Points come from runs: one per floor reached, one per 150 kills, three for a win. They
-  are spent at the hub's Shrine. Wipe save clears the tree too. Measured at bot pace a run
-  pays a median of 1 point, so completion takes about 290 to 330 runs: far too slow, and
-  the R7 rework will pay for performance, not only depth.
-- Note the two meanings of floors: mastery pays per floor *reached*, achievements count
-  floors *cleared* ("Clear 3 floors").
-- The screen is a literal node graph, Path-of-Exile style: a core showing unspent points,
-  seventeen spokes, each branch a chain of circles with side chains stepping out, edges
-  that light up as you buy along them. The stick or d-pad walks the graph, A buys, the
-  right stick pans, triggers zoom, shoulders jump between branches; mouse drag, wheel and
-  click do the same.
-- This is the one deliberate exception to "nothing makes a run easier": the bonuses are
-  small enough to be felt over dozens of runs, not one, and the real growth stays in the
-  unlock pool. If it ever trivialises floor 1, shrink the node values, not the tree.
+### Layer 1b: the Shrine (Embers, talents, Last Breath) — BUILT
+The one deliberate exception to "nothing makes a run easier", kept small, swappable and
+capped (report R4 to R7). Code: `scripts/mastery.gd` (autoload `Mastery`, save
+`user://mastery.json`), UI `scripts/mastery_screen.gd`.
+
+**Embers (R7): pay for play quality, not only depth.** Paid once at run end:
+
+    Embers = 1 x rooms cleared + 2 x elites + 3 x reactions fired for the first time ever
+           + 3 x boss kills + 12 x bounties (first kill of a boss kind with a class)
+           + 2 x (floor reached - 1) + 10 if cleared
+
+Scale: a cleared room is 1 Ember the way a Hades chamber is 10 Darkness, so Hades prices
+divide by 10. Elites pay like Hades' harder (skull) chambers, double. Discoveries are what
+the early game should teach and front-load income (65 reactions, 195 Embers). Bounties are
+Hades' first-kill-per-weapon rewards: 5 boss kinds x 13 classes, so rotating classes pays.
+Depth is the small part: a floor of rooms and an elite is worth more than its stairs. Two
+floor-1 deaths on a save that knows the base reactions: one room and nothing else pays 1;
+five rooms, two elites and two new reactions pay 5 + 4 + 6 = 15 (the old formula paid both
+1 point). Kills no longer pay: they track time spent (about 60 a minute in every sample),
+not play.
+
+**Talents (R4).** Eleven slots, each an exclusive A/B pair like Hades' Mirror: one side is
+active, switching is free and unlimited between runs, each side has its own 2 or 3 ranks,
+and Refund all returns every Ember at no cost. Values are budgeted with factors measured
+from the mastery-free bot telemetry: reactions dealt 49% of damage (so +x potency is about
++0.49x damage), vents 12.6%, the median share of wave samples at 80%+ HP was 0.44, and a
+floor-1 death took 100-222 damage (about 150 per floor, ~6.5 a hit). Duration converts at
+an assumed 0.15. Economy and agency count as zero stat power.
+
+| Slot | Side A (ranks, costs) | Side B (ranks, costs) | Max power of the slot |
+|---|---|---|---|
+| Sights | Long Barrel +4% range (3: 3/8/16) | Hot Load +5% shot speed (3: 3/8/16) | 0 |
+| Catalyst | Catalyst +1.5% potency (3: 4/10/20) | Lingering Touch +4% duration (3: 4/10/20) | 2.2% dmg (4.5 x 0.49) |
+| Nerve | Thick Skin +4 max HP (3: 4/10/20) | High Confidence +1.5% dmg at 80%+ HP (3: 4/10/20) | 12 HP or 2.0% dmg (4.5 x 0.44) |
+| Vent | Reinforced Tank +4 capacity (3: 4/10/20) | Hard Vent +4% vent power (3: 4/10/20) | 1.5% dmg (12% x 0.126) |
+| Footwork | Light Feet +2% speed (3: 3/8/16) | Sidestep +1% dodge (2: 6/16) | 3 HP (2% x 150) |
+| Salvage | Salvager +4% scrap (3: 3/8/16) | Second Thoughts +1 level-up reroll per run (3: 10/25/45) | 0 |
+| Fortune | Lucky Coin +4% luck (3: 4/10/20) | Wider Choice 4th level-up card, every other then every level-up (2: 35/75) | 0 |
+| Pack | Deep Pockets +1 carry (2: 8/20) | Heirloom free gunsmith on floor 1, then floors 1-2 (2: 10/25) | 0 |
+| Scout | Cartographer: shop, + treasure, + boss on the map (3: 3/6/12) | Dowser: hidden rooms, + puzzle rooms on the map (2: 6/15) | 0 |
+| Bite (R6) | Rime, needs an ice gun: +3% ice fire rate, +2% ice potency (2: 8/20) | Etch, needs an acid gun: +3% acid damage, +2% acid potency (2: 8/20) | 4% of that element |
+| Twilight (R6) | Halo, needs a holy gun: +3% holy damage, +2% holy potency (2: 8/20) | Hollow, needs a void gun: +3% void fire rate, +2% void potency (2: 8/20) | 4% of that element |
+
+The twelve element-damage branches (120 of the tree's 326 points, inert until the element
+was in the pool) are gone (R6); two slots keep element sidegrades for the first and last
+elements the challenges hand out, buyable only once a gun of the element is unlocked.
+Element shares of an arsenal sum to 1, so both element slots together add at most 4%.
+Upper bound at completion, the larger side of every slot summed: **+9.7%
+damage-equivalent and +15 HP-equivalent** (GDD target: 10% and 20). The old tree by the
+same factors: +21% damage, +12% fire rate, +7 pp crit, +1 projectile, +2 pierce, +2
+bounce, +2 chains, +11% damage and +12% potency per element, +32 max HP and 6 armour.
+Costs follow Hades' shape: cheap first ranks, power sides 34 Embers each, agency (rerolls
+and the 4th card) the expensive tail at 190 of 775, about a quarter (Hades' Fated rerolls
+are 59% of its Mirror, but a 59% tail would push completion past a hundred runs).
+
+**Survival (R5): Last Breath.** Three ranks, each one revive per run at 25% max HP with 2 s
+of invulnerability, costing 3, 50 and 100 Embers: Hades' Death Defiance (30 / 500 / 1,000
+Darkness) at the room scale above, the same shape as Dead Cells' flasks (5 / 50 / 150 /
+300 cells). The first is bought after a first run; the others are long-term goals. 25%
+rather than Death Defiance's 50% because the stairs already heal to 60% / 40% each floor
+and 25 HP is about four of the measured hits. In co-op each player gets the charges.
+
+**UI.** The hub's Shrine opens a board: eleven slot cards in a 4-column grid (both sides,
+the active one lit, rank pips, the next rank's cost in Embers), the survival row under it,
+Embers in the header, three detail lines for the focused card (active side now and next,
+the other side, what to press) and Refund all with a press-again confirmation. Pad: d-pad
+moves, A buys the lit side, X switches; keyboard: arrows, Enter / E, Tab / Q; mouse: hover,
+click the lit row to buy and the dark row (or right-click) to switch. The run-over screen
+shows the Embers earned with their breakdown and any bounties; the Ledger shows Embers per
+run and the lifetime total by source.
+
+**Save migration.** Version-1 mastery files (points, purchased nodes) convert every point
+ever earned into 8 Embers and refund the whole tree, as Hades' Patch 040 refunded
+over-investment when it moved to A/B pairs; one old point was about a floor of play, and a
+floor now pays about 8 (five rooms, an elite, the floor bonus). Version 2 stores Embers,
+ranks per side, active sides, survival ranks, bounties paid and lifetime Embers by source.
 
 ### Layer 2: starting classes (Dark Souls, Isaac) — BUILT
 - A class is only the first room. Each is a starting gun of its element, one themed
@@ -361,8 +447,12 @@ common, 65 uncommon, 63 rare, 39 epic, 16 legendary); 13 classes; 65 reactions.
 
 `godot --path . res://scenes/main.tscn -- --autotest` plus: `--secs=N` run length,
 `--short` 70 s, `--class=<id>`, `--idle` (stand still in fights), `--loadout=a,b,c`
-(start with these guns), `--veteran` (everything unlocked), `--mastery=N|full` (buy that
-many mastery points of nodes on a throwaway file; the bot never touches the real tree),
+(start with these guns), `--veteran` (everything unlocked), `--mastery=full` (every Shrine
+rank of both sides and the whole survival track, side A active; `--mastery-side=b` for B)
+or `--mastery=N` (spend N Embers cheapest-first on the survival track and active sides),
+both on a throwaway Shrine file that prints a `[MASTERY]` line with the loadout and its
+power estimate; every run prints `[EMBERS]` with what it paid (or would have paid when
+the time cap ended it),
 `--arsenal` (every gun), `--gear` (equip shock gear at 45 s for the sheet screenshot).
 Telemetry from bot runs is stored locally with `bot: true` and never uploaded.
 

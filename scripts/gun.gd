@@ -204,6 +204,6 @@ func _shoot(dir: Vector2) -> void:
             p.bounces = 0
         p.global_position = muzzle
         world.add_child(p)
-    Sfx.shoot(shot_element)
+    Sfx.shoot(shot_element, muzzle)
     if "fx" in world and world.fx != null:
         world.fx.puff(Art.PARTICLES["light"], muzzle, Color(Element.COLORS[shot_element], 0.9), 22.0 + float(data.weight) * 4.0, 0.08, true)

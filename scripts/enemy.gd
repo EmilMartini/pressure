@@ -453,13 +453,14 @@ func take_damage(amount: float, color: Color, flash: bool = true, source: Player
         _flash = 0.12
         _flash_color = color
         _squash = 1.0
-        Sfx.play("hit")
+        Sfx.hit_enemy(self)
     if hp <= 0.0:
         _die()
         return
     if reshield_hits > 0 and not _reshield_at.is_empty() and hp <= max_hp * float(_reshield_at[0]):
         _reshield_at.pop_front()
         set_shield(reshield_weakness, reshield_hits)
+        if kind_name == "boss": Sfx.play("boss_phase")
         if _reshield_at.is_empty():
             reshield_hits = 0
         _shield_flash = 0.5
@@ -612,10 +613,8 @@ func _die() -> void:
     match kind_name:
         "boss":
             Sfx.play("die_boss")
-        "elite":
-            Sfx.play("die_elite")
         _:
-            Sfx.play("die")
+            Sfx.die_enemy(self)
     died.emit(self)
     queue_free()
 
@@ -1248,6 +1247,7 @@ func _draw() -> void:
     if _sprite != null and _sprite.modulate.a < 1.0:
         _sprite.modulate.a = 1.0
     draw_circle(Vector2(0, radius * 0.6), radius * 0.9, Color(0, 0, 0, 0.35))
+    _draw_outline()
     _draw_kind()
     if is_elite:
         draw_arc(Vector2.ZERO, radius - 2.0, 0.0, TAU, 32, Color(1.0, 0.85, 0.3), 2.0)
@@ -1339,6 +1339,22 @@ func _draw() -> void:
 
 
 ## A flickering flame of `count` pixel squares rising from `base` (local), `w` wide, `h` tall.
+## A dark 1 px outline round the sprite (its silhouette drawn black one pixel off on
+## each side, under it), so the tint reads against lit floors and particles; the player's
+## rim is bright instead, which keeps the player on top of the hierarchy.
+func _draw_outline() -> void:
+    if _sprite == null or _sprite.texture == null:
+        return
+    var t := _sprite.texture
+    var sx := _sprite.scale.x * (-1.0 if _sprite.flip_h else 1.0)
+    draw_set_transform(_sprite.position, _sprite.rotation, Vector2(sx, _sprite.scale.y))
+    var o := -t.get_size() / 2.0
+    var c := Color(0.02, 0.01, 0.03, 0.85)
+    for d in [Vector2(-1, 0), Vector2(1, 0), Vector2(0, -1), Vector2(0, 1)]:
+        draw_texture(t, o + d, c)
+    draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+
 func _draw_pixel_flame(base: Vector2, w: float, h: float, count: int) -> void:
     var tick := int(_fx_t * 15.0)
     for k in count:

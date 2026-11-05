@@ -31,6 +31,7 @@ Sfx="*res://scripts/sfx.gd"
 Music="*res://scripts/music.gd"
 Mastery="*res://scripts/mastery.gd"
 Settings="*res://scripts/settings.gd"
+Rumble="*res://scripts/rumble.gd"
 Telemetry="*res://scripts/telemetry.gd"
 
 [display]

@@ -1,90 +1,46 @@
 class_name MasteryScreen
 extends PanelContainer
-## The mastery tree drawn as a node graph: a core circle in the middle and one spoke per
-## branch. Each branch root sits on a ring around the core, its chains step outward by
-## depth and are fanned into parallel lanes so they never overlap. Positions are computed
-## once from `Mastery.nodes` and cached in world space; the canvas pans and zooms over them.
+## The Shrine's talent board (see Mastery): eleven slot cards in a grid, each showing both
+## sides with the active one lit, its rank pips and the next rank's cost, then the
+## survival row (Last Breath), the Embers in the header and a free refund-all with a
+## confirmation.
 ##
-## Controls: d-pad / left stick / arrows move focus along the tree (or jump to the nearest
-## node in that direction), A / Enter / Space buys, right stick or mouse drag pans,
-## triggers or the wheel zoom, LB / RB / Q / E jump between branches, B / Esc closes.
-## The canvas Control keeps GUI focus so MenuPad's up/down focus walking stays put.
+## Controls. Pad: d-pad / stick moves between cards (left / right through MenuPad.on_tab,
+## which calls set_tab), A buys the next rank of the lit side, X switches side, B closes.
+## Keyboard: arrows move, Enter / Space / E buys, Tab / Q / X switches side. Mouse: hover
+## focuses, a click on the lit row buys, a click on the dark row (or a right-click)
+## switches side. The hub (and the fallback menu) poll the pad and close on B / Esc.
 
-const BOUGHT_COLOR := Color(0.6, 1.0, 0.75)
-const READY_COLOR := UiTheme.BONE
-const REACHABLE_COLOR := Color(0.52, 0.49, 0.44)
-const LOCKED_FILL := Color(0.20, 0.19, 0.21)
-const LOCKED_EDGE := Color(0.24, 0.22, 0.25)
-const CORE_FILL := Color(0.12, 0.10, 0.12)
-const CANVAS_BG := Color(0.035, 0.03, 0.045, 0.85)
-const TEXT_OUTLINE := Color(0.03, 0.025, 0.04)
-
-# Layout (world px at zoom 1).
-const NODE_R := 16.0
-const ROOT_R := 22.0
-const CAP_R := 20.0
-const CORE_R := 64.0
-const STEP := 52.0            # radial distance between depths
-const LANE := 38.0            # sideways distance between parallel chains of one branch
-const MARGIN := 26.0          # empty gap between neighbouring branches
-const MIN_RING := 180.0       # smallest radius for the ring of branch roots
-const BRANCH_LABEL_IN := 44.0 # branch names sit this far inside the root ring...
-const BRANCH_LABEL_STAGGER := 34.0 # ...and every other one a little further in
-
-# View.
-const START_ZOOM := 0.8
-const MIN_ZOOM := 0.35
-const MAX_ZOOM := 1.6
-const LABEL_MIN_ZOOM := 0.6   # below this only the current branch is named
-const FOLLOW_MARGIN := 70.0   # screen px the focused node keeps from the canvas edge
-const PAN_SPEED := 700.0      # screen px per second at full right-stick tilt
-const ZOOM_SPEED := 1.6       # log-zoom per second at full trigger
-const DRAG_SLOP := 6.0
-
-# Navigation.
-const LINK_CONE := 0.38       # min cosine between input and a parent/child direction
-const JUMP_CONE := 0.5        # min cosine for the free jump fallback
-const JUMP_RANGE := 120.0     # world px
-const STICK_THRESHOLD := 0.55
-const REPEAT_DELAY := 0.35
-const REPEAT_RATE := 0.12
-
-enum St { LOCKED, REACHABLE, READY, BOUGHT }
+const COLS := 4
+const CARD_SIZE := Vector2(272, 128)
+const ROW_H := 38.0
+const ROW_TOP := 26.0
+const ICON := 32.0
+const LIT := Color(1.0, 0.82, 0.35)
+const OWNED := Color(0.6, 1.0, 0.75)
+const LOCKED := Color(0.45, 0.42, 0.45)
+const CARD_BG := Color(0.06, 0.05, 0.07, 0.95)
+const REFUND_SECS := 4.0
 
 var on_close: Callable
-var tab := 0
+var tab := 0                       # index into _focusables: slots, survival, refund, back
 
-var _canvas: Control
-var _points_label: Label
-var _count_label: Label
-var _name_label: Label
-var _cost_label: Label
-var _desc_label: Label
-var _bonus_label: Label
+var _cards: Array[Button] = []     # one per slot, in Mastery.SLOTS order
+var _ids: Array = []               # slot id per card
+var _survival: Button
+var _refund: Button
 var _back: Button
-
-var _branch_names: Array = []
-var _ids: Array = []              # every node id, branches in order, parents first
-var _index: Dictionary = {}       # id -> position in _ids
-var _children: Dictionary = {}    # id -> Array of child ids
-var _pos: Dictionary = {}         # id -> Vector2 world position
-var _branch_of: Dictionary = {}   # id -> branch index
-var _roots: Array = []            # branch index -> root id
-var _branch_angle: Array = []     # branch index -> spoke angle (radians)
-var _branch_color: Array = []     # branch index -> label colour
-var _ring_r := MIN_RING
-var _extent := 600.0
-var _lane_counter := 0
-
-var _focus := ""
-var _zoom := START_ZOOM
-var _cam := Vector2.ZERO          # world point at the canvas centre
-var _cam_goal := Vector2.ZERO
+var _focusables: Array = []
+var _embers_label: Label
+var _spent_label: Label
+var _lines: Array[Label] = []
+var _ember_tex: Texture2D
+var _refund_armed := false
+var _refund_left := 0.0
 var _time := 0.0
-var _press_pos := Vector2.ZERO
-var _dragged := false
-var _was: Dictionary = {}
-var _held: Dictionary = {}
+var _x_was := false
+var _bought_at: Dictionary = {}    # card index (-1 survival) -> _time of the last purchase
+var _note := ""                    # one-off message for the third detail line
 
 
 func _init(p_on_close: Callable) -> void:
@@ -92,738 +48,496 @@ func _init(p_on_close: Callable) -> void:
 
 
 func _ready() -> void:
-    custom_minimum_size = Vector2(1100, 640)
-    _build_layout()
+    custom_minimum_size = Vector2(1160, 668)
+    _ember_tex = Mastery.ember_icon()
     var v := VBoxContainer.new()
     v.add_theme_constant_override("separation", 6)
     add_child(v)
 
     var header := HBoxContainer.new()
-    header.add_theme_constant_override("separation", 28)
+    header.add_theme_constant_override("separation", 14)
     v.add_child(header)
-    var title := _text("MASTERY", 40, UiTheme.BONE)
-    header.add_child(title)
-    _points_label = _text("", 24, UiTheme.BONE)
-    _points_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-    header.add_child(_points_label)
-    _count_label = _text("", 24, UiTheme.DIM)
-    _count_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-    header.add_child(_count_label)
-    var hint := _text("A buy   LB RB branch   RS pan   LT RT zoom", 20, UiTheme.DIM)
+    header.add_child(_text("SHRINE", 36, UiTheme.BONE))
+    var ember := TextureRect.new()
+    ember.texture = _ember_tex
+    ember.custom_minimum_size = Vector2(32, 32)
+    ember.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+    ember.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+    ember.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+    ember.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+    header.add_child(ember)
+    _embers_label = _text("", 28, Mastery.EMBER_COLOR)
+    _embers_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+    header.add_child(_embers_label)
+    _spent_label = _text("", 20, UiTheme.DIM)
+    _spent_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+    header.add_child(_spent_label)
+    var hint := _text("A buy   X switch side   B back", 20, UiTheme.DIM)
     hint.size_flags_horizontal = Control.SIZE_EXPAND_FILL
     hint.size_flags_vertical = Control.SIZE_SHRINK_CENTER
     hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
     header.add_child(hint)
 
-    _canvas = Control.new()
-    _canvas.custom_minimum_size = Vector2(0, 360)
-    _canvas.size_flags_vertical = Control.SIZE_EXPAND_FILL
-    _canvas.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-    _canvas.clip_contents = true
-    _canvas.focus_mode = Control.FOCUS_ALL
-    _canvas.mouse_filter = Control.MOUSE_FILTER_STOP
-    # Point every focus link back at the canvas itself so MenuPad's up/down walking and
-    # the built-in ui_* navigation never carry focus away from the graph.
-    var self_path := NodePath(".")
-    _canvas.focus_next = self_path
-    _canvas.focus_previous = self_path
-    _canvas.focus_neighbor_top = self_path
-    _canvas.focus_neighbor_bottom = self_path
-    _canvas.focus_neighbor_left = self_path
-    _canvas.focus_neighbor_right = self_path
-    _canvas.draw.connect(_draw_graph)
-    _canvas.gui_input.connect(_on_canvas_input)
-    v.add_child(_canvas)
+    var grid := GridContainer.new()
+    grid.columns = COLS
+    grid.add_theme_constant_override("h_separation", 8)
+    grid.add_theme_constant_override("v_separation", 8)
+    v.add_child(grid)
+    for sl in Mastery.slots():
+        var i := _cards.size()
+        _ids.append(String(sl["id"]))
+        var b := _card_button(CARD_SIZE)
+        b.button_mask = 0   # clicks are read per row in _on_card_input
+        b.draw.connect(_draw_card.bind(i))
+        b.pressed.connect(_buy.bind(i))
+        b.gui_input.connect(_on_card_input.bind(i))
+        grid.add_child(b)
+        _cards.append(b)
+
+    _survival = _card_button(Vector2(0, 66))
+    _survival.draw.connect(_draw_survival)
+    _survival.pressed.connect(_buy_survival)
+    v.add_child(_survival)
+
+    var detail := VBoxContainer.new()
+    detail.add_theme_constant_override("separation", 0)
+    v.add_child(detail)
+    for k in 3:
+        var l := _text("", 20, UiTheme.BONE if k == 0 else UiTheme.DIM)
+        l.clip_text = true
+        l.custom_minimum_size = Vector2(1100, 0)
+        detail.add_child(l)
+        _lines.append(l)
 
     var footer := HBoxContainer.new()
-    footer.add_theme_constant_override("separation", 20)
+    footer.add_theme_constant_override("separation", 16)
     v.add_child(footer)
-    var info := VBoxContainer.new()
-    info.add_theme_constant_override("separation", 0)
-    info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-    footer.add_child(info)
-    var top_line := HBoxContainer.new()
-    top_line.add_theme_constant_override("separation", 24)
-    info.add_child(top_line)
-    _name_label = _text("", 28, UiTheme.BONE)
-    top_line.add_child(_name_label)
-    _cost_label = _text("", 22, UiTheme.DIM)
-    _cost_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-    _cost_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-    _cost_label.clip_text = true
-    top_line.add_child(_cost_label)
-    _desc_label = _text("", 20, UiTheme.BONE)
-    _desc_label.clip_text = true
-    info.add_child(_desc_label)
-    _bonus_label = _text("", 20, BOUGHT_COLOR)
-    _bonus_label.clip_text = true
-    info.add_child(_bonus_label)
+    _refund = UiTheme.button("Refund all", _on_refund)
+    _refund.custom_minimum_size = Vector2(300, 48)
+    footer.add_child(_refund)
+    var spacer := Control.new()
+    spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    footer.add_child(spacer)
     _back = UiTheme.button("Back", func(): on_close.call())
-    _back.custom_minimum_size = Vector2(150, 52)
-    _back.focus_mode = Control.FOCUS_NONE
-    _back.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+    _back.custom_minimum_size = Vector2(160, 48)
     footer.add_child(_back)
 
+    _focusables = []
+    for c in _cards:
+        _focusables.append(c)
+    _focusables.append_array([_survival, _refund, _back])
+    for i in _focusables.size():
+        var f: Control = _focusables[i]
+        f.focus_mode = Control.FOCUS_ALL
+        f.focus_entered.connect(_on_focus.bind(i))
+        f.mouse_entered.connect(func():
+            if is_visible_in_tree() and not f.has_focus():
+                f.grab_focus())
+    _refund.focus_exited.connect(_disarm_refund)
+    _link_focus()
     visibility_changed.connect(_on_visibility_changed)
-    if not _roots.is_empty():
-        _focus = _roots[0]
-        _cam_goal = _root_view(0)
-        _cam = _cam_goal
-    _refresh_text()
+    Mastery.changed.connect(_refresh)
+    _refresh()
+
+
+func _card_button(min_size: Vector2) -> Button:
+    var b := Button.new()
+    b.custom_minimum_size = min_size
+    for state in ["normal", "hover", "focus", "pressed", "disabled"]:
+        b.add_theme_stylebox_override(state, StyleBoxEmpty.new())
+    b.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+    return b
+
+
+## Grid neighbours for the arrows and d-pad; focus_next / focus_previous are the card
+## below / above, because MenuPad walks those for up and down.
+func _link_focus() -> void:
+    var n := _cards.size()
+    for i in n:
+        var c := _cards[i]
+        var col := i % COLS
+        var left: Control = _cards[i - 1] if col > 0 else c
+        var right: Control = _cards[i + 1] if col < COLS - 1 and i + 1 < n else c
+        var up: Control = _cards[i - COLS] if i >= COLS else c
+        var down: Control = _cards[i + COLS] if i + COLS < n else _survival
+        c.focus_neighbor_left = c.get_path_to(left)
+        c.focus_neighbor_right = c.get_path_to(right)
+        c.focus_neighbor_top = c.get_path_to(up)
+        c.focus_neighbor_bottom = c.get_path_to(down)
+        c.focus_previous = c.get_path_to(up)
+        c.focus_next = c.get_path_to(down)
+    var last_row: Control = _cards[(n - 1) / COLS * COLS]
+    _link(_survival, _survival, _survival, last_row, _refund)
+    _link(_refund, _refund, _back, _survival, _refund)
+    _link(_back, _refund, _back, _survival, _back)
+
+
+func _link(c: Control, left: Control, right: Control, up: Control, down: Control) -> void:
+    c.focus_neighbor_left = c.get_path_to(left)
+    c.focus_neighbor_right = c.get_path_to(right)
+    c.focus_neighbor_top = c.get_path_to(up)
+    c.focus_neighbor_bottom = c.get_path_to(down)
+    c.focus_previous = c.get_path_to(up)
+    c.focus_next = c.get_path_to(down)
 
 
 # --- Public API ------------------------------------------------------------
 
 
-## Jump to branch `i` (wrapped): focus its root and pan to it. The menu's shoulder buttons
-## call this through MenuPad.on_tab.
+## Focus entry `i` (wrapped) of the board: the slot cards in reading order, then the
+## survival row, Refund all and Back. The hub's shoulders and d-pad left / right call
+## this through MenuPad.on_tab with tab +- 1.
 func set_tab(i: int) -> void:
-    if _branch_names.is_empty():
-        _branch_names = Mastery.branches()
-    if _branch_names.is_empty():
+    if _focusables.is_empty():
+        tab = maxi(0, i)
         return
-    # MenuPad also routes the d-pad's left/right to on_tab; here those directions walk the
-    # graph instead, so ignore a tab step that came from the d-pad rather than a shoulder.
-    if _canvas != null and is_visible_in_tree() and _dpad_side_only():
-        return
-    tab = wrapi(i, 0, _branch_names.size())
-    if _canvas == null:
-        return
-    _set_focus(_roots[tab], false)
-    _cam_goal = _root_view(tab)
-    Sfx.play("ui_move")
+    tab = wrapi(i, 0, _focusables.size())
     if is_visible_in_tree():
-        _canvas.grab_focus.call_deferred()
+        (_focusables[tab] as Control).grab_focus.call_deferred()
+        Sfx.play("ui_move")
+    _refresh()
 
 
-# --- Layout ----------------------------------------------------------------
+# --- Actions ---------------------------------------------------------------
 
 
-## Lay every node out once. Each branch is a spoke: the root on a ring around the core,
-## descendants at `ring + depth * STEP` along the spoke, offset sideways by their lane.
-## Lanes come from the leaves of the branch (one per leaf, chains keep their first
-## child's lane), so a branch is as wide as its number of parallel chains; each spoke gets
-## an angular wedge in proportion to that width, and the ring radius is chosen so the
-## wedges' arcs at depth 1 hold every lane plus a margin.
-func _build_layout() -> void:
-    _branch_names = Mastery.branches()
-    for b in _branch_names:
-        for n in Mastery.nodes_in_branch(b):
-            var id: String = n["id"]
-            _index[id] = _ids.size()
-            _ids.append(id)
-            _children[id] = []
-    for id in _ids:
-        var parent: String = Mastery.nodes[id]["parent"]
-        if parent != "" and _children.has(parent):
-            (_children[parent] as Array).append(id)
-
-    var lanes_per_branch: Array = []
-    var lane_maps: Array = []
-    var weights: Array = []
-    var total := 0.0
-    var core_weight := 0.0
-    for bi in _branch_names.size():
-        var b: String = _branch_names[bi]
-        var list: Array = Mastery.nodes_in_branch(b)
-        var root: String = ""
-        for n in list:
-            _branch_of[n["id"]] = bi
-            if root == "" and str(n["parent"]) == "":
-                root = n["id"]
-        _roots.append(root)
-        var lanes: Dictionary = {}
-        _lane_counter = 0
-        if root != "":
-            for k in _center_out(_sorted_children(root)):
-                _assign_lanes(k, lanes)
-        var count := maxi(_lane_counter, 1)
-        lanes_per_branch.append(count)
-        lane_maps.append(lanes)
-        var half := (count - 1) * 0.5 * LANE + NODE_R
-        var w := half * 2.0 + MARGIN
-        weights.append(w)
-        total += w
-        _branch_color.append(_color_for_branch(b))
-        if _element_index(b) < 0:
-            core_weight += w
-
-    if total <= 0.0:
+func _buy(i: int) -> void:
+    if i < 0 or i >= _ids.size():
         return
-    var lane_r := total / TAU
-    _ring_r = maxf(lane_r - STEP, MIN_RING)
-    # Rotate so the general branches (listed first) sit centred at the top.
-    var a := -PI * 0.5 - (core_weight / total) * PI
-    for bi in _branch_names.size():
-        var span: float = float(weights[bi]) / total * TAU
-        _branch_angle.append(a + span * 0.5)
-        a += span
-
-    _extent = _ring_r
-    for bi in _branch_names.size():
-        var u := Vector2.from_angle(float(_branch_angle[bi]))
-        var side := Vector2(-u.y, u.x)
-        var count: int = lanes_per_branch[bi]
-        var lanes: Dictionary = lane_maps[bi]
-        var centre := (count - 1) * 0.5
-        for n in Mastery.nodes_in_branch(_branch_names[bi]):
-            var id: String = n["id"]
-            var depth := int(n["depth"])
-            var p := u * (_ring_r + depth * STEP)
-            if depth > 0:
-                p += side * (float(lanes.get(id, centre)) - centre) * LANE
-            _pos[id] = p
-            _extent = maxf(_extent, p.length())
-    _extent += 40.0
-
-
-func _assign_lanes(id: String, lanes: Dictionary) -> void:
-    var kids := _sorted_children(id)
-    if kids.is_empty():
-        lanes[id] = _lane_counter
-        _lane_counter += 1
-        return
-    for k in kids:
-        _assign_lanes(k, lanes)
-    lanes[id] = lanes[kids[0]]
-
-
-## Children with the biggest subtree first (capstones win ties), so the main line of a
-## chain stays straight and side branches step out of it.
-func _sorted_children(id: String) -> Array:
-    var kids: Array = (_children.get(id, []) as Array).duplicate()
-    kids.sort_custom(func(x: String, y: String) -> bool:
-        var sx := _subtree_size(x)
-        var sy := _subtree_size(y)
-        if sx != sy:
-            return sx > sy
-        var cx := _is_cap(x)
-        var cy := _is_cap(y)
-        if cx != cy:
-            return cx
-        return int(_index[x]) < int(_index[y]))
-    return kids
-
-
-## Reorder a size-sorted list so the largest sits in the middle and the rest alternate
-## outward: the long chains run along the spoke's axis.
-func _center_out(sorted: Array) -> Array:
-    var out: Array = []
-    for i in sorted.size():
-        if i % 2 == 0:
-            out.push_back(sorted[i])
-        else:
-            out.push_front(sorted[i])
-    return out
-
-
-func _subtree_size(id: String) -> int:
-    var s := 1
-    for c in _children.get(id, []):
-        s += _subtree_size(c)
-    return s
-
-
-func _is_cap(id: String) -> bool:
-    return id.ends_with("_cap") or str(Mastery.nodes[id]["desc"]).begins_with("Capstone")
-
-
-func _element_index(branch: String) -> int:
-    return Mastery.ELEMENT_KEYS.find(branch.to_lower())
-
-
-func _color_for_branch(branch: String) -> Color:
-    var idx := _element_index(branch)
-    if idx < 0 or idx >= Element.ALL.size():
-        return UiTheme.BONE
-    return Element.COLORS[Element.ALL[idx]]
-
-
-func _radius(id: String) -> float:
-    if str(Mastery.nodes[id]["parent"]) == "":
-        return ROOT_R
-    if _is_cap(id):
-        return CAP_R
-    return NODE_R
-
-
-## Camera target that shows a branch: its root plus a little of the spoke beyond it.
-func _root_view(bi: int) -> Vector2:
-    var root: String = _roots[bi]
-    var p: Vector2 = _pos.get(root, Vector2.ZERO)
-    return _clamp_cam(p + Vector2.from_angle(float(_branch_angle[bi])) * 160.0)
-
-
-# --- State -----------------------------------------------------------------
-
-
-func _state(id: String) -> int:
-    if Mastery.is_bought(id):
-        return St.BOUGHT
-    if Mastery.can_buy(id):
-        return St.READY
-    if Mastery.is_reachable(id):
-        return St.REACHABLE
-    return St.LOCKED
-
-
-func _state_color(st: int) -> Color:
-    match st:
-        St.BOUGHT:
-            return BOUGHT_COLOR
-        St.READY:
-            return READY_COLOR
-        St.REACHABLE:
-            return REACHABLE_COLOR
-    return LOCKED_FILL
-
-
-func _links(id: String) -> Array:
-    var out: Array = (_children.get(id, []) as Array).duplicate()
-    var parent: String = Mastery.nodes[id]["parent"]
-    if parent != "":
-        out.append(parent)
-    return out
-
-
-func _set_focus(id: String, follow: bool = true) -> void:
-    if id == "" or not _pos.has(id):
-        return
-    _focus = id
-    tab = int(_branch_of.get(id, tab))
-    _refresh_text()
-    if follow:
-        _follow_focus()
-    if _canvas != null:
-        _canvas.queue_redraw()
-
-
-func _refresh_text() -> void:
-    if _points_label == null:
-        return
-    _points_label.text = "Points %d" % Mastery.points
-    _count_label.text = "Bought %d / %d" % [Mastery.purchased_count(), Mastery.total_nodes()]
-    if _focus == "" or not Mastery.nodes.has(_focus):
-        _name_label.text = ""
-        _cost_label.text = ""
-        _desc_label.text = ""
-        _bonus_label.text = ""
-        return
-    var n: Dictionary = Mastery.nodes[_focus]
-    var st := _state(_focus)
-    _name_label.text = str(n["name"])
-    _name_label.add_theme_color_override("font_color", BOUGHT_COLOR if st == St.BOUGHT else UiTheme.BONE)
-    var note := ""
-    match st:
-        St.BOUGHT:
-            note = "owned"
-        St.READY:
-            note = "press A to buy"
-        St.REACHABLE:
-            note = "not enough points"
-        St.LOCKED:
-            note = "needs %s" % Mastery.get_node_data(n["parent"]).get("name", "?")
-    _cost_label.text = "Cost %d   %s" % [int(n["cost"]), note]
-    _desc_label.text = str(n["desc"])
-    _bonus_label.text = Mastery.mods_text(n["mods"])
-
-
-func _buy_focused() -> void:
-    if _focus == "":
-        return
-    if Mastery.buy(_focus):
+    var sid: String = _ids[i]
+    var s := Mastery.active_side(sid)
+    if Mastery.buy(sid, s):
+        _bought_at[i] = _time
+        _note = "%s rank %d: %s" % [String(Mastery.side(sid, s)["name"]), Mastery.rank(sid, s), Mastery.effect_text(sid, s, Mastery.rank(sid, s))]
         Sfx.play("ui_confirm")
     else:
+        _note = _why_not(sid, s)
         Sfx.play("error")
-    _refresh_text()
-    _canvas.queue_redraw()
+    _refresh()
 
 
-# --- View ------------------------------------------------------------------
-
-
-func _to_screen(p: Vector2) -> Vector2:
-    return (p - _cam) * _zoom + _canvas.size * 0.5
-
-
-func _to_world(s: Vector2) -> Vector2:
-    return (s - _canvas.size * 0.5) / _zoom + _cam
-
-
-func _clamp_cam(c: Vector2) -> Vector2:
-    if c.length() > _extent:
-        return c.normalized() * _extent
-    return c
-
-
-func _zoom_at(new_zoom: float, screen_pos: Vector2) -> void:
-    var before := _to_world(screen_pos)
-    _zoom = clampf(new_zoom, MIN_ZOOM, MAX_ZOOM)
-    _cam = _clamp_cam(before - (screen_pos - _canvas.size * 0.5) / _zoom)
-    _cam_goal = _cam
-
-
-## Nudge the camera target just enough that the focused node sits inside the canvas.
-func _follow_focus() -> void:
-    if _canvas == null or not _pos.has(_focus):
+func _toggle(i: int) -> void:
+    if i < 0 or i >= _ids.size():
         return
-    var p: Vector2 = _pos[_focus]
-    var sz := _canvas.size
-    if sz.x < 2.0 * FOLLOW_MARGIN or sz.y < 2.0 * FOLLOW_MARGIN:
-        _cam_goal = _clamp_cam(p)
-        return
-    var half := sz * 0.5 - Vector2(FOLLOW_MARGIN, FOLLOW_MARGIN)
-    var rel := (p - _cam_goal) * _zoom
-    var shift := Vector2.ZERO
-    if rel.x > half.x:
-        shift.x = rel.x - half.x
-    elif rel.x < -half.x:
-        shift.x = rel.x + half.x
-    if rel.y > half.y:
-        shift.y = rel.y - half.y
-    elif rel.y < -half.y:
-        shift.y = rel.y + half.y
-    _cam_goal = _clamp_cam(_cam_goal + shift / _zoom)
-
-
-# --- Navigation ------------------------------------------------------------
-
-
-## Move focus along `dir` (screen space, y down): the parent or child whose direction
-## matches best, else the nearest node in that direction within JUMP_RANGE.
-func _move(dir: Vector2) -> void:
-    if _focus == "" or dir == Vector2.ZERO:
-        return
-    dir = dir.normalized()
-    var from: Vector2 = _pos[_focus]
-    var best := ""
-    var best_cos := -INF
-    for id in _links(_focus):
-        if not _pos.has(id):
-            continue
-        var off: Vector2 = (_pos[id] as Vector2) - from
-        if off.length() < 0.001:
-            continue
-        var c := off.normalized().dot(dir)
-        if c > LINK_CONE and c > best_cos:
-            best_cos = c
-            best = id
-    if best == "":
-        var best_score := INF
-        for id in _ids:
-            if id == _focus:
-                continue
-            var off: Vector2 = (_pos[id] as Vector2) - from
-            var dist := off.length()
-            if dist < 0.001 or dist > JUMP_RANGE:
-                continue
-            var c := off.normalized().dot(dir)
-            if c < JUMP_CONE:
-                continue
-            var score := dist * (2.0 - c)
-            if score < best_score:
-                best_score = score
-                best = id
-    if best == "":
-        return
-    _set_focus(best)
+    var sid: String = _ids[i]
+    Mastery.toggle(sid)
+    var s := Mastery.active_side(sid)
+    _note = "%s is now active." % String(Mastery.side(sid, s)["name"])
     Sfx.play("ui_move")
+    _refresh()
+
+
+func _buy_survival() -> void:
+    if Mastery.buy_survival():
+        _bought_at[-1] = _time
+        _note = "Last Breath rank %d: %d revive%s per run." % [Mastery.survival, Mastery.survival, "" if Mastery.survival == 1 else "s"]
+        Sfx.play("ui_confirm")
+    else:
+        var c := Mastery.survival_next_cost()
+        _note = "Last Breath is maxed." if c < 0 else "Not enough Embers: %d needed, %d held." % [c, Mastery.embers]
+        Sfx.play("error")
+    _refresh()
+
+
+func _on_refund() -> void:
+    var back := Mastery.spent()
+    if back <= 0:
+        _note = "Nothing to refund yet."
+        Sfx.play("error")
+        _refresh()
+        return
+    if not _refund_armed:
+        _refund_armed = true
+        _refund_left = REFUND_SECS
+        _refund.text = "Confirm: refund %d" % back
+        _note = "Press Refund again to get all %d Embers back. Your chosen sides stay." % back
+        Sfx.play("ui_move")
+        _refresh()
+        return
+    var got := Mastery.refund_all()
+    _disarm_refund()
+    _note = "Refunded %d Embers. Spend them again any way you like." % got
+    Sfx.play("ui_back")
+    _refresh()
+
+
+func _disarm_refund() -> void:
+    _refund_armed = false
+    if _refund != null:
+        _refund.text = "Refund all"
+
+
+func _why_not(sid: String, s: String) -> String:
+    var req := Mastery.requirement_text(sid, s)
+    if req != "":
+        return "%s: %s. The Trophy Wall shows how to unlock it." % [String(Mastery.side(sid, s)["name"]), req]
+    var c := Mastery.next_cost(sid, s)
+    if c < 0:
+        return "%s is maxed. Switch side to invest in the other one." % String(Mastery.side(sid, s)["name"])
+    return "Not enough Embers: %d needed, %d held." % [c, Mastery.embers]
+
+
+# --- Text ------------------------------------------------------------------
+
+
+func _on_focus(i: int) -> void:
+    tab = i
+    _note = ""
+    _refresh()
+
+
+func _refresh() -> void:
+    if _embers_label == null:
+        return
+    _embers_label.text = "%d Embers" % Mastery.embers
+    _spent_label.text = "spent %d of %d    ranks %d / %d    earned %d in all" % [
+        Mastery.spent(), Mastery.total_cost(), Mastery.ranks_bought(), Mastery.ranks_total(), Mastery.earned]
+    var texts := _detail(tab)
+    for k in _lines.size():
+        _lines[k].text = String(texts[k]) if k < texts.size() else ""
+    if _note != "":
+        _lines[2].text = _note
+    for c in _cards:
+        c.queue_redraw()
+    if _survival != null:
+        _survival.queue_redraw()
+
+
+## Three lines for focus entry `i`: the lit side, the other side, what to press.
+func _detail(i: int) -> Array:
+    if i < _ids.size():
+        var sid: String = _ids[i]
+        var s := Mastery.active_side(sid)
+        var o := Mastery.other_side(s)
+        return [_side_line(sid, s, true), _side_line(sid, o, false),
+            "A / Enter / click the lit row: buy the next rank.    X / Tab / right-click: switch side, free."]
+    if i == _ids.size():
+        var r := Mastery.survival
+        var m := Mastery.survival_max()
+        var now := "no revives yet" if r <= 0 else "%d revive%s per run at %d%% max HP" % [r, "" if r == 1 else "s", roundi(Mastery.REVIVE_FRACTION * 100.0)]
+        var c := Mastery.survival_next_cost()
+        var next := "Maxed." if c < 0 else "Next rank: one more revive for %d Embers." % c
+        return ["LAST BREATH  rank %d / %d: %s. %s" % [r, m, now, String(Mastery.SURVIVAL["desc"])], next,
+            "The first charge is cheap; the others are a long-term goal. Press A to buy."]
+    if i == _ids.size() + 1:
+        return ["Refund every rank and the survival track: %d Embers come back. Free, any time." % Mastery.spent(),
+            "Your chosen sides stay as they are.", "Press twice to confirm."]
+    return ["Back to the hub.", "Embers come from rooms cleared, elites, new reactions, bosses and first-kill bounties.", ""]
+
+
+func _side_line(sid: String, s: String, lit: bool) -> String:
+    var d := Mastery.side(sid, s)
+    var r := Mastery.rank(sid, s)
+    var m := Mastery.max_rank(sid, s)
+    var head := "%s %s  rank %d / %d" % ["ACTIVE" if lit else "Other side:", String(d["name"]).to_upper() if lit else String(d["name"]), r, m]
+    var now := Mastery.effect_text(sid, s, r) if r > 0 else String(d["desc"])
+    var tail := ""
+    var req := Mastery.requirement_text(sid, s)
+    if req != "":
+        tail = "   %s." % req
+    elif r < m:
+        tail = "   Next: %s for %d Embers." % [Mastery.effect_text(sid, s, r + 1), Mastery.next_cost(sid, s)]
+    else:
+        tail = "   Maxed."
+    return "%s: %s.%s" % [head, now, tail]
+
+
+# --- Input -----------------------------------------------------------------
 
 
 func _process(delta: float) -> void:
-    if _canvas == null or not is_visible_in_tree():
+    if not is_visible_in_tree():
         return
     _time += delta
-    _poll_pad(delta)
-    _cam = _cam.lerp(_cam_goal, 1.0 - exp(-12.0 * delta))
-    _canvas.queue_redraw()
-
-
-func _poll_pad(delta: float) -> void:
-    var up := false
-    var down := false
-    var left := false
-    var right := false
-    var accept := false
-    var stick := Vector2.ZERO
-    var pan := Vector2.ZERO
-    var zoom_in := 0.0
-    var zoom_out := 0.0
+    if _refund_armed:
+        _refund_left -= delta
+        if _refund_left <= 0.0:
+            _disarm_refund()
+            _note = ""
+            _refresh()
+    var x_down := false
     for d in Input.get_connected_joypads():
-        up = up or Input.is_joy_button_pressed(d, JOY_BUTTON_DPAD_UP)
-        down = down or Input.is_joy_button_pressed(d, JOY_BUTTON_DPAD_DOWN)
-        left = left or Input.is_joy_button_pressed(d, JOY_BUTTON_DPAD_LEFT)
-        right = right or Input.is_joy_button_pressed(d, JOY_BUTTON_DPAD_RIGHT)
-        accept = accept or Input.is_joy_button_pressed(d, JOY_BUTTON_A)
-        var s := Vector2(Input.get_joy_axis(d, JOY_AXIS_LEFT_X), Input.get_joy_axis(d, JOY_AXIS_LEFT_Y))
-        if s.length() > stick.length():
-            stick = s
-        var r := Vector2(Input.get_joy_axis(d, JOY_AXIS_RIGHT_X), Input.get_joy_axis(d, JOY_AXIS_RIGHT_Y))
-        if r.length() > pan.length():
-            pan = r
-        zoom_in = maxf(zoom_in, Input.get_joy_axis(d, JOY_AXIS_TRIGGER_RIGHT))
-        zoom_out = maxf(zoom_out, Input.get_joy_axis(d, JOY_AXIS_TRIGGER_LEFT))
-
-    if _edge("up", up, delta, true):
-        _move(Vector2.UP)
-    if _edge("down", down, delta, true):
-        _move(Vector2.DOWN)
-    if _edge("left", left, delta, true):
-        _move(Vector2.LEFT)
-    if _edge("right", right, delta, true):
-        _move(Vector2.RIGHT)
-    var stick_on := stick.length() > STICK_THRESHOLD
-    if _edge("stick", stick_on, delta, true):
-        _move(stick)
-    if _edge("accept", accept, delta, false):
-        _buy_focused()
-
-    var tilt := pan.length()
-    if tilt > 0.2:
-        var amount := (tilt - 0.2) / 0.8
-        _cam_goal = _clamp_cam(_cam_goal + pan / tilt * amount * PAN_SPEED * delta / _zoom)
-        _cam = _cam_goal
-    var z := zoom_in - zoom_out
-    if absf(z) > 0.1:
-        _zoom_at(_zoom * exp(z * ZOOM_SPEED * delta), _canvas.size * 0.5)
+        x_down = x_down or Input.is_joy_button_pressed(d, JOY_BUTTON_X)
+    if x_down and not _x_was:
+        _toggle_focused()
+    _x_was = x_down
+    for c in _cards:
+        c.queue_redraw()
+    _survival.queue_redraw()
 
 
-## True on the press, and again on repeat while held when `repeat` is set.
-func _edge(key: String, down: bool, delta: float, repeat: bool) -> bool:
-    var was: bool = _was.get(key, false)
-    _was[key] = down
-    if not down:
-        _held[key] = 0.0
-        return false
-    if not was:
-        _held[key] = 0.0
-        return true
-    if not repeat:
-        return false
-    var h: float = float(_held.get(key, 0.0)) + delta
-    if h >= REPEAT_DELAY:
-        _held[key] = h - REPEAT_RATE
-        return true
-    _held[key] = h
-    return false
+func _toggle_focused() -> void:
+    var at := _cards.find(get_viewport().gui_get_focus_owner())
+    if at >= 0:
+        _toggle(at)
 
 
-## A d-pad side is held but no shoulder: a MenuPad on_tab call came from the d-pad.
-func _dpad_side_only() -> bool:
-    var side := false
-    for d in Input.get_connected_joypads():
-        if Input.is_joy_button_pressed(d, JOY_BUTTON_LEFT_SHOULDER) or Input.is_joy_button_pressed(d, JOY_BUTTON_RIGHT_SHOULDER):
-            return false
-        if Input.is_joy_button_pressed(d, JOY_BUTTON_DPAD_LEFT) or Input.is_joy_button_pressed(d, JOY_BUTTON_DPAD_RIGHT):
-            side = true
-    return side
+func _input(event: InputEvent) -> void:
+    if not is_visible_in_tree() or not event is InputEventKey:
+        return
+    var k := event as InputEventKey
+    if not k.pressed or k.echo:
+        return
+    var at := _cards.find(get_viewport().gui_get_focus_owner())
+    match k.physical_keycode:
+        KEY_TAB, KEY_Q, KEY_X:
+            if at >= 0:
+                _toggle(at)
+                get_viewport().set_input_as_handled()
+        KEY_E:
+            if at >= 0:
+                _buy(at)
+                get_viewport().set_input_as_handled()
+
+
+## Mouse on a card: left-click the lit row buys, the dark row switches to it; right-click
+## anywhere switches.
+func _on_card_input(event: InputEvent, i: int) -> void:
+    if not event is InputEventMouseButton:
+        return
+    var mb := event as InputEventMouseButton
+    if not mb.pressed:
+        return
+    var c := _cards[i]
+    if not c.has_focus():
+        c.grab_focus()
+    if mb.button_index == MOUSE_BUTTON_RIGHT:
+        _toggle(i)
+    elif mb.button_index == MOUSE_BUTTON_LEFT:
+        var sid: String = _ids[i]
+        var row := _row_at(mb.position)
+        if row == "" or row == Mastery.active_side(sid):
+            _buy(i)
+        else:
+            _toggle(i)
+    c.accept_event()
+
+
+func _row_at(p: Vector2) -> String:
+    if p.y >= ROW_TOP and p.y < ROW_TOP + ROW_H + 2.0:
+        return "a"
+    if p.y >= ROW_TOP + ROW_H + 2.0 and p.y < ROW_TOP + 2.0 * ROW_H + 4.0:
+        return "b"
+    return ""
 
 
 func _on_visibility_changed() -> void:
     if not visible:
+        _disarm_refund()
         return
-    # Buttons still held from opening the screen (A on the menu) must be released first.
-    for k in ["up", "down", "left", "right", "stick", "accept"]:
-        _was[k] = true
-    _refresh_text()
-    if _canvas != null:
-        _canvas.grab_focus.call_deferred()
-
-
-func _input(event: InputEvent) -> void:
-    if _canvas == null or not is_visible_in_tree() or not event is InputEventKey:
-        return
-    var k := event as InputEventKey
-    if not k.pressed:
-        return
-    var handled := true
-    match k.physical_keycode:
-        KEY_UP:
-            _move(Vector2.UP)
-        KEY_DOWN:
-            _move(Vector2.DOWN)
-        KEY_LEFT:
-            _move(Vector2.LEFT)
-        KEY_RIGHT:
-            _move(Vector2.RIGHT)
-        KEY_ENTER, KEY_KP_ENTER, KEY_SPACE:
-            if not k.echo:
-                _buy_focused()
-        KEY_Q:
-            if not k.echo:
-                set_tab(tab - 1)
-        KEY_E:
-            if not k.echo:
-                set_tab(tab + 1)
-        KEY_EQUAL, KEY_KP_ADD:
-            _zoom_at(_zoom * 1.15, _canvas.size * 0.5)
-        KEY_MINUS, KEY_KP_SUBTRACT:
-            _zoom_at(_zoom / 1.15, _canvas.size * 0.5)
-        _:
-            handled = false
-    if handled:
-        get_viewport().set_input_as_handled()
-
-
-func _on_canvas_input(event: InputEvent) -> void:
-    if event is InputEventMouseButton:
-        var mb := event as InputEventMouseButton
-        match mb.button_index:
-            MOUSE_BUTTON_WHEEL_UP:
-                if mb.pressed:
-                    _zoom_at(_zoom * 1.12, mb.position)
-                _canvas.accept_event()
-            MOUSE_BUTTON_WHEEL_DOWN:
-                if mb.pressed:
-                    _zoom_at(_zoom / 1.12, mb.position)
-                _canvas.accept_event()
-            MOUSE_BUTTON_LEFT:
-                if mb.pressed:
-                    _press_pos = mb.position
-                    _dragged = false
-                    _canvas.grab_focus()
-                elif not _dragged:
-                    _click(mb.position)
-                _canvas.accept_event()
-            MOUSE_BUTTON_RIGHT, MOUSE_BUTTON_MIDDLE:
-                _canvas.accept_event()
-    elif event is InputEventMouseMotion:
-        var mm := event as InputEventMouseMotion
-        var mask := MOUSE_BUTTON_MASK_LEFT | MOUSE_BUTTON_MASK_RIGHT | MOUSE_BUTTON_MASK_MIDDLE
-        if (mm.button_mask & mask) == 0:
-            return
-        if mm.button_mask == MOUSE_BUTTON_MASK_LEFT and not _dragged and mm.position.distance_to(_press_pos) < DRAG_SLOP:
-            return
-        _dragged = true
-        _cam = _clamp_cam(_cam - mm.relative / _zoom)
-        _cam_goal = _cam
-        _canvas.accept_event()
-
-
-## Click on a node: focus it, or buy it when it already has focus.
-func _click(screen_pos: Vector2) -> void:
-    var hit := ""
-    var best := INF
-    for id in _ids:
-        var d := _to_screen(_pos[id]).distance_to(screen_pos)
-        if d <= _radius(id) * _zoom + 6.0 and d < best:
-            best = d
-            hit = id
-    if hit == "":
-        return
-    if hit == _focus:
-        _buy_focused()
-    else:
-        _set_focus(hit)
-        Sfx.play("ui_move")
+    _x_was = true   # an X still held from elsewhere must be released first
+    _note = ""
+    _refresh()
+    if not _focusables.is_empty():
+        (_focusables[clampi(tab, 0, _focusables.size() - 1)] as Control).grab_focus.call_deferred()
 
 
 # --- Drawing ---------------------------------------------------------------
 
 
-func _draw_graph() -> void:
-    var c := _canvas
-    var z := _zoom
-    var view := Rect2(Vector2.ZERO, c.size)
-    var cull := view.grow(48.0)
-    var lw := maxf(1.5, 3.0 * z)
-    var pulse := 0.5 + 0.5 * sin(_time * 4.0)
-    var origin := _to_screen(Vector2.ZERO)
-    c.draw_rect(view, CANVAS_BG)
-
-    # Spokes from the core to each root.
-    for bi in _roots.size():
-        var rid: String = _roots[bi]
-        if rid == "":
-            continue
-        var u := Vector2.from_angle(float(_branch_angle[bi]))
-        var col := Color(BOUGHT_COLOR, 0.5) if Mastery.is_bought(rid) else Color(_branch_color[bi], 0.25)
-        c.draw_line(origin + u * CORE_R * z, _to_screen(_pos[rid]), col, lw * 0.7, true)
-
-    # Edges to parents.
-    for id in _ids:
-        var parent: String = Mastery.nodes[id]["parent"]
-        if parent == "" or not _pos.has(parent):
-            continue
-        var a := _to_screen(_pos[parent])
-        var b := _to_screen(_pos[id])
-        if not cull.has_point(a) and not cull.has_point(b):
-            continue
-        var col := LOCKED_EDGE
-        if Mastery.is_bought(id):
-            col = BOUGHT_COLOR
-        elif Mastery.is_reachable(id):
-            col = Color(UiTheme.BONE, 0.75)
-        c.draw_line(a, b, col, lw, true)
-
-    # Core.
-    c.draw_circle(origin, CORE_R * z, CORE_FILL)
-    c.draw_arc(origin, CORE_R * z, 0.0, TAU, 64, Color(UiTheme.BONE, 0.6), lw, true)
-    if cull.has_point(origin):
-        var big := 32 if z >= 0.7 else 24
-        _draw_text(origin + Vector2(0, big * 0.3), str(Mastery.points), big, UiTheme.BONE, [])
-        if z >= 0.7:
-            _draw_text(origin + Vector2(0, big * 0.3 + 22), "pts", 20, UiTheme.DIM, [])
-
-    # Nodes.
-    for id in _ids:
-        var p := _to_screen(_pos[id])
-        if not cull.has_point(p):
-            continue
-        var r := _radius(id) * z
-        var st := _state(id)
-        var fill := _state_color(st)
-        c.draw_circle(p, r, fill)
-        c.draw_arc(p, r, 0.0, TAU, 32, Color(0, 0, 0, 0.6), maxf(1.0, 2.0 * z), true)
-        var is_root := str(Mastery.nodes[id]["parent"]) == ""
-        if is_root or _is_cap(id):
-            # Roots and capstones carry their branch's icon, greyed until reachable.
-            var bi: int = _branch_of[id]
-            var side := r * 1.5
-            if side >= 12.0:
-                var tint := Color.WHITE if st != St.LOCKED else Color(0.45, 0.42, 0.45)
-                Art.draw_icon(c, Mastery.branch_icon(String(_branch_names[bi])), Rect2(p - Vector2(side, side) * 0.5, Vector2(side, side)), tint)
-            elif is_root:
-                c.draw_circle(p, r * 0.4, _branch_color[bi] if _element_index(_branch_names[bi]) >= 0 else Color(0, 0, 0, 0.35))
-        if _is_cap(id):
-            c.draw_arc(p, r + 5.0 * z, 0.0, TAU, 40, fill, maxf(1.5, 2.5 * z), true)
-        if st == St.READY:
-            c.draw_arc(p, r + (4.0 + 3.0 * pulse) * z, 0.0, TAU, 40,
-                Color(UiTheme.BONE, 0.3 + 0.55 * pulse), maxf(1.5, 2.0 * z), true)
-        if id == _focus:
-            c.draw_arc(p, r + 10.0 * z, 0.0, TAU, 48, UiTheme.FOCUS, maxf(2.0, 3.0 * z), true)
-
-    # Text, highest priority first; a label that would overlap one already drawn is skipped.
-    var taken: Array = []
-    if _focus != "" and _pos.has(_focus):
-        var fp := _to_screen(_pos[_focus])
-        _draw_text(fp + Vector2(0, _radius(_focus) * z + 32), str(Mastery.nodes[_focus]["name"]), 24, Color.WHITE, taken)
-        for id in _links(_focus):
-            var np := _to_screen(_pos[id])
-            _draw_text(np + Vector2(0, _radius(id) * z + 26), str(Mastery.nodes[id]["name"]), 20, UiTheme.DIM, taken)
-    for bi in _roots.size():
-        if z < LABEL_MIN_ZOOM and bi != tab:
-            continue
-        var rad := _ring_r - BRANCH_LABEL_IN - (bi % 2) * BRANCH_LABEL_STAGGER
-        var lp := _to_screen(Vector2.from_angle(float(_branch_angle[bi])) * rad)
-        var px := 24 if bi == tab else 20
-        _draw_text(lp + Vector2(0, px * 0.35), str(_branch_names[bi]), px, _branch_color[bi], taken)
-
-
-## Pixel-font text centred on `at` (baseline), outlined for contrast. Skipped when it would
-## overlap a rectangle in `taken` (pass a shared array to enable that); off-canvas text is skipped.
-func _draw_text(at: Vector2, text: String, px: int, col: Color, taken: Array) -> void:
-    var w := Art.FONT.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, px).x
-    var rect := Rect2(at.x - w * 0.5 - 4.0, at.y - px * 0.8, w + 8.0, px * 1.0)
-    if not Rect2(Vector2.ZERO, _canvas.size).intersects(rect):
+func _draw_card(i: int) -> void:
+    if i >= _cards.size():
         return
-    for t in taken:
-        if (t as Rect2).intersects(rect):
-            return
-    taken.append(rect)
-    var pos := Vector2(at.x - w * 0.5, at.y)
-    _canvas.draw_string_outline(Art.FONT, pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, px, 6, TEXT_OUTLINE)
-    _canvas.draw_string(Art.FONT, pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, px, col)
+    var b := _cards[i]
+    var sid: String = _ids[i]
+    var sl := Mastery.slot(sid)
+    var r := Rect2(Vector2.ZERO, b.size)
+    var focused := b.has_focus()
+    var act := Mastery.active_side(sid)
+    b.draw_rect(r, CARD_BG)
+    var since := _time - float(_bought_at.get(i, -10.0))
+    if since < 0.6:
+        b.draw_rect(r, Color(LIT, 0.25 * (1.0 - since / 0.6)))
+    b.draw_rect(r, UiTheme.FOCUS if focused else Color(UiTheme.BONE, 0.22), false, 3.0 if focused else 2.0)
+    _str(b, Vector2(10, 20), String(sl["name"]).to_upper(), 20, UiTheme.BONE if focused else UiTheme.DIM, r.size.x - 20.0)
+    for k in ["a", "b"]:
+        _draw_row(b, sid, k, k == act, ROW_TOP + (0.0 if k == "a" else ROW_H + 4.0), r.size.x)
+    var rk := Mastery.rank(sid, act)
+    var line := Mastery.effect_text(sid, act, rk) if rk > 0 else "Not learned yet"
+    _str(b, Vector2(10, r.size.y - 6.0), line, 20, OWNED if rk > 0 else UiTheme.DIM, r.size.x - 20.0)
+
+
+func _draw_row(b: Control, sid: String, s: String, lit: bool, y: float, w: float) -> void:
+    var d := Mastery.side(sid, s)
+    var row := Rect2(6.0, y, w - 12.0, ROW_H)
+    var avail := Mastery.is_available(sid, s)
+    var rk := Mastery.rank(sid, s)
+    var m := Mastery.max_rank(sid, s)
+    if lit:
+        b.draw_rect(row, Color(LIT, 0.13))
+        b.draw_rect(Rect2(row.position, Vector2(4.0, ROW_H)), LIT)
+    var icon_rect := Rect2(row.position + Vector2(10.0, (ROW_H - ICON) / 2.0), Vector2(ICON, ICON))
+    var tint := Color.WHITE if avail and (lit or rk > 0) else Color(0.5, 0.47, 0.5, 0.8)
+    Art.draw_icon(b, Mastery.talent_icon(sid, s), icon_rect, tint)
+    var name_col := LIT if lit else (UiTheme.BONE if avail else LOCKED)
+    var right_w := 64.0
+    _str(b, Vector2(row.position.x + 50.0, y + 19.0), String(d["name"]), 20, name_col, row.size.x - 50.0 - right_w)
+    for p in m:
+        var pip := Rect2(row.position.x + 51.0 + p * 15.0, y + 25.0, 11.0, 8.0)
+        if p < rk:
+            b.draw_rect(pip, OWNED if lit else Color(OWNED, 0.55))
+        else:
+            b.draw_rect(pip, Color(UiTheme.DIM, 0.9), false, 1.5)
+    var tag := ""
+    var tag_col := UiTheme.DIM
+    if not avail:
+        tag = "locked"
+        tag_col = LOCKED
+    elif rk >= m:
+        tag = "MAX"
+        tag_col = OWNED
+    else:
+        var c := Mastery.next_cost(sid, s)
+        tag = str(c)
+        tag_col = Mastery.EMBER_COLOR if Mastery.embers >= c else Color(Mastery.EMBER_COLOR, 0.45)
+        if lit and Mastery.embers >= c:
+            var pulse := 0.5 + 0.5 * sin(_time * 4.0)
+            tag_col = Mastery.EMBER_COLOR.lerp(Color.WHITE, 0.35 * pulse)
+    var tw := Art.FONT.get_string_size(tag, HORIZONTAL_ALIGNMENT_LEFT, -1, 20).x
+    var tx := row.end.x - 8.0 - tw
+    if tag != "MAX" and tag != "locked":
+        Art.draw_icon(b, _ember_tex, Rect2(Vector2(tx - 20.0, y + 10.0), Vector2(18, 18)), Color(1, 1, 1, 0.9 if Mastery.embers >= int(tag) else 0.45))
+    _str(b, Vector2(tx, y + 25.0), tag, 20, tag_col, 0.0)
+
+
+func _draw_survival() -> void:
+    var b := _survival
+    var r := Rect2(Vector2.ZERO, b.size)
+    var focused := b.has_focus()
+    b.draw_rect(r, CARD_BG)
+    var since := _time - float(_bought_at.get(-1, -10.0))
+    if since < 0.6:
+        b.draw_rect(r, Color(LIT, 0.25 * (1.0 - since / 0.6)))
+    b.draw_rect(r, UiTheme.FOCUS if focused else Color(UiTheme.BONE, 0.22), false, 3.0 if focused else 2.0)
+    var rk := Mastery.survival
+    var m := Mastery.survival_max()
+    Art.draw_icon(b, Mastery.survival_icon(), Rect2(Vector2(12, (r.size.y - 44.0) / 2.0), Vector2(44, 44)), Color.WHITE if rk > 0 else Color(0.75, 0.7, 0.72))
+    _str(b, Vector2(68, 27), "SURVIVAL   LAST BREATH", 22, LIT if rk > 0 else UiTheme.BONE, 360.0)
+    _str(b, Vector2(68, 52), "Each rank: stand back up once per run at %d%% max HP." % roundi(Mastery.REVIVE_FRACTION * 100.0), 20, UiTheme.DIM, 560.0)
+    for p in m:
+        var pip := Rect2(Vector2(660.0 + p * 30.0, 22.0), Vector2(22, 22))
+        if p < rk:
+            b.draw_rect(pip, OWNED)
+        else:
+            b.draw_rect(pip, UiTheme.DIM, false, 2.0)
+        _str(b, Vector2(660.0 + p * 30.0, 60.0), str(int(Mastery.SURVIVAL["costs"][p])), 20, OWNED if p < rk else UiTheme.DIM, 0.0)
+    var c := Mastery.survival_next_cost()
+    var tag := "MAX" if c < 0 else str(c)
+    var tw := Art.FONT.get_string_size(tag, HORIZONTAL_ALIGNMENT_LEFT, -1, 24).x
+    var tx := r.size.x - 16.0 - tw
+    if c >= 0:
+        Art.draw_icon(b, _ember_tex, Rect2(Vector2(tx - 30.0, 20.0), Vector2(24, 24)), Color.WHITE if Mastery.embers >= c else Color(1, 1, 1, 0.45))
+    _str(b, Vector2(tx, 40.0), tag, 24, OWNED if c < 0 else (Mastery.EMBER_COLOR if Mastery.embers >= c else Color(Mastery.EMBER_COLOR, 0.45)), 0.0)
+
+
+## Pixel-font text at `at` (baseline), cut with "..." to `max_w` px when that is > 0.
+func _str(ci: CanvasItem, at: Vector2, text: String, px: int, col: Color, max_w: float) -> void:
+    var t := text
+    if max_w > 0.0 and Art.FONT.get_string_size(t, HORIZONTAL_ALIGNMENT_LEFT, -1, px).x > max_w:
+        while t.length() > 1 and Art.FONT.get_string_size(t + "...", HORIZONTAL_ALIGNMENT_LEFT, -1, px).x > max_w:
+            t = t.substr(0, t.length() - 1)
+        t = t.strip_edges() + "..."
+    ci.draw_string(Art.FONT, at, t, HORIZONTAL_ALIGNMENT_LEFT, -1, px, col)
 
 
 func _text(text: String, px: int, color: Color) -> Label:

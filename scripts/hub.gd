@@ -2,7 +2,7 @@ class_name Hub
 extends Node2D
 ## The hub (Enter the Gungeon's Breach): one dark room the player walks around between
 ## runs. Stations are plinths with a prompt: the Gate starts a run (class picker, then
-## main.tscn), the Armory opens the Journal, the Shrine the Mastery tree, the Mirror the
+## main.tscn), the Armory opens the Journal, the Shrine the talent board, the Mirror the
 ## names, the Workshop the options, the Ledger the run history, and the Trophy Wall along
 ## the top shows every achievement plus the next three goals. Esc / Start opens a small
 ## menu. Late pads join on Start like in a run.
@@ -18,7 +18,7 @@ const LIT := Color(1.0, 0.82, 0.35)
 const STATIONS := [
     { "id": "gate", "name": "THE GATE", "sub": "start a run", "pos": Vector2(0, 236), "tile": Vector2i(4, 10), "tint": Color(0.55, 1.0, 1.0), "verb": "descend", "style": "gate" },
     { "id": "armory", "name": "ARMORY", "sub": "guns and gear", "pos": Vector2(-420, -100), "tile": Vector2i(42, 9), "icon": "item/weapon/ranged/crossbow_2.png", "tint": Color(1.0, 0.6, 0.3), "verb": "browse", "style": "plinth" },
-    { "id": "shrine", "name": "SHRINE", "sub": "mastery", "pos": Vector2(-420, 150), "tile": Vector2i(28, 12), "icon": "gui/invocations/kiku_necronomicon.png", "tint": Color(0.8, 0.5, 1.0), "verb": "kneel", "style": "plinth" },
+    { "id": "shrine", "name": "SHRINE", "sub": "talents", "pos": Vector2(-420, 150), "tile": Vector2i(28, 12), "icon": "gui/invocations/kiku_necronomicon.png", "tint": Color(0.8, 0.5, 1.0), "verb": "kneel", "style": "plinth" },
     { "id": "mirror", "name": "MIRROR", "sub": "names", "pos": Vector2(420, -100), "tile": Vector2i(31, 0), "icon": "item/misc/mirror.png", "tint": Color(0.6, 0.85, 1.0), "verb": "look", "style": "plinth" },
     { "id": "workshop", "name": "WORKSHOP", "sub": "options", "pos": Vector2(420, 150), "tile": Vector2i(41, 5), "icon": "gui/spells/earth/maxwells_silver_hammer.png", "tint": Color(0.85, 0.8, 0.7), "verb": "tinker", "style": "plinth" },
     { "id": "ledger", "name": "LEDGER", "sub": "run history", "pos": Vector2(-230, 210), "tile": Vector2i(44, 6), "icon": "item/book/parchment_new.png", "tint": Color(0.95, 0.8, 0.5), "verb": "read", "style": "plinth" },
@@ -27,8 +27,8 @@ const STATIONS := [
 
 const EXPLAINER := [
     "A run is five floors. Each floor ends in a boss.",
-    "Dying keeps your achievements, unlocks and mastery.",
-    "Unlocks widen what a run can offer; mastery adds small permanent power.",
+    "Dying keeps your achievements, unlocks and Embers.",
+    "Runs pay Embers for rooms, elites and new reactions; the Shrine trades them for swappable talents.",
     "Classes only change how a run starts.",
 ]
 
@@ -476,6 +476,8 @@ func _fill_ledger() -> void:
         var won := bool(h.get("won", false))
         var unlocks: Array = h.get("unlocks", [])
         var line := "  Run %d    floor %d    %d kills    %s" % [i + 1, int(h.get("floor", 0)), int(h.get("kills", 0)), "CLEARED" if won else "fell"]
+        if h.has("embers"):
+            line += "    +%d Embers" % int(h["embers"])
         if not unlocks.is_empty():
             line += "    +%d unlock%s" % [unlocks.size(), "" if unlocks.size() == 1 else "s"]
         _ledger_body.add_child(_left(UiTheme.label(line, 22, Color(0.55, 1.0, 0.7) if won else UiTheme.BONE)))
@@ -484,11 +486,16 @@ func _fill_ledger() -> void:
         "  Runs %d    cleared %d    floors %d    bosses %d" % [Progress.stat("runs_started"), Progress.stat("runs_won"), Progress.stat("floors"), Progress.stat("bosses")],
         "  Kills %d    elites %d    reactions %d" % [Progress.stat("kills"), Progress.stat("elites"), Progress.stat("reactions")],
         "  Achievements %d / %d    guns %d / %d" % [Progress.achievements_count(), Progress.ACHIEVEMENTS.size(), Guns.ids().size(), Guns.all_ids().size()],
-        "  Mastery: %d points to spend, %d earned, %d / %d nodes" % [Mastery.points, Mastery.earned, Mastery.purchased_count(), Mastery.total_nodes()],
+        "  Embers: %d to spend at the Shrine, %d earned in all" % [Mastery.embers, Mastery.earned],
+        "  Shrine: %d / %d talent ranks, Last Breath %d / %d" % [Mastery.ranks_bought(), Mastery.ranks_total(), Mastery.survival, Mastery.survival_max()],
+        "  Embers by source: %s" % Mastery.earned_text(),
         "  Play data: %d runs kept on this device, sharing %s (Workshop options)" % [Telemetry.stored_count(), "on" if Telemetry.consent() == "on" else "off"],
     ]
     for t in totals:
-        _ledger_body.add_child(_left(UiTheme.label(t, 22, UiTheme.DIM)))
+        var l := _left(UiTheme.label(t, 22, UiTheme.DIM))
+        l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+        l.custom_minimum_size = Vector2(740, 0)
+        _ledger_body.add_child(l)
 
 
 func _left(l: Label) -> Label:

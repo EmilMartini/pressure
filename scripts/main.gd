@@ -91,26 +91,32 @@ func _ready() -> void:
         if _instance_tag() != "":
             Telemetry.FILE = "user://telemetry/runs%s.jsonl" % _instance_tag()
         Progress.reset()
-        # The bot never uses the player's real mastery tree: a throwaway file, empty unless
-        # --mastery=N or --mastery=full buys nodes on it.
+        # The bot never uses the player's real Shrine: a throwaway file, empty unless
+        # --mastery=N or --mastery=full buys ranks on it. Runs still pay Embers into it,
+        # so the [EMBERS] line measures income.
         Mastery.save_path = "user://mastery_autotest%s.json" % _instance_tag()
         Mastery.reset()
+        var probe_side := "a"
+        for a in args:
+            if a.begins_with("--mastery-side="):
+                probe_side = "b" if a.substr(15) == "b" else "a"
         for a in args:
             if a.begins_with("--mastery="):
-                # Balance probe: buy N mastery points' worth of nodes (or "full") on a
-                # throwaway mastery file, cheapest reachable first.
-                var budget := 100000 if a.substr(10) == "full" else int(a.substr(10))
-                Mastery.points = budget
-                var bought := 0
-                var progressed := true
-                while progressed:
-                    progressed = false
-                    for nid in Mastery.nodes.keys():
-                        if Mastery.can_buy(nid):
-                            Mastery.buy(nid)
-                            bought += 1
-                            progressed = true
-                print("[MASTERY] bought %d nodes" % bought)
+                # Balance probe. "full": every rank of both sides of every talent and the
+                # whole survival track, side A active (B with --mastery-side=b). "N":
+                # spend N Embers cheapest-first on the survival track and active sides.
+                var spec := a.substr(10)
+                var left := 0
+                if spec == "full":
+                    Mastery.debug_max_all(probe_side)
+                else:
+                    left = Mastery.debug_spend_greedy(int(spec), probe_side)
+                var power: Dictionary = Mastery.current_power()
+                var talents: Array = []
+                for t in Mastery.active_summary():
+                    talents.append("%s:%s%d" % [t["slot"], t["side"], int(t["rank"])])
+                print("[MASTERY] %s: spent %d, left %d, survival %d, talents %s, power dmg-eq +%.1f%% hp-eq +%.0f" % [
+                    spec, Mastery.spent(), left, Mastery.survival, " ".join(talents), float(power["dmg"]) * 100.0, float(power["hp"])])
         if args.has("--veteran"):
             for gid in Guns.all_ids():
                 Progress.unlocks["gun:" + gid] = true
@@ -319,13 +325,16 @@ func _on_unlocked(unlock_id: String, achievement_name: String) -> void:
 
 
 func _end_run(won: bool) -> void:
-    Telemetry.run_end(self, won)
-    Progress.end_run(won, floor_number, total_kills)
-    var mastery := get_node_or_null("/root/Mastery")
-    if mastery != null and not autotest:
-        var gained: int = mastery.award(floor_number, total_kills, won)
-        if gained > 0:
-            announce("+%d mastery points" % gained)
+    # Embers first, so telemetry and the history line can carry the payout. The bot pays
+    # into its throwaway Shrine file (see _ready).
+    var award: Dictionary = Mastery.award(floor_number, won, Progress.chosen_class)
+    var gained := int(award.get("total", 0))
+    Telemetry.run_end(self, won, award)
+    Progress.end_run(won, floor_number, total_kills, gained)
+    if gained > 0:
+        announce("+%d Embers" % gained)
+    if autotest:
+        print("[EMBERS] +%d (%s)  bank %d" % [gained, Mastery.award_text(award), Mastery.embers])
     Music.play("ambient", 2.5)
     if not autotest:
         get_tree().create_timer(1.6).timeout.connect(pause_menu.show_menu)
@@ -435,6 +444,7 @@ func start_floor(n: int) -> void:
             n, _clock, total_kills, scrap, players[0].hp, players[0].level, players[0].guns.size(), players[0].equipment.size()])
     Telemetry.floor_start(self)
     rooms = FloorGen.generate(n, party_luck(), players)
+    _scout_reveal()
     for p in players:
         p.pressure = 0.0
         if not p.alive:
@@ -443,6 +453,29 @@ func start_floor(n: int) -> void:
         p.hp = maxf(p.hp, p.max_hp * (0.6 if n <= 2 else 0.4))   # deeper stairs patch you up less
     enter_room(Vector2i(FloorGen.GRID / 2, FloorGen.GRID / 2), Vector2i.ZERO)
     announce("Floor %d" % n)
+
+
+## Shrine Scout talents: Cartographer shows the shop (1), treasure (2) and boss (3) rooms on
+## the map from the start of a floor; Dowser shows hidden rooms (1) and rooms holding a
+## puzzle or an alcove (2).
+func _scout_reveal() -> void:
+    var reveal := int(Mastery.bonus("reveal_rooms"))
+    var dowse := int(Mastery.bonus("reveal_secrets"))
+    if reveal <= 0 and dowse <= 0:
+        return
+    for r in rooms.values():
+        var rd: RoomData = r
+        match rd.type:
+            RoomData.Type.SHOP:
+                rd.discovered = rd.discovered or reveal >= 1
+            RoomData.Type.TREASURE:
+                rd.discovered = rd.discovered or reveal >= 2
+            RoomData.Type.BOSS:
+                rd.discovered = rd.discovered or reveal >= 3
+            RoomData.Type.HIDDEN:
+                rd.discovered = rd.discovered or dowse >= 1
+        if dowse >= 2 and (rd.secret != "" or rd.alcove):
+            rd.discovered = true
 
 
 ## Load the room at `pos`. `moved` is the direction the party travelled to get there,
@@ -502,6 +535,7 @@ func _on_door_entered(dir: Vector2i) -> void:
 
 func on_room_cleared(_room: Room) -> void:
     rooms_cleared += 1
+    Progress.add("rooms")
     floor_rooms_cleared += 1
     _update_spectacle()
     announce("Room cleared")
@@ -857,6 +891,9 @@ func _autotest_tick(delta: float) -> void:
         if a.begins_with("--secs="):
             limit = float(a.substr(7))
     if _clock >= limit or game_over or victory:
+        if not game_over and not victory:
+            var would: Dictionary = Mastery.preview(floor_number, false, Progress.chosen_class)
+            print("[EMBERS] time cap: a death here would pay +%d (%s)" % [int(would["total"]), Mastery.award_text(would)])
         _print_stats("END")
         get_tree().quit()
 
@@ -945,7 +982,7 @@ func _bot_wants(o: Dictionary, p: Player) -> bool:
         "carry":
             return o["price"] <= scrap and scrap > 120
         "gunsmith":
-            if o["price"] > scrap or scrap <= 120:
+            if o["price"] > scrap or (scrap <= 120 and o["price"] > 0):
                 return false
             for g in p.guns:
                 if g.tier < Gun.MAX_TIER:

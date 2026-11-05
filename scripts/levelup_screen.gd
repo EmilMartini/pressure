@@ -3,9 +3,13 @@ extends CanvasLayer
 ## Level-up overlay: pauses the run and offers one player three upgrade cards. Several
 ## level-ups (one player gaining two levels, or two players at once) queue up and are
 ## shown one after another. Keeps processing while the tree is paused.
+## Shrine talents: Wider Choice adds a fourth card (every other level-up at rank 1, every
+## level-up at rank 2); Second Thoughts gives rerolls of the offer (button, X, or R).
 
 const CARD_SIZE := Vector2(300, 340)
+const CARD_SIZE_FOUR := Vector2(250, 340)
 const CARD_GAP := 28
+const MAX_CARDS := 4
 const ICON_BOX := 120          # height of the icon area at the top of a card
 const GRACE := 0.35            # seconds before a pick is accepted, so mashing does not choose
 
@@ -24,8 +28,10 @@ var _card_cols: Array = []     # rarity colour per card (the frame)
 var _title: Label
 var _hint: Label
 var _prompt: Control
+var _reroll: Button
 var _pad := MenuPad.new()
 var _armed_in := 0.0
+var _x_was := false
 
 
 func _init(p_main) -> void:
@@ -60,23 +66,20 @@ func _ready() -> void:
     row.alignment = BoxContainer.ALIGNMENT_CENTER
     row.add_theme_constant_override("separation", CARD_GAP)
     v.add_child(row)
-    for i in 3:
+    for i in MAX_CARDS:
         _card_icons.append(Art.icon("", Vector2i(45, 16)))
         _card_tints.append(Color.WHITE)
         _card_cols.append(Items.RARITY_COLORS[0])
         var card := _make_card(i)
         row.add_child(card)
         _cards.append(card)
-    for i in 3:
-        var card := _cards[i]
-        var prev := _cards[wrapi(i - 1, 0, 3)]
-        var next := _cards[wrapi(i + 1, 0, 3)]
-        card.focus_neighbor_left = card.get_path_to(prev)
-        card.focus_neighbor_right = card.get_path_to(next)
-        card.focus_previous = card.get_path_to(prev)
-        card.focus_next = card.get_path_to(next)
-        card.focus_neighbor_top = card.get_path_to(card)
-        card.focus_neighbor_bottom = card.get_path_to(card)
+    var reroll_row := CenterContainer.new()
+    v.add_child(reroll_row)
+    _reroll = UiTheme.button("Reroll", _on_reroll)
+    _reroll.custom_minimum_size = Vector2(300, 48)
+    _reroll.visible = false
+    reroll_row.add_child(_reroll)
+    _link_cards(3)
     _prompt = Control.new()
     _prompt.custom_minimum_size = Vector2(0, 40)
     _prompt.draw.connect(_draw_prompt)
@@ -173,7 +176,32 @@ func _show_next() -> void:
     if _player == null:
         _close()
         return
-    _options = LevelUps.roll(_player, 3)
+    _player.levelups_shown += 1
+    _options = LevelUps.roll(_player, _card_count(_player))
+    _fill_cards()
+    _pad = MenuPad.new()
+    _pad.on_tab = _step
+    _armed_in = GRACE
+    if not visible:
+        visible = true
+        Sfx.play("ui_open")
+    get_tree().paused = true
+    var mid: int = mini(1, _options.size() - 1)
+    if mid >= 0:
+        _cards[mid].grab_focus()
+    _prompt.queue_redraw()
+
+
+## Three cards, or four with the Shrine's Wider Choice (rank 1: every other level-up).
+func _card_count(p) -> int:
+    var extra := int(Mastery.bonus("levelup_extra"))
+    if extra >= 2 or (extra == 1 and int(p.levelups_shown) % 2 == 1):
+        return 4
+    return 3
+
+
+## Fill the card widgets from `_options` and wire focus between the visible ones.
+func _fill_cards() -> void:
     var col: Color = _player.color
     _title.text = "%s  LEVEL %d" % [_player.display_name().to_upper(), _player.level]
     _title.add_theme_color_override("font_color", col)
@@ -199,17 +227,54 @@ func _show_next() -> void:
         _rarities[i].add_theme_color_override("font_color", rarity_col)
         _effects[i].text = LevelUps.describe(opt)
         _descs[i].text = opt["desc"]
-    _pad = MenuPad.new()
-    _pad.on_tab = _step
+    var card_size := CARD_SIZE_FOUR if _options.size() > 3 else CARD_SIZE
+    for i in _cards.size():
+        _cards[i].custom_minimum_size = card_size
+        _effects[i].custom_minimum_size = Vector2(card_size.x - 32, 0)
+        _descs[i].custom_minimum_size = Vector2(card_size.x - 32, 0)
+    var left := int(_player.levelup_rerolls)
+    _reroll.visible = left > 0
+    _reroll.text = "Reroll   %d left   (X / R)" % left
+    _link_cards(_options.size())
+
+
+## Left / right wrap over the `count` visible cards; down goes to the reroll button when
+## it is showing (MenuPad walks focus_next / focus_previous for up and down).
+func _link_cards(count: int) -> void:
+    count = maxi(1, mini(count, _cards.size()))
+    var reroll_on := _reroll != null and _reroll.visible
+    for i in count:
+        var card := _cards[i]
+        var prev := _cards[wrapi(i - 1, 0, count)]
+        var next := _cards[wrapi(i + 1, 0, count)]
+        var below: Control = _reroll if reroll_on else card
+        card.focus_neighbor_left = card.get_path_to(prev)
+        card.focus_neighbor_right = card.get_path_to(next)
+        card.focus_neighbor_top = card.get_path_to(card)
+        card.focus_neighbor_bottom = card.get_path_to(below)
+        card.focus_previous = card.get_path_to(card)
+        card.focus_next = card.get_path_to(below)
+    if _reroll != null:
+        var mid := _cards[mini(1, count - 1)]
+        _reroll.focus_neighbor_top = _reroll.get_path_to(mid)
+        _reroll.focus_previous = _reroll.get_path_to(mid)
+        _reroll.focus_neighbor_bottom = _reroll.get_path_to(_reroll)
+        _reroll.focus_next = _reroll.get_path_to(_reroll)
+        _reroll.focus_neighbor_left = _reroll.get_path_to(_reroll)
+        _reroll.focus_neighbor_right = _reroll.get_path_to(_reroll)
+
+
+## Second Thoughts: spend one reroll on a fresh offer of the same size.
+func _on_reroll() -> void:
+    if not visible or _player == null or not is_instance_valid(_player) or int(_player.levelup_rerolls) <= 0:
+        return
+    _player.levelup_rerolls -= 1
+    Telemetry.event("levelup_reroll", { "level": int(_player.level), "left": int(_player.levelup_rerolls) })
+    _options = LevelUps.roll(_player, _options.size())
+    _fill_cards()
     _armed_in = GRACE
-    if not visible:
-        visible = true
-        Sfx.play("ui_open")
-    get_tree().paused = true
-    var mid: int = mini(1, _options.size() - 1)
-    if mid >= 0:
-        _cards[mid].grab_focus()
-    _prompt.queue_redraw()
+    Sfx.play("ui_confirm")
+    _cards[mini(1, _options.size() - 1)].grab_focus()
 
 
 func _close() -> void:
@@ -258,7 +323,7 @@ func _process(delta: float) -> void:
     for c in _cards:
         c.queue_redraw()
     var focus := get_viewport().gui_get_focus_owner()
-    if focus != null and _cards.find(focus) < 0:
+    if focus != null and _cards.find(focus) < 0 and focus != _reroll:
         return   # another overlay (the pause menu) owns focus; leave the input to it
     if focus == null:
         # Focus was lost (a click on the backdrop, an overlay closing): back to a card.
@@ -271,11 +336,22 @@ func _process(delta: float) -> void:
     # Keyboard left/right moves through the cards' focus neighbours natively.
     # Polled even during the grace period so a held A only counts once it is re-pressed.
     _pad.poll(get_viewport(), delta)
+    var x_down := false
+    for d in Input.get_connected_joypads():
+        x_down = x_down or Input.is_joy_button_pressed(d, JOY_BUTTON_X)
+    if x_down and not _x_was and _armed_in <= 0.0:
+        _on_reroll()
+    _x_was = x_down
 
 
 func _input(event: InputEvent) -> void:
     # E (the keyboard's interact) confirms the focused card, matching the drawn prompt.
     if not visible or not event is InputEventKey or not event.pressed or event.echo:
+        return
+    if (event as InputEventKey).physical_keycode == KEY_R:
+        get_viewport().set_input_as_handled()
+        if _armed_in <= 0.0:
+            _on_reroll()
         return
     if (event as InputEventKey).physical_keycode != KEY_E:
         return

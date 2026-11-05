@@ -13,7 +13,6 @@ var _options: OptionsMenu
 var _options_center: CenterContainer
 var _options_closed_ms := -100000
 var _run_start_ms := 0
-var _mastery_start := 0
 var _journal: Journal
 var _journal_center: CenterContainer
 var _sheet: CharacterSheet
@@ -43,9 +42,6 @@ func _init(p_main: Main) -> void:
 
 
 func _ready() -> void:
-    var mastery := get_node_or_null("/root/Mastery")
-    if mastery != null:
-        _mastery_start = int(mastery.earned)
     var root := Control.new()
     root.set_anchors_preset(Control.PRESET_FULL_RECT)
     root.theme = UiTheme.make()
@@ -285,10 +281,16 @@ func _fill_report() -> void:
     _section("NEXT")
     for g in Hub.goal_rows(3):
         _report.add_child(Hub.goal_bar(g, 640.0))
-    var mastery := get_node_or_null("/root/Mastery")
-    if mastery != null:
-        var gained: int = int(mastery.earned) - _mastery_start
-        _line("Mastery +%d this run    %d to spend at the Shrine    %d earned in all" % [gained, int(mastery.points), int(mastery.earned)], Color(0.8, 0.6, 1.0), 20)
+    _section("EMBERS")
+    var award: Dictionary = Mastery.last_award
+    _line("+%d this run    %d to spend at the Shrine    %d earned in all" % [int(award.get("total", 0)), Mastery.embers, Mastery.earned], Mastery.EMBER_COLOR, 22)
+    _line(Mastery.award_text(award), UiTheme.BONE, 20)
+    var bounties: Array = award.get("bounties", [])
+    if not bounties.is_empty():
+        var kinds: Array = []
+        for k in bounties:
+            kinds.append(String(k).replace("_", " ").capitalize())
+        _line("First kill with this class: %s" % ", ".join(kinds), FANFARE, 20)
 
 
 func show_menu() -> void:

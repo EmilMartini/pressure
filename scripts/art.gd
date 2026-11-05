@@ -3,7 +3,7 @@ extends Node
 ## dark palette. Everything visual that is not element-coloured comes through here.
 ## Assets are CC0 by Kenney (kenney.nl); see assets/*/LICENSE_*.txt.
 ##
-## Icons: items, guns, level-up options, classes and mastery branches use the 32 px
+## Icons: items, guns, level-up options, classes and Shrine talents use the 32 px
 ## Dungeon Crawl Stone Soup tiles under ICON_ROOT (CC0, see assets/icons/CREDITS.txt).
 ## `icon(path)` loads one (cached; a missing path warns once and falls back to a 1-bit
 ## tile), `draw_icon` draws one crisply into any rect (integer upscale, smooth downscale),
@@ -462,7 +462,7 @@ func particle_for(effect_name: String) -> Texture2D:
 # --- Review sheet ------------------------------------------------------------------
 
 
-## Every icon the game shows for an item, gun, level-up option, class, mastery branch,
+## Every icon the game shows for an item, gun, level-up option, class, Shrine talent,
 ## empty slot and trophy, at 2x with its id, in labelled sections, saved as one PNG at
 ## `path` (like FigureGen.debug_sheet). A red frame marks a missing file (the 1-bit
 ## fallback is drawn instead), an orange frame an item without its own icon (slot icon).
@@ -496,10 +496,13 @@ static func debug_icon_sheet(path: String) -> Error:
         var cd: Dictionary = c
         class_rows.append([String(cd["id"]), Classes.icon_path(cd), Color.WHITE, false])
     sections.append(["CLASSES", class_rows])
-    var branch_rows: Array = []
-    for b in Mastery.branches():
-        branch_rows.append([String(b), Mastery.branch_icon_path(String(b)), Color.WHITE, false])
-    sections.append(["MASTERY BRANCHES", branch_rows])
+    var talent_rows: Array = []
+    for sl in Mastery.slots():
+        for s in ["a", "b"]:
+            talent_rows.append([String(sl[s]["id"]), Mastery.talent_icon_path(String(sl["id"]), s), Color.WHITE, false])
+    talent_rows.append([String(Mastery.SURVIVAL["id"]), String(Mastery.SURVIVAL["icon"]), Color.WHITE, false])
+    talent_rows.append(["embers", Mastery.EMBER_ICON, Color.WHITE, false])
+    sections.append(["SHRINE TALENTS", talent_rows])
     var trophy_rows: Array = []
     for a in Progress.ACHIEVEMENTS:
         var ad: Dictionary = a

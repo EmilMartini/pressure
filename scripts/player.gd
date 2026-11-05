@@ -59,8 +59,13 @@ var _anim_t := 0.0
 var _recoil := Vector2.ZERO
 var _squash := 0.0
 var _mastery: Node = null
+var revives_left := 0             # Shrine's Last Breath charges left this run
+var levelup_rerolls := 0          # Shrine's Second Thoughts rerolls left this run
+var levelups_shown := 0           # level-up offers seen this run (Wider Choice alternates)
 var _squash_scale := 2.0
 var _costume: Node2D              # front costume layer, drawn over the body sprite
+var _pool: Node2D = null          # additive light pool at the feet (see _make_pool)
+var _crowd := 0.0                 # 0..1: enemies pressing round, shows the crisp feet ring
 var _orbit_angle := 0.0
 var _orbit_hits: Dictionary = {}  # enemy instance id -> msec when an orbital may hit it again
 var _floor_t := 0.0               # next floor-material check
@@ -99,6 +104,9 @@ func _ready() -> void:
     _costume.draw.connect(_draw_costume)
     add_child(_costume)
     _mastery = get_node_or_null("/root/Mastery")
+    if _mastery != null:
+        revives_left = int(_mastery.revives())
+        levelup_rerolls = int(_mastery.bonus("levelup_rerolls"))
 
 
 func main() -> Main:
@@ -171,6 +179,7 @@ func add_gun(id: String) -> bool:
     guns.append(gun)
     _layout_guns()
     say("Picked up %s" % data.display_name)
+    Sfx.pickup("pickup_gun", self)
     return true
 
 
@@ -273,6 +282,7 @@ func equip(id: String) -> String:
         if slot == "active":
             active_charges = Items.active_max_charges(self)
         say("Equipped %s" % item["name"])
+        Sfx.item_pickup(int(item.get("rarity", 0)), self)
     recalc_stats()
     return old
 
@@ -307,12 +317,12 @@ func recalc_stats() -> void:
     weight_capacity = weight_capacity_base + int(stat("carry"))
 
 
-## Summed modifier for a key: gear, set bonuses, level-ups, mastery, and conditional
-## gear modifiers that currently hold.
+## Summed modifier for a key: gear, set bonuses, level-ups, Shrine talents (their
+## conditional ones too), and conditional gear modifiers that currently hold.
 func stat(key: String) -> float:
     var v := float(_stats.get(key, 0.0)) + float(bonus_stats.get(key, 0.0))
     if _mastery != null:
-        v += _mastery.bonus(key)
+        v += _mastery.bonus(key) + _mastery.cond_bonus(key, self)
     for id in equipment.values():
         var cm: Dictionary = Items.get_item(id).get("cond_mods", {})
         for cond in cm.keys():
@@ -336,7 +346,7 @@ func gain_xp(amount: float) -> void:
         xp -= xp_to_next()
         level += 1
         say("Level %d" % level)
-        Sfx.play("unlock")
+        Sfx.play("level_up")
         leveled_up.emit(self)
 
 
@@ -441,7 +451,9 @@ func take_damage(amount: float, attacker: Node2D = null) -> void:
     if thorns > 0.0 and attacker != null and is_instance_valid(attacker) and attacker is Enemy:
         attacker.take_damage(thorns, Color.WHITE, true, self)
     Items.fire(self, "hurt", { "pos": global_position, "target": attacker })
-    if hp <= 0.0:
+    if hp <= 0.0 and revives_left > 0:
+        _last_breath()
+    elif hp <= 0.0:
         hp = 0.0
         alive = false
         remove_from_group("players")
@@ -449,6 +461,20 @@ func take_damage(amount: float, attacker: Node2D = null) -> void:
         Sfx.play("down")
         died.emit(self)
     queue_redraw()
+
+
+## The Shrine's survival track: stand back up at a quarter of max HP, briefly untouchable.
+func _last_breath() -> void:
+    revives_left -= 1
+    hp = maxf(1.0, max_hp * Mastery.REVIVE_FRACTION)
+    invuln = Mastery.REVIVE_INVULN
+    _squash = 1.0
+    say("Last Breath" if revives_left <= 0 else "Last Breath (%d left)" % revives_left)
+    Sfx.play("revive")
+    var scene := get_tree().current_scene
+    if scene != null and scene.has_method("flash"):
+        scene.flash(Color(1.0, 0.6, 0.25), 0.45, 0.5)
+    Telemetry.event("revive", { "player": index, "left": revives_left, "hp": snappedf(hp, 0.1) })
 
 
 func display_name() -> String:
@@ -622,8 +648,13 @@ func _draw() -> void:
     if frames.size() > 1 and velocity.length() > 20.0:
         fi = int(floorf(_anim_t / PI)) % 2
     _sprite.texture = frames[fi]
-    var body := Color.WHITE
+    # A touch brighter than white: the player outshines the enemies' tinted sprites.
+    var body := Color(1.1, 1.1, 1.1)
     var glow: Color = form["color"]
+    if _pool == null:
+        _make_pool.call_deferred()   # not while drawing
+    else:
+        _pool.visible = alive
     if not alive:
         _sprite.modulate = Color(0.35, 0.3, 0.3, 0.7)
         return
@@ -645,13 +676,67 @@ func _draw() -> void:
     if absf(aim_dir.x) > 0.05:
         _sprite.flip_h = aim_dir.x < 0.0
     draw_circle(Vector2(0, radius * 0.7), radius * 0.9, Color(0, 0, 0, 0.35))
+    # A faint ring in the player's colour round the feet (over the light pool, see
+    # _make_pool): where you stand reads at a glance, and in co-op whose figure is whose.
+    var ring := PackedVector2Array()
+    for s in 25:
+        var a := TAU * float(s) / 24.0
+        ring.append(Vector2(cos(a) * 15.0, radius * 0.8 + sin(a) * 6.5))
+    draw_polyline(ring, Color(color, 0.5 * body.a), 2.4)
     # Back layer (form and item auras, ring sparkles, the active item) under the body.
     Items.draw_costume(self, self, _sprite.position, 2.0, _facing(), false)
+    # A 1 px rim in the player's colour just outside the figure's dark outline
+    # (FigureGen.rim), drawn under the body sprite with its exact transform.
+    var rim := FigureGen.rim(frames[fi])
+    if rim != null:
+        var sx := _sprite.scale.x * (-1.0 if _sprite.flip_h else 1.0)
+        draw_set_transform(_sprite.position, _sprite.rotation, Vector2(sx, _sprite.scale.y))
+        draw_texture(rim, -rim.get_size() / 2.0, Color(color.lightened(0.15), 0.92 * body.a))
+        draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+
+## The light pool under the player: a soft additive glow in the player's colour on the
+## floor, behind everything the player draws. Made on the first draw.
+func _make_pool() -> void:
+    if _pool != null:
+        return
+    _pool = Node2D.new()
+    _pool.name = "LightPool"
+    _pool.show_behind_parent = true
+    var m := CanvasItemMaterial.new()
+    m.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
+    _pool.material = m
+    _pool.position = Vector2(0, radius * 0.8)
+    _pool.draw.connect(func() -> void:
+        _pool.draw_set_transform(Vector2.ZERO, 0.0, Vector2(1.0, 0.5))
+        _pool.draw_texture_rect(Art.PARTICLES["light"], Rect2(-44, -44, 88, 88), false, Color(color, 0.36))
+        _pool.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE))
+    add_child(_pool)
 
 
 ## The player number over the head, sharp above the pixel grid (Crisp layer).
+## When enemies press round (three or more touching distance), a thin ring at the feet
+## fades in on the crisp layer too, above particles and the pixel grid, so the player is
+## never lost in a crowd.
 func _draw_crisp(cv: CanvasItem) -> void:
+    cv.draw_string(Art.FONT, Vector2(-19, -radius - 7), str(index + 1), HORIZONTAL_ALIGNMENT_CENTER, 40, 16, Color(0, 0, 0, 0.7))
     cv.draw_string(Art.FONT, Vector2(-20, -radius - 8), str(index + 1), HORIZONTAL_ALIGNMENT_CENTER, 40, 16, color)
+    var near := 0
+    if alive and is_inside_tree():
+        for e in get_tree().get_nodes_in_group("enemies"):
+            var en := e as Node2D
+            if en != null and en.global_position.distance_squared_to(global_position) < 46.0 * 46.0:
+                near += 1
+                if near >= 3:
+                    break
+    _crowd = move_toward(_crowd, 1.0 if near >= 3 else 0.0, 0.08)
+    if _crowd > 0.01:
+        var pts := PackedVector2Array()
+        for s in 25:
+            var a := TAU * float(s) / 24.0
+            pts.append(Vector2(cos(a) * 17.0, radius * 0.8 + sin(a) * 7.5))
+        cv.draw_polyline(pts, Color(0, 0, 0, 0.5 * _crowd), 3.0)
+        cv.draw_polyline(pts, Color(color.lightened(0.2), 0.85 * _crowd), 1.5)
 
 
 func _facing() -> float:

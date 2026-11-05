@@ -82,16 +82,46 @@ Three tabs, from the main menu or the pause menu:
 Player 1 is keyboard + mouse and the first controller, merged. Every other
 controller joins as a new player by pressing Start.
 
-## Levels, mastery and reactions that chain
+## Levels, the Shrine and reactions that chain
 
 Kills give XP. Each level, once the room is clear, you pick one of three upgrades
 (damage, attack speed, crit, bounces, pierce, health, armour, speed, scrap, pressure and
-so on; the catalog is `scripts/levelup.gd`). Runs also earn **mastery points** (one per
-floor reached, one per 150 kills, three for a win) spent in the Mastery tree from the main
-menu: 212 small permanent nodes across offense, defense, pressure, economy, utility and
-every element, drawn as a node graph around a core. Stick or d-pad walks the graph, A
-buys, right stick pans, triggers zoom, shoulders switch branch; the mouse drags, wheels
-and clicks. Wipe save clears both.
+so on; the catalog is `scripts/levelup.gd`).
+
+Runs also pay **Embers**, for how well you played rather than only how deep you got:
+1 per room cleared, 2 per elite, 3 per reaction you fire for the first time ever, 3 per
+boss kill, a 12 Ember bounty the first time a boss kind dies to a class, 2 per floor
+reached beyond the first, 10 for clearing the dungeon. A floor-1 death that cleared one
+room pays 1; one that cleared five rooms, killed two elites and found two new reactions
+pays 15 (the old mastery formula paid both 1 point).
+
+Embers are spent at the hub's **Shrine** (`scripts/mastery.gd`, Hades' Mirror of Night
+in shape). Eleven slots, each an exclusive pair: side A or side B is active, switching is
+free, each side has 2 or 3 ranks, and **Refund all** gives every Ember back:
+
+| Slot | Side A | Side B |
+|---|---|---|
+| Sights | Long Barrel: +4% range per rank (3) | Hot Load: +5% shot speed per rank (3) |
+| Catalyst | Catalyst: +1.5% potency per rank (3) | Lingering Touch: +4% element duration per rank (3) |
+| Nerve | Thick Skin: +4 max HP per rank (3) | High Confidence: +1.5% damage at 80%+ HP per rank (3) |
+| Vent | Reinforced Tank: +4 vent capacity per rank (3) | Hard Vent: +4% vent power per rank (3) |
+| Footwork | Light Feet: +2% move speed per rank (3) | Sidestep: +1% dodge per rank (2) |
+| Salvage | Salvager: +4% scrap per rank (3) | Second Thoughts: 1 level-up reroll per run per rank (3) |
+| Fortune | Lucky Coin: +4% luck per rank (3) | Wider Choice: a 4th level-up card, every other level-up, then every one (2) |
+| Pack | Deep Pockets: +1 carry per rank (2) | Heirloom: the gunsmith is free on floor 1, then floors 1-2 (2) |
+| Scout | Cartographer: shop, then treasure, then boss on the map (3) | Dowser: hidden rooms, then puzzle rooms on the map (2) |
+| Bite | Rime (needs an ice gun): +3% ice fire rate, +2% ice potency (2) | Etch (needs an acid gun): +3% acid damage, +2% acid potency (2) |
+| Twilight | Halo (needs a holy gun): +3% holy damage, +2% holy potency (2) | Hollow (needs a void gun): +3% void fire rate, +2% void potency (2) |
+
+Below the slots, **Last Breath** is the survival track: each of its 3 ranks is one revive
+per run at 25% max HP with 2 s of invulnerability, costing 3, 50 and 100 Embers (Hades'
+Death Defiance at 30 / 500 / 1,000 Darkness, scaled by a room = 1 Ember). Everything
+together costs 928 Embers. At most the board adds about +10% damage-equivalent and +15
+HP-equivalent (the old 212-node tree gave +21% damage, +12% fire rate, +32 max HP and 6
+armour); see GDD.md section 4 and `reports/Roguelite meta progression analysis.md` for
+the numbers behind every value. Pad: d-pad moves, A buys, X switches side; keyboard:
+arrows, Enter / E, Tab / Q; mouse: click the lit row to buy, the other row to switch.
+Old saves convert every mastery point ever earned into 8 Embers. Wipe save clears both.
 
 Levels follow Brotato's shape: a quadratic XP curve and small upgrades (+4% damage, +8
 health) so a floor gives a few levels and power comes from stacking many picks.
@@ -106,11 +136,15 @@ does the same.
 ## Progression
 
 Runs start naked: no guns, no gear. The entrance offers each player a pick of two random
-unlocked guns. Achievements (50 kills, 20 Chain
-Lightnings, a boss kill, a hidden room opened, ...) add guns, obstacle kinds, the
-challenge room and a fourth shop slot to the pool future runs draw from. Progress is
-saved to `user://save.json`; the run-end screen shows what you unlocked and what is next.
-The self-test uses its own save file and never touches yours.
+unlocked guns. Achievements add guns, classes, obstacle kinds, the challenge room and
+shop upgrades to the pool future runs draw from. The first ten teach the basics and hand
+out one new element per run, Risk of Rain 2 style, so every element is in the pool by
+about run 5: discover 3 reactions (ice), vent 10 times (acid), start 2 runs, clear 5
+rooms (poison), discover 6 reactions (gale), kill 3 elites (blood), start 3 runs (stone),
+fire 250 reactions (void), start 5 runs (holy). Class unlocks ask for 15 to 40 of their
+signature reaction instead of 60 to 90. Progress is saved to `user://save.json`; the
+run-end screen shows what you unlocked, the Embers earned and what is next. The
+self-test uses its own save file and never touches yours.
 
 ## HUD
 
@@ -188,13 +222,15 @@ HUD and effect engine pick it up with no other change.
 
 The game starts in a hub room (Enter the Gungeon's Breach): walk to a station and press
 A or E. The Gate starts a run (pick a class first), the Armory is the Journal, the Shrine
-the Mastery tree, the Mirror sets names, the Workshop opens Options, the Ledger shows
+the talent board, the Mirror sets names, the Workshop opens Options, the Ledger shows
 your last runs and totals, and the Trophy Wall lights one tile per achievement with the
 next three goals under it. The first time you play, a short tutorial room runs before the
 hub (replayable from the hub's Esc menu). A one-time explainer card states the loop:
-runs are five floors ending in bosses; dying keeps achievements, unlocks and mastery;
-unlocks widen the pool, mastery adds small permanent power; classes change the start
-only. The run-over screen reports this run, what you unlocked and the next goals.
+runs are five floors ending in bosses; dying keeps achievements, unlocks and Embers;
+runs pay Embers for rooms, elites and new reactions, and the Shrine trades them for
+swappable talents; classes change the start only. The run-over screen reports this run,
+what you unlocked, the Embers earned with their breakdown and the next goals; the Ledger
+keeps the Embers per run and the lifetime total by source.
 
 Options (saved to `user://settings.json`): master, music and sound volume, fullscreen,
 vsync, screen shake, hit-stop, damage numbers, post-processing, CRT and its intensity,
@@ -242,8 +278,13 @@ Anonymous, opt-in play data for balancing (`scripts/telemetry.gd`, autoload `Tel
   `prop:<kind>`), damage dealt per room by gun, element and reaction, elites and bosses,
   shop views, purchases, rerolls and skipped offers, level-up / gun / treasure picks,
   equips, drops, combines, vents, actives, prop reactions, death (killer, last 10 health
-  samples), run end, frame rate every 10 s (with enemy and particle counts). Outside runs:
-  tutorial steps, completion or skip step, and settings changes. No names, addresses or
+  samples), run end, frame rate every 10 s (with enemy and particle counts). `run_start`
+  carries the Shrine loadout (`talents`: slot, side, talent id and rank of every active
+  side with a rank; `survival`: Last Breath ranks; `embers_spent`, `embers_bank`);
+  `run_end` carries the payout (`embers`, `embers_parts` and `embers_counts` per source,
+  `bounties`, `discoveries`); `revive` and `levelup_reroll` mark Shrine effects in a run.
+  Outside runs: tutorial steps, completion or skip step, settings changes and Shrine
+  purchases, side switches and refunds. No names, addresses or
   typed text. Bot runs (`--autotest`) are stored with `bot: true` and never uploaded.
 - **Where.** `user://telemetry/runs.jsonl`, one JSON line per run (a partial is written at
   every floor so a crash keeps data; the file stays under 5 MB by dropping the oldest
@@ -328,6 +369,37 @@ congusbongus, ansimuz; see `assets/music/CREDITS.txt`) in shuffle bags per mood 
 menu, run, boss, ambient) that never repeat the last track, crossfade before a track ends,
 lean toward later tracks on deeper floors, and open a low-pass as a fight heats up.
 
+## Audio
+
+About 200 sound files (3.3 MB of Ogg Vorbis in `assets/audio/`), all CC0, layered and
+levelled from Kenney's audio packs (Impact, Sci-fi, RPG Audio, Digital Audio, Interface)
+and OpenGameArt packs by rubberduck, jaggedstone, bart, artisticdude, ogrebane, qubodup and
+others; every source with its URL is in `assets/audio/CREDITS.txt`. The `Sfx` autoload
+(`scripts/sfx.gd`) owns it all:
+
+- **Shots**: a voice per element (fire whoosh, wet splash, shock zap, ice crystal, oil
+  glug, poison bubble, acid sizzle, blood slap, void reversed whoomp, holy chime, gale
+  swish, stone knock), four variants each with pitch and volume wobble.
+- **Reactions**: composed from the two elements' layers plus a burst weighted by the
+  reaction's size (small, medium, large from its damage and area); Steam, Chain
+  Lightning, Deep Freeze, Inferno, Ignition, both vents (Fire / Frost Nova), shield
+  crack / break / restore, Path opened and the elite sting have dedicated sounds.
+- **Impacts and deaths**: flesh, armour (wardens, elites) and attuned shields; props by
+  material (wood, barrel, stone, crystal, metal, water) and walls; enemy deaths by size
+  class, elite deaths, boss roar, phase change (re-shield) and death.
+- **Player**: hurt, down, Last Breath revive, level-up, gun pickup, item pickup by rarity
+  (richer as it gets rarer), active item, a low-health heartbeat under 30% HP.
+- **World**: footsteps per floor theme (stone, moss and wet, snow, ash, glassy void),
+  ceiling drips, and a looping ambient bed per theme (crypt wind and drips, ruins swamp,
+  insects and water, frozen howling wind, forge rumble and fire, void drone, sanctum hum
+  and torches) that crossfades on a new floor and sits lower while enemies are up.
+- **Mix**: world sounds play on positional players (pan with the camera, fade over about
+  a screen) on a `World` bus with a light per-theme reverb; the beds on `Ambience`; both
+  send into `Sfx`, so the sound slider covers them. Per-name rate limits, voice caps per
+  name and per family, and a small dip for rapid repeats keep stacking under control,
+  with the compressor and limiter on Master as the backstop. Boss deaths, roars, unlock
+  fanfares, secret chimes and other big moments briefly duck the music and the bed.
+
 ## Damage numbers
 
 Every hit prints its damage over the target: element-coloured for bullets and
@@ -343,7 +415,11 @@ godot --path . res://scenes/main.tscn -- --autotest
 
 Add `--short` after `--autotest` for a 70-second run, `--secs=N` for any length, and
 `--arsenal` to start with every gun (a stress test; the default is a real naked start
-that measures the progression loop). The log prints `[FLOOR]` and `[DEATH]` lines. `godot --path . -- --menu-shot`
+that measures the progression loop). `--mastery=full` buys every Shrine rank and the whole
+survival track (side A active, `--mastery-side=b` for B); `--mastery=N` spends N Embers
+cheapest-first. Both use a throwaway Shrine file and print a `[MASTERY]` line with the
+loadout and its power estimate. The log prints `[FLOOR]`, `[DEATH]` and `[EMBERS]` lines
+(what the run paid, or would have paid when the time cap ended it). `godot --path . -- --menu-shot`
 screenshots the menu and codex. `godot --headless --path . res://scenes/main.tscn -- --obstacle-test`
 checks projectiles hit obstacles. `godot --path . res://scenes/main.tscn -- --themes-shot` saves
 one arena per floor theme (crypt, ruins, frozen, forge, void, ambience running 2 s) and the
@@ -389,13 +465,12 @@ All art is from Kenney (kenney.nl), CC0, no generative art:
   both of its elements' signatures plus accents for what it does; the ring is only a
   thin outline of a burst radius. Nothing opaque ever covers the fight.
 - **Dungeon Crawl Stone Soup tiles** (`assets/icons/`, CC0, see its CREDITS.txt): the
-  32 px icons for every item, gun, level-up, class, mastery branch and trophy, chosen by
+  32 px icons for every item, gun, level-up, class, Shrine talent and trophy, chosen by
   hand per item (`Art.icon`, `Items.icon`, `Art.gun_icon`, `LevelUps.icon`). The world
   stays in Kenney's one-bit style; `Art.debug_icon_sheet(path)` renders every mapping.
 - **Kenney Fonts** (`assets/fonts/`): Kenney Pixel for the HUD and world text.
-- **Kenney audio** (`assets/audio/`): a curated set from Sci-fi Sounds, Impact Sounds,
-  Interface Sounds and RPG Audio, renamed to what they do in the game. The `Sfx` autoload
-  maps names to files, picks variants, wobbles pitch and rate-limits repeats.
+- **Sound** (`assets/audio/`, CC0): Kenney audio packs and OpenGameArt CC0 packs, see
+  the Audio section above and `assets/audio/CREDITS.txt`.
 
 To change which sprite something uses, edit the coordinates in `scripts/art.gd`
 (column, row on the packed sheet, 16px tiles).
@@ -434,12 +509,13 @@ scripts/
   gun_pick_screen.gd pick which gun a mod goes on
   hud.gd             floor/room status, boss bar, minimap, player panels, help, banners
   art.gd             autoload `Art`: sheet lookups, particle textures, fonts, palette
-  sfx.gd             autoload `Sfx`: one-shot sounds by name
+  sfx.gd             autoload `Sfx`: sounds by name, positional voices, reactions,
+                     footsteps, heartbeat, ambient beds, ducking
   menu.gd            main menu (scenes/menu.tscn is the start scene), names screen
   pause_menu.gd      pause overlay, also the run-over screen
   journal.gd         achievements / arsenal / gear / reactions journal used by both menus
   levelup.gd         level-up upgrade catalog;  levelup_screen.gd  the pick-one-of-three overlay
-  mastery.gd         autoload `Mastery`: the permanent skill tree and its save;  mastery_screen.gd
+  mastery.gd         autoload `Mastery`: the Shrine's talents, Last Breath, Embers and their save;  mastery_screen.gd
   cloud.gd           lingering element patches that react with what enters them
   prompts.gd         Xbox-style button and key-cap drawing
   post_fx.gd         bloom, grading and CRT post-process

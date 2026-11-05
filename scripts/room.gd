@@ -62,6 +62,7 @@ var _flow := PackedInt32Array()
 var _flow_t := 0.0
 var _goal_cache: Dictionary = {}   # goal cell -> [msec, PackedInt32Array]
 var _alcove_inner := Rect2()
+var _styles := PackedByteArray()     # RoomLayouts S_* per cell (rubble edges are softer)
 var theme := "crypt"                 # Themes key for this floor (the look and the ambience)
 var ambience: Ambience = null
 
@@ -495,6 +496,8 @@ func _on_enemy_died(e: Enemy) -> void:
     Progress.add("kills")
     if e.kind_name == "boss":
         Progress.add("bosses")
+        if e.boss_kind != "":
+            Progress.add("boss:" + e.boss_kind)   # the Shrine's first-kill bounties
     elif e.is_elite:
         Progress.add("elites")
     if e.last_hit_by != null and is_instance_valid(e.last_hit_by):
@@ -576,6 +579,7 @@ func _on_obstacle_cleared(dir: Vector2i) -> void:
     if was_secret:
         Telemetry.event("hidden_room_found", { "floor": main.floor_number })
         call_deferred("_add_door_cap", dir)
+        _redraw_layout()
     _apply_doors()
 
 
@@ -1217,12 +1221,12 @@ func _build_layout() -> void:
     over.name = "LayoutOver"
     over.z_index = -1
     add_child(over)
+    _styles = plan.style
 
     # Walls and pillars: the same bricks as the outer walls; rubble: loose stone.
     for st in [RoomLayouts.S_WALL, RoomLayouts.S_PILLAR, RoomLayouts.S_RUBBLE]:
         for r in RoomLayouts.rects_of(cells, nav_w, nav_h, RoomLayouts.WALL, plan.style, st):
             var wr := _cell_rect(r)
-            over.shadows.append(wr)
             if st == RoomLayouts.S_RUBBLE:
                 _rubble(wr)
             else:
@@ -1299,6 +1303,14 @@ func _build_layout() -> void:
         sw.cleared.connect(_on_alcove_opened)
         reserve(_alcove_inner.get_center(), 110.0)
 
+    # Lit tops, bevels and outlines of everything solid, over the wall tiles and over a
+    # secret wall (z 0, added after it) so a secret front gets exactly the same edges.
+    var edges := LayoutLayer.new()
+    edges.room = self
+    edges.mode = 2
+    edges.name = "LayoutEdges"
+    add_child(edges)
+
 
 func _cell_rect(r: Rect2i) -> Rect2:
     return Rect2(rect.position + Vector2(r.position) * NAV, Vector2(r.size) * NAV)
@@ -1360,6 +1372,7 @@ func _on_alcove_opened() -> void:
     data.alcove_open = true
     _open_alcove_cells()
     _recount_blockers()
+    _redraw_layout()
     Secrets.record("alcove", main.floor_number)
     if data.alcove_paid:
         return
@@ -1645,22 +1658,21 @@ func path_dir(from: Vector2, to: Vector2) -> Vector2:
     return d if d != Vector2.ZERO else direct
 
 
-## Drawing for the layout: mode 0 under the floor materials (deep pool basins), mode 1
-## over them (chasms, wall shadows).
+## Drawing for the layout (see Themes for the value ladder): mode 0 under the floor
+## materials (deep pools, grass beds), mode 1 over them and under the wall tiles (chasms,
+## drop shadows, the outline where the outer walls meet the floor), mode 2 over the wall
+## tiles and secret walls (lit tops, bevels and outlines of interior walls, pillars,
+## rubble and an alcove front; the lit top of the bottom wall).
 class LayoutLayer extends Node2D:
     var room: Room
     var mode := 0
-    var shadows: Array[Rect2] = []
     func _draw() -> void:
-        room._draw_layout(self, mode, shadows)
+        room._draw_layout(self, mode)
 
 
-func _draw_layout(cv: Node2D, mode: int, shadows: Array[Rect2]) -> void:
+func _draw_layout(cv: Node2D, mode: int) -> void:
     var cs := NAV
     var td := Themes.def(theme)
-    var lip: Color = td["lip"]
-    var water_list: Array = [[String(td["water"][0]), 1.0], [String(td["water"][1]), 1.0]]
-    var water_tint: Color = td["water_tint"]
     var tx := Themes.texel(_zoom())
     for i in cells.size():
         var cx := i % nav_w
@@ -1669,43 +1681,91 @@ func _draw_layout(cv: Node2D, mode: int, shadows: Array[Rect2]) -> void:
         if mode == 0:
             if terrain[i] == RoomLayouts.T_GRASS:
                 cv.draw_rect(Rect2(p, Vector2(cs, cs)), Color(0.40, 0.34, 0.16, 0.22))
-                continue
-            if terrain[i] != RoomLayouts.T_DEEP:
-                continue
-            # The pool itself (its still water is not drawn by the Materials grid): the
-            # theme's deep-water tiles on the world grid, a stone lip along the top edge.
-            cv.draw_rect(Rect2(p, Vector2(cs, cs)), Color(0.04, 0.08, 0.16))
-            Themes.draw_tiles(cv, water_list, Rect2(p, Vector2(cs, cs)), cv.global_position, tx, 9001, water_tint)
-            if not _terrain_is(cx, cy - 1, RoomLayouts.T_DEEP):
-                cv.draw_rect(Rect2(p, Vector2(cs, 3)), lip)
-                cv.draw_rect(Rect2(p + Vector2(0, 3), Vector2(cs, 3)), Color(0.04, 0.09, 0.20))
-            if not _terrain_is(cx, cy + 1, RoomLayouts.T_DEEP):
-                cv.draw_rect(Rect2(p + Vector2(0, cs - 2), Vector2(cs, 2)), Color(0.14, 0.18, 0.24))
-            if not _terrain_is(cx - 1, cy, RoomLayouts.T_DEEP):
-                cv.draw_rect(Rect2(p, Vector2(2, cs)), Color(0.16, 0.21, 0.28))
-            if not _terrain_is(cx + 1, cy, RoomLayouts.T_DEEP):
-                cv.draw_rect(Rect2(p + Vector2(cs - 2, 0), Vector2(2, cs)), Color(0.16, 0.21, 0.28))
-        else:
-            if cells[i] != RoomLayouts.CHASM:
-                continue
-            cv.draw_rect(Rect2(p, Vector2(cs, cs)), Color(0.010, 0.008, 0.016))
-            var hsh := (i * 2654435761) & 0xFFFF
-            if hsh % 5 == 0:
-                cv.draw_rect(Rect2(p + Vector2(float(hsh % 14) + 2.0, float((hsh >> 4) % 14) + 2.0), Vector2(2, 2)), Color(0.10, 0.07, 0.16, 0.8))
-            if not _cell_is(cx, cy - 1, RoomLayouts.CHASM):
-                # The lip: the floor's broken edge in the theme's stone, then the drop.
-                cv.draw_rect(Rect2(p, Vector2(cs, 4)), lip)
-                cv.draw_rect(Rect2(p, Vector2(cs, 1)), lip.lightened(0.25))
-                cv.draw_rect(Rect2(p + Vector2(0, 4), Vector2(cs, 5)), lip.darkened(0.78))
-            if not _cell_is(cx, cy + 1, RoomLayouts.CHASM):
-                cv.draw_rect(Rect2(p + Vector2(0, cs - 2), Vector2(cs, 2)), lip.darkened(0.3))
-            if not _cell_is(cx - 1, cy, RoomLayouts.CHASM):
-                cv.draw_rect(Rect2(p, Vector2(2, cs)), lip.darkened(0.35))
-            if not _cell_is(cx + 1, cy, RoomLayouts.CHASM):
-                cv.draw_rect(Rect2(p + Vector2(cs - 2, 0), Vector2(2, cs)), lip.darkened(0.35))
+            elif terrain[i] == RoomLayouts.T_DEEP:
+                # The pool itself (its still water is not drawn by the Materials grid).
+                Themes.draw_pool_cell(cv, p, cs, tx, not _terrain_is(cx, cy - 1, RoomLayouts.T_DEEP),
+                    not _terrain_is(cx, cy + 1, RoomLayouts.T_DEEP), not _terrain_is(cx - 1, cy, RoomLayouts.T_DEEP),
+                    not _terrain_is(cx + 1, cy, RoomLayouts.T_DEEP), td, cv.global_position, (i * 2654435761) & 0xFFFF)
+        elif mode == 1:
+            if cells[i] == RoomLayouts.CHASM:
+                Themes.draw_chasm_cell(cv, p, cs, tx, not _cell_is(cx, cy - 1, RoomLayouts.CHASM),
+                    not _cell_is(cx, cy + 1, RoomLayouts.CHASM), not _cell_is(cx - 1, cy, RoomLayouts.CHASM),
+                    not _cell_is(cx + 1, cy, RoomLayouts.CHASM), td)
+            elif not _solid_cell(cx, cy):
+                # Outer walls cast theirs through Room._draw; only interior solids here.
+                var above := cy > 0 and _solid_cell(cx, cy - 1)
+                var left := cx > 0 and _solid_cell(cx - 1, cy)
+                var corner := cx > 0 and cy > 0 and _solid_cell(cx - 1, cy - 1)
+                if above or left or corner:
+                    Themes.draw_floor_shadow(cv, p, cs, tx, above, left, corner)
+        elif _solid_cell(cx, cy):
+            var up := not _solid_or_out(cx, cy - 1)
+            var dn := not _solid_or_out(cx, cy + 1)
+            var lf := not _solid_or_out(cx - 1, cy)
+            var rt := not _solid_or_out(cx + 1, cy)
+            if up or dn or lf or rt:
+                var soft := i < _styles.size() and _styles[i] == RoomLayouts.S_RUBBLE
+                Themes.draw_block_edges(cv, p, cs, tx, up, dn, lf, rt, td, soft)
     if mode == 1:
-        for r in shadows:
-            cv.draw_rect(Rect2(r.position.x + 2.0, r.end.y, r.size.x, 8.0), Color(0, 0, 0, 0.35))
+        _draw_outer_edges(cv, tx, td, false)
+    elif mode == 2:
+        _draw_outer_edges(cv, tx, td, true)
+
+
+## Where the outer walls meet the floor: an outline on the floor side all round (mode 1,
+## under wall decor and torches), and the lit top of the bottom wall (mode 2, over a secret
+## wall). A secret wall still standing counts as wall, so the line runs on across it.
+func _draw_outer_edges(cv: Node2D, tx: float, td: Dictionary, lit: bool) -> void:
+    var ol: Color = td.get("outline", Color(0.02, 0.02, 0.03))
+    var hi: Color = td.get("edge", Color(0.7, 0.7, 0.7))
+    var r := rect
+    for d in FloorGen.DIRS:
+        var horizontal: bool = d.y != 0
+        var length := r.size.x if horizontal else r.size.y
+        var spans: Array = [[-length / 2.0, length / 2.0]]
+        if data.doors.has(d) and String(data.doors[d]["obstacle"]) != "secret":
+            spans = [[-length / 2.0, -GAP / 2.0], [GAP / 2.0, length / 2.0]]
+        for s in spans:
+            var a: float = s[0]
+            var b: float = s[1]
+            if lit:
+                if d == Vector2i.DOWN:
+                    cv.draw_rect(Rect2(a, r.end.y, b - a, tx), Color(hi, 0.95))
+                    cv.draw_rect(Rect2(a, r.end.y + tx, b - a, tx), Color(hi, 0.42))
+                continue
+            if d == Vector2i.UP:
+                cv.draw_rect(Rect2(a, r.position.y, b - a, tx), ol)
+            elif d == Vector2i.DOWN:
+                cv.draw_rect(Rect2(a, r.end.y - tx, b - a, tx), ol)
+            elif d == Vector2i.LEFT:
+                cv.draw_rect(Rect2(r.position.x, a, tx, b - a), ol)
+            else:
+                cv.draw_rect(Rect2(r.end.x - tx, a, tx, b - a), ol)
+
+
+## Solid for the edge drawing: interior walls, pillars, rubble, a closed alcove front.
+func _solid_cell(cx: int, cy: int) -> bool:
+    if cx < 0 or cy < 0 or cx >= nav_w or cy >= nav_h:
+        return false
+    var v := cells[cy * nav_w + cx]
+    return v == RoomLayouts.WALL or v == RoomLayouts.BREAK
+
+
+## Like _solid_cell, with the outer walls (outside the grid) solid too, so an interior
+## wall that touches them joins them without an edge.
+func _solid_or_out(cx: int, cy: int) -> bool:
+    if cx < 0 or cy < 0 or cx >= nav_w or cy >= nav_h:
+        return true
+    return _solid_cell(cx, cy)
+
+
+## Redraws the layout layers after the solid shape changed (an alcove front or a secret
+## door wall gave way).
+func _redraw_layout() -> void:
+    for n in ["LayoutOver", "LayoutEdges"]:
+        var l := get_node_or_null(NodePath(n)) as CanvasItem
+        if l != null:
+            l.queue_redraw()
 
 
 func _cell_is(cx: int, cy: int, v: int) -> bool:

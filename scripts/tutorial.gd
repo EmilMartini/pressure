@@ -24,7 +24,7 @@ const STEPS := [
     { "id": "vent", "text": "Vent your pressure", "sub": "Firing heats or chills the gauge under your health. Venting blasts it out as a nova.", "action": "vent" },
     { "id": "gear", "text": "Equip the Rusted Helm", "sub": "Gear fills slots: head, chest, hands, feet, two rings, two trinkets, an active.", "action": "interact" },
     { "id": "active", "text": "Take the Smelling Salts", "sub": "An active item does something when you use it.", "action": "interact" },
-    { "id": "door", "text": "The door is open: walk through to the hub", "sub": "Every run is five floors, each ends in a boss.\nDying keeps your unlocks and mastery. The hub is where you spend them.", "action": "move" },
+    { "id": "door", "text": "The door is open: walk through to the hub", "sub": "Every run is five floors, each ends in a boss.\nDying keeps your unlocks and Embers. The hub is where you spend them.", "action": "move" },
 ]
 
 var step := -1

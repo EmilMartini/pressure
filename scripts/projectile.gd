@@ -361,6 +361,7 @@ func _on_body_entered(body: Node) -> void:
                 return
         else:
             body.apply_element(element, potency)
+            Sfx.play_at("hit_wall", global_position)
         if behaviour == "boomerang" and not _returning:
             _turn_back()
             return
@@ -400,6 +401,7 @@ func _on_body_entered(body: Node) -> void:
 ## A prop takes the element (and any coatings); when none of them did anything to it,
 ## the shot is a plain hit and chips it instead.
 func _hit_prop(prop: Prop) -> void:
+    Sfx.hit_prop(prop.kind, global_position)
     var dir := velocity.normalized()
     var used := prop.apply_element(element, potency, dir)
     for extra in extra_elements:

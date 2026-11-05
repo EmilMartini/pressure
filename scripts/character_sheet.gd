@@ -643,6 +643,13 @@ func _build_stats() -> void:
     groups.append(["PRESSURE", _stats_end()])
 
     _stats_begin()
+    _nz("Last Breath", p.revives_left, "%d revive%s left" % [p.revives_left, "" if p.revives_left == 1 else "s"], Mastery.EMBER_COLOR)
+    _nz("Level-up rerolls", p.levelup_rerolls, "%d left" % p.levelup_rerolls)
+    _nz("Level-up cards", Mastery.bonus("levelup_extra"), "4 every level-up" if Mastery.bonus("levelup_extra") >= 2.0 else "4 every other level-up")
+    _nz("High Confidence", Mastery.cond_bonus("dmg", p), "%s damage" % _pct(Mastery.cond_bonus("dmg", p)))
+    groups.append(["SHRINE", _stats_end()])
+
+    _stats_begin()
     _add("XP", "%d / %d" % [int(p.xp), int(p.xp_to_next())])
     _nz("XP gain", p.stat("xp_gain"), _pct(p.stat("xp_gain")))
     _nz("Scrap gain", p.stat("scrap_gain"), _pct(p.stat("scrap_gain")))

@@ -1,7 +1,8 @@
 extends Node
 ## Autoload "Progress": the save file. Isaac-style meta progression: every run starts
 ## naked, and achievements grow the pool of what a run can contain. Nothing here makes
-## a run easier; it only makes runs different.
+## a run easier; it only makes runs different. It also counts what the current run did
+## (`run_stats`, `run_discoveries`), which the Shrine pays Embers for (see Mastery).
 
 signal unlocked(unlock_id: String, achievement_name: String)
 
@@ -12,120 +13,135 @@ const BASE_UNLOCKS := ["gun:water_pistol", "gun:arc_rifle", "gun:flare_pistol", 
 
 ## stat: the Progress stat that counts toward it. goal: the number to reach.
 const ACHIEVEMENTS := [
-    # Ordered by effort (next_goals shows them in this order). The first four land
-    # in a first run; after that roughly one per run, then one every two or three.
+    # Ordered by effort. The first block teaches the basics, Risk of Rain 2 style, and
+    # hands out one new element per run (report R8): every goal in it is cumulative and
+    # comes from simply playing, so by about run 5 every element is in the pool.
+    # Expected run from the bot data (Set A floor-1 runs: 6 distinct reactions, 7 vents,
+    # 3 rooms, 0-3 elites, ~100 reactions): ice 1, acid 1-2, poison 2, gale 2-3, blood
+    # 2-4, stone 3, void 3, holy 5 (holy waited until a median run of ~45 before).
+    # Ids are the old ones wherever the reward stayed put, so saves keep their progress;
+    # the old goals behind those ids (375 / 625 kills, 75 Steams, 60 / 240 Chain
+    # Lightnings, 900 reactions, 12 runs, 240 Deep Freezes) are gone.
     { "id": "first_blood", "name": "First Blood", "desc": "Kill 50 enemies",
         "stat": "kills", "goal": 50, "rewards": ["gun:blowtorch"] },
-    { "id": "tourist", "name": "Tourist", "desc": "Clear 3 floors",
-        "stat": "floors", "goal": 3, "rewards": ["gun:vein_pistol"] },
+    { "id": "conductor", "name": "Chemistry", "desc": "Discover 3 different reactions",
+        "stat": "reactions_discovered", "goal": 3, "rewards": ["gun:frost_caster"] },
+    { "id": "bloodied", "name": "Blow-off", "desc": "Vent 10 times",
+        "stat": "vents", "goal": 10, "rewards": ["gun:etcher_beam"] },
+    { "id": "regular", "name": "Regular", "desc": "Start 2 runs",
+        "stat": "runs_started", "goal": 2, "rewards": ["gun:spark_needler"] },
+    { "id": "chemist", "name": "Housekeeper", "desc": "Clear 5 rooms",
+        "stat": "rooms", "goal": 5, "rewards": ["gun:venom_spitter"] },
+    { "id": "stormcaller", "name": "Field Notes", "desc": "Discover 6 different reactions",
+        "stat": "reactions_discovered", "goal": 6, "rewards": ["gun:gale_blaster", "obstacle:miasma"] },
+    { "id": "butcher", "name": "Headhunter", "desc": "Kill 3 elites",
+        "stat": "elites", "goal": 3, "rewards": ["gun:blood_lance"] },
+    { "id": "veteran", "name": "Persistent", "desc": "Start 3 runs",
+        "stat": "runs_started", "goal": 3, "rewards": ["gun:gravel_shotgun"] },
+    { "id": "catalyst", "name": "Catalyst", "desc": "Fire 250 reactions",
+        "stat": "reactions", "goal": 250, "rewards": ["gun:null_wand"] },
+    { "id": "zealot", "name": "Pilgrim", "desc": "Start 5 runs",
+        "stat": "runs_started", "goal": 5, "rewards": ["gun:radiant_ray", "obstacle:ward"] },
+    # Then exploration and the first specific reactions. Reaction goals were 50 to 90 and
+    # swung 5-10x between runs (142 Infernos in one run against a median of 4); they are
+    # now about one to three median runs of their pairing (Set A medians per run: Chain
+    # Lightning 25, Ignition 17, Steam 4, Inferno 4, Deep Freeze 3, Black Ice 1).
     { "id": "plumber", "name": "Plumber", "desc": "Open a hidden room",
         "stat": "hidden_rooms", "goal": 1, "rewards": ["obstacle:valve", "gun:mist_sprayer"] },
     { "id": "curious", "name": "Curious", "desc": "Find a secret",
         "stat": "secrets_found", "goal": 1, "rewards": ["secret:lantern"] },
-    { "id": "regular", "name": "Regular", "desc": "Start 2 runs",
-        "stat": "runs_started", "goal": 2, "rewards": ["gun:spark_needler"] },
-    { "id": "sparkplug", "name": "Sparkplug", "desc": "Fire 50 Ignitions",
-        "stat": "reaction:Ignition", "goal": 50, "rewards": ["gun:cinder_flak"] },
-    { "id": "kettle", "name": "Kettle", "desc": "Fire 50 Steams",
-        "stat": "reaction:Steam", "goal": 50, "rewards": ["gun:oil_slinger"] },
     { "id": "arsonist", "name": "Arsonist", "desc": "Fire 30 Infernos or Ignitions",
         "stat": "reactions_fire", "goal": 30, "rewards": ["obstacle:thicket"] },
-    { "id": "bloodied", "name": "Bloodied", "desc": "Kill 375 enemies",
-        "stat": "kills", "goal": 375, "rewards": ["gun:etcher_beam"] },
-    { "id": "conductor", "name": "Conductor", "desc": "Fire 60 Chain Lightnings",
-        "stat": "reaction:Chain Lightning", "goal": 60, "rewards": ["gun:frost_caster"] },
-    { "id": "class_tarsmith", "name": "Pitch Black", "desc": "Fire 60 Ignitions",
-        "stat": "reaction:Ignition", "goal": 60, "rewards": ["class:tarsmith"] },
-    { "id": "slayer", "name": "Slayer", "desc": "Kill 12 elites",
-        "stat": "elites", "goal": 12, "rewards": ["gun:ember_carbine"] },
-    { "id": "delver", "name": "Delver", "desc": "Find 10 secrets",
-        "stat": "secrets_found", "goal": 10, "rewards": ["secret:alcove"] },
-    { "id": "thermal", "name": "Thermal", "desc": "Fire 50 Thermal Shocks",
-        "stat": "reaction:Thermal Shock", "goal": 50, "rewards": ["gun:duality_burst"] },
-    { "id": "plasma", "name": "Plasma Physicist", "desc": "Fire 50 Plasmas",
-        "stat": "reaction:Plasma", "goal": 50, "rewards": ["gun:storm_seeker"] },
-    { "id": "floor_breaker", "name": "Floor Breaker", "desc": "Kill 2 bosses",
-        "stat": "bosses", "goal": 2, "rewards": ["room:challenge", "gun:tar_mortar"] },
-    { "id": "class_stormcaller", "name": "Lightning Rod", "desc": "Fire 90 Chain Lightnings",
-        "stat": "reaction:Chain Lightning", "goal": 90, "rewards": ["class:stormcaller"] },
-    { "id": "butcher", "name": "Butcher", "desc": "Kill 625 enemies",
-        "stat": "kills", "goal": 625, "rewards": ["gun:blood_lance"] },
-    { "id": "collector", "name": "Collector", "desc": "Equip 8 pieces of gear",
-        "stat": "items_picked", "goal": 8, "rewards": ["rarity:epic"] },
-    { "id": "black_ice", "name": "Black Ice", "desc": "Fire 50 Black Ices",
-        "stat": "reaction:Black Ice", "goal": 50, "rewards": ["gun:rime_chakram"] },
-    { "id": "chemist", "name": "Chemist", "desc": "Fire 75 Steams",
-        "stat": "reaction:Steam", "goal": 75, "rewards": ["gun:venom_spitter"] },
-    { "id": "polluter", "name": "Polluter", "desc": "Fire 50 Contaminations",
-        "stat": "reaction:Contamination", "goal": 50, "rewards": ["gun:blight_seeker"] },
-    { "id": "fumigator", "name": "Fumigator", "desc": "Fire 50 Noxious Flames",
-        "stat": "reaction:Noxious Flame", "goal": 50, "rewards": ["gun:plague_mortar"] },
-    { "id": "hemophile", "name": "Hemophile", "desc": "Fire 50 Thin Bloods",
-        "stat": "reaction:Thin Blood", "goal": 50, "rewards": ["gun:clot_orb"] },
-    { "id": "maelstrom", "name": "Maelstrom", "desc": "Fire 50 Whirlpools",
-        "stat": "reaction:Whirlpool", "goal": 50, "rewards": ["gun:rift_seeker"] },
-    { "id": "baptist", "name": "Baptist", "desc": "Fire 50 Baptisms",
-        "stat": "reaction:Baptism", "goal": 50, "rewards": ["gun:prayer_burst"] },
-    { "id": "windbreaker", "name": "Windbreaker", "desc": "Fire 50 Monsoons",
-        "stat": "reaction:Monsoon", "goal": 50, "rewards": ["gun:cyclone_flak"] },
-    { "id": "class_tidecaller", "name": "High Tide", "desc": "Fire 90 Steams",
-        "stat": "reaction:Steam", "goal": 90, "rewards": ["class:tidecaller"] },
+    { "id": "kettle", "name": "Kettle", "desc": "Fire 10 Steams",
+        "stat": "reaction:Steam", "goal": 10, "rewards": ["gun:oil_slinger"] },
+    { "id": "sparkplug", "name": "Sparkplug", "desc": "Fire 25 Ignitions",
+        "stat": "reaction:Ignition", "goal": 25, "rewards": ["gun:cinder_flak"] },
+    { "id": "class_tarsmith", "name": "Pitch Black", "desc": "Fire 30 Ignitions",
+        "stat": "reaction:Ignition", "goal": 30, "rewards": ["class:tarsmith"] },
+    { "id": "class_stormcaller", "name": "Lightning Rod", "desc": "Fire 40 Chain Lightnings",
+        "stat": "reaction:Chain Lightning", "goal": 40, "rewards": ["class:stormcaller"] },
+    { "id": "class_pyromancer", "name": "Firestarter", "desc": "Fire 15 Infernos",
+        "stat": "reaction:Inferno", "goal": 15, "rewards": ["class:pyromancer"] },
+    { "id": "class_tidecaller", "name": "High Tide", "desc": "Fire 20 Steams",
+        "stat": "reaction:Steam", "goal": 20, "rewards": ["class:tidecaller"] },
+    { "id": "class_frostbinder", "name": "Cold Hands", "desc": "Fire 15 Deep Freezes",
+        "stat": "reaction:Deep Freeze", "goal": 15, "rewards": ["class:frostbinder"] },
     { "id": "venter", "name": "Venter", "desc": "Vent 30 novas",
         "stat": "vents", "goal": 30, "rewards": ["gun:hydro_cannon"] },
-    { "id": "class_frostbinder", "name": "Cold Hands", "desc": "Fire 60 Deep Freezes",
-        "stat": "reaction:Deep Freeze", "goal": 60, "rewards": ["class:frostbinder"] },
-    { "id": "catalyst", "name": "Catalyst", "desc": "Fire 900 reactions",
-        "stat": "reactions", "goal": 900, "rewards": ["gun:null_wand"] },
-    { "id": "alchemist", "name": "Alchemist", "desc": "Fire 75 Infernos",
-        "stat": "reaction:Inferno", "goal": 75, "rewards": ["gun:acid_flask", "obstacle:rubble"] },
+    { "id": "alchemist", "name": "Alchemist", "desc": "Fire 25 Infernos",
+        "stat": "reaction:Inferno", "goal": 25, "rewards": ["gun:acid_flask", "obstacle:rubble"] },
+    { "id": "collector", "name": "Collector", "desc": "Equip 8 pieces of gear",
+        "stat": "items_picked", "goal": 8, "rewards": ["rarity:epic"] },
+    { "id": "slayer", "name": "Slayer", "desc": "Kill 12 elites",
+        "stat": "elites", "goal": 12, "rewards": ["gun:ember_carbine"] },
+    { "id": "plasma", "name": "Plasma Physicist", "desc": "Fire 15 Plasmas",
+        "stat": "reaction:Plasma", "goal": 15, "rewards": ["gun:storm_seeker"] },
+    { "id": "black_ice", "name": "Black Ice", "desc": "Fire 15 Black Ices",
+        "stat": "reaction:Black Ice", "goal": 15, "rewards": ["gun:rime_chakram"] },
+    { "id": "thermal", "name": "Thermal", "desc": "Fire 20 Thermal Shocks",
+        "stat": "reaction:Thermal Shock", "goal": 20, "rewards": ["gun:duality_burst"] },
+    # Off-element reactions: each needs a gun of both elements, which the first block now
+    # delivers by about run 5. No bot data yet for these signatures: 20 for the gun, 25
+    # for the class (the class follows the gun on the same reaction).
+    { "id": "polluter", "name": "Polluter", "desc": "Fire 20 Contaminations",
+        "stat": "reaction:Contamination", "goal": 20, "rewards": ["gun:blight_seeker"] },
+    { "id": "fumigator", "name": "Fumigator", "desc": "Fire 20 Noxious Flames",
+        "stat": "reaction:Noxious Flame", "goal": 20, "rewards": ["gun:plague_mortar"] },
+    { "id": "hemophile", "name": "Hemophile", "desc": "Fire 20 Thin Bloods",
+        "stat": "reaction:Thin Blood", "goal": 20, "rewards": ["gun:clot_orb"] },
+    { "id": "maelstrom", "name": "Maelstrom", "desc": "Fire 20 Whirlpools",
+        "stat": "reaction:Whirlpool", "goal": 20, "rewards": ["gun:rift_seeker"] },
+    { "id": "baptist", "name": "Baptist", "desc": "Fire 20 Baptisms",
+        "stat": "reaction:Baptism", "goal": 20, "rewards": ["gun:prayer_burst"] },
+    { "id": "windbreaker", "name": "Windbreaker", "desc": "Fire 20 Monsoons",
+        "stat": "reaction:Monsoon", "goal": 20, "rewards": ["gun:cyclone_flak"] },
+    { "id": "class_voidwalker", "name": "Event Horizon", "desc": "Fire 20 Singularities",
+        "stat": "reaction:Singularity", "goal": 20, "rewards": ["class:voidwalker"] },
+    { "id": "class_alchemist", "name": "Splash Zone", "desc": "Fire 20 Caustic Splashes",
+        "stat": "reaction:Caustic Splash", "goal": 20, "rewards": ["class:alchemist"] },
+    { "id": "class_stonewarden", "name": "Bog Standard", "desc": "Fire 20 Muds",
+        "stat": "reaction:Mud", "goal": 20, "rewards": ["class:stonewarden"] },
+    { "id": "class_plaguewright", "name": "Patient Zero", "desc": "Fire 25 Contaminations",
+        "stat": "reaction:Contamination", "goal": 25, "rewards": ["class:plaguewright"] },
+    { "id": "class_bloodletter", "name": "Leech", "desc": "Fire 25 Thin Bloods",
+        "stat": "reaction:Thin Blood", "goal": 25, "rewards": ["class:bloodletter"] },
+    { "id": "class_templar", "name": "Anointed", "desc": "Fire 25 Baptisms",
+        "stat": "reaction:Baptism", "goal": 25, "rewards": ["class:templar"] },
+    { "id": "class_windrunner", "name": "Rainmaker", "desc": "Fire 25 Monsoons",
+        "stat": "reaction:Monsoon", "goal": 25, "rewards": ["class:windrunner"] },
     { "id": "annihilator", "name": "Annihilator", "desc": "Fire 15 Annihilations",
         "stat": "reaction:Annihilation", "goal": 15, "rewards": ["gun:eclipse_carbine"] },
-    { "id": "class_voidwalker", "name": "Event Horizon", "desc": "Fire 50 Singularities",
-        "stat": "reaction:Singularity", "goal": 50, "rewards": ["class:voidwalker"] },
-    { "id": "class_plaguewright", "name": "Patient Zero", "desc": "Fire 60 Contaminations",
-        "stat": "reaction:Contamination", "goal": 60, "rewards": ["class:plaguewright"] },
-    { "id": "class_pyromancer", "name": "Firestarter", "desc": "Fire 90 Infernos",
-        "stat": "reaction:Inferno", "goal": 90, "rewards": ["class:pyromancer"] },
-    { "id": "class_bloodletter", "name": "Leech", "desc": "Fire 60 Thin Bloods",
-        "stat": "reaction:Thin Blood", "goal": 60, "rewards": ["class:bloodletter"] },
-    { "id": "class_alchemist", "name": "Splash Zone", "desc": "Fire 60 Caustic Splashes",
-        "stat": "reaction:Caustic Splash", "goal": 60, "rewards": ["class:alchemist"] },
-    { "id": "class_templar", "name": "Anointed", "desc": "Fire 60 Baptisms",
-        "stat": "reaction:Baptism", "goal": 60, "rewards": ["class:templar"] },
-    { "id": "class_windrunner", "name": "Rainmaker", "desc": "Fire 60 Monsoons",
-        "stat": "reaction:Monsoon", "goal": 60, "rewards": ["class:windrunner"] },
-    { "id": "class_stonewarden", "name": "Bog Standard", "desc": "Fire 60 Muds",
-        "stat": "reaction:Mud", "goal": 60, "rewards": ["class:stonewarden"] },
-    { "id": "exterminator", "name": "Exterminator", "desc": "Kill 1500 enemies",
-        "stat": "kills", "goal": 1500, "rewards": ["gun:corrosion_burst"] },
-    { "id": "stormcaller", "name": "Stormcaller", "desc": "Fire 240 Chain Lightnings",
-        "stat": "reaction:Chain Lightning", "goal": 240, "rewards": ["gun:gale_blaster", "obstacle:miasma"] },
-    { "id": "pressure_cooker", "name": "Pressure Cooker", "desc": "Fire 180 Steams",
-        "stat": "reaction:Steam", "goal": 180, "rewards": ["gun:kettle_gun"] },
-    { "id": "abyss", "name": "Abyss", "desc": "Kill 6 bosses",
-        "stat": "bosses", "goal": 6, "rewards": ["gun:void_orb"] },
-    { "id": "deep_freezer", "name": "Deep Freezer", "desc": "Fire 120 Deep Freezes",
-        "stat": "reaction:Deep Freeze", "goal": 120, "rewards": ["gun:glacier_lance"] },
-    { "id": "explorer", "name": "Explorer", "desc": "Clear 20 floors",
-        "stat": "floors", "goal": 20, "rewards": ["gun:zephyr_rang"] },
-    { "id": "hoarder", "name": "Hoarder", "desc": "Equip 25 pieces of gear",
-        "stat": "items_picked", "goal": 25, "rewards": ["rarity:legendary"] },
-    { "id": "mason", "name": "Mason", "desc": "Kill 50 elites",
-        "stat": "elites", "goal": 50, "rewards": ["gun:stone_sling"] },
+    # Depth, bosses and the long tail.
+    { "id": "tourist", "name": "Tourist", "desc": "Clear 3 floors",
+        "stat": "floors", "goal": 3, "rewards": ["gun:vein_pistol"] },
+    { "id": "floor_breaker", "name": "Floor Breaker", "desc": "Kill 2 bosses",
+        "stat": "bosses", "goal": 2, "rewards": ["room:challenge", "gun:tar_mortar"] },
+    { "id": "delver", "name": "Delver", "desc": "Find 10 secrets",
+        "stat": "secrets_found", "goal": 10, "rewards": ["secret:alcove"] },
     { "id": "reactionary", "name": "Reactionary", "desc": "Discover 20 different reactions",
         "stat": "reactions_discovered", "goal": 20, "rewards": ["shop:items"] },
-    { "id": "veteran", "name": "Veteran", "desc": "Start 12 runs",
-        "stat": "runs_started", "goal": 12, "rewards": ["gun:gravel_shotgun"] },
-    { "id": "pyromaniac", "name": "Pyromaniac", "desc": "Fire 180 Infernos",
-        "stat": "reaction:Inferno", "goal": 180, "rewards": ["gun:napalm_lobber"] },
+    { "id": "exterminator", "name": "Exterminator", "desc": "Kill 1500 enemies",
+        "stat": "kills", "goal": 1500, "rewards": ["gun:corrosion_burst"] },
+    { "id": "pressure_cooker", "name": "Pressure Cooker", "desc": "Fire 75 Steams",
+        "stat": "reaction:Steam", "goal": 75, "rewards": ["gun:kettle_gun"] },
+    { "id": "deep_freezer", "name": "Deep Freezer", "desc": "Fire 50 Deep Freezes",
+        "stat": "reaction:Deep Freeze", "goal": 50, "rewards": ["gun:glacier_lance"] },
+    { "id": "pyromaniac", "name": "Pyromaniac", "desc": "Fire 90 Infernos",
+        "stat": "reaction:Inferno", "goal": 90, "rewards": ["gun:napalm_lobber"] },
+    { "id": "hoarder", "name": "Hoarder", "desc": "Equip 25 pieces of gear",
+        "stat": "items_picked", "goal": 25, "rewards": ["rarity:legendary"] },
+    { "id": "abyss", "name": "Abyss", "desc": "Kill 6 bosses",
+        "stat": "bosses", "goal": 6, "rewards": ["gun:void_orb"] },
+    { "id": "mason", "name": "Mason", "desc": "Kill 50 elites",
+        "stat": "elites", "goal": 50, "rewards": ["gun:stone_sling"] },
     { "id": "riddler", "name": "Riddler", "desc": "Solve every kind of secret",
         "stat": "secret_kinds", "goal": 10, "rewards": ["secret:hoard"] },
+    { "id": "explorer", "name": "Explorer", "desc": "Clear 20 floors",
+        "stat": "floors", "goal": 20, "rewards": ["gun:zephyr_rang"] },
     { "id": "survivor", "name": "Survivor", "desc": "Clear the dungeon",
         "stat": "runs_won", "goal": 1, "rewards": ["gun:storm_pike", "shop:extra"] },
     { "id": "sunbreaker", "name": "Sunbreaker", "desc": "Kill 12 bosses",
         "stat": "bosses", "goal": 12, "rewards": ["gun:sun_cannon"] },
-    { "id": "zealot", "name": "Zealot", "desc": "Fire 240 Deep Freezes",
-        "stat": "reaction:Deep Freeze", "goal": 240, "rewards": ["gun:radiant_ray", "obstacle:ward"] },
     { "id": "reaper", "name": "Reaper", "desc": "Kill 3750 enemies",
         "stat": "kills", "goal": 3750, "rewards": ["gun:railgun"] },
     { "id": "spelunker", "name": "Spelunker", "desc": "Clear 50 floors",
@@ -138,6 +154,8 @@ var stats: Dictionary = {}            # stat -> int
 var achievements_done: Dictionary = {}
 var history: Array = []               # { won, floor, kills, unlocks }
 var run_unlocks: Array = []           # unlock ids earned during the current run
+var run_stats: Dictionary = {}        # stat -> amount added during the current run
+var run_discoveries: Array = []       # reactions fired for the first time ever, this run
 var names: Array = ["", "", "", ""]   # player names; empty falls back to P1..P4
 var chosen_class := "vagrant"         # class picked on the menu for player 1; not saved
 
@@ -256,6 +274,7 @@ func achievements_count() -> int:
 
 func add(key: String, amount: int = 1) -> void:
     stats[key] = stat(key) + amount
+    run_stats[key] = int(run_stats.get(key, 0)) + amount
     _check_achievements()
 
 
@@ -276,6 +295,7 @@ func add_reaction(reaction_name: String) -> void:
         stats["reactions_fire"] = stat("reactions_fire") + 1
     if stat("reaction:" + reaction_name) == 0:
         stats["reactions_discovered"] = stat("reactions_discovered") + 1
+        run_discoveries.append(reaction_name)
     add("reaction:" + reaction_name)
 
 
@@ -283,13 +303,20 @@ func discovered(reaction_name: String) -> bool:
     return stat("reaction:" + reaction_name) > 0
 
 
+## How much of `key` the current run added.
+func run_stat(key: String) -> int:
+    return int(run_stats.get(key, 0))
+
+
 func start_run() -> void:
     run_unlocks = []
+    run_stats = {}
+    run_discoveries = []
     add("runs_started")
 
 
-func end_run(won: bool, floor_number: int, kills: int) -> void:
-    history.append({ "won": won, "floor": floor_number, "kills": kills, "unlocks": run_unlocks.duplicate() })
+func end_run(won: bool, floor_number: int, kills: int, embers: int = 0) -> void:
+    history.append({ "won": won, "floor": floor_number, "kills": kills, "unlocks": run_unlocks.duplicate(), "embers": embers })
     if history.size() > 50:
         history.pop_front()
     if won:
@@ -320,7 +347,7 @@ func _grant(a: Dictionary) -> void:
 
 func save() -> void:
     var data := {
-        "version": 1,
+        "version": 2,
         "unlocks": unlocks.keys(),
         "stats": stats,
         "achievements": achievements_done.keys(),
@@ -361,6 +388,28 @@ func load_save() -> void:
     var saved_names: Array = parsed.get("names", [])
     for i in mini(4, saved_names.size()):
         names[i] = str(saved_names[i]).strip_edges().left(12)
+    _settle()
+
+
+## Save migration, run on every load (version 1 saves included): an achievement that is
+## done always has all its rewards, and one whose goal the save already meets (goals were
+## lowered and some ids got new, easier goals in version 2) is granted quietly, with no
+## toast and nothing added to the next run's report.
+func _settle() -> void:
+    var touched := false
+    for a in ACHIEVEMENTS:
+        var id := String(a["id"])
+        if not achievements_done.has(id):
+            if stat(String(a["stat"])) < int(a["goal"]):
+                continue
+            achievements_done[id] = true
+            touched = true
+        for r in a["rewards"]:
+            if not unlocks.has(r):
+                unlocks[r] = true
+                touched = true
+    if touched:
+        save()
 
 
 ## Wipe everything: back to a first-ever run.

@@ -26,6 +26,8 @@ const DEFAULTS := {
     "fx_rev": 2,                      # post-fx defaults revision (FX_REV; migrations, see load)
     "controls_hint": false,
     "pause_on_disconnect": true,
+    "vibration": 0.6,                 # controller rumble strength, 0 = off (Rumble)
+    "vibration_paused": false,        # keep rumbling while the game is paused
     "seen_explainer": false,
     "tutorial_done": false,
     "telemetry": "ask",               # anonymous play data: "ask", "on" or "off"

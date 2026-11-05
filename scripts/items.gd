@@ -790,7 +790,7 @@ func use_active(player: Player) -> bool:
     for action in it.get("active", {}).get("do", []):
         _do(action, player, ctx)
     _depth -= 1
-    Sfx.play("ui_confirm")
+    Sfx.play("active_use")
     player.say(it["name"])
     return true
 

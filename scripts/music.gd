@@ -42,6 +42,8 @@ var _streams: Dictionary = {} # path -> AudioStream
 var _advancing := false       # the active track already handed over to the next
 var _lpf: AudioEffectLowPassFilter
 var _amp: AudioEffectAmplify
+var _dip_db := 0.0        # short duck from Sfx on big moments (dip), eases back to 0
+var _dip_hold := 0.0
 
 
 func _ready() -> void:
@@ -93,6 +95,14 @@ func duck(on: bool) -> void:
     _ducked = on
     if current != "":
         _fade(_active, _target_db(), 0.4)
+
+
+## Pull the music down by `db` for `seconds`, then ease back (Sfx calls this on boss
+## deaths, unlock fanfares and the like). Rides on the intensity amplify, never the bus.
+func dip(db: float, seconds: float) -> void:
+    _dip_db = minf(_dip_db, -absf(db))
+    _dip_hold = maxf(_dip_hold, seconds)
+    _apply_intensity()
 
 
 ## Base music level in dB (default VOLUME_DB). The user's volume slider lives on the bus.
@@ -219,6 +229,11 @@ func _process(delta: float) -> void:
     if not is_equal_approx(_intensity_now, intensity):
         _intensity_now = move_toward(_intensity_now, intensity, real * 1.2)
         _apply_intensity()
+    if _dip_hold > 0.0:
+        _dip_hold -= real
+    elif _dip_db < 0.0:
+        _dip_db = minf(0.0, _dip_db + real * 10.0)
+        _apply_intensity()
     # Hand over to the next track a crossfade before this one ends.
     if current == "" or _advancing or _players.is_empty():
         return
@@ -280,4 +295,4 @@ func _apply_intensity() -> void:
     if _lpf != null:
         _lpf.cutoff_hz = CUTOFF_CALM * pow(CUTOFF_OPEN / CUTOFF_CALM, k)
     if _amp != null:
-        _amp.volume_db = lerpf(CALM_DB, 0.0, k)
+        _amp.volume_db = lerpf(CALM_DB, 0.0, k) + _dip_db

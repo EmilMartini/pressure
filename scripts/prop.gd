@@ -1083,6 +1083,7 @@ func _draw() -> void:
     draw_set_transform(Vector2(0, half.y - 1.0), 0.0, Vector2(1.0, 0.35))
     draw_circle(Vector2.ZERO, half.x + 5.0, Color(0, 0, 0, 0.35))
     draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+    _draw_rim()
     var glow: Texture2D = Art.PARTICLES["light"]
     if is_lit():
         var gs := 90.0 + sin(Time.get_ticks_msec() * 0.012) * 6.0
@@ -1091,6 +1092,24 @@ func _draw() -> void:
         draw_texture_rect(glow, Rect2(Vector2(-60, -60), Vector2(120, 120)), false, Color(1.0, 0.95, 0.7, 0.3))
     if kind == "fountain" and _timers.has("contaminated"):
         draw_circle(Vector2.ZERO, half.x + 8.0, Color(Element.COLORS[_contaminant], 0.18))
+
+
+## A faint rim round the sprite (its silhouette one pixel off on each side, under it):
+## dark below and to the sides, pale on top, so a prop reads as an object on the dark
+## floor. Puzzle pieces (Secrets) get none: they stay part of the room.
+func _draw_rim() -> void:
+    if _sprite == null or _sprite.texture == null or not _sprite.visible:
+        return
+    var t := _sprite.texture
+    var sx := _sprite.scale.x * (-1.0 if _sprite.flip_h else 1.0)
+    draw_set_transform(_sprite.position, _sprite.rotation, Vector2(sx, _sprite.scale.y))
+    var o := -t.get_size() / 2.0
+    var dark := Color(0.02, 0.02, 0.03, 0.6)
+    draw_texture(t, o + Vector2(-1, 0), dark)
+    draw_texture(t, o + Vector2(1, 0), dark)
+    draw_texture(t, o + Vector2(0, 1), dark)
+    draw_texture(t, o + Vector2(0, -1), Color(0.92, 0.88, 0.80, 0.38))
+    draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
 ## Over the sprite: state overlays.

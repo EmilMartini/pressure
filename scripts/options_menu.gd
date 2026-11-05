@@ -22,6 +22,8 @@ const ROWS := [
     { "key": "bloom", "label": "Bloom", "type": "bool" },
     { "key": "controls_hint", "label": "Controls strip in runs", "type": "bool" },
     { "key": "pause_on_disconnect", "label": "Pause when a pad drops", "type": "bool" },
+    { "key": "vibration", "label": "Controller vibration", "type": "slider" },
+    { "key": "vibration_paused", "label": "Vibrate while paused", "type": "bool" },
     { "key": "telemetry", "label": "Share play data", "type": "consent" },
     { "key": "", "label": "Export play data", "type": "action" },
 ]

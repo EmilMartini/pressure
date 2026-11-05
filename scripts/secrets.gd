@@ -769,7 +769,7 @@ func _solved(pos: Vector2) -> void:
     done = true
     data.secret_done = true
     Secrets.record(kind, _floor())
-    Sfx.play("unlock", -6.0)
+    Sfx.play("secret_found")
     _fxc("rise", [global_position + pos, 18, 22.0])
     _fxc("pixels", [Element.Kind.HOLY, global_position + pos, 16, 120.0, 10.0, Fx.PAL_GOLD])
     for bv in bits:

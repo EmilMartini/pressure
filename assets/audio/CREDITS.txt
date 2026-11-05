@@ -1,0 +1,84 @@
+Pressure: sound effects and ambience
+=====================================
+
+Every file in this folder is cut, layered, filtered, levelled and re-encoded (ffmpeg,
+Ogg Vorbis, mono 44.1 kHz for effects, 22 kHz for footsteps and drips, stereo 32 kHz for
+the ambient beds) from the sources below. No generative AI was used. All sources are
+CC0 1.0 (public domain dedication, https://creativecommons.org/publicdomain/zero/1.0/):
+no attribution is required, but the authors are credited here anyway, and a few asked
+for it as a courtesy. Licences were read on each source's page (OpenGameArt licence
+field) or in the pack's own License.txt (Kenney), on 2026-11-05.
+
+The design table that maps sources to game files (offsets, layers, filters) lives with
+the build script used to make them; the game-side names are in scripts/sfx.gd (BANK).
+
+Kenney (www.kenney.nl), CC0, licence file in each pack (see LICENSE_kenney_audio.txt)
+---------------------------------------------------------------------------------
+- Impact Sounds        https://kenney.nl/assets/impact-sounds
+  footsteps (concrete, grass, snow), glass, metal, plate, mining, wood, tin, soft,
+  punch and bell impacts: hits, armour, props, ice shots, shields, hurt, steps
+- Sci-fi Sounds        https://kenney.nl/assets/sci-fi-sounds
+  low-frequency explosions, explosion crunch, force field, thruster fire, low engine
+  hum (sanctum bed), plus the first sound pass's shock shots and chain lightning
+- RPG Audio            https://kenney.nl/assets/rpg-audio
+  knife draw, metal latch, cloth, belt, leather, coins, door, creak, footsteps (forge)
+- Digital Audio        https://kenney.nl/assets/digital-audio
+  zap1, zap2 (shock layers)
+- Interface Sounds     https://kenney.nl/assets/interface-sounds
+  error_004 (deny); the kept UI files (ui_move, ui_confirm, ui_back, ui_open, error,
+  confirm, tick, wave_start, stairs, scrap, overheat, frozen) are from the first pass,
+  Kenney CC0 packs (Interface, Impact, RPG Audio, Sci-fi)
+
+OpenGameArt.org, all with the CC0 licence field on the page
+-----------------------------------------------------------
+rubberduck  (https://opengameart.org/users/rubberduck)
+- 80 CC0 RPG SFX                  https://opengameart.org/content/80-cc0-rpg-sfx
+  fire spells, gems, stones, coins, creature roar/die, items
+- 40 CC0 water / splash / slime   https://opengameart.org/content/40-cc0-water-splash-slime-sfx
+  splashes, bubbles, slime, water loops, drips
+- 75 CC0 breaking / falling / hit https://opengameart.org/content/75-cc0-breaking-falling-hit-sfx
+  rock and wood breaking, falling debris, hits
+- 80 CC0 creature SFX             https://opengameart.org/content/80-cc0-creature-sfx
+- 80 CC0 creature SFX #2          https://opengameart.org/content/80-cc0-creture-sfx-2
+  enemy deaths, roars (bosses), burbles
+- 100 CC0 SFX                     https://opengameart.org/content/100-cc0-sfx   (gong)
+- 100 CC0 SFX #2                  https://opengameart.org/content/100-cc0-sfx-2 (wet footsteps)
+- 25 CC0 bang / firework SFX      https://opengameart.org/content/25-cc0-bang-firework-sfx
+  reaction bursts, explosions, death thumps
+- 100 CC0 metal and wood SFX      https://opengameart.org/content/100-cc0-metal-and-wood-sfx
+  wood breaking (crates), metal slam (doors)
+- 25 CC0 mud SFX                  https://opengameart.org/content/25-cc0-mud-sfx
+  oil shots and layers, acid layers
+jaggedstone
+- Loopable Dungeon Ambience       https://opengameart.org/content/loopable-dungeon-ambience  (crypt bed)
+- Magic Spell SFX                 https://opengameart.org/content/magic-spell-sfx
+  (holy, level-up, secret chime, rare items, revive; page: "Copyright/Attribution Notice: None needed")
+sketchman3 - wind whoosh loop     https://opengameart.org/content/wind-whoosh-loop  (gale, frozen bed)
+aquinn - Space Winds              https://opengameart.org/content/space-winds  (frozen and void beds)
+bashar3a - Mild Wind Background Noise  https://opengameart.org/content/mild-wind-background-noise  (frozen bed)
+ignasd - Wind                     https://opengameart.org/content/wind  (gale layer)
+lokif - Swamp Environment Audio   https://opengameart.org/content/swamp-environment-audio  (ruins bed)
+wolfgang (Ted Kerr) - Crickets Ambient Noise, loopable  https://opengameart.org/content/crickets-ambient-noise-loopable  (ruins bed)
+qubodup - Dripping water loop     https://opengameart.org/content/dripping-water-loop  (ruins bed)
+qubodup - 3 dark magic spells     https://opengameart.org/content/3-dark-magic-spells  (void layer)
+gmason - underwater or space engine rumble  https://opengameart.org/content/underwater-or-space-engine-rumble  (forge, void, sanctum beds)
+antumdeluge - Fire Crackling      https://opengameart.org/content/fire-crackling  (forge, sanctum beds, inferno)
+tinyworlds - boiling water loops  https://opengameart.org/content/boiling-water-loops  (forge bed, steam)
+zeroisnotnull - Seamless Energy Emission Loop  https://opengameart.org/content/seamless-energy-emission-loop  (void bed)
+bart - Heartbeat sounds           https://opengameart.org/content/heartbeat-sounds  (low-health heartbeat)
+bart - Ice spells                 https://opengameart.org/content/ice-spells  (ice layers, frost vent)
+bart - Steam release sounds       https://opengameart.org/content/steam-release-sounds  (acid, poison, steam, vents; "attribution appreciated")
+artisticdude - Freeze Spell       https://opengameart.org/content/freeze-spell-0  (Deep Freeze)
+artisticdude - Swishes Sound Pack https://opengameart.org/content/swishes-sound-pack  (gale, void, vents)
+ogrebane - Dark Ambiences         https://opengameart.org/content/dark-ambiences  (void, elite sting, boss, down)
+ogrebane - Teleport Spell         https://opengameart.org/content/teleport-spell  (active item)
+haeldb - Spell sounds             https://opengameart.org/content/spell-sounds  (shock layers; CC0, also offered as OGA-BY 3.0, used under CC0)
+someoneman - Cure Magic           https://opengameart.org/content/cure-magic  (holy, revive, shield restore)
+faxcorp - Electricity Game Sound Pack  https://opengameart.org/content/electricity-game-sound-pack  (shock, shield hits)
+spring-spring (Julie Damsgaard) - Pleasing Bell Sound Effect  https://opengameart.org/content/pleasing-bell-sound-effect  (holy shot)
+starninjas - 4 Metal Dings/Rings  https://opengameart.org/content/4-metal-dingsrings  (holy, secret chime; "credit is appreciated")
+starninjas - 10 Impact/Shield Blocks  https://opengameart.org/content/10-impactshield-blocks  (shield hits; "credit is appreciated")
+zane-little-music - Fleshy Bone Break/Snap SFX  https://opengameart.org/content/fleshy-bone-breaksnap-sfx  (blood, gore under deaths, hurt)
+mieki256 - Earthquake and Open sesame  https://opengameart.org/content/earthquake-and-open-sesame  (hidden wall rumble, boss phase, path)
+bonebrah - Stone Door             https://opengameart.org/content/stone-door  (path opened)
+mdkieran - Achievement            https://opengameart.org/content/achievement  (unlock fanfare)

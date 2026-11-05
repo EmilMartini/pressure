@@ -246,7 +246,7 @@ func _open() -> void:
         Elements.reaction_fired.emit("Path opened!", gp, Color.WHITE)
     else:
         Sfx.play("path_open")
-    Sfx.play("die_elite", -6.0, 0.05)   # the rumble of falling masonry
+    Sfx.play("wall_reveal", 0.0, 0.03)   # the rumble of falling masonry
     var fx := _fx()
     if fx != null:
         var span := maxf(size.x, size.y)

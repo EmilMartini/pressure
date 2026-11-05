@@ -13,6 +13,9 @@ extends Node2D
 ##   void    violet motes, small rifts that bend the picture (PostFx.set_rift), wisps
 ##           drifting to the room centre
 ##   sanctum warm dust and torches (the hub)
+## Sound: the theme's ambient bed lives in Sfx (so it carries across rooms and crossfades
+## on a new floor); this node claims it on entering and releases it on leaving. Ceiling
+## drips that land also tick quietly in the world.
 ## Counts scale down with post-processing off and grow a little with the run's spectacle
 ## (Fx.spectacle). Pixels are drawn over everything but are single cells at low alpha, so
 ## they never hide a shot or a body; lights and lava glows are additive and faint.
@@ -101,9 +104,11 @@ func _ready() -> void:
     add_child(_glow)
     _make_static()
     _prefill()
+    Sfx.set_ambience(theme, self)
 
 
 func _exit_tree() -> void:
+    Sfx.release_ambience(self)
     for i in 2:
         PostFx.set_rift(i, Vector2.ZERO, 0.0, 0.0)
 
@@ -327,6 +332,8 @@ func _move(delta: float) -> void:
 
 
 func _land_drip(at: Vector2) -> void:
+    if _t > 1.0:
+        Sfx.play_at("drip", at, -2.0 if theme == "crypt" else 0.0)
     for s in 3:
         _spawn(K_PUFF, at, Vector2(_rng.randf_range(-30, 30), _rng.randf_range(-40, -18)), 0.35, Color(0.62, 0.78, 0.95, 0.75), false)
     _drip_n += 1

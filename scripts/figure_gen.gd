@@ -7,6 +7,7 @@ extends RefCounted
 ##   parts(profile)   one variant per layer (build, head, torso, cape, arms, accents)
 ##   palette(...)     [main, dark, light, accent]
 ##   generate(player) { frames: [idle, step] ImageTextures, id, name, color, aura, ... }
+##   rim(frame)       a white ring one pixel outside a frame's outline (Player tints it)
 ##
 ## Parts are small string grids: "." empty, "#" main, "d" dark, "l" light, "a" accent,
 ## "o" outline black, "b" bone. Layers go cape, legs, torso, arms, head, head overlay,
@@ -170,6 +171,7 @@ const DEBUG_BLENDS := [["fire", "acid"], ["ice", "plate"], ["void", "holy"], ["s
     ["blood", "fire"], ["stone", "gale"], ["poison", "merchant"], ["holy", "plate"]]
 
 static var _cache: Dictionary = {}   # profile key -> figure
+static var _rims: Dictionary = {}    # frame texture instance id -> rim texture (see rim)
 
 
 # --- Profile -------------------------------------------------------------------
@@ -468,8 +470,13 @@ static func generate_from(prof: Dictionary, player_color: Color) -> Dictionary:
     var idle := _render(p, pal, false)
     var step := _render(p, pal, true)
     var top: String = p["themes"][0]
+    var frames: Array = [ImageTexture.create_from_image(idle), ImageTexture.create_from_image(step)]
+    if _rims.size() > 256:
+        _rims.clear()
+    _rims[(frames[0] as Texture2D).get_instance_id()] = ImageTexture.create_from_image(rim_image(idle))
+    _rims[(frames[1] as Texture2D).get_instance_id()] = ImageTexture.create_from_image(rim_image(step))
     var fig := {
-        "frames": [ImageTexture.create_from_image(idle), ImageTexture.create_from_image(step)],
+        "frames": frames,
         "images": [idle, step],
         "id": "%s_%d" % [top, absi(key)],
         "name": p["name"],
@@ -482,6 +489,49 @@ static func generate_from(prof: Dictionary, player_color: Color) -> Dictionary:
         _cache.clear()
     _cache[key] = fig
     return fig
+
+
+## The rim for a figure frame: a white 18 x 18 ring one pixel outside the figure's dark
+## outline (8-neighbours, so corners stay closed), drawn under the figure in the player's
+## colour (Player._draw) so the figure separates from any floor, wall or crowd. Built with
+## the frames; a frame from elsewhere gets one built from its image once.
+static func rim(frame: Texture2D) -> Texture2D:
+    if frame == null:
+        return null
+    var key := frame.get_instance_id()
+    if _rims.has(key):
+        return _rims[key]
+    var img := frame.get_image()
+    if img == null or img.is_empty():
+        return null
+    if _rims.size() > 256:
+        _rims.clear()
+    var t := ImageTexture.create_from_image(rim_image(img))
+    _rims[key] = t
+    return t
+
+
+static func rim_image(src: Image) -> Image:
+    var w := src.get_width()
+    var h := src.get_height()
+    var out := Image.create_empty(w + 2, h + 2, false, Image.FORMAT_RGBA8)
+    out.fill(Color(0, 0, 0, 0))
+    for y in h + 2:
+        for x in w + 2:
+            var sx := x - 1
+            var sy := y - 1
+            if sx >= 0 and sy >= 0 and sx < w and sy < h and src.get_pixel(sx, sy).a > 0.5:
+                continue
+            var near := false
+            for dy in [-1, 0, 1]:
+                for dx in [-1, 0, 1]:
+                    var nx: int = sx + dx
+                    var ny: int = sy + dy
+                    if nx >= 0 and ny >= 0 and nx < w and ny < h and src.get_pixel(nx, ny).a > 0.5:
+                        near = true
+            if near:
+                out.set_pixel(x, y, Color.WHITE)
+    return out
 
 
 static func _key(rounded: Dictionary, player_color: Color) -> int:

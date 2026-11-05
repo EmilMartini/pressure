@@ -1056,7 +1056,7 @@ func _on_reaction(reaction_name: String, position: Vector2, color: Color) -> voi
     # Reactions speak through their visuals; only events that need words get text.
     if reaction_name in ["ELITE", "Shield broken!", "Shield restored!", "Path opened!"]:
         _texts.append({ "pos": position + Vector2(0, -30), "text": reaction_name, "color": color, "t": 0.95, "life": 0.95 })
-    Sfx.reaction(reaction_name)
+    Sfx.reaction(reaction_name, position)
     var mom: Array = MOMENTS.get(reaction_name, [])
     if not mom.is_empty():
         _boost = _moment_scale()

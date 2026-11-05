@@ -201,10 +201,9 @@ func run_start(main: Node) -> void:
     _run = _new_record("run")
     _run["bot"] = bool(main.get("autotest")) or args.has("--start-shot") or args.has("--obstacle-test")
     _update_party(main)
-    var mastery := get_node_or_null("/root/Mastery")
-    var spent := 0
-    if mastery != null:
-        spent = int(mastery.get("earned")) - int(mastery.get("points"))
+    # The Shrine loadout this run starts with: the active side and rank of every slot
+    # with a rank bought, and the survival (revive) ranks.
+    var talents: Array = Mastery.active_summary()
     var guns: Array = []
     var classes: Array = []
     for k in Progress.unlocks.keys():
@@ -213,7 +212,8 @@ func run_start(main: Node) -> void:
             guns.append(key.substr(4))
         elif key.begins_with("class:"):
             classes.append(key.substr(6))
-    event("run_start", { "class": String(Progress.chosen_class), "mastery_points_spent": spent, "unlocked_guns": guns, "unlocked_classes": classes })
+    event("run_start", { "class": String(Progress.chosen_class), "embers_spent": Mastery.spent(), "embers_bank": Mastery.embers,
+        "talents": talents, "survival": Mastery.survival, "unlocked_guns": guns, "unlocked_classes": classes })
 
 
 func floor_start(main: Node) -> void:
@@ -247,12 +247,13 @@ func _floor_end(main: Node) -> void:
     event("floor_end", { "floor": _floor, "secs": snappedf(_clock - _floor_t0, 0.1), "kills": _floor_kills, "level": level, "guns": guns, "items": items, "hp_pct": _party_hp_pct(main) })
 
 
-func run_end(main: Node, won: bool) -> void:
+## `award` is the Shrine's payout for the run (Mastery.award): total and breakdown.
+func run_end(main: Node, won: bool, award: Dictionary = {}) -> void:
     if _run.is_empty():
         return
     if not won:
         _death(main)
-    _finish_run(won, false)
+    _finish_run(won, false, award)
 
 
 func _death(main: Node) -> void:
@@ -291,7 +292,7 @@ func _death(main: Node) -> void:
     })
 
 
-func _finish_run(won: bool, abandoned: bool) -> void:
+func _finish_run(won: bool, abandoned: bool, award: Dictionary = {}) -> void:
     var main := _main()
     if main != null:
         _flush_damage()
@@ -308,6 +309,9 @@ func _finish_run(won: bool, abandoned: bool) -> void:
         "kills": _run_kills, "kills_by_kind": _kills_by_kind_run.duplicate(), "level": level,
         "scrap_total_earned": _scrap_earned, "scrap_spent": _scrap_spent,
         "unlocks": Progress.run_unlocks.duplicate(),
+        "embers": int(award.get("total", 0)), "embers_parts": (award.get("parts", {}) as Dictionary).duplicate(),
+        "embers_counts": (award.get("counts", {}) as Dictionary).duplicate(), "bounties": (award.get("bounties", []) as Array).duplicate(),
+        "discoveries": Progress.run_discoveries.duplicate(),
     })
     _run["partial"] = false
     var id := String(_run["run_id"])

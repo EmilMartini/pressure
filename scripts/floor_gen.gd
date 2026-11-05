@@ -179,7 +179,9 @@ static func _stock_rooms(rooms: Dictionary, floor_number: int, luck: float = 0.0
                 r.stock.append(offer("reroll", "", reroll_price(floor_number, 0)))
                 r.stock.append(offer("carry", "", 50 + floor_number * 18, 2))
                 r.stock.append(offer("repair", "", 24 + floor_number * 10, 40))
-                r.stock.append(offer("gunsmith", "", 45 + floor_number * 20))
+                # Shrine talent Heirloom: the gunsmith of floors 1..N works for free.
+                var free_smith := floor_number <= int(Mastery.bonus("free_gunsmith"))
+                r.stock.append(offer("gunsmith", "", 0 if free_smith else 45 + floor_number * 20))
             RoomData.Type.TREASURE:
                 # A chest, Slay the Spire style: one pick from gear, a gun, or a run boon.
                 # Chest size grows with the floor and a little luck.
