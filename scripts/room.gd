@@ -207,7 +207,22 @@ func _tick_challenge(delta: float) -> void:
 func _begin_boss() -> void:
     data.started = true
     active = true
-    boss = _spawn_enemy("boss", Vector2(0, -220))
+    # The boss rises on the far side of the room from wherever the party came in, never
+    # on top of a player who just stepped through the door.
+    var party := Vector2.ZERO
+    var n := 0
+    for pl in main.players:
+        if pl.alive:
+            party += pl.global_position - global_position
+            n += 1
+    if n > 0:
+        party /= float(n)
+    var away := -party.normalized() if party.length() > 10.0 else Vector2.DOWN
+    var boss_pos := away * 230.0
+    for pl in main.players:
+        if pl.alive and (pl.global_position - global_position).distance_to(boss_pos) < 320.0:
+            boss_pos = away * 300.0
+    boss = _spawn_enemy("boss", boss_pos)
     boss.set_boss(SpawnTable.boss_for(main.floor_number))
     var pairs := Elements.available_reactions(main.party_elements())
     var hits := 5 + main.difficulty() / 3

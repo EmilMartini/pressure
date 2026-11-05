@@ -286,6 +286,7 @@ func enter_room(pos: Vector2i, moved: Vector2i) -> void:
     var across := Vector2(moved).orthogonal() if moved != Vector2i.ZERO else Vector2.RIGHT
     for i in players.size():
         players[i].global_position = base + across * (float(i) - float(players.size() - 1) / 2.0) * 40.0
+        players[i].invuln = maxf(players[i].invuln, 0.8)   # a breath after a door, never a cheap hit
         players[i].velocity = Vector2.ZERO
 
     var r := current.rect.grow(Room.WALL + CAMERA_PAD)
