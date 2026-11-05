@@ -117,8 +117,8 @@ is not applied. Same element refreshes the timer.
 - Stone weighs: a stone-marked body moves at three quarters speed. Acid corrodes: +50%
   damage taken while corroded. Void pulls, gale pushes, blood bleeds while they move.
 
-#### Compounds and fusions (designed, data in `scripts/fusions.gd`, not wired in yet)
-Today a reaction is a dead end. The gimmick is broken combinations, so reactions now climb a
+#### Compounds and fusions — BUILT (data `scripts/fusions.gd`, live in `elements.gd`, `enemy.gd`, `cloud.gd`)
+A reaction used to be a dead end. The gimmick is broken combinations, so reactions now climb a
 **tier ladder** with a hard ceiling, and each rung is worth more than the last:
 
 | Tier | What | Made by | Leaves | Potency x |
@@ -219,8 +219,12 @@ The element that made the fusion and the field's payload do not react with their
 - Room budgets: 4 compound patches, 3 fusion fields (a new one replaces the oldest), 6
   fusions a second (past that the element lands as a plain element and the compound stays),
   one cataclysm per 1.5 s, and a field cataclysms once and only after it has existed 0.4 s.
-- Repetition: the same fusion or cataclysm fired again inside 8 s in a room is worth x0.85 per
-  repeat, never under x0.55. Spamming one combination decays; rotating them does not.
+- Repetition: the same fusion or cataclysm fired again inside 8 s in a room is worth x0.8 per
+  repeat, never under x0.3, and the same fusion cannot fire twice within 1 s in a room
+  (`REPEAT_GAP`: the element lands as itself and the compound stays, so a different element
+  can still fuse it). Spamming one combination decays; rotating them does not. (Designed as
+  x0.85 / x0.55 with no gap; the bots showed Wildfire firing 1.3 times a second in a
+  wet + shock build and taking 19 to 32% of its fusion damage, so it was tightened.)
 - Shields: a reaction cracks 1 pip (attuned pair 2, as now), a fusion 2, a cataclysm 3.
 
 Why this stays rewarding and finite: fusions are the fastest way to clear a floor (twice the
@@ -309,6 +313,54 @@ Signature cataclysms (tier 4):
 | **Syzygy** | Black Sun + Holy | 4.0 | Light and dark sun align: one blinding, room-wide detonation |
 | **Blood Moon** | Blood Altar + Void | 3.4 | The altar darkens: it drinks from everyone in reach and gives it to you |
 | **Quasar** | Accretion + Holy | 4.0 | The disk ignites into a quasar: everything is pulled into the beam |
+
+**How it plays.** A reaction leaves its compound where the table says: on the enemy it hit
+(a thin rim and three motes orbiting it in the compound's colour, faster as it is about to
+fade) and/or as a patch on the floor or in the air (a dashed ring in the compound's colour).
+The next element that lands on that enemy, or flies or vents into that patch, is checked
+against the compound **before** any pair reaction: if it fuses, the compound is consumed and
+the fusion plays instead (on the enemy at potency x mult, or once over everyone in the patch
+at x0.7), cracks shields 2 pips, and puts the enemy on its 0.8 s cooldown. An element that
+made the compound refreshes it instead. Signature fusions leave a field: a breathing double
+ring in the payload's colour with its remaining life on the rim, ticking the payload every
+0.5 s. Once it is 0.4 s old, a fourth element entering it sets off the cataclysm (3 pips)
+and the field is gone. A reaction played over an ordinary cloud leaves its compound patch
+there and primes the enemies inside. Clouds spawned by reactions never fuse with compound
+patches or fields by themselves (only projectiles, vents and landing shells do), so nothing
+climbs without the player.
+
+The show scales by tier (`scripts/fusion_fx.gd`, built only from existing Fx emitters,
+PostFx pulses and Sfx keys): the entry's element signatures (the arriving element leads,
+the others echo smaller; a cataclysm rings them round the field), its outline, glow and
+thrown droplets, its layered sounds (rumble follows the Sfx bus), the name floating over it
+on the reaction-label path (28 px for a fusion, 44 px capitals for a cataclysm, "NEW" the
+first time ever), a shake, and for cataclysms always, for fusions at most once per 0.45 s:
+a ripple, an aberration pulse, a hit-stop (0.07 s / 0.16 s) and a flash (0.2 / 0.42), all
+through the existing hit-stop and screen-shake settings. Discoveries show in the Journal's
+Fusions (by compound) and Cataclysms (by field) tabs, ??? until fired, recipe after.
+
+**Measured** (bots, `--fusion-probe` vs the same four w1 guns with `--no-fusions`, four
+copies of one w1 gun, and idle six-gun, 300 s headless each; runs where the bot got stuck
+on a pedestal excluded):
+
+| Build | Runs | Floor 1 cleared | Died on floor 1 | Boss kill | Kills/s (floor 1) | Damage tier 2 / 3 / 4 |
+|---|---|---|---|---|---|---|
+| 4 elements, fusions | 17 | 16 (212 s) | 1 | 26.8 s | 2.83 | 37% / 29% / 11% |
+| same guns, no fusions (the old game) | 10 | 5 (222 s) | 5 | 34.0 s | 2.56 | 63% / 0 / 0 |
+| 1 element x4, fusions | 7 | 1 | 6 | 34.9 s | 1.75 | 25% / 5% / 0% |
+| idle six-gun, fusions | 6 | 0 | 6 (67 to 125 s) | - | 3.77 | 23% / 40% / 11% |
+| idle six-gun, no fusions | 3 | 0 | 3 (38 to 40 s) | - | 2.68 | 52% / 0 / 0 |
+
+Arena time is mostly the wave timer, so clear times barely move; what fusions buy is
+survival, boss speed and kill rate. About 785 fusions and cataclysms fire per four-element
+run (3 a second at peak, the 6-a-second budget is hit), 149 different names across the
+probe runs. Share of fusion damage: Wildfire 11.5%, Conflagration 8.2%, Supercell 6.5%,
+Flashover 3.6%, Firefall 3.3%, the rest under 3.1%. Within one loadout the top name is 13
+to 21% (Wildfire in wet/fire/shock/gale, where Chain Lightning makes Stormfront all the
+time). The termination check held in every run: context never above 4, at most 3 fusions
+in one frame, nesting at most 7 deep, no product made at or below its own tier. Frame rate
+with vsync in heavy fights is unchanged (99 fps mean, 93 to 98 minimum per run with
+fusions, 95 to 97 without; about 70 more draw calls).
 
 Integration notes: `Fusions.compound_for(reaction)`, `fusion(compound, element, origin)`,
 `cataclysm(field, element)`, `prepared_actions(entry, patch_radius)` (resolves the "-1 =
@@ -476,8 +528,15 @@ capped (report R4 to R7). Code: `scripts/mastery.gd` (autoload `Mastery`, save
 **Embers (R7): pay for play quality, not only depth.** Paid once at run end:
 
     Embers = 1 x rooms cleared + 2 x elites + 3 x reactions fired for the first time ever
+           + min(12, 4 x new fusions + 6 x new cataclysms)
            + 3 x boss kills + 12 x bounties (first kill of a boss kind with a class)
            + 2 x (floor reached - 1) + 10 if cleared
+
+Fusion and cataclysm discoveries pay like reactions, but there are 396 of them (1,936
+Embers uncapped, twice the whole Shrine's 928), so together they pay at most 12 a run
+(`Mastery.FUSION_PAY_CAP`): about one more good floor. Measured on fresh bot saves, every
+four-element fusion run hit the cap (15 to 63 new fusions in a run); a long-lived save
+discovers a few a run and pays 4 to 12.
 
 Scale: a cleared room is 1 Ember the way a Hades chamber is 10 Darkness, so Hades prices
 divide by 10. Elites pay like Hades' harder (skull) chambers, double. Discoveries are what
@@ -654,7 +713,12 @@ or `--mastery=N` (spend N Embers cheapest-first on the survival track and active
 both on a throwaway Shrine file that prints a `[MASTERY]` line with the loadout and its
 power estimate; every run prints `[EMBERS]` with what it paid (or would have paid when
 the time cap ended it),
-`--arsenal` (every gun), `--gear` (equip shock gear at 45 s for the sheet screenshot).
+`--arsenal` (every gun), `--gear` (equip shock gear at 45 s for the sheet screenshot),
+`--fusion-probe[=K]` (four w1 guns of four elements, rotating with `--instance`),
+`--no-fusions` (the tier ladder off: the pre-fusion game, for baselines), `--perf` (fps and
+frame-time lines every 2 s), `--instance=N` (own save, Shrine and telemetry per parallel
+run). Every run ends with `[FUSION]` (counts, damage by tier, top names) and
+`[FUSION-CHECK]` (termination proof) lines.
 Telemetry from bot runs is stored locally with `bot: true` and never uploaded.
 
 ## 9. Debug controls in this build

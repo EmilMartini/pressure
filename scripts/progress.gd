@@ -120,6 +120,17 @@ const ACHIEVEMENTS := [
         "stat": "secrets_found", "goal": 10, "rewards": ["secret:alcove"] },
     { "id": "reactionary", "name": "Reactionary", "desc": "Discover 20 different reactions",
         "stat": "reactions_discovered", "goal": 20, "rewards": ["shop:items"] },
+    # The tier ladder: fusions (a reaction's compound + a third element) and cataclysms (a
+    # fusion field + a fourth). Discoveries also pay Embers (Mastery.PAY); these are the
+    # milestones, with nothing to unlock.
+    { "id": "fusion", "name": "Third Element", "desc": "Discover a fusion",
+        "stat": "fusions_discovered", "goal": 1, "rewards": [] },
+    { "id": "alchemy", "name": "Alchemy", "desc": "Discover 15 different fusions",
+        "stat": "fusions_discovered", "goal": 15, "rewards": [] },
+    { "id": "cataclysm", "name": "Fourth Element", "desc": "Set off a cataclysm",
+        "stat": "cataclysms_discovered", "goal": 1, "rewards": [] },
+    { "id": "end_times", "name": "End Times", "desc": "Discover 8 different cataclysms",
+        "stat": "cataclysms_discovered", "goal": 8, "rewards": [] },
     { "id": "exterminator", "name": "Exterminator", "desc": "Kill 1500 enemies",
         "stat": "kills", "goal": 1500, "rewards": ["gun:corrosion_burst"] },
     { "id": "pressure_cooker", "name": "Pressure Cooker", "desc": "Fire 75 Steams",
@@ -156,6 +167,8 @@ var history: Array = []               # { won, floor, kills, unlocks }
 var run_unlocks: Array = []           # unlock ids earned during the current run
 var run_stats: Dictionary = {}        # stat -> amount added during the current run
 var run_discoveries: Array = []       # reactions fired for the first time ever, this run
+var run_fusion_discoveries: Array = []      # fusions (tier 3) set off for the first time ever, this run
+var run_cataclysm_discoveries: Array = []   # cataclysms (tier 4) likewise
 var names: Array = ["", "", "", ""]   # player names; empty falls back to P1..P4
 var chosen_class := "vagrant"         # class picked on the menu for player 1; not saved
 
@@ -303,6 +316,27 @@ func discovered(reaction_name: String) -> bool:
     return stat("reaction:" + reaction_name) > 0
 
 
+## A fusion (tier 3) or cataclysm (tier 4) fired. Returns true the first time ever on this
+## save (a discovery: the Journal reveals it and the Shrine pays for it).
+func add_fusion(fusion_name: String, tier: int) -> bool:
+    var cata := tier >= Fusions.TIER_CATACLYSM
+    stats["cataclysms" if cata else "fusions"] = stat("cataclysms" if cata else "fusions") + 1
+    var first := stat("fusion:" + fusion_name) == 0
+    if first:
+        if cata:
+            stats["cataclysms_discovered"] = stat("cataclysms_discovered") + 1
+            run_cataclysm_discoveries.append(fusion_name)
+        else:
+            stats["fusions_discovered"] = stat("fusions_discovered") + 1
+            run_fusion_discoveries.append(fusion_name)
+    add("fusion:" + fusion_name)
+    return first
+
+
+func fusion_discovered(fusion_name: String) -> bool:
+    return stat("fusion:" + fusion_name) > 0
+
+
 ## How much of `key` the current run added.
 func run_stat(key: String) -> int:
     return int(run_stats.get(key, 0))
@@ -312,6 +346,8 @@ func start_run() -> void:
     run_unlocks = []
     run_stats = {}
     run_discoveries = []
+    run_fusion_discoveries = []
+    run_cataclysm_discoveries = []
     add("runs_started")
 
 
@@ -339,6 +375,8 @@ func _grant(a: Dictionary) -> void:
             unlocks[r] = true
             run_unlocks.append(r)
             unlocked.emit(r, a["name"])
+    if (a["rewards"] as Array).is_empty():
+        unlocked.emit("", a["name"])   # a milestone: announced, nothing to unlock
     save()
 
 

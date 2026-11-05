@@ -890,6 +890,15 @@ func number(pos: Vector2, amount: float, color: Color, big := false, dim := fals
         _texts.pop_front()
 
 
+## A floating name over a big moment (fusions, cataclysms): the reaction-label path, bigger,
+## slower and wider. Not gated by the damage-number setting: it names what happened.
+func label(pos: Vector2, text: String, color: Color, size: int = 30, life: float = 1.4) -> void:
+    _texts.append({ "pos": pos, "text": text, "color": color, "t": life, "life": life, "size": size,
+        "w": maxf(200.0, float(text.length() * size) * 0.75) })
+    if _texts.size() > MAX_TEXTS:
+        _texts.pop_front()
+
+
 func corpse(tex: Texture2D, pos: Vector2, scale: float, color: Color, flip: bool) -> void:
     _corpses.append({ "tex": tex, "pos": pos, "scale": scale, "color": color, "flip": flip, "rot": randf_range(-1.2, 1.2), "t": 0.5, "life": 0.5 })
 
@@ -1985,5 +1994,6 @@ func _draw_texts(cv: CanvasItem) -> void:
         var col: Color = t["color"]
         col.a = clampf(t["t"] / 0.5, 0.0, 1.0)
         var size := int(t.get("size", 20) + 6 * pop)
-        cv.draw_string(Art.FONT, t["pos"] + Vector2(-99, 1), t["text"], HORIZONTAL_ALIGNMENT_CENTER, 200, size, Color(0, 0, 0, col.a * 0.8))
-        cv.draw_string(Art.FONT, t["pos"] + Vector2(-100, 0), t["text"], HORIZONTAL_ALIGNMENT_CENTER, 200, size, col)
+        var w: float = t.get("w", 200.0)
+        cv.draw_string(Art.FONT, t["pos"] + Vector2(-w * 0.5 + 1.0, 1), t["text"], HORIZONTAL_ALIGNMENT_CENTER, w, size, Color(0, 0, 0, col.a * 0.8))
+        cv.draw_string(Art.FONT, t["pos"] + Vector2(-w * 0.5, 0), t["text"], HORIZONTAL_ALIGNMENT_CENTER, w, size, col)

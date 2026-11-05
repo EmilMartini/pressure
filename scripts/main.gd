@@ -54,6 +54,7 @@ var _bot_skip: Dictionary = {}
 var _bot_tried: Dictionary = {}   # item and gun ids already taken once this run
 var _shots_taken: Dictionary = {}
 var _reaction_counts: Dictionary = {}
+var _fusion_counts: Dictionary = {}   # fusion / cataclysm name -> times fired this run
 
 
 func _ready() -> void:
@@ -131,12 +132,13 @@ func _ready() -> void:
         for a in args:
             if a.begins_with("--class="):
                 Progress.chosen_class = a.substr(8)
-        print("[CLASS] %s" % Progress.chosen_class)
+        print("[CLASS] %s  instance=%s" % [Progress.chosen_class, _instance_tag().trim_prefix("_")])
     var pads := Input.get_connected_joypads()
     _spawn_player(0 if pads.has(0) else -1, true)
     Input.joy_connection_changed.connect(_on_joy_connection_changed)
 
     Elements.reaction_fired.connect(_count_reaction)
+    Elements.fusion_fired.connect(_on_fusion)
     Progress.unlocked.connect(_on_unlocked)
     if args.has("--obstacle-test") or args.has("--start-shot") or args.has("--layouts-shot") or args.has("--themes-shot"):
         # Test hooks never touch the real save.
@@ -322,6 +324,10 @@ func _obstacle_test() -> void:
 
 
 func _on_unlocked(unlock_id: String, achievement_name: String) -> void:
+    if unlock_id == "":
+        hud.toast("Achievement: %s" % achievement_name)
+        Sfx.play("unlock")
+        return
     var what := Progress.unlock_label(unlock_id)
     if unlock_id.begins_with("class:"):
         what = "the %s class" % String(Classes.get_def(unlock_id.substr(6)).get("name", unlock_id))
@@ -505,11 +511,14 @@ func enter_room(pos: Vector2i, moved: Vector2i) -> void:
             c.queue_free()
 
     current_pos = pos
+    Elements.room_reset()
     current = Room.new(rooms[pos], self)
     add_child(current)
     _update_spectacle()
     move_child(current, 0)
     current.door_entered.connect(_on_door_entered)
+    if autotest and _perf_probe:
+        print("[ROOM] %s layout=%s size=%s" % [pos, current.layout_name, current.room_size])
 
     var base := Vector2.ZERO if moved == Vector2i.ZERO else current.entry_position(-moved)
     var across := Vector2(moved).orthogonal() if moved != Vector2i.ZERO else Vector2.RIGHT
@@ -797,6 +806,26 @@ func _count_reaction(reaction_name: String, _pos: Vector2, _col: Color) -> void:
     Progress.add_reaction(reaction_name)
 
 
+## A fusion or cataclysm fired (Elements.fusion_fired, before its actions run): the show,
+## the counts. A first-ever discovery says so in its in-world name label ("NEW"), not with a
+## HUD toast: the first minutes of a fusion build discover several a minute.
+func _on_fusion(fusion_name: String, tier: int, pos: Vector2, radius: float, entry: Dictionary) -> void:
+    _fusion_counts[fusion_name] = int(_fusion_counts.get(fusion_name, 0)) + 1
+    Telemetry.fusion(fusion_name, tier)
+    var first := Progress.add_fusion(fusion_name, tier)
+    FusionFx.play(self, fusion_name, tier, pos, radius, entry, first)
+
+
+## --fusion-probe loadouts: four w1 guns of four elements each (wet, fire, oil, shock, blood
+## and gale are the w1 elements).
+const FUSION_LOADOUTS := [
+    ["water_pistol", "flare_pistol", "spark_needler", "zephyr_rang"],   # wet fire shock gale
+    ["slick_wand", "flare_pistol", "spark_needler", "zephyr_rang"],     # oil fire shock gale
+    ["water_pistol", "flare_pistol", "spark_needler", "vein_pistol"],   # wet fire shock blood
+    ["slick_wand", "flare_pistol", "vein_pistol", "zephyr_rang"],       # oil fire blood gale
+]
+
+
 func _setup_autotest() -> void:
     _bot_idle_fights = OS.get_cmdline_user_args().has("--idle")
     # Default: a real naked start, so the run measures the progression loop. `--arsenal`
@@ -810,6 +839,21 @@ func _setup_autotest() -> void:
             for gid in a.substr(10).split(","):
                 p0.add_gun(gid)
             print("[LOADOUT] %s" % a.substr(10))
+        if a == "--fusion-probe" or a.begins_with("--fusion-probe="):
+            # Tier-ladder probe: four light guns of four elements, so compounds, fusions and
+            # cataclysms actually happen. The loadout rotates with --instance (or pick one
+            # with --fusion-probe=K); each is four w1 guns, the same weight and dps as four
+            # copies of one, so single-element runs compare like for like.
+            var k := int(a.substr(15)) if a.begins_with("--fusion-probe=") else int(_instance_tag().trim_prefix("_"))
+            var lo: Array = FUSION_LOADOUTS[posmod(k, FUSION_LOADOUTS.size())]
+            var p1 := players[0]
+            p1.weight_capacity_base = 40
+            p1.recalc_stats()
+            for gid in lo:
+                p1.add_gun(gid)
+            print("[LOADOUT] fusion-probe %d: %s" % [posmod(k, FUSION_LOADOUTS.size()), ",".join(lo)])
+            var bad := Fusions.validate()
+            print("[FUSION-TABLES] %s" % ("valid" if bad.is_empty() else "%d errors: %s" % [bad.size(), "; ".join(bad.slice(0, 5))]))
     if OS.get_cmdline_user_args().has("--arsenal"):
         var p := players[0]
         p.weight_capacity_base = 80
@@ -1090,4 +1134,59 @@ func _print_stats(label: String) -> void:
         rooms_cleared, total_kills, scrap, p.hp, p.total_weight(), p.weight_capacity,
         get_tree().get_nodes_in_group("clouds").size()])
     print("    reactions: %s" % str(_reaction_counts))
+    print("    fusions: %s" % str(_fusion_counts))
     print("    unlocked this run: %s  (achievements %d/%d)" % [str(Progress.run_unlocks), Progress.achievements_count(), Progress.ACHIEVEMENTS.size()])
+    if label == "END":
+        _print_fusion_summary()
+
+
+## [FUSION]: fusions and cataclysms this run by tier, damage share by tier (DoTs count for
+## the tier that set them), the top names by count and by share of fusion damage.
+## [FUSION-CHECK]: the termination proof (no context above tier 4, at most the room budget of
+## fusions in one frame, no product made at or below its own tier), PASS or FAIL.
+func _print_fusion_summary() -> void:
+    var s: Dictionary = Telemetry.fusion_summary()
+    var fus: Dictionary = s["fusions"]
+    var cat: Dictionary = s["cataclysms"]
+    var td: Array = s["tier_dmg"]
+    var fd: Dictionary = s["fusion_dmg"]
+    var total := 0.0
+    for v in td:
+        total += float(v)
+    var n3 := 0
+    var n4 := 0
+    for k in fus:
+        n3 += int(fus[k])
+    for k in cat:
+        n4 += int(cat[k])
+    var fdt := 0.0
+    for k in fd:
+        fdt += float(fd[k])
+    var names: Array = fd.keys()
+    names.sort_custom(func(x, y): return float(fd[x]) > float(fd[y]))
+    var top_dmg: Array = []
+    for nm in names.slice(0, 6):
+        top_dmg.append("%s %.0f%%" % [nm, 100.0 * float(fd[nm]) / maxf(fdt, 1.0)])
+    var all_counts: Dictionary = fus.duplicate()
+    all_counts.merge(cat)
+    var by_count: Array = all_counts.keys()
+    by_count.sort_custom(func(x, y): return int(all_counts[x]) > int(all_counts[y]))
+    var top_n: Array = []
+    for nm in by_count.slice(0, 6):
+        top_n.append("%s:%d" % [nm, int(all_counts[nm])])
+    var shares: Array = []
+    for t in 5:
+        shares.append("t%d=%.1f%%" % [t, 100.0 * float(td[t]) / maxf(total, 1.0)])
+    print("[FUSION] enabled=%s t3=%d (%d kinds) t4=%d (%d kinds) fields=%d compounds enemy=%d patch=%d budget_denied=%d gap_denied=%d dmg %s total=%.0f fusion_dmg=%.0f" % [
+        Elements.fusions_enabled, n3, fus.size(), n4, cat.size(), int(Elements.dbg["fields"]), int(Elements.dbg["compounds_enemy"]),
+        int(Elements.dbg["compounds_patch"]), int(Elements.dbg["denied_budget"]), int(Elements.dbg["denied_gap"]), " ".join(shares), total, fdt])
+    print("    top by count: %s" % ", ".join(top_n))
+    print("    top by fusion damage: %s" % ", ".join(top_dmg))
+    print("    discovered this run: %d fusions, %d cataclysms" % [Progress.run_fusion_discoveries.size(), Progress.run_cataclysm_discoveries.size()])
+    print("    [FUSION-JSON] %s" % JSON.stringify({ "counts": all_counts, "dmg": fd, "tier_dmg": td }))
+    var d: Dictionary = Elements.dbg
+    var ok := int(d["max_ctx"]) <= Fusions.MAX_TIER and int(d["violations"]) == 0 and int(d["max_frame"]) <= Fusions.MAX_FUSIONS_PER_SEC + 1
+    print("[FUSION-CHECK] %s max_ctx=%d max_fusions_in_frame=%d max_depth=%d violations=%d" % [
+        "PASS" if ok else "FAIL", int(d["max_ctx"]), int(d["max_frame"]), int(d["max_depth"]), int(d["violations"])])
+    if not ok:
+        push_error("fusion termination check failed: %s" % str(d))

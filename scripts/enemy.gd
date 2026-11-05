@@ -112,6 +112,13 @@ var reshield_weakness := Vector2i(-1, -1)   # bosses re-shield at half health
 var reshield_hits := 0
 
 var states: Dictionary = {}           # Element.Kind -> seconds remaining
+## Tier 2 compound slot (Fusions.COMPOUNDS id): a reaction on this body primed it; the next
+## new element fuses it (tier 3). One slot; a newer compound replaces the older.
+var compound := ""
+var compound_time := 0.0
+var compound_origin := ""     # the reaction that left it (its two elements refresh, not fuse)
+var fusion_cd := 0.0          # after a fusion: no new fusion and no new compound here
+var _dot_tags := { "burn": [], "poison": [], "bleed": [] }   # Telemetry.dot_tag() of whoever set each DoT
 var burn_dps := 0.0
 var burn_time := 0.0
 var frozen_time := 0.0
@@ -378,6 +385,19 @@ func apply_element(kind: int, potency: float, source: Player = null) -> String:
             if e != self and is_instance_valid(e) and not e.is_queued_for_deletion() \
                     and e.global_position.distance_to(global_position) <= 110.0:
                 e.add_burn(burn_dps * 0.7, 2.5)
+    # Tier 3 before any pair reaction: a compound on this body meets a new element.
+    if compound != "":
+        var cid := compound
+        if Fusions.fusion(cid, kind, compound_origin).is_empty():
+            # One of its own elements: the compound is fed, not fused.
+            compound_time = maxf(compound_time, float(Fusions.compound(cid).get("lifetime_enemy", 0.0)))
+        elif fusion_cd <= 0.0:
+            compound = ""
+            var fused := Elements.try_fuse(self, cid, compound_origin, kind, potency, source)
+            if fused != "":
+                queue_redraw()
+                return fused
+            compound = cid   # over the room's budget: the element lands plainly, the compound stays
     for existing in states.keys():
         if existing == kind:
             continue
@@ -402,6 +422,29 @@ func apply_element(kind: int, potency: float, source: Player = null) -> String:
     states[kind] = duration
     queue_redraw()
     return ""
+
+
+## A reaction left its compound on this body. False while the post-fusion cooldown runs.
+func set_compound(cid: String, origin: String, life: float) -> bool:
+    if fusion_cd > 0.0 or life <= 0.0 or _dead:
+        return false
+    compound = cid
+    compound_origin = origin
+    compound_time = life
+    queue_redraw()
+    return true
+
+
+## Fusions crack 2 pips, cataclysms 3 (Fusions.SHIELD_CRACKS).
+func crack_shield(n: int) -> void:
+    if not shielded() or n <= 0:
+        return
+    shield_hp = maxi(0, shield_hp - n)
+    _shield_flash = 0.4
+    if shield_hp <= 0:
+        Elements.reaction_fired.emit("Shield broken!", global_position, Color.WHITE)
+    else:
+        Elements.reaction_fired.emit("Shield cracked", global_position, Color(1, 1, 1, 0.9))
 
 
 ## Any reaction cracks a shield; the one it is attuned to cracks it twice.
@@ -537,20 +580,32 @@ func add_burn(dps: float, seconds: float) -> void:
         seconds *= 1.5   # oil keeps it burning
     if has_state(Element.Kind.WET):
         seconds *= 0.5   # damp bodies burn badly
+    _tag_dot("burn", burn_time)
     burn_dps = maxf(burn_dps, dps)
     burn_time = maxf(burn_time, seconds)
     queue_redraw()
 
 
 func add_poison(dps: float, seconds: float) -> void:
+    _tag_dot("poison", poison_time)
     poison_stacks = mini(6, poison_stacks + 1)
     poison_dps = maxf(poison_dps, dps)
     poison_time = maxf(poison_time, seconds)
 
 
 func add_bleed(dps: float, seconds: float) -> void:
+    _tag_dot("bleed", bleed_time)
     bleed_dps = maxf(bleed_dps, dps)
     bleed_time = maxf(bleed_time, seconds)
+
+
+## Telemetry: a damage-over-time ticks under the tier (and fusion) that last set it, unless a
+## lower tier tops up one that is still running.
+func _tag_dot(key: String, left: float) -> void:
+    var tag: Array = Telemetry.dot_tag()
+    var old: Array = _dot_tags[key]
+    if left <= 0.0 or old.is_empty() or int(tag[0]) >= int(old[0]):
+        _dot_tags[key] = tag
 
 
 func corrode(seconds: float) -> void:
@@ -769,9 +824,16 @@ func _physics_process(delta: float) -> void:
             fx.number(global_position + Vector2(0, -radius), _dot_accum, _dot_color, false, true)
         _dot_accum = 0.0
         _dot_timer = 0.5
+    if compound != "":
+        compound_time -= delta
+        if compound_time <= 0.0:
+            compound = ""
+    fusion_cd = maxf(0.0, fusion_cd - delta)
     if burn_time > 0.0:
         burn_time -= delta
+        Telemetry.dot_begin(_dot_tags["burn"])
         take_damage(burn_dps * delta, Element.COLORS[Element.Kind.FIRE], false)
+        Telemetry.dot_end()
         if hp <= 0.0:
             return
         # Fire spreads when there is fuel: an oiled neighbour catches.
@@ -785,7 +847,9 @@ func _physics_process(delta: float) -> void:
                     e.apply_element(Element.Kind.FIRE, burn_dps, last_hit_by)
     if poison_time > 0.0:
         poison_time -= delta
+        Telemetry.dot_begin(_dot_tags["poison"])
         take_damage(poison_dps * float(poison_stacks) * delta, Element.COLORS[Element.Kind.POISON], false)
+        Telemetry.dot_end()
         if hp <= 0.0:
             return
         if poison_time <= 0.0:
@@ -794,7 +858,9 @@ func _physics_process(delta: float) -> void:
     if bleed_time > 0.0:
         bleed_time -= delta
         if velocity.length() > 10.0:
+            Telemetry.dot_begin(_dot_tags["bleed"])
             take_damage(bleed_dps * delta, Element.COLORS[Element.Kind.BLOOD], false)
+            Telemetry.dot_end()
             if hp <= 0.0:
                 return
     frozen_time = maxf(0.0, frozen_time - delta)
@@ -1262,6 +1328,17 @@ func _draw() -> void:
         draw_arc(Vector2.ZERO, radius + 3.0, 0.0, TAU, 24, Color(0.5, 1.0, 0.5, 0.6), 2.0)
     if affix != "":
         _draw_affix()
+    if compound != "":
+        # Primed: a thin rim and three motes orbiting in the compound's colour, brightening
+        # as it is about to fade, so "add a third element here" reads at a glance.
+        var cc: Color = Fusions.compound(compound).get("color", Color.WHITE)
+        var ending := compound_time < 0.6
+        var pulse := 0.55 + 0.25 * sin(_fx_t * (14.0 if ending else 6.0))
+        draw_arc(Vector2.ZERO, radius + 7.0, 0.0, TAU, 28, Color(cc, 0.35 * pulse), 1.0)
+        for k in 3:
+            var am := _fx_t * 3.2 + TAU * float(k) / 3.0
+            var mp := Vector2(cos(am) * (radius + 7.0), sin(am) * (radius + 7.0) * 0.55)
+            draw_rect(Rect2(floorf(mp.x - 1.5), floorf(mp.y - 1.5), 3.0, 3.0), Color(cc.lightened(0.25), 0.9 * pulse))
 
     # Element states drawn on the body.
     if states.has(Element.Kind.WET):

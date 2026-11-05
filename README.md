@@ -328,6 +328,19 @@ Anonymous, opt-in play data for balancing (`scripts/telemetry.gd`, autoload `Tel
   where health drops fastest, guns whose damage share far exceeds how often they are
   carried).
 
+## Fusions and cataclysms: reactions climb
+
+Every reaction leaves one of 22 compounds on its target and/or as a patch (motes orbiting
+the enemy, a dashed ring on the floor). A third element on it is a **fusion** (220, x1.8 to
+x2.5 potency); nineteen leave a **field** that a fourth element turns into a **cataclysm**
+(176, x3 to x4), after which nothing is left. A hard tier ceiling (4) and a context tier
+on everything a fusion causes make loops impossible; room budgets, a per-enemy cooldown and
+a repetition decay keep one combination from carrying a run. The Journal has a page for
+each, and first discoveries pay Embers (capped at 12 a run). Bots: four-element builds
+clear floor 1 in 16 of 17 runs against 5 of 10 for the same guns without fusions and 1 of 7
+for one element; idle six-gun bots still die on floor 1. Details and numbers: GDD.md,
+"Compounds and fusions".
+
 ## Threat: crowds, not sponges
 
 Measured with a stand-still bot (`--idle`) and a fixed loadout (`--loadout=a,b,c`):
@@ -433,7 +446,18 @@ that measures the progression loop). `--mastery=full` buys every Shrine rank and
 survival track (side A active, `--mastery-side=b` for B); `--mastery=N` spends N Embers
 cheapest-first. Both use a throwaway Shrine file and print a `[MASTERY]` line with the
 loadout and its power estimate. The log prints `[FLOOR]`, `[DEATH]` and `[EMBERS]` lines
-(what the run paid, or would have paid when the time cap ended it). `godot --path . -- --menu-shot`
+(what the run paid, or would have paid when the time cap ended it).
+`--fusion-probe` starts with four w1 guns of four elements so compounds, fusions and
+cataclysms actually happen; the loadout rotates with `--instance` (wet/fire/shock/gale,
+oil/fire/shock/gale, wet/fire/shock/blood, oil/fire/blood/gale), or pick one with
+`--fusion-probe=K`. `--no-fusions` turns the tier ladder off (reactions leave no compounds),
+which is the game before fusions for a like-for-like baseline. Every run ends with a
+`[FUSION]` line (fusions and cataclysms fired, compounds and fields made, damage share by
+tier 0 to 4, the top names by count and by share of fusion damage, a `[FUSION-JSON]` dump
+for scripts) and a `[FUSION-CHECK] PASS/FAIL` line: the termination proof (no context
+above tier 4, no product made at or below its own tier, at most the room budget of fusions
+in one frame). For parallel silent runs add `--audio-driver Dummy` before the scene and
+`--instance=N` after `--`; each instance gets its own save, Shrine and telemetry file. `godot --path . -- --menu-shot`
 screenshots the menu and codex. `godot --headless --path . res://scenes/main.tscn -- --obstacle-test`
 checks projectiles hit obstacles. `godot --path . res://scenes/main.tscn -- --themes-shot` saves
 one arena per floor theme (crypt, ruins, frozen, forge, void, ambience running 2 s) and the

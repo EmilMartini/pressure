@@ -81,5 +81,5 @@ func _follow() -> void:
 
 
 func _draw() -> void:
-    if draw_fn.is_valid() and source != null and is_instance_valid(source):
+    if draw_fn.is_valid() and source != null and is_instance_valid(source) and source.is_inside_tree():
         draw_fn.call(self)

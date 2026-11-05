@@ -70,6 +70,16 @@ var _reactions_seen: Dictionary = {}   # main._reaction_counts at the last flush
 var _by_gun: Dictionary = {}
 var _by_element: Dictionary = {}
 var _by_reaction: Dictionary = {}
+var _by_tier: Dictionary = {}       # "t0".."t4" -> damage this flush (tier of the effect that dealt it)
+# Tier ladder, per run: fusion and cataclysm counts by name, damage by tier, damage by the
+# outermost fusion or cataclysm it came from (DoTs count for whoever set them).
+var _fusions_run: Dictionary = {}
+var _cataclysms_run: Dictionary = {}
+var _fusions_room: Dictionary = {}
+var _tier_dmg_run: Array = [0.0, 0.0, 0.0, 0.0, 0.0]
+var _fusion_dmg_run: Dictionary = {}
+var _fus := ""          # outermost fusion / cataclysm being resolved
+var _dot: Array = []    # [tier, fusion name] of the DoT ticking now, else empty
 
 # Hit context (set by Projectile._deal_hit and Elements reactions around take_damage).
 var _shot_on := false
@@ -197,6 +207,10 @@ func run_start(main: Node) -> void:
     _reset_damage()
     _reset_room()
     _reactions_seen = {}
+    _fusions_run = {}
+    _cataclysms_run = {}
+    _tier_dmg_run = [0.0, 0.0, 0.0, 0.0, 0.0]
+    _fusion_dmg_run = {}
     var args := OS.get_cmdline_user_args()
     _run = _new_record("run")
     _run["bot"] = bool(main.get("autotest")) or args.has("--start-shot") or args.has("--obstacle-test")
@@ -312,6 +326,10 @@ func _finish_run(won: bool, abandoned: bool, award: Dictionary = {}) -> void:
         "embers": int(award.get("total", 0)), "embers_parts": (award.get("parts", {}) as Dictionary).duplicate(),
         "embers_counts": (award.get("counts", {}) as Dictionary).duplicate(), "bounties": (award.get("bounties", []) as Array).duplicate(),
         "discoveries": Progress.run_discoveries.duplicate(),
+        "fusions": _fusions_run.duplicate(), "cataclysms": _cataclysms_run.duplicate(),
+        "tier_damage": [snappedf(_tier_dmg_run[0], 1.0), snappedf(_tier_dmg_run[1], 1.0), snappedf(_tier_dmg_run[2], 1.0), snappedf(_tier_dmg_run[3], 1.0), snappedf(_tier_dmg_run[4], 1.0)],
+        "fusion_damage": _rounded(_fusion_dmg_run),
+        "fusion_discoveries": Progress.run_fusion_discoveries.duplicate(),
     })
     _run["partial"] = false
     var id := String(_run["run_id"])
@@ -391,7 +409,7 @@ func room_clear(room: Node) -> void:
         "floor": _floor, "type": data.type_name(), "secs": snappedf(_clock - _room_t0, 0.1),
         "kills": kills, "kills_by_kind": _room_kills.duplicate(), "hp_lost": snappedf(_room_hp_lost, 0.1),
         "elites": _room_elites, "spectacle": snappedf(float(main.spectacle_value()), 0.01) if main != null else 0.0,
-        "reactions": reactions,
+        "reactions": reactions, "fusions": _fusions_room.duplicate(),
     })
     _flush_damage()
 
@@ -471,11 +489,63 @@ func end_reaction(prev: String) -> void:
     _react = prev
 
 
+## A fusion or cataclysm is resolving: its damage counts for it (by_reaction) and, per run,
+## for the outermost one. Returns what end_fusion restores.
+func begin_fusion(fusion_name: String, _tier: int) -> Array:
+    var prev := [_react, _fus]
+    _react = fusion_name
+    if _fus == "":
+        _fus = fusion_name
+    return prev
+
+
+func end_fusion(prev: Array) -> void:
+    _react = String(prev[0])
+    _fus = String(prev[1])
+
+
+## What a damage-over-time set now should tick under: [tier, outermost fusion].
+func dot_tag() -> Array:
+    return [Elements.ctx_tier, _fus]
+
+
+func dot_begin(tag: Array) -> void:
+    _dot = tag
+
+
+func dot_end() -> void:
+    _dot = []
+
+
+## A fusion (tier 3) or cataclysm (tier 4) fired.
+func fusion(fusion_name: String, tier: int) -> void:
+    var d: Dictionary = _cataclysms_run if tier >= Fusions.TIER_CATACLYSM else _fusions_run
+    d[fusion_name] = int(d.get(fusion_name, 0)) + 1
+    _fusions_room[fusion_name] = int(_fusions_room.get(fusion_name, 0)) + 1
+
+
+## Run totals for the bot's [FUSION] line: counts by name per tier, damage by tier and by
+## fusion name (since the run started).
+func fusion_summary() -> Dictionary:
+    return { "fusions": _fusions_run.duplicate(), "cataclysms": _cataclysms_run.duplicate(),
+        "tier_dmg": _tier_dmg_run.duplicate(), "fusion_dmg": _fusion_dmg_run.duplicate() }
+
+
 ## Damage an enemy actually lost (overkill trimmed by the caller), attributed to the
 ## gun, element and reaction in context.
 func hit(amount: float, color: Color, flash: bool, source: Node) -> void:
     if _run.is_empty() or amount <= 0.0:
         return
+    var tier := Elements.ctx_tier
+    var fus := _fus
+    if not _dot.is_empty():
+        tier = int(_dot[0])
+        fus = String(_dot[1])
+    tier = clampi(tier, 0, 4)
+    _tier_dmg_run[tier] = float(_tier_dmg_run[tier]) + amount
+    _by_tier["t%d" % tier] = float(_by_tier.get("t%d" % tier, 0.0)) + amount
+    if fus != "":
+        _fusion_dmg_run[fus] = float(_fusion_dmg_run.get(fus, 0.0)) + amount
     var gun := ""
     if _shot_on and _shot_gun != "":
         gun = _shot_gun
@@ -502,7 +572,7 @@ func hit(amount: float, color: Color, flash: bool, source: Node) -> void:
 func _flush_damage() -> void:
     if _by_gun.is_empty():
         return
-    event("damage_dealt", { "floor": _floor, "by_gun": _rounded(_by_gun), "by_element": _rounded(_by_element), "by_reaction": _rounded(_by_reaction) })
+    event("damage_dealt", { "floor": _floor, "by_gun": _rounded(_by_gun), "by_element": _rounded(_by_element), "by_reaction": _rounded(_by_reaction), "by_tier": _rounded(_by_tier) })
     _reset_damage()
 
 
@@ -937,12 +1007,14 @@ func _reset_room() -> void:
     _room_elites = 0
     _room_seen = {}
     _room_bought = {}
+    _fusions_room = {}
 
 
 func _reset_damage() -> void:
     _by_gun = {}
     _by_element = {}
     _by_reaction = {}
+    _by_tier = {}
 
 
 func _rounded(d: Dictionary) -> Dictionary:

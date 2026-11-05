@@ -1,12 +1,13 @@
 class_name Journal
 extends PanelContainer
 ## The journal: what is unlocked, what is not, and how to unlock it.
-## Tabs: Achievements, Arsenal (guns), Gear (items by rarity), Reactions, Secrets (puzzle
-## kinds found, hidden rooms and alcoves). Entries are flat buttons
+## Tabs: Achievements, Arsenal (guns), Gear (items by rarity), Reactions, Fusions (by
+## compound), Cataclysms (by fusion field), Secrets (puzzle kinds found, hidden rooms and
+## alcoves). Entries are flat buttons
 ## so a controller can walk the list and the scroll follows focus. On the Gear tab the
 ## focused entry's ItemCard shows on the right.
 
-const TABS := ["Achievements", "Arsenal", "Gear", "Reactions", "Secrets"]
+const TABS := ["Achievements", "Arsenal", "Gear", "Reactions", "Fusions", "Cataclysms", "Secrets"]
 
 var on_close: Callable
 var tab := 0
@@ -92,6 +93,10 @@ func set_tab(i: int) -> void:
         3:
             _fill_reactions()
         4:
+            _fill_fusions()
+        5:
+            _fill_cataclysms()
+        6:
             _fill_secrets()
     Sfx.play("ui_move")
     await get_tree().process_frame
@@ -181,6 +186,65 @@ func _fill_reactions() -> void:
             _entry("%s   %s   x%d\n      %s" % [d["name"], pair, Progress.stat("reaction:" + d["name"]), d["desc"]], col)
         else:
             _entry("???   %s\n      undiscovered" % pair, Color(0.45, 0.42, 0.45))
+
+
+## Fusions by compound: a header per compound (what makes it, where it lives), then one entry
+## per third element, ??? until it has fired once; then its name, recipe and what it does.
+func _fill_fusions() -> void:
+    var names: Array = Fusions.all_fusion_names()
+    var found := 0
+    for n in names:
+        if Progress.fusion_discovered(n):
+            found += 1
+    _header("Fusions   (%d / %d discovered)   a reaction leaves a compound; hit it with a third element" % [found, names.size()], UiTheme.BONE)
+    for cid in Fusions.FUSIONS:
+        var c: Dictionary = Fusions.compound(cid)
+        var row: Dictionary = Fusions.FUSIONS[cid]
+        var got := 0
+        for k in row:
+            if Progress.fusion_discovered(row[k]["name"]):
+                got += 1
+        var lives := String(c["where"]).replace("+", " and ").replace("floor", "on the floor").replace("cloud", "in the air").replace("enemy", "on the enemy")
+        _header("%s   (%s + %s, lives %s)   %d / %d" % [c["name"], Element.NAMES[c["a"]], Element.NAMES[c["b"]], lives, got, row.size()], c["color"])
+        for k in row:
+            var e: Dictionary = row[k]
+            var recipe := "%s + %s" % [c["name"], Element.NAMES[k]]
+            if Progress.fusion_discovered(e["name"]):
+                var extra := "   leaves a field" if e.get("leaves_field", false) else ""
+                _entry("%s   %s   x%.1f%s   fired %d\n      %s" % [e["name"], recipe, float(e["mult"]), extra, Progress.stat("fusion:" + e["name"]), e["desc"]], c["color"].lerp(Element.COLORS[k], 0.35).lightened(0.15))
+            else:
+                _entry("???   %s" % recipe, Color(0.45, 0.42, 0.45))
+
+
+## Cataclysms by fusion field: a header per field (its fusion's recipe and payload), then one
+## entry per fourth element that sets it off, ??? until it has.
+func _fill_cataclysms() -> void:
+    var names: Array = Fusions.all_cataclysm_names()
+    var found := 0
+    for n in names:
+        if Progress.fusion_discovered(n):
+            found += 1
+    _header("Cataclysms   (%d / %d discovered)   a fusion field meets a fourth element" % [found, names.size()], UiTheme.BONE)
+    for fname in Fusions.CATACLYSMS:
+        var info := Fusions.by_name(fname)
+        var row: Dictionary = Fusions.CATACLYSMS[fname]
+        var f: Dictionary = info["entry"].get("field", {})
+        var payload: int = int(f.get("payload", 0))
+        var c: Dictionary = Fusions.compound(String(info["source"]))
+        var known := Progress.fusion_discovered(fname)
+        var got := 0
+        for k in row:
+            if Progress.fusion_discovered(row[k]["name"]):
+                got += 1
+        var title: String = fname if known else "???"
+        _header("%s field   (%s + %s, rains %s)   %d / %d" % [title, c.get("name", "?"), Element.NAMES[info["element"]], Element.NAMES[payload], got, row.size()], Element.COLORS[payload])
+        for k in row:
+            var e: Dictionary = row[k]
+            var recipe := "%s + %s" % [fname if known else "???", Element.NAMES[k]]
+            if Progress.fusion_discovered(e["name"]):
+                _entry("%s   %s   x%.1f   fired %d\n      %s" % [e["name"], recipe, float(e["mult"]), Progress.stat("fusion:" + e["name"]), e["desc"]], Element.COLORS[payload].lerp(Element.COLORS[k], 0.5).lightened(0.2))
+            else:
+                _entry("???   %s" % recipe, Color(0.45, 0.42, 0.45))
 
 
 ## Each puzzle kind stays ??? until it has been solved once; then its name and how.

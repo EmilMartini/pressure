@@ -72,10 +72,16 @@ const DURATION_TO_DMG := 0.15
 #   bad:  1 room, no elites, nothing new           = 1 Ember
 #   good: 5 rooms, 2 elites, 2 new reactions       = 5 + 4 + 6 = 15 Embers
 # The old formula paid both runs 1 point.
-const PAY := { "rooms": 1, "elites": 2, "discoveries": 3, "bosses": 3, "bounties": 12, "floors": 2, "win": 10 }
-const PAY_ORDER := ["rooms", "elites", "discoveries", "bosses", "bounties", "floors", "win"]
+#   fusions     4 per fusion (tier 3) set off for the first time ever, 6 per cataclysm
+#   cataclysms  (tier 4). There are 220 and 176 of them (1,936 Embers, twice the whole
+#               Shrine), so together they pay at most FUSION_PAY_CAP a run: about one more
+#               good floor. A fusion build earns its Shrine a little faster, never a lot.
+const PAY := { "rooms": 1, "elites": 2, "discoveries": 3, "fusions": 4, "cataclysms": 6, "bosses": 3, "bounties": 12, "floors": 2, "win": 10 }
+const PAY_ORDER := ["rooms", "elites", "discoveries", "fusions", "cataclysms", "bosses", "bounties", "floors", "win"]
+const FUSION_PAY_CAP := 12
 const PAY_WORDS := {
-    "rooms": "rooms", "elites": "elites", "discoveries": "new reactions", "bosses": "bosses",
+    "rooms": "rooms", "elites": "elites", "discoveries": "new reactions", "fusions": "new fusions",
+    "cataclysms": "new cataclysms", "bosses": "bosses",
     "bounties": "bounties", "floors": "depth", "win": "clear", "legacy": "old mastery",
 }
 
@@ -705,6 +711,8 @@ func preview(floor_number: int, won: bool, class_id: String) -> Dictionary:
         "rooms": Progress.run_stat("rooms"),
         "elites": Progress.run_stat("elites"),
         "discoveries": Progress.run_discoveries.size(),
+        "fusions": Progress.run_fusion_discoveries.size(),
+        "cataclysms": Progress.run_cataclysm_discoveries.size(),
         "bosses": Progress.run_stat("bosses"),
         "bounties": 0,
         "floors": maxi(0, floor_number - 1),
@@ -721,8 +729,12 @@ func preview(floor_number: int, won: bool, class_id: String) -> Dictionary:
     counts["bounties"] = new_bounties.size()
     var parts: Dictionary = {}
     var total := 0
+    var ladder_left := FUSION_PAY_CAP
     for k in PAY_ORDER:
         var v: int = int(counts[k]) * int(PAY[k])
+        if k == "fusions" or k == "cataclysms":
+            v = mini(v, ladder_left)
+            ladder_left -= v
         parts[k] = v
         total += v
     return { "total": total, "parts": parts, "counts": counts, "bounties": new_bounties, "class": class_id }
@@ -748,7 +760,8 @@ func award_text(a: Dictionary) -> String:
             _:
                 var word := String(PAY_WORDS[k])
                 if n == 1:
-                    word = { "rooms": "room", "elites": "elite", "discoveries": "new reaction", "bosses": "boss" }.get(k, word)
+                    word = { "rooms": "room", "elites": "elite", "discoveries": "new reaction", "fusions": "new fusion",
+                        "cataclysms": "new cataclysm", "bosses": "boss" }.get(k, word)
                 bits.append("%d %s +%d" % [n, word, v])
     return ", ".join(bits) if not bits.is_empty() else "nothing this time"
 

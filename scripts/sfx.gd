@@ -643,7 +643,9 @@ func _pick_voice(pool: Array, snd: String, next: int) -> Array:
         for v in steal:
             if v.get_playback_position() > oldest.get_playback_position():
                 oldest = v
-        if pool.has(oldest):
+        # Same pool when both are positional or both flat (pool.has() on a typed array of the
+        # other kind logs an engine error).
+        if pool.size() > 0 and (oldest is AudioStreamPlayer2D) == (pool[0] is AudioStreamPlayer2D):
             return [oldest, next]
         oldest.stop()
     var size := pool.size()

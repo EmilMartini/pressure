@@ -80,8 +80,12 @@ const FIELD_TICK := 0.5                # s between payload applications inside a
 
 # --- Repetition (keeps one combination from dominating) -----------------------------------------------
 const REPEAT_WINDOW := 8.0             # s, room-wide, per fusion or cataclysm name
-const REPEAT_DECAY := 0.85             # each repeat inside the window multiplies mult by this
-const REPEAT_FLOOR := 0.55             # never below this share of the listed mult
+const REPEAT_DECAY := 0.8              # each repeat inside the window multiplies mult by this (was 0.85; bots: Wildfire 19% of a loadout)
+const REPEAT_FLOOR := 0.3              # never below this share of the listed mult (was 0.55)
+## s, room-wide: the same fusion cannot fire twice this close together; the element lands as
+## itself and the compound stays (another element can still fuse it). Bots: a wet + shock
+## build made Wildfire 1.3 times a second, 20-32% of its fusion damage, without it.
+const REPEAT_GAP := 1.0
 
 ## Shield cracks per tier (a pair reaction cracks 1, its attuned pair 2, as today).
 const SHIELD_CRACKS := { 2: 1, 3: 2, 4: 3 }

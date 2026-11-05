@@ -142,15 +142,52 @@ const DEFS := [
 signal reaction_fired(reaction_name: String, position: Vector2, color: Color)
 signal lightning_arc(from: Vector2, to: Vector2)
 signal nova(position: Vector2, radius: float, color: Color)
+## A fusion (tier 3) or cataclysm (tier 4) went off: presentation, counts and telemetry.
+signal fusion_fired(fusion_name: String, tier: int, position: Vector2, radius: float, entry: Dictionary)
 
 var _reactions: Dictionary = {}
 var _by_name: Dictionary = {}
+
+# --- The tier ladder (see fusions.gd) ---------------------------------------
+## Tier of the effect being resolved right now: 0 a plain hit, 2 inside a reaction, 3 inside
+## a fusion or a field's payload tick, 4 inside a cataclysm. Everything is synchronous, so
+## it is set around each resolution and restored after it; a product may only be made when
+## Fusions.can_produce(product tier, ctx_tier).
+var ctx_tier := 0
+## `--no-fusions` (baseline probes): reactions leave no compounds, so nothing climbs.
+var fusions_enabled := true
+var _clock := 0.0                  # game time, for the room budgets
+var _fusion_times: Array = []      # game times of the fusions in the last second (room budget)
+var _repeats: Dictionary = {}      # name -> game times it fired inside REPEAT_WINDOW
+var _last_cataclysm := -99.0
+var _apply_left := -1              # element applications the running fusion may still cause (-1 = no cap)
+var _depth := 0                    # nested resolutions (reactions inside fusions inside ...)
+var _frame_fusions := 0
+## Termination proof, printed by the bot ([FUSION-CHECK]): the highest context tier entered,
+## the most fusions and cataclysms run in one frame, the deepest nesting, and products made
+## at or below the tier they were made in (must stay 0).
+var dbg := { "max_ctx": 0, "max_frame": 0, "max_depth": 0, "violations": 0, "fusions": 0, "cataclysms": 0,
+    "fields": 0, "compounds_enemy": 0, "compounds_patch": 0, "denied_budget": 0, "denied_gap": 0 }
 
 
 func _ready() -> void:
     for d in DEFS:
         _reactions[pair_key(d["a"], d["b"])] = d
         _by_name[d["name"]] = d
+    if OS.get_cmdline_user_args().has("--no-fusions"):
+        fusions_enabled = false
+
+
+func _process(delta: float) -> void:
+    _clock += delta
+    _frame_fusions = 0
+
+
+## A new room: its budgets (fusions a second, repeats, the cataclysm cooldown) start fresh.
+func room_reset() -> void:
+    _fusion_times.clear()
+    _repeats.clear()
+    _last_cataclysm = -99.0
 
 
 static func pair_key(a: int, b: int) -> Vector2i:
@@ -182,12 +219,20 @@ func available_reactions(kinds: Array) -> Array[Vector2i]:
 
 ## Fires the reaction between `existing` and `incoming` on `enemy`.
 ## Returns the reaction name, or "" when the pair does not react.
-func try_react(enemy: Node2D, existing: int, incoming: int, potency: float) -> String:
+## `context` is the tier this happens inside (-1: the current ctx_tier). The reaction's own
+## actions run at tier 2 (or the context, if higher). It leaves its compound only when a
+## tier 2 product may be made in `context`, so a reaction set off by a fusion's apply or a
+## field's payload deals its damage and leaves nothing.
+func try_react(enemy: Node2D, existing: int, incoming: int, potency: float, context: int = -1) -> String:
     var d = _reactions.get(pair_key(existing, incoming))
     if d == null:
         return ""
+    var ctx := ctx_tier if context < 0 else context
     var name: String = d["name"]
-    reaction_fired.emit(name, enemy.global_position, COLORS[incoming])
+    var pos: Vector2 = enemy.global_position
+    var source: Player = enemy.last_hit_by if "last_hit_by" in enemy else null
+    reaction_fired.emit(name, pos, COLORS[incoming])
+    var prev := _enter(maxi(ctx, Fusions.TIER_REACTION))
     var tel_prev: String = Telemetry.begin_reaction(name)
     for act in d["do"]:
         if not is_instance_valid(enemy) or enemy.is_queued_for_deletion():
@@ -195,6 +240,10 @@ func try_react(enemy: Node2D, existing: int, incoming: int, potency: float) -> S
             break
         _act(enemy, potency, act)
     Telemetry.end_reaction(tel_prev)
+    _leave(prev)
+    if fusions_enabled and Fusions.can_produce(Fusions.TIER_REACTION, ctx):
+        var alive := is_instance_valid(enemy) and not enemy.is_queued_for_deletion()
+        _leave_compound(name, enemy if alive else null, enemy.global_position if alive else pos, potency, source)
     return name
 
 
@@ -202,9 +251,17 @@ func try_react(enemy: Node2D, existing: int, incoming: int, potency: float) -> S
 ## inside, and the patch is used up. Lightning through a steam puddle shocks everyone
 ## standing in it; fire into a poison cloud burns the crowd; then it is gone. One step,
 ## never a chain of its own.
-func react_cloud(cloud: Cloud, incoming: int, potency: float, source: Player) -> String:
+##
+## Compound patches and fusion fields are clouds too: an element entering a compound patch
+## fuses it (tier 3), one entering a field may set off its cataclysm (tier 4).
+func react_cloud(cloud: Cloud, incoming: int, potency: float, source: Player, context: int = -1) -> String:
     if cloud == null or not is_instance_valid(cloud) or cloud.element == incoming or cloud.cooldown > 0.0:
         return ""
+    var ctx := ctx_tier if context < 0 else context
+    if cloud.field_name != "":
+        return _react_field(cloud, incoming, potency, source, ctx)
+    if cloud.compound != "":
+        return _react_compound_patch(cloud, incoming, potency, source, ctx)
     var d = _reactions.get(pair_key(cloud.element, incoming))
     if d == null:
         return ""
@@ -214,6 +271,7 @@ func react_cloud(cloud: Cloud, incoming: int, potency: float, source: Player) ->
     reaction_fired.emit(name, pos, COLORS[incoming])
     nova.emit(pos, cloud.radius, Color(COLORS[incoming], 0.6))
     var inside := _enemies_within(pos, cloud.radius)
+    var prev := _enter(maxi(ctx, Fusions.TIER_REACTION))
     var tel_prev: String = Telemetry.begin_reaction(name)
     var area_done := false
     for e in inside:
@@ -235,8 +293,208 @@ func react_cloud(cloud: Cloud, incoming: int, potency: float, source: Player) ->
             _act(e, potency * 0.7, act)
         area_done = true
     Telemetry.end_reaction(tel_prev)
+    _leave(prev)
     cloud.dissipate()
+    if fusions_enabled and Fusions.can_produce(Fusions.TIER_REACTION, ctx):
+        # A reaction played over a patch leaves its compound there, and primes the bodies
+        # inside when the compound lives on enemies.
+        var cid := Fusions.compound_for(name)
+        var c := Fusions.compound(cid)
+        if not c.is_empty() and String(c["where"]).contains("enemy"):
+            for e in inside:
+                if is_instance_valid(e) and not e.is_queued_for_deletion() and e.has_method("set_compound"):
+                    if e.set_compound(cid, name, float(c["lifetime_enemy"])):
+                        dbg["compounds_enemy"] += 1
+        _leave_compound(name, null, pos, potency, source, false)
     return name
+
+
+# --- Compounds, fusions, cataclysms -------------------------------------------------
+
+
+## Enter a resolution at `tier`; returns the tier to restore with _leave.
+func _enter(tier: int) -> int:
+    var prev := ctx_tier
+    ctx_tier = tier
+    _depth += 1
+    if tier > int(dbg["max_ctx"]):
+        dbg["max_ctx"] = tier
+    if _depth > int(dbg["max_depth"]):
+        dbg["max_depth"] = _depth
+    return prev
+
+
+func _leave(prev: int) -> void:
+    ctx_tier = prev
+    _depth -= 1
+
+
+## The compound a reaction leaves: on its target (when the compound lives on enemies and the
+## target is not on its post-fusion cooldown) and/or as a patch where it happened.
+func _leave_compound(reaction_name: String, enemy: Node2D, pos: Vector2, potency: float, source: Player, on_enemy := true) -> void:
+    var cid := Fusions.compound_for(reaction_name)
+    var c := Fusions.compound(cid)
+    if c.is_empty():
+        return
+    var where := String(c["where"])
+    if on_enemy and where.contains("enemy") and enemy != null and enemy.has_method("set_compound"):
+        if enemy.set_compound(cid, reaction_name, float(c["lifetime_enemy"])):
+            dbg["compounds_enemy"] += 1
+    if where.contains("cloud") or where.contains("floor"):
+        if Cloud.spawn_compound(_world(), pos, cid, reaction_name, float(c["patch_radius"]), float(c["lifetime_cloud"]), potency, source):
+            dbg["compounds_patch"] += 1
+
+
+## Whether the room may run another fusion now (MAX_FUSIONS_PER_SEC). Past it the element
+## lands as a plain element and the compound stays.
+func fusion_budget() -> bool:
+    while not _fusion_times.is_empty() and _clock - float(_fusion_times[0]) > 1.0:
+        _fusion_times.pop_front()
+    if _fusion_times.size() >= Fusions.MAX_FUSIONS_PER_SEC:
+        dbg["denied_budget"] += 1
+        return false
+    return true
+
+
+## Whether this fusion name may fire again yet (Fusions.REPEAT_GAP, room-wide).
+func _gap_ok(fusion_name: String) -> bool:
+    var times: Array = _repeats.get(fusion_name, [])
+    if not times.is_empty() and _clock - float(times[times.size() - 1]) < Fusions.REPEAT_GAP:
+        dbg["denied_gap"] = int(dbg.get("denied_gap", 0)) + 1
+        return false
+    return true
+
+
+## An element lands on an enemy carrying a compound. Returns the fusion's name, or "" when
+## nothing fused (the element then lands as usual). Called by Enemy.apply_element.
+func try_fuse(enemy: Node2D, compound_id: String, origin: String, incoming: int, potency: float, source: Player) -> String:
+    if not fusions_enabled or not Fusions.can_produce(Fusions.TIER_FUSION, ctx_tier):
+        return ""
+    var entry := Fusions.fusion(compound_id, incoming, origin)
+    if entry.is_empty() or not _gap_ok(String(entry["name"])) or not fusion_budget():
+        return ""
+    play_fusion(entry, enemy, enemy.global_position, potency, 0.0, source, [], false)
+    return String(entry["name"])
+
+
+## A compound patch meets an element: the fusion plays once over everyone inside (area
+## actions once from the patch's centre, the rest per enemy at PATCH_SCALE); the patch is used.
+func _react_compound_patch(cloud: Cloud, incoming: int, potency: float, source: Player, ctx: int) -> String:
+    if not fusions_enabled or not Fusions.can_produce(Fusions.TIER_FUSION, ctx):
+        return ""
+    var entry := Fusions.fusion(cloud.compound, incoming, cloud.origin)
+    if entry.is_empty() or not _gap_ok(String(entry["name"])) or not fusion_budget():
+        return ""
+    cloud.cooldown = 99.0
+    var pos := cloud.global_position
+    var inside := _enemies_within(pos, cloud.radius)
+    play_fusion(entry, null, pos, potency, cloud.radius, source, inside, true)
+    cloud.dissipate()
+    return String(entry["name"])
+
+
+## A fusion field meets a fourth element: a cataclysm over everything inside, then nothing.
+## The field must be FIELD_ARM_TIME old, and the room gets one cataclysm per
+## CATACLYSM_ROOM_COOLDOWN; otherwise the element passes through and the field stays.
+func _react_field(cloud: Cloud, incoming: int, potency: float, source: Player, ctx: int) -> String:
+    if not fusions_enabled or not Fusions.can_produce(Fusions.TIER_CATACLYSM, ctx):
+        return ""
+    var entry := Fusions.cataclysm(cloud.field_name, incoming)
+    if entry.is_empty() or cloud.age < Fusions.FIELD_ARM_TIME or cloud.cataclysms_left <= 0:
+        return ""
+    if _clock - _last_cataclysm < Fusions.CATACLYSM_ROOM_COOLDOWN:
+        return ""
+    _last_cataclysm = _clock
+    cloud.cataclysms_left -= 1
+    cloud.cooldown = 99.0
+    var pos := cloud.global_position
+    var inside := _enemies_within(pos, cloud.radius)
+    play_fusion(entry, null, pos, maxf(potency, cloud.potency), cloud.radius, source, inside, true)
+    cloud.dissipate()
+    return String(entry["name"])
+
+
+## Runs a fusion (tier 3) or cataclysm (tier 4). On an enemy (`anchor`, `is_patch` false)
+## its actions run on the anchor at potency x mult x the repeat factor; over a patch or a
+## field, area actions (and heal_source) run once from `pos` and the rest on each enemy in
+## `inside` at PATCH_SCALE. Everything inside runs at context tier = the entry's tier, with
+## at most MAX_SECONDARY_APPLIES element applications. A field is left after, if any.
+func play_fusion(entry: Dictionary, anchor: Node2D, pos: Vector2, potency: float, patch_radius: float, source: Player, inside: Array, is_patch: bool) -> void:
+    var tier := int(entry.get("tier", Fusions.TIER_FUSION))
+    var name := String(entry["name"])
+    if not Fusions.can_produce(tier, ctx_tier):
+        dbg["violations"] += 1   # callers gate this; counting proves they do
+        return
+    _fusion_times.append(_clock)
+    _frame_fusions += 1
+    if _frame_fusions > int(dbg["max_frame"]):
+        dbg["max_frame"] = _frame_fusions
+    if tier >= Fusions.TIER_CATACLYSM:
+        dbg["cataclysms"] += 1
+    else:
+        dbg["fusions"] += 1
+    var times: Array = _repeats.get(name, [])
+    while not times.is_empty() and _clock - float(times[0]) > Fusions.REPEAT_WINDOW:
+        times.pop_front()
+    var mult := float(entry["mult"]) * Fusions.repeat_mult(times.size())
+    times.append(_clock)
+    _repeats[name] = times
+    var acts := Fusions.prepared_actions(entry, patch_radius)
+    var reach := patch_radius
+    for a in acts:
+        match String(a[0]):
+            "burst", "pull", "push":
+                reach = maxf(reach, float(a[1]))
+            "apply", "spread":
+                reach = maxf(reach, float(a[2]))
+            "slow":
+                reach = maxf(reach, float(a[3]))
+    if source == null and anchor != null and "last_hit_by" in anchor:
+        source = anchor.last_hit_by
+    fusion_fired.emit(name, tier, pos, maxf(reach, 60.0), entry)
+    var prev := _enter(tier)
+    var tel_prev: Array = Telemetry.begin_fusion(name, tier)
+    var apply_prev := _apply_left
+    _apply_left = Fusions.MAX_SECONDARY_APPLIES_CATACLYSM if tier >= Fusions.TIER_CATACLYSM else Fusions.MAX_SECONDARY_APPLIES
+    var cracks := Fusions.shield_cracks(tier)
+    if not is_patch:
+        if anchor != null and is_instance_valid(anchor) and anchor.has_method("crack_shield"):
+            anchor.crack_shield(cracks)
+            anchor.fusion_cd = Fusions.FUSION_COOLDOWN
+        var p := potency * mult
+        for act in acts:
+            if anchor != null and is_instance_valid(anchor) and not anchor.is_queued_for_deletion():
+                _act(anchor, p, act)
+            elif _is_area_action(act) or act[0] == "heal_source":
+                # The target died mid-fusion; area actions still fire from where it was.
+                _act_at(null, pos, source, p, act)
+    else:
+        var p := potency * mult * Fusions.PATCH_SCALE
+        for act in acts:
+            if _is_area_action(act) or act[0] == "heal_source":
+                _act_at(null, pos, source, p, act)
+        for e in inside:
+            if not is_instance_valid(e) or e.is_queued_for_deletion():
+                continue
+            if source != null and is_instance_valid(source):
+                e.last_hit_by = source
+            if e.has_method("crack_shield"):
+                e.crack_shield(cracks)
+                e.fusion_cd = Fusions.FUSION_COOLDOWN
+            for act in acts:
+                if not is_instance_valid(e) or e.is_queued_for_deletion():
+                    break
+                if _is_area_action(act) or act[0] == "heal_source":
+                    continue
+                _act(e, p, act)
+    _apply_left = apply_prev
+    Telemetry.end_fusion(tel_prev)
+    _leave(prev)
+    if tier == Fusions.TIER_FUSION and Fusions.leaves_field(name):
+        var f := Fusions.field_of(name)
+        if not f.is_empty():
+            Cloud.spawn_field(_world(), pos, name, int(f["payload"]), float(f["radius"]), float(f["life"]), potency * 0.6, source)
+            dbg["fields"] += 1
 
 
 static func _is_area_action(act: Array) -> bool:
@@ -255,38 +513,54 @@ static func _is_area_action(act: Array) -> bool:
 
 func _act(enemy: Node2D, potency: float, act: Array) -> void:
     var source: Player = enemy.last_hit_by if "last_hit_by" in enemy else null
-    var pos: Vector2 = enemy.global_position
+    _act_at(enemy, enemy.global_position, source, potency, act)
+
+
+## One action at `pos`. `enemy` is the target; with null (a fusion over a patch, or a target
+## that died mid-fusion) only the area actions do anything.
+func _act_at(enemy: Node2D, pos: Vector2, source: Player, potency: float, act: Array) -> void:
+    var has_target := enemy != null and is_instance_valid(enemy) and not enemy.is_queued_for_deletion()
     match act[0]:
         "damage":
-            enemy.take_damage(potency * float(act[1]), Color.WHITE, true, source)
+            if has_target:
+                enemy.take_damage(potency * float(act[1]), Color.WHITE, true, source)
         "burst":
             nova.emit(pos, float(act[1]), Color(1, 1, 1, 0.5))
             for e in _enemies_within(pos, float(act[1])):
-                e.take_damage(potency * float(act[2]), Color.WHITE, true, source)
+                if is_instance_valid(e) and not e.is_queued_for_deletion():
+                    e.take_damage(potency * float(act[2]), Color.WHITE, true, source)
         "apply":
             var radius := float(act[2])
             if radius <= 0.0:
-                enemy.apply_element(int(act[1]), potency, source)
+                if has_target and _may_apply():
+                    enemy.apply_element(int(act[1]), potency, source)
             else:
                 for e in _enemies_within(pos, radius):
-                    if is_instance_valid(e) and not e.is_queued_for_deletion():
+                    if is_instance_valid(e) and not e.is_queued_for_deletion() and _may_apply():
                         e.apply_element(int(act[1]), potency * 0.8, source)
         "burn":
-            enemy.add_burn(potency * float(act[1]), float(act[2]))
+            if has_target:
+                enemy.add_burn(potency * float(act[1]), float(act[2]))
         "poison":
-            enemy.add_poison(potency * float(act[1]) * 0.5, float(act[2]))
+            if has_target:
+                enemy.add_poison(potency * float(act[1]) * 0.5, float(act[2]))
         "bleed":
-            enemy.add_bleed(potency * float(act[1]) * 0.6, float(act[2]))
+            if has_target:
+                enemy.add_bleed(potency * float(act[1]) * 0.6, float(act[2]))
         "corrode":
-            enemy.corrode(float(act[1]))
+            if has_target:
+                enemy.corrode(float(act[1]))
         "freeze":
-            enemy.freeze(float(act[1]))
+            if has_target:
+                enemy.freeze(float(act[1]))
         "stun":
-            enemy.stun(float(act[1]))
+            if has_target:
+                enemy.stun(float(act[1]))
         "slow":
             var radius := float(act[3])
             if radius <= 0.0:
-                enemy.apply_slow(float(act[1]), float(act[2]))
+                if has_target:
+                    enemy.apply_slow(float(act[1]), float(act[2]))
             else:
                 for e in _enemies_within(pos, radius):
                     e.apply_slow(float(act[1]), float(act[2]))
@@ -301,24 +575,38 @@ func _act(enemy: Node2D, potency: float, act: Array) -> void:
                 if e != enemy:
                     e.shove((e.global_position - pos).normalized() * float(act[2]))
         "chain":
-            _chain_lightning(enemy, potency * float(act[1]) / 3.0)
+            if has_target:
+                _chain_lightning(enemy, potency * float(act[1]) / 3.0)
         "chain_state":
-            _chain_along_state(enemy, int(act[1]), potency * float(act[2]), source)
+            _chain_along_state(enemy if has_target else null, pos, int(act[1]), potency * float(act[2]), source)
         "cloud":
             Cloud.spawn(_world(), pos, int(act[1]), float(act[2]), float(act[3]), potency * 0.6, source)
         "purge":
-            var n: int = enemy.purge_states()
-            if n > 0:
-                enemy.take_damage(potency * float(act[1]) * float(n), COLORS[Kind.HOLY], true, source)
+            if has_target:
+                var n: int = enemy.purge_states()
+                if n > 0:
+                    enemy.take_damage(potency * float(act[1]) * float(n), COLORS[Kind.HOLY], true, source)
         "spread":
             for e in _enemies_within(pos, float(act[2])):
-                if e != enemy and is_instance_valid(e) and not e.is_queued_for_deletion():
+                if e != enemy and is_instance_valid(e) and not e.is_queued_for_deletion() and _may_apply():
                     e.apply_element(int(act[1]), potency * 0.7, source)
         "decay":
-            enemy.take_damage(enemy.max_hp * float(act[1]) + potency, COLORS[Kind.VOID], true, source)
+            if has_target:
+                enemy.take_damage(enemy.max_hp * float(act[1]) + potency, COLORS[Kind.VOID], true, source)
         "heal_source":
             if source != null and is_instance_valid(source):
                 source.heal(float(act[1]))
+
+
+## Element applications a running fusion may still cause (MAX_SECONDARY_APPLIES); always
+## true outside one.
+func _may_apply() -> bool:
+    if _apply_left < 0:
+        return true
+    if _apply_left == 0:
+        return false
+    _apply_left -= 1
+    return true
 
 
 func _world() -> Node:
@@ -349,8 +637,7 @@ func _chain_lightning(enemy: Node2D, jump_potency: float) -> void:
         current = next
 
 
-func _chain_along_state(enemy: Node2D, state: int, damage: float, source: Player) -> void:
-    var from := enemy.global_position
+func _chain_along_state(enemy: Node2D, from: Vector2, state: int, damage: float, source: Player) -> void:
     for e in _nearby_with_state(from, state, 300.0):
         if e == enemy:
             continue
