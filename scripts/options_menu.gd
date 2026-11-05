@@ -26,6 +26,7 @@ const ROWS := [
     { "key": "vibration_paused", "label": "Vibrate while paused", "type": "bool" },
     { "key": "telemetry", "label": "Share play data", "type": "consent" },
     { "key": "", "label": "Export play data", "type": "action" },
+    { "key": "", "label": "Wipe save", "type": "wipe" },
 ]
 const STEPS := 10
 const ROW_H := 40.0
@@ -38,6 +39,8 @@ var _back: Button
 var _pad := MenuPad.new()
 var _held_lr: Dictionary = {}
 var _action_note := ""   # result line of the last action row (export path)
+var _wipe_armed_t := 0.0  # seconds left to confirm a wipe with a second press
+var _wipe_done := false
 
 
 func _init(p_on_close: Callable) -> void:
@@ -101,6 +104,7 @@ func _make_row(i: int) -> Button:
 
 
 func _process(delta: float) -> void:
+    _process_wipe(delta)
     if not is_visible_in_tree():
         return
     _pad.poll(get_viewport(), delta)
@@ -162,10 +166,45 @@ func _step_focused(dir: int) -> void:
         _step(i, dir, false)
 
 
+## Wiping mid-run would leave the run writing stats into an empty save: hub only.
+func _in_run() -> bool:
+    var scene := get_tree().current_scene
+    return scene != null and scene is Main
+
+
+func _process_wipe(delta: float) -> void:
+    if _wipe_armed_t > 0.0:
+        var i := _focused_row()
+        if i < 0 or ROWS[i]["type"] != "wipe":
+            _wipe_armed_t = 0.0   # moving off the row disarms it
+        else:
+            _wipe_armed_t = maxf(0.0, _wipe_armed_t - delta)
+        _refresh()
+
+
 ## Change row `i` by one step. `wrap` (a press) cycles a slider past full back to zero.
 func _step(i: int, dir: int, wrap: bool) -> void:
     var spec: Dictionary = ROWS[i]
     var key := String(spec["key"])
+    if spec["type"] == "wipe":
+        if not wrap:
+            return
+        if _in_run():
+            Sfx.play("deny")
+            return
+        if _wipe_armed_t <= 0.0:
+            # First press arms it; a second press within four seconds wipes.
+            _wipe_armed_t = 4.0
+            _wipe_done = false
+            Sfx.play("error")
+        else:
+            _wipe_armed_t = 0.0
+            Progress.reset()
+            Mastery.reset()
+            _wipe_done = true
+            Sfx.play("ui_back")
+        _refresh()
+        return
     if spec["type"] == "action":
         if not wrap:
             return
@@ -208,6 +247,19 @@ func _draw_value(val: Control, i: int) -> void:
     var key := String(spec["key"])
     var h := val.size.y
     var font: Font = Art.FONT
+    if spec["type"] == "wipe":
+        var txt := "UNLOCKS, TROPHIES, TALENTS, EMBERS"
+        var col := UiTheme.DIM
+        if _in_run():
+            txt = "ONLY IN THE HUB"
+        elif _wipe_done:
+            txt = "SAVE WIPED"
+            col = Color(0.55, 1.0, 0.7)
+        elif _wipe_armed_t > 0.0:
+            txt = "PRESS AGAIN TO WIPE  %d" % ceili(_wipe_armed_t)
+            col = Color(1.0, 0.35, 0.3)
+        val.draw_string(font, Vector2(0, h * 0.5 + 8.0), txt, HORIZONTAL_ALIGNMENT_RIGHT, val.size.x, 22, col)
+        return
     if spec["type"] == "action":
         if _action_note == "":
             val.draw_string(font, Vector2(0, h * 0.5 + 8.0), "SAVE", HORIZONTAL_ALIGNMENT_RIGHT, val.size.x, 24, UiTheme.BONE)
