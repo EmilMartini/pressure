@@ -233,6 +233,7 @@ func _send(device: int, v: Vector2, delta: float) -> void:
             last[2] = age
             return
     Input.start_joy_vibration(device, v.x, v.y, SEND_SECS)
+    _web_rumble(device, v.x, v.y, SEND_SECS + 0.04)
     _sent[device] = [v.x, v.y, 0.0]
 
 
@@ -240,12 +241,29 @@ func _stop(device: int) -> void:
     if _sent.has(device):
         _sent.erase(device)
         Input.stop_joy_vibration(device)
+        _web_rumble(device, 0.0, 0.0, 0.0)
 
 
 func _stop_all() -> void:
     for d in _sent.keys():
         Input.stop_joy_vibration(int(d))
+        _web_rumble(int(d), 0.0, 0.0, 0.0)
     _sent.clear()
+
+
+## Godot's web export reads pads through the browser but never forwards vibration, so on
+## the web the same motor values go straight to the Gamepad API's dual-rumble effect
+## (Chrome and Edge; other browsers ignore it). Godot numbers web pads by their index in
+## navigator.getGamepads(), so the device id is that index. A zero duration resets.
+func _web_rumble(device: int, weak: float, strong: float, secs: float) -> void:
+    if not OS.has_feature("web") or device < 0:
+        return
+    var js := ""
+    if secs <= 0.0:
+        js = "(function(){var g=(navigator.getGamepads?navigator.getGamepads():[])[%d];if(g&&g.vibrationActuator&&g.vibrationActuator.reset){g.vibrationActuator.reset();}})()" % device
+    else:
+        js = "(function(){var g=(navigator.getGamepads?navigator.getGamepads():[])[%d];if(g&&g.vibrationActuator&&g.vibrationActuator.playEffect){g.vibrationActuator.playEffect('dual-rumble',{startDelay:0,duration:%d,weakMagnitude:%.3f,strongMagnitude:%.3f}).catch(function(){});}})()" % [device, int(secs * 1000.0), clampf(weak, 0.0, 1.0), clampf(strong, 0.0, 1.0)]
+    JavaScriptBridge.eval(js, true)
 
 
 # --- Players -----------------------------------------------------------------
