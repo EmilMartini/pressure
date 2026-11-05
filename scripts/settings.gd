@@ -41,8 +41,6 @@ func _ready() -> void:
     _ensure_buses()
     get_tree().node_added.connect(_on_node_added)
     Input.joy_connection_changed.connect(_on_joy_connection_changed)
-    if OS.has_feature("web"):
-        _audio_probe()
     # Music and Sfx build their players in their own _ready; route them once all are up.
     call_deferred("apply")
 
@@ -233,29 +231,3 @@ func load_settings() -> void:
         else:
             values[key] = clampf(float(d[key]), 0.0, 1.0)
 
-
-## Web diagnostics: print the audio state to the browser console, then play a test
-## stream and report whether its position advances (a suspended context never does).
-func _audio_probe() -> void:
-    await get_tree().create_timer(2.0).timeout
-    var buses: Array = []
-    for i in AudioServer.bus_count:
-        buses.append("%s(send=%s vol=%.1f mute=%s fx=%d)" % [AudioServer.get_bus_name(i), AudioServer.get_bus_send(i), AudioServer.get_bus_volume_db(i), AudioServer.is_bus_mute(i), AudioServer.get_bus_effect_count(i)])
-    print("[AUDIO] driver=%s mix_rate=%d latency=%.3f buses=%s" % [AudioServer.get_driver_name(), AudioServer.get_mix_rate(), AudioServer.get_output_latency(), str(buses)])
-    print("[AUDIO] playback type (project): %s" % str(ProjectSettings.get_setting("audio/general/default_playback_type.web", "unset")))
-    var path := "res://assets/music/menu.ogg"
-    print("[AUDIO] menu.ogg exists=%s" % str(ResourceLoader.exists(path)))
-    var stream = load(path)
-    print("[AUDIO] loaded=%s" % str(stream != null))
-    if stream == null:
-        return
-    var p := AudioStreamPlayer.new()
-    p.stream = stream
-    p.volume_db = -40.0
-    p.bus = "Master"
-    add_child(p)
-    p.play()
-    for i in 3:
-        await get_tree().create_timer(1.0).timeout
-        print("[AUDIO] test stream playing=%s position=%.2f" % [str(p.playing), p.get_playback_position()])
-    p.queue_free()
