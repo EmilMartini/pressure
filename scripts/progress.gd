@@ -16,15 +16,15 @@ const ACHIEVEMENTS := [
     # in a first run; after that roughly one per run, then one every two or three.
     { "id": "first_blood", "name": "First Blood", "desc": "Kill 50 enemies",
         "stat": "kills", "goal": 50, "rewards": ["gun:blowtorch"] },
-    { "id": "tourist", "name": "Tourist", "desc": "Reach 3 floors",
+    { "id": "tourist", "name": "Tourist", "desc": "Clear 3 floors",
         "stat": "floors", "goal": 3, "rewards": ["gun:vein_pistol"] },
     { "id": "plumber", "name": "Plumber", "desc": "Open a hidden room",
         "stat": "hidden_rooms", "goal": 1, "rewards": ["obstacle:valve", "gun:mist_sprayer"] },
     { "id": "regular", "name": "Regular", "desc": "Start 2 runs",
         "stat": "runs_started", "goal": 2, "rewards": ["gun:spark_needler"] },
-    { "id": "sparkplug", "name": "Sparkplug", "desc": "Fire 30 Ignitions",
+    { "id": "sparkplug", "name": "Sparkplug", "desc": "Fire 50 Ignitions",
         "stat": "reaction:Ignition", "goal": 50, "rewards": ["gun:cinder_flak"] },
-    { "id": "kettle", "name": "Kettle", "desc": "Fire 30 Steams",
+    { "id": "kettle", "name": "Kettle", "desc": "Fire 50 Steams",
         "stat": "reaction:Steam", "goal": 50, "rewards": ["gun:oil_slinger"] },
     { "id": "arsonist", "name": "Arsonist", "desc": "Fire 30 Infernos or Ignitions",
         "stat": "reactions_fire", "goal": 30, "rewards": ["obstacle:thicket"] },
@@ -36,9 +36,9 @@ const ACHIEVEMENTS := [
         "stat": "reaction:Ignition", "goal": 60, "rewards": ["class:tarsmith"] },
     { "id": "slayer", "name": "Slayer", "desc": "Kill 12 elites",
         "stat": "elites", "goal": 12, "rewards": ["gun:ember_carbine"] },
-    { "id": "thermal", "name": "Thermal", "desc": "Fire 30 Thermal Shocks",
+    { "id": "thermal", "name": "Thermal", "desc": "Fire 50 Thermal Shocks",
         "stat": "reaction:Thermal Shock", "goal": 50, "rewards": ["gun:duality_burst"] },
-    { "id": "plasma", "name": "Plasma Physicist", "desc": "Fire 30 Plasmas",
+    { "id": "plasma", "name": "Plasma Physicist", "desc": "Fire 50 Plasmas",
         "stat": "reaction:Plasma", "goal": 50, "rewards": ["gun:storm_seeker"] },
     { "id": "floor_breaker", "name": "Floor Breaker", "desc": "Kill 2 bosses",
         "stat": "bosses", "goal": 2, "rewards": ["room:challenge", "gun:tar_mortar"] },
@@ -46,23 +46,23 @@ const ACHIEVEMENTS := [
         "stat": "reaction:Chain Lightning", "goal": 90, "rewards": ["class:stormcaller"] },
     { "id": "butcher", "name": "Butcher", "desc": "Kill 625 enemies",
         "stat": "kills", "goal": 625, "rewards": ["gun:blood_lance"] },
-    { "id": "collector", "name": "Collector", "desc": "Equip 20 pieces of gear",
-        "stat": "items_picked", "goal": 20, "rewards": ["rarity:epic"] },
-    { "id": "black_ice", "name": "Black Ice", "desc": "Fire 30 Black Ices",
+    { "id": "collector", "name": "Collector", "desc": "Equip 8 pieces of gear",
+        "stat": "items_picked", "goal": 8, "rewards": ["rarity:epic"] },
+    { "id": "black_ice", "name": "Black Ice", "desc": "Fire 50 Black Ices",
         "stat": "reaction:Black Ice", "goal": 50, "rewards": ["gun:rime_chakram"] },
     { "id": "chemist", "name": "Chemist", "desc": "Fire 75 Steams",
         "stat": "reaction:Steam", "goal": 75, "rewards": ["gun:venom_spitter"] },
-    { "id": "polluter", "name": "Polluter", "desc": "Fire 30 Contaminations",
+    { "id": "polluter", "name": "Polluter", "desc": "Fire 50 Contaminations",
         "stat": "reaction:Contamination", "goal": 50, "rewards": ["gun:blight_seeker"] },
-    { "id": "fumigator", "name": "Fumigator", "desc": "Fire 30 Noxious Flames",
+    { "id": "fumigator", "name": "Fumigator", "desc": "Fire 50 Noxious Flames",
         "stat": "reaction:Noxious Flame", "goal": 50, "rewards": ["gun:plague_mortar"] },
-    { "id": "hemophile", "name": "Hemophile", "desc": "Fire 30 Thin Bloods",
+    { "id": "hemophile", "name": "Hemophile", "desc": "Fire 50 Thin Bloods",
         "stat": "reaction:Thin Blood", "goal": 50, "rewards": ["gun:clot_orb"] },
-    { "id": "maelstrom", "name": "Maelstrom", "desc": "Fire 30 Whirlpools",
+    { "id": "maelstrom", "name": "Maelstrom", "desc": "Fire 50 Whirlpools",
         "stat": "reaction:Whirlpool", "goal": 50, "rewards": ["gun:rift_seeker"] },
-    { "id": "baptist", "name": "Baptist", "desc": "Fire 30 Baptisms",
+    { "id": "baptist", "name": "Baptist", "desc": "Fire 50 Baptisms",
         "stat": "reaction:Baptism", "goal": 50, "rewards": ["gun:prayer_burst"] },
-    { "id": "windbreaker", "name": "Windbreaker", "desc": "Fire 30 Monsoons",
+    { "id": "windbreaker", "name": "Windbreaker", "desc": "Fire 50 Monsoons",
         "stat": "reaction:Monsoon", "goal": 50, "rewards": ["gun:cyclone_flak"] },
     { "id": "class_tidecaller", "name": "High Tide", "desc": "Fire 90 Steams",
         "stat": "reaction:Steam", "goal": 90, "rewards": ["class:tidecaller"] },
@@ -76,7 +76,7 @@ const ACHIEVEMENTS := [
         "stat": "reaction:Inferno", "goal": 75, "rewards": ["gun:acid_flask", "obstacle:rubble"] },
     { "id": "annihilator", "name": "Annihilator", "desc": "Fire 15 Annihilations",
         "stat": "reaction:Annihilation", "goal": 15, "rewards": ["gun:eclipse_carbine"] },
-    { "id": "class_voidwalker", "name": "Event Horizon", "desc": "Fire 30 Singularities",
+    { "id": "class_voidwalker", "name": "Event Horizon", "desc": "Fire 50 Singularities",
         "stat": "reaction:Singularity", "goal": 50, "rewards": ["class:voidwalker"] },
     { "id": "class_plaguewright", "name": "Patient Zero", "desc": "Fire 60 Contaminations",
         "stat": "reaction:Contamination", "goal": 60, "rewards": ["class:plaguewright"] },
@@ -102,10 +102,10 @@ const ACHIEVEMENTS := [
         "stat": "bosses", "goal": 6, "rewards": ["gun:void_orb"] },
     { "id": "deep_freezer", "name": "Deep Freezer", "desc": "Fire 120 Deep Freezes",
         "stat": "reaction:Deep Freeze", "goal": 120, "rewards": ["gun:glacier_lance"] },
-    { "id": "explorer", "name": "Explorer", "desc": "Reach 20 floors",
+    { "id": "explorer", "name": "Explorer", "desc": "Clear 20 floors",
         "stat": "floors", "goal": 20, "rewards": ["gun:zephyr_rang"] },
-    { "id": "hoarder", "name": "Hoarder", "desc": "Equip 60 pieces of gear",
-        "stat": "items_picked", "goal": 60, "rewards": ["rarity:legendary"] },
+    { "id": "hoarder", "name": "Hoarder", "desc": "Equip 25 pieces of gear",
+        "stat": "items_picked", "goal": 25, "rewards": ["rarity:legendary"] },
     { "id": "mason", "name": "Mason", "desc": "Kill 50 elites",
         "stat": "elites", "goal": 50, "rewards": ["gun:stone_sling"] },
     { "id": "reactionary", "name": "Reactionary", "desc": "Discover 20 different reactions",
@@ -122,7 +122,7 @@ const ACHIEVEMENTS := [
         "stat": "reaction:Deep Freeze", "goal": 240, "rewards": ["gun:radiant_ray", "obstacle:ward"] },
     { "id": "reaper", "name": "Reaper", "desc": "Kill 3750 enemies",
         "stat": "kills", "goal": 3750, "rewards": ["gun:railgun"] },
-    { "id": "spelunker", "name": "Spelunker", "desc": "Reach 50 floors",
+    { "id": "spelunker", "name": "Spelunker", "desc": "Clear 50 floors",
         "stat": "floors", "goal": 50, "rewards": ["gun:boulder_mortar"] },
 ]
 
@@ -197,14 +197,34 @@ func unlock_source(unlock_id: String) -> String:
 
 ## The next few achievements still open, with progress, for the run-end screen.
 func next_goals(count: int) -> Array:
-    var out: Array = []
+    var rows: Array = []
     for a in ACHIEVEMENTS:
-        if achievements_done.has(a["id"]):
+        if achievements_done.has(a["id"]) or not can_progress(a):
             continue
-        out.append({ "name": a["name"], "desc": a["desc"], "progress": mini(stat(a["stat"]), a["goal"]), "goal": a["goal"] })
-        if out.size() >= count:
-            break
-    return out
+        var prog := mini(stat(a["stat"]), int(a["goal"]))
+        rows.append({ "name": a["name"], "desc": a["desc"], "progress": prog, "goal": a["goal"],
+            "frac": float(prog) / float(maxi(1, int(a["goal"]))) })
+    # Closest to done first; among equals, the smaller goal.
+    rows.sort_custom(func(x, y):
+        if not is_equal_approx(float(x["frac"]), float(y["frac"])):
+            return float(x["frac"]) > float(y["frac"])
+        return int(x["goal"]) < int(y["goal"]))
+    return rows.slice(0, count)
+
+
+## Whether the current pool can move this achievement at all: a reaction goal needs a
+## gun of each of its two elements unlocked.
+func can_progress(a: Dictionary) -> bool:
+    var st: String = a["stat"]
+    if not st.begins_with("reaction:"):
+        return true
+    var d: Dictionary = Elements.def_by_name(st.substr(9))
+    if d.is_empty():
+        return true
+    var have := {}
+    for gid in Guns.ids():
+        have[Guns.make(gid).element] = true
+    return have.has(d["a"]) and have.has(d["b"])
 
 
 func achievements_count() -> int:
@@ -229,6 +249,8 @@ func add_reaction(reaction_name: String) -> void:
         "Fire Nova", "Frost Nova":
             add("vents")
             return
+    if Elements.def_by_name(reaction_name).is_empty():
+        return   # "Shield cracked", "ENRAGED" and other popups are not reactions
     stats["reactions"] = stat("reactions") + 1
     if reaction_name in ["Inferno", "Ignition"]:
         stats["reactions_fire"] = stat("reactions_fire") + 1

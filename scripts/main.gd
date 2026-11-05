@@ -89,6 +89,26 @@ func _ready() -> void:
         # every gun and class first, to measure a player whose pool is wide open.
         Progress.save_path = "user://save_autotest.json"
         Progress.reset()
+        # The bot never uses the player's real mastery tree: a throwaway file, empty unless
+        # --mastery=N or --mastery=full buys nodes on it.
+        Mastery.save_path = "user://mastery_autotest.json"
+        Mastery.reset()
+        for a in args:
+            if a.begins_with("--mastery="):
+                # Balance probe: buy N mastery points' worth of nodes (or "full") on a
+                # throwaway mastery file, cheapest reachable first.
+                var budget := 100000 if a.substr(10) == "full" else int(a.substr(10))
+                Mastery.points = budget
+                var bought := 0
+                var progressed := true
+                while progressed:
+                    progressed = false
+                    for nid in Mastery.nodes.keys():
+                        if Mastery.can_buy(nid):
+                            Mastery.buy(nid)
+                            bought += 1
+                            progressed = true
+                print("[MASTERY] bought %d nodes" % bought)
         if args.has("--veteran"):
             for gid in Guns.all_ids():
                 Progress.unlocks["gun:" + gid] = true
@@ -694,9 +714,10 @@ func _autotest_tick(delta: float) -> void:
         pause_menu.show_for_test()
     if _clock >= 45.0 and not _shots_taken.has("sheet"):
         _shots_taken["sheet"] = true
-        # Give the bot some gear so the sheet has something to show.
-        for id in ["conductors_mail", "ring_shock", "vial_shock", "lucky_cog", "quick_hands"]:
-            p.equip(id)
+        # Gear for the sheet screenshot only with --gear: it biased the shock reactions.
+        if OS.get_cmdline_user_args().has("--gear"):
+            for id in ["conductors_mail", "ring_shock", "vial_shock", "lucky_cog", "quick_hands"]:
+                p.equip(id)
         pause_menu.show_for_test("res://autotest/sheet.png", p)
     for shot_time in [15.0, 60.0, 120.0, 180.0, 240.0]:
         if _clock >= shot_time and not _shots_taken.has(shot_time):

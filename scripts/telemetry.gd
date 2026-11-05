@@ -258,6 +258,16 @@ func _death(main: Node) -> void:
     var room: Node = main.get("current")
     if not _boss.is_empty():
         _boss_end(main, false)
+    # The room you die in never clears, so flush its reactions here (they were lost).
+    var counts: Dictionary = main.get("_reaction_counts")
+    var reactions: Dictionary = {}
+    for k in counts.keys():
+        var n := int(counts[k]) - int(_reactions_seen.get(k, 0))
+        if n > 0 and not Elements.def_by_name(String(k)).is_empty():
+            reactions[String(k)] = n
+    _reactions_seen = counts.duplicate()
+    if not reactions.is_empty():
+        event("death_room_reactions", { "reactions": reactions })
     _flush_damage()
     var guns: Array = []
     var items: Array = []
@@ -660,6 +670,11 @@ func setting_changed(key: String, value: Variant) -> void:
         _session_event("settings_change", fields)
     if key == "telemetry" and String(value) == "on":
         retry_pending()
+
+
+## Hub activity (station visits, mastery purchases) goes to the session record.
+func hub_event(e: String, fields: Dictionary = {}) -> void:
+    _session_event(e, fields)
 
 
 func _session_event(e: String, fields: Dictionary) -> void:

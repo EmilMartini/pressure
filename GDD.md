@@ -161,11 +161,30 @@ lord, void herald).
 mechanics (split the party, soak zones, interrupt casts with a specific reaction, adds that
 must die in element order). Designed for 2-4 players. Only reachable at a gear score threshold.
 
-## 4. Meta progression (proposal, not built)
+## 4. Meta progression — BUILT, rework pending
 
 Principle: **every run starts naked, and nothing you own makes a run easier.** Meta
 progression widens what can happen in a run and what you are allowed to attempt, never
 your starting power. That keeps the "overpowered and bored" failure out by construction.
+
+**Status (2026-11-05, measured from code and bot telemetry; see
+`reports/Roguelite meta progression analysis.md`).** The built meta layer contradicts this
+principle in one place: the Mastery tree sells permanent stat power (326 points, +21%
+damage and +32 max HP at completion), while 39 of 43 guns and 12 of 13 classes start
+locked, so a new save sees 4 guns that pair into 5 of the 65 reactions. The reference
+games do the opposite: Hades keeps combat talents to about 18% of its Mirror cost as
+swappable A/B pairs, Dead Cells caps permanent power at four flask charges, Risk of Rain 2
+has none. The structural rework (recommendations R4 to R9 in the report) is next; the
+measured defects (R1, R2, R3, R10) are fixed.
+
+**Target pacing to tune against** (provisional until real-player telemetry exists): one
+visible unlock per run for the first five runs, then one every one to two runs to run 20;
+every element available by run 5; first win around runs 8 to 15; meta stat power at most
++10% damage and +20 max HP at completion, the rest of progression being options.
+
+**Current counts:** 55 achievements with 61 unlock rewards (39 guns, 12 classes, 5
+obstacle kinds, 2 rarity tiers, 2 shop upgrades, 1 room type); 43 guns; 238 items (55
+common, 65 uncommon, 63 rare, 39 epic, 16 legendary); 13 classes; 65 reactions.
 
 ### Itemization model (Brotato tiers, Isaac pools) — BUILT
 - Rarity is the quality axis and gates power: commons are one small stat, uncommons two,
@@ -205,12 +224,18 @@ your starting power. That keeps the "overpowered and bored" failure out by const
   unlocked guns on pedestals; take one. The pool of guns a run can offer
   (shops, treasure, challenge rewards), the obstacle kinds in front of hidden rooms, the
   challenge room itself and a fourth shop slot are all unlocked by achievements.
-- Ten achievements today, tracked across runs in the save file: kills, specific reaction
-  counts, elites and bosses killed, hidden rooms opened, vents fired, runs won.
+- 55 achievements tracked across runs in the save file: kills, specific reaction counts,
+  elites and bosses killed, floors cleared, hidden rooms opened, vents fired, gear equipped,
+  runs won. Descriptions always state the real goal; only real reactions count (popups like
+  "Shield cracked" do not). The "next goals" shown in the hub and the run-over screen are
+  the closest to done that the current gun pool can actually progress.
 - Unlocks pop as a toast when earned. The run-end screen lists what this run unlocked and
   the next three achievements with progress, so a lost run still shows a path.
-- Eleven guns in the pool so far. The pool is the lever: adding a gun, obstacle or room type
-  to the game should always come with the achievement that unlocks it.
+- 43 guns exist; 4 start unlocked. The pool is the lever: adding a gun, obstacle or room
+  type to the game should always come with the achievement that unlocks it.
+- Epic and legendary gear unlock after 8 and 25 pieces equipped, and from then on can roll
+  from floor 1 at low odds (epic 1.2% per difficulty step from difficulty 2, cap 10%;
+  legendary 0.4%, cap 4%) instead of only from floor 2 and 3.
 - Save file: `user://save.json` (on Windows: `%APPDATA%/Godot/app_userdata/Pressure/`).
   F9 wipes it for testing a first-ever run.
 
@@ -219,7 +244,11 @@ your starting power. That keeps the "overpowered and bored" failure out by const
   pressure, economy, utility, and one per element). Each node is a small bonus, one to
   three percent or a point of a flat stat, and costs one to three mastery points.
 - Points come from runs: one per floor reached, one per 150 kills, three for a win. They
-  are spent from the main menu's Mastery screen. Wipe save clears the tree too.
+  are spent at the hub's Shrine. Wipe save clears the tree too. Measured at bot pace a run
+  pays a median of 1 point, so completion takes about 290 to 330 runs: far too slow, and
+  the R7 rework will pay for performance, not only depth.
+- Note the two meanings of floors: mastery pays per floor *reached*, achievements count
+  floors *cleared* ("Clear 3 floors").
 - The screen is a literal node graph, Path-of-Exile style: a core showing unspent points,
   seventeen spokes, each branch a chain of circles with side chains stepping out, edges
   that light up as you buy along them. The stick or d-pad walks the graph, A buys, the
@@ -328,7 +357,16 @@ your starting power. That keeps the "overpowered and bored" failure out by const
 - The trigger always fires along your aim even with no enemy in range, so obstacles can
   be shot deliberately. Interact with pedestals using E or the A button.
 
-## 8. Debug controls in this build
+## 8. Balance probes (bot flags)
+
+`godot --path . res://scenes/main.tscn -- --autotest` plus: `--secs=N` run length,
+`--short` 70 s, `--class=<id>`, `--idle` (stand still in fights), `--loadout=a,b,c`
+(start with these guns), `--veteran` (everything unlocked), `--mastery=N|full` (buy that
+many mastery points of nodes on a throwaway file; the bot never touches the real tree),
+`--arsenal` (every gun), `--gear` (equip shock gear at 45 s for the sheet screenshot).
+Telemetry from bot runs is stored locally with `bot: true` and never uploaded.
+
+## 9. Debug controls in this build
 - `1`..`0` give player 1 any gun, unlocked or not
 - `R` restarts the run
 - `F1` toggles the help overlay

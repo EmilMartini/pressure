@@ -272,6 +272,7 @@ func _update_highlights() -> void:
 
 func _use_station(id: String) -> void:
     Sfx.play("ui_open")
+    Telemetry.hub_event("station", { "id": id, "players": _players_count() })
     match id:
         "gate":
             _show_class_select()
@@ -771,3 +772,11 @@ func _menu_shot() -> void:
     _show_class_select()
     await _capture("res://autotest/classes.png", 0.4)
     get_tree().quit()
+
+
+func _players_count() -> int:
+    var n := 0
+    for c in get_children():
+        if c is Player:
+            n += 1
+    return maxi(1, n)

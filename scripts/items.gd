@@ -90,8 +90,8 @@ const RARITY_PRICE := [22, 38, 62, 98, 150]
 const RARITY_ODDS := {
     Rarity.UNCOMMON: [1, 0.07, 0.55],
     Rarity.RARE: [3, 0.03, 0.25],
-    Rarity.EPIC: [6, 0.012, 0.10],
-    Rarity.LEGENDARY: [9, 0.005, 0.04],
+    Rarity.EPIC: [2, 0.012, 0.10],
+    Rarity.LEGENDARY: [2, 0.004, 0.04],
 }
 const SLOTS := ["head", "chest", "hands", "feet", "ring", "trinket", "mod", "active"]
 const SLOT_ICONS := {

@@ -146,6 +146,8 @@ func buy(id: String) -> bool:
     purchased[id] = true
     _rebuild_totals()
     save()
+    if Engine.has_singleton("Telemetry") or get_node_or_null("/root/Telemetry") != null:
+        get_node("/root/Telemetry").hub_event("mastery_buy", { "id": id, "cost": int(nodes[id]["cost"]), "left": points })
     return true
 
 
