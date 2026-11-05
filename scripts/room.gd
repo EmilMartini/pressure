@@ -128,7 +128,7 @@ func _tick_arena(delta: float) -> void:
             # Two budgets: hit points per second, and bodies per second (a swarm of
             # cheap bodies is a different kind of pressure than one brute).
             var by_hp := spawned_hp / hp_inflow_target(diff)
-            var by_bodies := float(spawned_n) / (1.4 + 0.18 * float(diff))
+            var by_bodies := float(spawned_n) / (1.2 + 0.15 * float(diff))
             _spawn_timer = clampf(maxf(by_hp, by_bodies), 0.5, 4.0)
         else:
             _spawn_timer = 1.0
@@ -261,7 +261,7 @@ func _finish_fight(bonus_scrap: int) -> void:
 ## party with six gun slots and tiers; party_power() scales enemy hp on top of it.
 static func hp_inflow_target(diff: int) -> float:
     var d := float(diff)
-    return 32.0 + 16.0 * d + 0.6 * maxf(0.0, d - 6.0) * maxf(0.0, d - 6.0)
+    return 22.0 + 11.0 * d + 0.6 * maxf(0.0, d - 6.0) * maxf(0.0, d - 6.0)   # gentle first rooms, steep late
 
 
 ## Party gun dps a difficulty expects, the yardstick for party_power().
