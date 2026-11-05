@@ -455,22 +455,23 @@ func _draw_doll() -> void:
     _canvas.draw_rect(r, Color(0.05, 0.04, 0.06, 0.8))
     _canvas.draw_rect(r, Color(0.3, 0.26, 0.28), false, 2.0)
     var form: Dictionary = Items.form_for(player)
-    var tint: Color = form["tint"]
+    var tint: Color = form["color"]
     var center := Vector2(DOLL_W / 2.0, TOP + 170.0)
     var t := float(Time.get_ticks_msec()) / 1000.0
     _canvas.draw_texture_rect(Art.PARTICLES["light"], Rect2(center - Vector2(130, 130), Vector2(260, 260)), false, Color(tint, 0.16))
     _canvas.draw_colored_polygon(PackedVector2Array([center + Vector2(-50, 84), center + Vector2(50, 84), center + Vector2(60, 104), center + Vector2(-60, 104)]), Color(0.3, 0.27, 0.29))
-    # The figure is the same form as in game, at 9 screen px per body-tile pixel.
+    # The figure is the same generated one as in game, at 9 screen px per figure pixel
+    # (nearest filtering on the canvas keeps it crisp).
     var bob := sin(t * 2.0) * 3.0
     var body_center := center + Vector2(0, -8.0 + bob)
     Items.draw_costume(_canvas, player, body_center, 9.0, 1.0, false)
-    _canvas.draw_texture_rect(Art.tile(form["tile"]), Rect2(body_center - Vector2(72, 72), Vector2(144, 144)), false, tint)
+    var frames: Array = form["frames"]
+    var doll_tex: Texture2D = frames[0]
+    _canvas.draw_texture_rect(doll_tex, Rect2(body_center - Vector2(72, 72), Vector2(144, 144)), false, Color.WHITE)
     Items.draw_costume(_canvas, player, body_center, 9.0, 1.0, true)
-    var fid := String(form["id"])
-    var form_name := fid.capitalize()
-    if fid == "base":
-        form_name = "Vagrant"
-    _text(Vector2(center.x - 120.0, TOP + 290.0), "%s form" % form_name, 22, tint, HORIZONTAL_ALIGNMENT_CENTER, 240.0)
+    var form_name := String(form["name"])
+    var name_size := 22 if form_name.length() <= 18 else 20
+    _text(Vector2(center.x - 120.0, TOP + 290.0), form_name, name_size, tint.lerp(Color.WHITE, 0.3), HORIZONTAL_ALIGNMENT_CENTER, 240.0)
     _text(Vector2(center.x - 120.0, TOP + 316.0), "%d / %d HP" % [int(ceilf(player.hp)), int(player.max_hp)], 20, UiTheme.BONE, HORIZONTAL_ALIGNMENT_CENTER, 240.0)
     for i in _cells.size():
         var c: Dictionary = _cells[i]

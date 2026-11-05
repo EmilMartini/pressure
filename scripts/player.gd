@@ -89,7 +89,8 @@ func _ready() -> void:
     add_child(shape)
     z_index = 10
     var tiles: Array = Art.TILES["player"]
-    _sprite = Art.sprite(tiles[index % tiles.size()], 2.0, color.lerp(Color.WHITE, 0.35))
+    _sprite = Art.sprite(tiles[index % tiles.size()], 2.0, Color.WHITE)
+    _sprite.texture = Items.form_for(self)["texture"]
     add_child(_sprite)
     _costume = Node2D.new()
     _costume.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
@@ -585,15 +586,20 @@ func nearest_enemy(max_range: float, prefer_elite: bool = false) -> Node2D:
 
 
 func _draw() -> void:
-    # The body sprite is the current form (Isaac / Brotato): the figure itself changes
-    # with the gear, rather than wearing overlays.
+    # The body sprite is the figure generated from the class and gear (FigureGen): idle
+    # and step frames, alternating while moving. It is already coloured, so modulate white.
     var form: Dictionary = Items.form_for(self)
-    _sprite.texture = Art.tile(form["tile"])
-    var body: Color = form["tint"]
+    var frames: Array = form["frames"]
+    var fi := 0
+    if frames.size() > 1 and velocity.length() > 20.0:
+        fi = int(floorf(_anim_t / PI)) % 2
+    _sprite.texture = frames[fi]
+    var body := Color.WHITE
+    var glow: Color = form["color"]
     if not alive:
         _sprite.modulate = Color(0.35, 0.3, 0.3, 0.7)
         return
-    # A new form pops in: a squash and a flash of its colour.
+    # A changed figure pops in: a squash and a flash of its colour.
     var fid := String(form["id"])
     var now := float(Time.get_ticks_msec()) / 1000.0
     if String(get_meta("form_id", fid)) != fid:
@@ -603,8 +609,8 @@ func _draw() -> void:
     var since := now - float(get_meta("form_t", -10.0))
     if since < 0.5:
         var k := 1.0 - since / 0.5
-        draw_texture_rect(Art.PARTICLES["light"], Rect2(_sprite.position - Vector2(60, 60), Vector2(120, 120)), false, Color(body, 0.7 * k))
-        draw_arc(_sprite.position, 18.0 + 30.0 * (1.0 - k), 0.0, TAU, 24, Color(body, k), 2.0)
+        draw_texture_rect(Art.PARTICLES["light"], Rect2(_sprite.position - Vector2(60, 60), Vector2(120, 120)), false, Color(glow, 0.7 * k))
+        draw_arc(_sprite.position, 18.0 + 30.0 * (1.0 - k), 0.0, TAU, 24, Color(glow, k), 2.0)
     if invuln > 0.0 and fmod(invuln, 0.2) < 0.1:
         body = Color(body, 0.35)
     _sprite.modulate = body

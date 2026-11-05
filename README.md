@@ -294,6 +294,18 @@ Now:
 The vent gauge is the vent's charge, so "pressure decay" upgrades were a trap: they are
 now vent charge speed (the vent fills faster), and pressure limit reads as vent capacity.
 
+## Figures are generated from your build
+
+The character is a paper doll drawn pixel by pixel (`scripts/figure_gen.gd`), not a
+fixed sprite. Your class and every item, gun and completed set add weight to themes
+(the twelve elements plus plate, scout, arcane, gunslinger and merchant). The strongest
+theme picks the head and torso, the second the cape, arms and an accent, up to three
+accents come from the top three, and the palette blends all of them with a touch of your
+player colour. Close runners-up overlay a detail, so a Pyromancer in alchemist gear keeps
+the flame hood and gains goggles and a flask belt, and is named "Pyromancer-Alchemist".
+Each pickup nudges a part or the colour instead of swapping the figure.
+`FigureGen.debug_sheet(path)` renders every class and eight blends to one PNG.
+
 ## Guns: six slots, duplicates, combining
 
 Brotato's shape: six gun slots (a few items add one), duplicates allowed so three oil

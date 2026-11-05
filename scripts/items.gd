@@ -1052,222 +1052,72 @@ func full_set_id(player: Player) -> String:
     return ""
 
 
-# --- Forms (Isaac / Brotato): the figure itself turns into what you wear ----------
+# --- Forms: a paper-doll figure generated from the class and the gear (FigureGen) ----
 
-## Figures from the 1-bit sheet (rows 0 to 4). `tiles` holds variants picked by player
-## index; `hat` means the figure already wears something on its head, so no hat overlay
-## is drawn over it; `tint` is where the body colour is pulled toward; `aura` (optional)
-## glows behind the figure.
-const FORMS := {
-    "base": { "tiles": [Vector2i(26, 0), Vector2i(31, 0), Vector2i(30, 0), Vector2i(27, 0)], "hat": false },
-    "knight": { "tiles": [Vector2i(28, 0), Vector2i(29, 0)], "hat": true, "tint": Color(0.78, 0.83, 0.95) },
-    "mage": { "tiles": [Vector2i(24, 1), Vector2i(25, 1)], "hat": true, "tint": Color(0.72, 0.58, 1.0) },
-    "rogue": { "tiles": [Vector2i(29, 1), Vector2i(28, 1)], "hat": true, "tint": Color(0.55, 0.95, 0.75) },
-    "merchant": { "tiles": [Vector2i(27, 4), Vector2i(28, 4)], "hat": true, "tint": Color(1.0, 0.82, 0.42) },
-    "gunslinger": { "tiles": [Vector2i(31, 2), Vector2i(30, 2)], "hat": true, "tint": Color(0.95, 0.78, 0.55) },
-    "berserker": { "tiles": [Vector2i(31, 3), Vector2i(29, 2)], "hat": true, "tint": Color(1.0, 0.45, 0.35) },
-    "king": { "tiles": [Vector2i(28, 3), Vector2i(29, 3)], "hat": true, "tint": Color(1.0, 0.86, 0.35), "aura": Color(1.0, 0.85, 0.3) },
-    "skeleton": { "tiles": [Vector2i(31, 4), Vector2i(28, 2)], "hat": false, "tint": Color(0.94, 0.92, 0.84), "aura": Color(0.6, 0.35, 0.9) },
-    "shade": { "tiles": [Vector2i(24, 2), Vector2i(24, 4)], "hat": true, "tint": Color(0.6, 0.38, 0.95), "aura": Color(0.55, 0.25, 0.85) },
-    "infernal": { "tiles": [Vector2i(27, 2)], "hat": true, "tint": Color(1.0, 0.4, 0.2), "aura": Color(1.0, 0.45, 0.15) },
-}
-
-## The naked figure per starting class (its colour comes from the class element).
-const CLASS_FORMS := {
-    "pyromancer": { "tile": Vector2i(26, 1), "hat": true },
-    "tidecaller": { "tile": Vector2i(24, 0), "hat": true },
-    "stormcaller": { "tile": Vector2i(30, 2), "hat": false },
-    "frostbinder": { "tile": Vector2i(30, 1), "hat": true },
-    "tarsmith": { "tile": Vector2i(26, 4), "hat": true },
-    "plaguewright": { "tile": Vector2i(24, 4), "hat": true },
-    "alchemist": { "tile": Vector2i(31, 1), "hat": true },
-    "bloodletter": { "tile": Vector2i(27, 1), "hat": true },
-    "voidwalker": { "tile": Vector2i(24, 2), "hat": true },
-    "templar": { "tile": Vector2i(30, 4), "hat": true },
-    "windrunner": { "tile": Vector2i(25, 2), "hat": true },
-    "stonewarden": { "tile": Vector2i(27, 3), "hat": true },
-}
-
-## A completed set turns the figure into its own form.
-const SET_FORMS := {
-    "bulwark": "knight", "warden": "knight", "alchemist": "mage", "steamworks": "mage",
-    "overloader": "berserker", "windrunner": "rogue", "gunslinger": "gunslinger",
-    "prospector": "merchant", "scavenger": "merchant", "void": "shade", "blood": "infernal",
-    "fire": "infernal", "stone": "knight", "gale": "rogue",
-}
-
-## Signature items (rare and up) that take over the figure on their own; legendaries all
-## have one. The rarest worn signature wins.
-const FORM_ITEMS := {
-    "crown_of_focus": "king", "godhead": "king", "gilded_carapace": "king", "seer_circlet": "king",
-    "skullcap_vented": "skeleton", "skull_choir": "skeleton", "bone_orbit": "skeleton",
-    "phantom_shroud": "shade", "mantle_void": "shade", "wisp_lantern": "shade",
-    "phoenix_mantle": "infernal", "blood_pact": "infernal", "heart_of_forge": "infernal",
-    "berserker_helm": "berserker", "mothers_blade": "berserker", "executioners_grip": "berserker",
-    "hands_of_storm": "mage", "signet_of_overload": "mage", "storm_halo": "mage", "permafrost_core": "mage",
-    "chain_reactor": "mage", "seven_league": "rogue", "hive_heart": "knight", "glacier_plate": "knight",
-    "pressure_bomb": "merchant", "prism_engine": "mage",
-}
-
-## Theme points per mod key; the strongest theme at FORM_THRESHOLD or more shapes the figure.
+## Theme points per mod key, read by FigureGen.item_themes. Element-suffixed keys
+## (potency_fire, dmg_ice...) and vs_<state> keys map to their element on their own.
 const THEME_KEYS := {
-    "armor": "knight", "max_hp": "knight", "thorns": "knight", "regen": "knight",
-    "potency": "mage", "state_duration": "mage", "vent_radius": "mage", "vent_power": "mage",
-    "pressure_limit": "mage", "chain_jumps": "mage", "lifesteal": "infernal",
-    "speed": "rogue", "dodge": "rogue",
+    "armor": "plate", "max_hp": "plate", "thorns": "plate",
+    "regen": "holy", "lifesteal": "blood", "dmg": "blood",
+    "speed": "scout", "dodge": "scout",
+    "potency": "arcane", "state_duration": "arcane", "chain_jumps": "arcane",
+    "vent_radius": "arcane", "vent_power": "arcane", "vent_charge": "arcane",
+    "pressure_limit": "arcane", "homing": "arcane", "orbitals": "arcane",
+    "orbital_element": "arcane", "spectral": "void",
+    "fire_rate": "gunslinger", "proj_speed": "gunslinger", "proj_count": "gunslinger",
+    "pierce": "gunslinger", "bounce": "gunslinger", "range": "gunslinger",
+    "shot_speed": "gunslinger", "shot_size": "gunslinger", "crit": "gunslinger",
+    "crit_dmg": "gunslinger", "shards": "gunslinger", "splash": "gunslinger",
+    "boomerang": "gunslinger",
     "scrap_gain": "merchant", "luck": "merchant", "xp_gain": "merchant", "carry": "merchant",
-    "fire_rate": "gunslinger", "proj_speed": "gunslinger", "pierce": "gunslinger", "range": "gunslinger",
-    "bounce": "gunslinger", "proj_count": "gunslinger", "shot_speed": "gunslinger",
-    "dmg": "berserker", "crit": "berserker", "crit_dmg": "berserker",
 }
+## The theme of each hand-made set (its pieces lean on it; completing it adds 2.5).
+## Elemental sets use their element.
 const SET_THEMES := {
-    "bulwark": "knight", "warden": "knight", "alchemist": "mage", "steamworks": "mage",
-    "windrunner": "rogue", "prospector": "merchant", "scavenger": "merchant",
-    "gunslinger": "gunslinger", "overloader": "berserker",
+    "bulwark": "plate", "warden": "plate", "alchemist": "acid", "steamworks": "oil",
+    "windrunner": "scout", "prospector": "merchant", "scavenger": "merchant",
+    "gunslinger": "gunslinger", "overloader": "fire",
 }
-const FORM_THRESHOLD := 2.0
 
 var _form_cache: Dictionary = {}   # player instance id -> { key, form }
 
 
-## The player's current form: { id, tiles, tile (this player's variant), tint, aura
-## (transparent when none), hat }. Cached per equipment hash, so it is cheap per frame.
+## The player's current form: { id, name, frames ([idle, step] textures), texture (idle),
+## tint (white: the texture is coloured), color (the figure's main colour), aura (the top
+## theme's colour with a completed set or a worn legendary, else transparent) }. Cached
+## per equipment / class / guns hash, so it is cheap per frame.
 func form_for(player: Player) -> Dictionary:
     if player == null or not is_instance_valid(player):
-        return _make_form("base", 0, Color.WHITE, Color(0, 0, 0, 0))
+        return _form_from(FigureGen.generate_from({ "vagrant": FigureGen.CLASS_WEIGHT }, Color(0, 0, 0, 0)), false)
     var cid := String(player.get_meta("class_id", "vagrant"))
     var ids: Array = player.equipped_item_ids()
-    var key := hash([ids, cid, player.index, player.color])
+    var gun_els: Array = []
+    for g in player.guns:
+        gun_els.append(int(g.data.element) if g.data != null else 0)
+    var key := hash([ids, cid, gun_els, player.color])
     var pid := player.get_instance_id()
     var cached: Dictionary = _form_cache.get(pid, {})
     if not cached.is_empty() and int(cached["key"]) == key:
         return cached["form"]
-    var form := _compute_form(player, cid, ids)
+    var glow := full_set_id(player) != ""
+    for id in ids:
+        if int(get_item(String(id)).get("rarity", 0)) >= Rarity.LEGENDARY:
+            glow = true
+    var form := _form_from(FigureGen.generate(player), glow)
     _form_cache[pid] = { "key": key, "form": form }
     return form
 
 
-func _make_form(fid: String, index: int, tint: Color, aura: Color) -> Dictionary:
-    var def: Dictionary = FORMS.get(fid, FORMS["base"])
-    var tiles: Array = def["tiles"]
+func _form_from(fig: Dictionary, glow: bool) -> Dictionary:
+    var frames: Array = fig["frames"]
     return {
-        "id": fid, "tiles": tiles, "tile": tiles[index % tiles.size()], "tint": tint,
-        "aura": aura, "hat": bool(def.get("hat", false)),
+        "id": fig["id"], "name": fig["name"], "frames": frames, "texture": frames[0],
+        "tint": Color.WHITE, "color": fig["color"],
+        "aura": fig["aura"] if glow else Color(0, 0, 0, 0),
     }
 
 
-func _compute_form(player: Player, cid: String, ids: Array) -> Dictionary:
-    var base := player.color.lerp(Color.WHITE, 0.35)
-    var cdef: Dictionary = Classes.get_def(cid)
-    var el := int(cdef.get("element", Element.Kind.NONE))
-    if el != Element.Kind.NONE:
-        base = base.lerp(Element.COLORS[el], 0.4)
-    var chest := get_item(player.equipment.get("chest", ""))
-    if not chest.is_empty():
-        base = base.lerp(look_of(chest)["tint"], 0.2)
-
-    # 1. A completed set: its figure, pulled hard toward the set colour, with its aura.
-    var sid := full_set_id(player)
-    if sid != "":
-        var sc := set_color(sid)
-        var set_form: String = SET_FORMS.get(sid, "mage")
-        return _make_form(set_form, player.index, base.lerp(sc, 0.6), sc)
-
-    # 2. A signature item (rare and up): the rarest one decides.
-    var best_sig := ""
-    var best_rarity := -1
-    var sig_aura := Color(0, 0, 0, 0)
-    for id in ids:
-        if not FORM_ITEMS.has(id):
-            continue
-        var sig_item := get_item(id)
-        var r := int(sig_item.get("rarity", 0))
-        if r >= Rarity.RARE and r > best_rarity:
-            best_rarity = r
-            best_sig = FORM_ITEMS[id]
-            var lk := look_of(sig_item)
-            sig_aura = lk.get("aura", rarity_color(sig_item) if r >= Rarity.LEGENDARY else Color(0, 0, 0, 0))
-    if best_sig != "":
-        var sig_def: Dictionary = FORMS[best_sig]
-        var aura: Color = sig_aura
-        if aura.a <= 0.0 and sig_def.has("aura"):
-            aura = sig_def["aura"]
-        return _make_form(best_sig, player.index, base.lerp(sig_def.get("tint", base), 0.55), aura)
-
-    # 3. The dominant gear theme, once it is strong enough.
-    var scores: Dictionary = {}
-    for id in ids:
-        var it := get_item(id)
-        if it.is_empty():
-            continue
-        var pts: Dictionary = {}
-        var mods: Dictionary = it.get("mods", {})
-        for k in mods.keys():
-            var mk := String(k)
-            var v = mods[k]
-            if v is String or float(v) <= 0.0:
-                continue
-            var theme := ""
-            if THEME_KEYS.has(mk):
-                theme = THEME_KEYS[mk]
-            elif mk.begins_with("potency"):
-                theme = "mage"
-            elif mk.begins_with("dmg_") or mk.begins_with("vs_"):
-                theme = "berserker"
-            elif mk.begins_with("fire_rate_") or mk.begins_with("pierce_"):
-                theme = "gunslinger"
-            if theme == "":
-                continue
-            var amount := 1.0
-            if mk == "armor":
-                amount = minf(2.0, float(v))
-            pts[theme] = float(pts.get(theme, 0.0)) + amount
-        var cm: Dictionary = it.get("cond_mods", {})
-        for cond in cm.keys():
-            for k in cm[cond].keys():
-                var ck := String(k)
-                if THEME_KEYS.has(ck):
-                    pts[THEME_KEYS[ck]] = float(pts.get(THEME_KEYS[ck], 0.0)) + 0.5
-        var set_id := set_of(id)
-        if SET_THEMES.has(set_id):
-            pts[SET_THEMES[set_id]] = float(pts.get(SET_THEMES[set_id], 0.0)) + 1.0
-        elif ELEMENTS.has(set_id):
-            pts["mage"] = float(pts.get("mage", 0.0)) + 0.5
-        var slot := String(it.get("slot", ""))
-        var mult := 1.0 + 0.25 * float(int(it.get("rarity", 0)))
-        if slot == "chest":
-            mult *= 2.0
-            if int(mods.get("armor", 0)) >= 2:
-                pts["knight"] = float(pts.get("knight", 0.0)) + 1.0
-            if String(id).begins_with("mantle_"):
-                pts["mage"] = float(pts.get("mage", 0.0)) + 1.0
-        elif slot == "feet" and float(mods.get("speed", 0.0)) > 0.0:
-            pts["rogue"] = float(pts.get("rogue", 0.0)) + 0.5
-        elif slot == "mod":
-            mult *= 0.5
-        for th in pts.keys():
-            scores[th] = float(scores.get(th, 0.0)) + float(pts[th]) * mult
-    var best := ""
-    var best_score := FORM_THRESHOLD - 0.001
-    for th in ["knight", "mage", "rogue", "merchant", "gunslinger", "berserker", "infernal"]:
-        if float(scores.get(th, 0.0)) > best_score:
-            best_score = float(scores[th])
-            best = th
-    if best != "":
-        var theme_def: Dictionary = FORMS[best]
-        return _make_form(best, player.index, base.lerp(theme_def.get("tint", base), 0.5), theme_def.get("aura", Color(0, 0, 0, 0)))
-
-    # 4. The naked figure: the class's own, or the Vagrant's per-player figure.
-    var naked := _make_form("base", player.index, base, Color(0, 0, 0, 0))
-    if CLASS_FORMS.has(cid):
-        naked["tile"] = CLASS_FORMS[cid]["tile"]
-        naked["tiles"] = [CLASS_FORMS[cid]["tile"]]
-        naked["hat"] = bool(CLASS_FORMS[cid]["hat"])
-        naked["id"] = cid
-    return naked
-
-
-## Body tint: the form's colour (player colour, class element, gear theme, full set).
+## Body tint: white, since the generated figure carries its own colours.
 func body_tint(player: Player, base: Color) -> Color:
     return Color(form_for(player)["tint"], base.a)
 
@@ -1275,21 +1125,22 @@ func body_tint(player: Player, base: Color) -> Color:
 ## Draw the extra layers of `player`'s form on `canvas`. `center` is the body tile's
 ## centre, `unit` the screen pixels per body-tile pixel (2 in game), `facing` +1 right /
 ## -1 left. Call once with front = false before the body (form and item auras, ring
-## sparkles, the active item slung on the back) and once with front = true after it (a
-## hat, only when the form has no headwear of its own).
+## sparkles, the active item slung on the back) and once with front = true after it
+## (nothing today: the generated figure already wears its head).
 func draw_costume(canvas: CanvasItem, player: Player, center: Vector2, unit: float, facing: float, front: bool) -> void:
+    if front:
+        return
     var t := float(Time.get_ticks_msec()) / 1000.0
     var form := form_for(player)
-    if not front:
-        var fa: Color = form["aura"]
-        if fa.a > 0.0:
-            var pulse := 0.5 + 0.5 * sin(t * 2.5)
-            var big := unit * 34.0
-            canvas.draw_texture_rect(Art.PARTICLES["light"], Rect2(center - Vector2(big, big) / 2.0, Vector2(big, big)), false, Color(fa, 0.3 + 0.15 * pulse))
-            if full_set_id(player) != "":
-                for i in 6:
-                    var sp := center + Vector2(unit * 13.0, 0).rotated(t * 1.2 + TAU * float(i) / 6.0) * Vector2(1.0, 0.6)
-                    canvas.draw_rect(Rect2(sp - Vector2(unit, unit) * 0.6, Vector2(unit, unit) * 1.2), Color(fa, 0.8))
+    var fa: Color = form["aura"]
+    if fa.a > 0.0:
+        var pulse := 0.5 + 0.5 * sin(t * 2.5)
+        var big := unit * 34.0
+        canvas.draw_texture_rect(Art.PARTICLES["light"], Rect2(center - Vector2(big, big) / 2.0, Vector2(big, big)), false, Color(fa, 0.3 + 0.15 * pulse))
+        if full_set_id(player) != "":
+            for i in 6:
+                var sp := center + Vector2(unit * 13.0, 0).rotated(t * 1.2 + TAU * float(i) / 6.0) * Vector2(1.0, 0.6)
+                canvas.draw_rect(Rect2(sp - Vector2(unit, unit) * 0.6, Vector2(unit, unit) * 1.2), Color(fa, 0.8))
     for key in Player.EQUIP_KEYS:
         if not player.equipment.has(key):
             continue
@@ -1300,31 +1151,21 @@ func draw_costume(canvas: CanvasItem, player: Player, center: Vector2, unit: flo
         var tint: Color = lk["tint"]
         var slot := String(it.get("slot", ""))
         var second := String(key).ends_with("2")
-        if not front:
-            if lk.has("aura"):
-                var ac: Color = lk["aura"]
-                var s := unit * 26.0
-                canvas.draw_texture_rect(Art.PARTICLES["light"], Rect2(center - Vector2(s, s) / 2.0, Vector2(s, s)), false, Color(ac, 0.22 + 0.08 * sin(t * 3.0)))
-            if lk.get("sparkle", false):
-                var phase := t * 0.8 + (PI if second else 0.0)
-                for i in 3:
-                    var p := center + Vector2(unit * 10.0, 0).rotated(phase + TAU * float(i) / 3.0) * Vector2(1.0, 0.55)
-                    canvas.draw_rect(Rect2(p - Vector2(unit, unit) * 0.5, Vector2(unit, unit)), Color(tint, 0.75))
-            if slot == "active" and lk.has("tile"):
-                # Slung on the back: behind the figure, on the side away from where it faces.
-                var size_b := 16.0 * unit * 0.5
-                var at_b := center + Vector2(-facing * 6.0, -3.0) * unit
-                canvas.draw_texture_rect(Art.tile(lk["tile"]), Rect2(at_b - Vector2(size_b, size_b) / 2.0, Vector2(size_b, size_b)), false, tint)
-                var max_charges := active_max_charges(player)
-                for c in max_charges:
-                    var pip := Rect2(at_b + Vector2(-size_b / 2.0 + float(c) * unit * 2.0, size_b / 2.0 + unit * 0.5), Vector2(unit * 1.5, unit * 1.5))
-                    canvas.draw_rect(pip, Color(1.0, 0.9, 0.4) if c < player.active_charges else Color(0.25, 0.22, 0.24))
-            continue
-        # Front: only a hat, and only on a bare-headed form.
-        if slot != "head" or bool(form["hat"]) or not lk.has("tile"):
-            continue
-        var off: Vector2 = lk.get("offset", Vector2(0, -8.0))
-        var scale := float(lk.get("scale", 0.6))
-        var size := 16.0 * unit * scale
-        var at := center + off * unit
-        canvas.draw_texture_rect(Art.tile(lk["tile"]), Rect2(at - Vector2(size, size) / 2.0, Vector2(size, size)), false, tint)
+        if lk.has("aura"):
+            var ac: Color = lk["aura"]
+            var s := unit * 26.0
+            canvas.draw_texture_rect(Art.PARTICLES["light"], Rect2(center - Vector2(s, s) / 2.0, Vector2(s, s)), false, Color(ac, 0.22 + 0.08 * sin(t * 3.0)))
+        if lk.get("sparkle", false):
+            var phase := t * 0.8 + (PI if second else 0.0)
+            for i in 3:
+                var p := center + Vector2(unit * 10.0, 0).rotated(phase + TAU * float(i) / 3.0) * Vector2(1.0, 0.55)
+                canvas.draw_rect(Rect2(p - Vector2(unit, unit) * 0.5, Vector2(unit, unit)), Color(tint, 0.75))
+        if slot == "active" and lk.has("tile"):
+            # Slung on the back: behind the figure, on the side away from where it faces.
+            var size_b := 16.0 * unit * 0.5
+            var at_b := center + Vector2(-facing * 6.0, -3.0) * unit
+            canvas.draw_texture_rect(Art.tile(lk["tile"]), Rect2(at_b - Vector2(size_b, size_b) / 2.0, Vector2(size_b, size_b)), false, tint)
+            var max_charges := active_max_charges(player)
+            for c in max_charges:
+                var pip := Rect2(at_b + Vector2(-size_b / 2.0 + float(c) * unit * 2.0, size_b / 2.0 + unit * 0.5), Vector2(unit * 1.5, unit * 1.5))
+                canvas.draw_rect(pip, Color(1.0, 0.9, 0.4) if c < player.active_charges else Color(0.25, 0.22, 0.24))

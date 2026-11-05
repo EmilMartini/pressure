@@ -321,8 +321,10 @@ func _draw_vitals(p: Player, origin: Vector2) -> void:
     draw_rect(box, Color(0.08, 0.06, 0.08))
     draw_rect(box, p.color, false, 2.0)
     var form: Dictionary = Items.form_for(p)
-    var tint: Color = form["tint"] if p.alive else Color(0.3, 0.3, 0.3)
-    _icon(form["tile"], box.grow(-8.0), tint)
+    var tint: Color = Color.WHITE if p.alive else Color(0.3, 0.3, 0.3)
+    var frames: Array = form["frames"]
+    var portrait: Texture2D = frames[0]
+    draw_texture_rect(portrait, box.grow(-8.0), false, tint)
 
     var x := origin.x + 84.0
     var w := CARD_W - 84.0 - 10.0
