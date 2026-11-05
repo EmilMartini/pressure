@@ -112,20 +112,53 @@ func total_weight() -> int:
     return w
 
 
+## Six gun slots like Brotato (items may add one or two), and the weight budget on top.
+const MAX_GUNS := 6
+
+
+func gun_slots() -> int:
+    return MAX_GUNS + int(stat("gun_slots"))
+
+
 func can_carry(data: GunData) -> bool:
-    return total_weight() + data.weight <= weight_capacity
+    return guns.size() < gun_slots() and total_weight() + data.weight <= weight_capacity
 
 
-## Pick up a gun. A duplicate of a gun you carry merges into it one tier higher, Brotato
-## style, instead of taking weight.
+## Merge two copies of the same gun at the same tier into one a tier higher (Brotato's
+## combine). Returns the surviving gun, or null when the pair does not match.
+func combine(a: Gun, b: Gun) -> Gun:
+    if a == null or b == null or a == b or a.data.id != b.data.id or a.tier != b.tier or a.tier >= Gun.MAX_TIER:
+        return null
+    a.tier += 1
+    for m in b.mods:
+        if a.mods.size() < a.tier:
+            a.mods.append(m)
+    guns.erase(b)
+    b.queue_free()
+    _layout_guns()
+    recalc_stats()
+    say("%s" % a.display_name())
+    Sfx.play("unlock")
+    return a
+
+
+## Pairs of guns that `combine` would accept, for the sheet's Combine action.
+func combinable_pairs() -> Array:
+    var out: Array = []
+    for i in guns.size():
+        for j in range(i + 1, guns.size()):
+            if guns[i].data.id == guns[j].data.id and guns[i].tier == guns[j].tier and guns[i].tier < Gun.MAX_TIER:
+                out.append([guns[i], guns[j]])
+    return out
+
+
+## Pick up a gun. Duplicates are allowed (three oil slingers is a build); combining two
+## of the same into a higher tier is a deliberate action in the character sheet.
 func add_gun(id: String) -> bool:
-    for g in guns:
-        if g.data.id == id and g.tier < Gun.MAX_TIER:
-            g.tier += 1
-            say("%s" % g.display_name())
-            Sfx.play("unlock")
-            return true
     var data := Guns.make(id)
+    if guns.size() >= gun_slots():
+        say("All %d gun slots full: drop or combine" % gun_slots())
+        return false
     if not can_carry(data):
         say("Too heavy: %s needs %d, %d free" % [data.display_name, data.weight, weight_capacity - total_weight()])
         return false

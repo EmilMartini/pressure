@@ -25,6 +25,10 @@ var scrap := 0
 var rooms_cleared := 0
 var floor_rooms_cleared := 0   # difficulty creeps within a floor, resets at the stairs
 var _paused_secs := 0.0
+var _hitstop_left := 0.0
+var _flash_rect: ColorRect
+var _flash_life := 0.0
+var _flash_fade := 0.0
 var total_kills := 0
 var game_over := false
 var victory := false
@@ -198,6 +202,31 @@ func _end_run(won: bool) -> void:
 
 func shake(amount: float) -> void:
     _shake = maxf(_shake, amount)
+
+
+## Hit-stop: freeze the world for a beat on a big moment (unscaled, HUD keeps drawing).
+func hitstop(secs: float, scale: float = 0.05) -> void:
+    if secs <= 0.0:
+        return
+    _hitstop_left = maxf(_hitstop_left, secs)
+    Engine.time_scale = scale
+
+
+## A full-screen tinted flash that fades out; strength is the starting alpha.
+func flash(color: Color, strength: float = 0.5, life: float = 0.25) -> void:
+    if _flash_rect == null:
+        var layer := CanvasLayer.new()
+        layer.layer = 90
+        layer.process_mode = Node.PROCESS_MODE_ALWAYS
+        add_child(layer)
+        _flash_rect = ColorRect.new()
+        _flash_rect.set_anchors_preset(Control.PRESET_FULL_RECT)
+        _flash_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+        _flash_rect.color = Color(color, 0.0)
+        layer.add_child(_flash_rect)
+    _flash_rect.color = Color(color, clampf(maxf(strength, _flash_rect.color.a), 0.0, 0.85))
+    _flash_life = life
+    _flash_fade = _flash_rect.color.a / maxf(life, 0.01)
 
 
 func is_device_joined(device: int) -> bool:
@@ -454,6 +483,13 @@ func _on_player_died(_p: Player) -> void:
 
 
 func _process(delta: float) -> void:
+    var real_delta := delta / maxf(Engine.time_scale, 0.001)
+    if _hitstop_left > 0.0:
+        _hitstop_left -= real_delta
+        if _hitstop_left <= 0.0:
+            Engine.time_scale = 1.0
+    if _flash_rect != null and _flash_rect.color.a > 0.0:
+        _flash_rect.color.a = maxf(0.0, _flash_rect.color.a - _flash_fade * real_delta)
     if autotest:
         _autotest_tick(delta)
     _handle_joins()
