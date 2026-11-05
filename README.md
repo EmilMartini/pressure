@@ -12,7 +12,9 @@ Godot 4.7 is installed through winget. Either open the folder in the Godot edito
 godot --path .
 ```
 
-Guns aim and fire on their own; you move, vent, and pick things up.
+Guns auto-fire at enemies on their own. Hold RT or the left mouse button to fire every gun
+where you aim (right stick, mouse cursor, or the way you face): that is also the only way to
+hit obstacles, props, secret walls and puzzle pieces, which auto-fire never targets.
 
 | Action | Keyboard / mouse | Controller |
 |---|---|---|
@@ -20,6 +22,7 @@ Guns aim and fire on their own; you move, vent, and pick things up.
 | Interact (pedestals, stairs, sigil) | E | A |
 | Vent pressure | Space | LB |
 | Use active item | F | X |
+| Fire manually (aim with right stick / mouse, else facing) | Left mouse | RT |
 | Character sheet | C | Back / Select |
 | Pause | Esc | Start |
 | Join (players 2-4) | | Start on a pad that has not joined |

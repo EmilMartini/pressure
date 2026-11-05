@@ -11,6 +11,8 @@ var use_keyboard: bool = false
 
 # Self-test overrides (see Main.autotest). Ignored during normal play.
 var force_move: Vector2 = Vector2.ZERO
+var force_fire := false      # the bot can hold the trigger
+var force_aim := Vector2.ZERO # and aim it
 
 var _prev: Dictionary = {}
 var _cur: Dictionary = {}
@@ -25,6 +27,7 @@ const PROMPTS := {
     "interact": ["A", "E"],
     "vent": ["LB", "Space"],
     "active": ["X", "F"],
+    "fire": ["RT", "LMB"],
     "pause": ["Start", "Esc"],
     "sheet": ["Back", "C"],
 }
@@ -104,6 +107,34 @@ func take_pressed(action: String) -> bool:
         _edges.erase(action)
         return true
     return false
+
+
+## Manual fire: right trigger on a pad, left mouse button on keyboard and mouse.
+func fire_held() -> bool:
+    if force_fire:
+        return true
+    if device >= 0 and Input.get_joy_axis(device, JOY_AXIS_TRIGGER_RIGHT) > 0.45:
+        return true
+    return use_keyboard and Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)
+
+
+## Where a manual shot goes: the right stick if pushed, else the mouse cursor while the
+## mouse is the active device, else Vector2.ZERO (the player falls back to facing).
+func aim_vector(from_world: Vector2, viewport: Viewport) -> Vector2:
+    if force_aim != Vector2.ZERO:
+        return force_aim
+    if device >= 0:
+        var r := Vector2(Input.get_joy_axis(device, JOY_AXIS_RIGHT_X), Input.get_joy_axis(device, JOY_AXIS_RIGHT_Y))
+        if r.length() > STICK_DEADZONE:
+            return r.normalized()
+    if use_keyboard and last_kind == "kb" and viewport != null:
+        var cam := viewport.get_camera_2d()
+        if cam != null:
+            var world_mouse := viewport.get_canvas_transform().affine_inverse() * viewport.get_mouse_position()
+            var d := world_mouse - from_world
+            if d.length() > 4.0:
+                return d.normalized()
+    return Vector2.ZERO
 
 
 func move_vector() -> Vector2:

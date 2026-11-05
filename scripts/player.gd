@@ -33,6 +33,7 @@ var max_hp := 100.0
 var hp := 100.0
 var alive := true
 var invuln := 0.0
+var _manual_dir := Vector2.RIGHT   # last movement direction, for manual fire with no aim input
 
 var weight_capacity_base := 10
 var weight_capacity := 10
@@ -501,6 +502,8 @@ func _physics_process(delta: float) -> void:
         if not alive:
             return
     var mv := input.move_vector()
+    if mv.length() > 0.2:
+        _manual_dir = mv.normalized()
     var want := mv * move_speed() * (Room.WADE if _wading else 1.0)
     if _on_ice:
         var keep := pow(Materials.ICE_KEEP, delta * 60.0)
@@ -567,13 +570,22 @@ func _animate(delta: float, mv: Vector2) -> void:
 
 ## Every gun picks its own nearest target in range and fires.
 func _fire() -> void:
+    # Holding RT (or the left mouse button) fires every gun where you aim: right stick,
+    # mouse cursor, or the way you face. Otherwise guns auto-fire at enemies only, never
+    # at obstacles, props, secret walls or puzzle pieces: those you find and shoot yourself.
+    var manual := alive and input.fire_held()
+    var aim := Vector2.ZERO
+    if manual:
+        aim = input.aim_vector(global_position, get_viewport())
+        if aim == Vector2.ZERO:
+            aim = _manual_dir
     for g in guns:
         if not g.can_fire():
             continue
+        if manual:
+            g.fire(aim)
+            continue
         var target := nearest_enemy(g.effective_range())
-        if target == null:
-            # Nothing to shoot: an obstacle in range gets the gun's element instead.
-            target = nearest_obstacle(g.effective_range())
         if target == null:
             continue
         g.fire((target.global_position - g.global_position).normalized())

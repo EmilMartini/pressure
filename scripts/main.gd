@@ -900,6 +900,8 @@ func _autotest_tick(delta: float) -> void:
 
 func _bot_navigate(p: Player) -> void:
     var room := current
+    p.input.force_fire = false
+    p.input.force_aim = Vector2.ZERO
     # Just through a door: step into the room first, so kiting or a door's own trigger
     # cannot bounce the bot straight back out.
     if Time.get_ticks_msec() - _room_entered_ms < 1200:
@@ -942,10 +944,12 @@ func _bot_navigate(p: Player) -> void:
                 gun = g
         if gun == null:
             continue
-        # Guns fire at obstacles on their own once in range; just walk up to it.
+        # Auto-fire never targets obstacles: walk up and hold the trigger at the door.
         var target := room.door_world_position(dir)
         var to := target - p.global_position
         p.input.force_move = room.path_dir(p.global_position, target) if to.length() > 130.0 else Vector2.ZERO
+        p.input.force_fire = to.length() <= 260.0
+        p.input.force_aim = to.normalized()
         return
     _bot_obstacle_time = 0.0
     if not room.data.cleared:
