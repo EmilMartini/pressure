@@ -206,6 +206,25 @@ func shake(amount: float) -> void:
     _shake = maxf(_shake, amount * Settings.shake_mult())
 
 
+## The show grows over a run: tame on the first floor, the full display on the last.
+## Only presentation reads this (particle counts, flashes, ripples), never gameplay.
+var spectacle_override := -1.0
+
+
+func spectacle_value() -> float:
+    if spectacle_override >= 0.0:
+        return spectacle_override
+    var guns := 0
+    for p in players:
+        guns = maxi(guns, p.guns.size())
+    return clampf(0.35 + 0.14 * float(floor_number - 1) + 0.03 * float(floor_rooms_cleared) + 0.004 * float(difficulty()) + 0.05 * float(maxi(0, guns - 1)), 0.35, 1.3)
+
+
+func _update_spectacle() -> void:
+    if fx != null and fx.has_method("set_spectacle"):
+        fx.set_spectacle(spectacle_value())
+
+
 ## Hit-stop: freeze the world for a beat on a big moment (unscaled, HUD keeps drawing).
 func hitstop(secs: float, scale: float = 0.05) -> void:
     if secs <= 0.0 or not Settings.flag("hit_stop"):
@@ -279,6 +298,7 @@ func enter_room(pos: Vector2i, moved: Vector2i) -> void:
     current_pos = pos
     current = Room.new(rooms[pos], self)
     add_child(current)
+    _update_spectacle()
     move_child(current, 0)
     current.door_entered.connect(_on_door_entered)
 
@@ -312,6 +332,7 @@ func _on_door_entered(dir: Vector2i) -> void:
 func on_room_cleared(_room: Room) -> void:
     rooms_cleared += 1
     floor_rooms_cleared += 1
+    _update_spectacle()
     announce("Room cleared")
 
 

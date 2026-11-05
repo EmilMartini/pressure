@@ -55,6 +55,7 @@ func _ready() -> void:
     fx = Fx.new()
     fx.main = self
     add_child(fx)
+    spectacle_override = 0.6
     camera = Camera2D.new()
     camera.position_smoothing_enabled = true
     camera.position_smoothing_speed = 7.0

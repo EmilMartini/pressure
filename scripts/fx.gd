@@ -11,6 +11,28 @@ extends Node2D
 ## puddle, a blood spray, an implosion, a pillar of light, a whirl, heavy chunks. A reaction
 ## is element a's signature, then element b's at 70%, then accents for what it does. Lines
 ## (bolts, spikes, rays, collapse lines) are short-lived vector shapes in `_shapes`.
+##
+## Particles and the floor's Materials are one world (Noita style): liquid and sticky pixels
+## that land (water, oil, blood droplets, thrown DROPs), acid bubbles that pop, poison blooms
+## that die, ice fragments that stop all stamp one cell of their material where they end,
+## and fire pixels that die over oil light it (over water they hiss). At most MAX_STAMPS
+## landings a frame reach the grid; the rest are only visual. Bursts, novas and bloody
+## deaths throw droplets (`throw_drops`) that arc out and land as material. Materials calls
+## back into ember / smoke / steam / bubble / glint / flame_tongue / mote / pixels.
+##
+## SPECTACLE (0.35 .. 1.3, set per room by the run through `set_spectacle`): effects start
+## tame and grow over a run. It touches only the show, each channel in one place:
+##   counts    _count(): pixels(), _n() (every signature count), throw_drops, _spikes
+##             (shapes); never below 40% of the base count
+##   sizes     _sig_size(): signature sizes x (0.75 + 0.25 * spectacle)
+##   moments   _impact(): < 0.55 a small shake only; 0.55-0.85 half hit-stop / flash /
+##             shockwave; > 0.85 full; > 1.1 a second ripple; _moment_scale(): +20% > 1.1
+##   glow      _glow(): alpha x (0.5 + 0.5 * spectacle)
+##   forwarded Materials.emit_scale (embers, steam, sparks, bubbles, tendrils) and
+##             PostFx.set_spectacle (shockwave, aberration, bloom gain)
+## Boss and elite deaths always run at full (`_full`). Floor material never depends on it:
+## droplets that spectacle leaves out are still stamped at their landing points, and the
+## extra droplets above 1.0 are visual only.
 
 const MAX_PUFFS := 120
 const MAX_TEXTS := 48
@@ -41,7 +63,7 @@ const MOMENTS := {
 
 ## Pixel behaviours.
 enum B { FIRE, SMOKE, WET, ICE, SHOCK, OIL, POISON, ACID, BLOOD, VOID, HOLY, GALE, STONE, RING, DRIFT, ORBIT, EMBER, STUCK,
-    TONGUE, BLOOM, SHEEN, FALL, SIZZLE, WHIRL }
+    TONGUE, BLOOM, SHEEN, FALL, SIZZLE, WHIRL, DROP, GLINT }
 
 ## Vector shape kinds.
 const SH_BOLT := 0       # { pts, w }            jagged polyline, yellow glow under a white core
@@ -55,6 +77,14 @@ const PAL_SMOKE := 13
 const PAL_STEAM := 14
 const PAL_GOLD := 15
 const GRAVITY := 560.0
+## Particle landings stamped into the Materials grid per frame; the rest stay visual.
+const MAX_STAMPS := 40
+## Fire pixel deaths that may look at the grid per frame (cheap reads, a few ignite).
+const MAX_READS := 96
+## throw_drops kind for burning oil (lays oil and lights it).
+const DROP_BURNING := 100
+## Added to a DROP's code when it must not stamp (extra droplets above spectacle 1.0).
+const DROP_VISUAL := 1000
 
 var main: Main
 var _arcs: Array = []      # { a, b, t }
@@ -73,6 +103,11 @@ var _pulls: Array = []     # { c, r2, t }  void moments bending live pixels inwa
 var _flames: Array = []    # { pos, t, acc }  lingering flame tongues on the floor
 var _boost := 1.0          # signature size multiplier while a moment is being drawn
 var _impact_ms := -100000  # real time of the last hit-stop
+var _mats: Materials = null  # this frame's room material grid (null between rooms)
+var _stamps := 0           # landings stamped this frame
+var _reads := 0            # fire deaths checked against the grid this frame
+var spectacle := 1.0       # 0.35 .. 1.3, see set_spectacle
+var _full := false         # boss / elite deaths: spectacle treated as 1.0
 
 # Pixel pool: parallel packed arrays, one slot per pixel, used as a ring buffer.
 var _pp := PackedVector2Array()   # position
@@ -197,6 +232,39 @@ static func _kind_of(c: Color) -> int:
     return Element.Kind.NONE
 
 
+# --- Spectacle --------------------------------------------------------------
+
+
+## How much show effects put on (0.35 tame .. 1.3 wild). Forwards to PostFx and the
+## current room's Materials; Fx re-forwards to each new room's Materials on its own.
+func set_spectacle(v: float) -> void:
+    spectacle = clampf(v, 0.35, 1.3)
+    PostFx.set_spectacle(spectacle)
+    var m := Materials.find(self)
+    if m != null:
+        m.emit_scale = spectacle
+
+
+func _show() -> float:
+    return 1.0 if _full else spectacle
+
+
+## Every effect count goes through here: scaled by spectacle, never below 40%.
+func _count(n: int) -> int:
+    if n <= 0:
+        return n
+    return maxi(ceili(float(n) * 0.4), roundi(float(n) * _show()))
+
+
+## Signature reach: the moment boost times (0.75 + 0.25 * spectacle).
+func _sig_size() -> float:
+    return _boost * (0.75 + 0.25 * _show())
+
+
+func _moment_scale() -> float:
+    return MOMENT_SCALE * (1.2 if _show() > 1.1 else 1.0)
+
+
 # --- Pixel spawners --------------------------------------------------------
 
 
@@ -221,7 +289,7 @@ func _element_px(kind: int, pos: Vector2, v: Vector2, pal := -1) -> void:
     var p := kind if pal < 0 else pal
     match kind:
         Element.Kind.FIRE:
-            _px(pos, v * 0.5 + Vector2(0, randf_range(-90.0, -40.0)), randf_range(0.35, 0.7), randf_range(2.0, 4.0), randf_range(0.45, 0.65), B.FIRE, p, true)
+            _px(pos, v * 0.5 + Vector2(0, randf_range(-90.0, -40.0)), randf_range(0.35, 0.7), randf_range(3.0, 6.0), randf_range(0.45, 0.65), B.FIRE, p, true)
         Element.Kind.WET:
             _px(pos, v * 0.8 + Vector2(0, randf_range(-130.0, -60.0)), 1.2, randf_range(2.0, 3.0), randf_range(0.45, 0.6), B.WET, p, false, Vector2(0, pos.y + randf_range(8.0, 24.0)))
         Element.Kind.ICE:
@@ -252,14 +320,96 @@ func _element_px(kind: int, pos: Vector2, v: Vector2, pal := -1) -> void:
 
 ## `count` pixels of an element bursting from `pos` at up to `speed` px/s.
 func pixels(kind: int, pos: Vector2, count: int, speed := 80.0, spread := 6.0, pal := -1) -> void:
-    for n in count:
+    for n in _count(count):
         var off := Vector2(randf_range(-spread, spread), randf_range(-spread, spread))
         _element_px(kind, pos + off, Vector2.RIGHT.rotated(randf() * TAU) * speed * randf_range(0.4, 1.0), pal)
 
 
 ## A rising ember, shed by burning enemies.
 func ember(pos: Vector2) -> void:
-    _px(pos, Vector2(randf_range(-10.0, 10.0), randf_range(-55.0, -30.0)), randf_range(0.5, 0.9), 2.0, randf_range(0.45, 0.65), B.EMBER, Element.Kind.FIRE, true)
+    _px(pos, Vector2(randf_range(-10.0, 10.0), randf_range(-55.0, -30.0)), randf_range(0.5, 0.9), randf_range(2.0, 3.0), randf_range(0.45, 0.65), B.EMBER, Element.Kind.FIRE, true)
+
+
+## A puff of white steam pixels (boiling water, cauterised blood, a fire pixel hissing out).
+func steam(pos: Vector2, count: int) -> void:
+    for n in count:
+        var off := Vector2(randf_range(-5.0, 5.0), randf_range(-3.0, 3.0))
+        _px(pos + off, Vector2(randf_range(-22.0, 22.0), randf_range(-65.0, -25.0)), randf_range(0.6, 1.1), randf_range(3.0, 5.0), randf_range(0.3, 0.45), B.SMOKE, PAL_STEAM, false)
+
+
+## One acid bubble rising and popping (does not stamp: shed by acid already on the floor).
+func bubble(pos: Vector2) -> void:
+    _px(pos + Vector2(randf_range(-2.0, 2.0), randf_range(-2.0, 2.0)), Vector2(0, randf_range(-30.0, -12.0)), randf_range(0.3, 0.7), randf_range(2.0, 3.0), 0.55, B.ACID, Element.Kind.ACID, false, Vector2(randf() * TAU, 0))
+
+
+## A brief white point of light (ice creeping, a droplet landing).
+func glint(pos: Vector2) -> void:
+    _px(pos + Vector2(randf_range(-2.0, 2.0), randf_range(-2.0, 2.0)), Vector2.ZERO, randf_range(0.15, 0.3), randf_range(1.0, 2.0), MAX_ALPHA, B.GLINT, 0, true)
+
+
+## A small flame tongue (oil catching fire).
+func flame_tongue(pos: Vector2) -> void:
+    _tongue(pos, 2 + randi() % 2, randf_range(-80.0, -50.0), randf_range(0.25, 0.4), randf_range(3.0, 4.5))
+
+
+## Material thrown by a burst: `count` droplets of `kind` arc out to land within `r` of
+## `pos` and stamp the floor where they land. kind DROP_BURNING lays burning oil; FIRE drops
+## only heat what they hit (light oil, hiss on water); STONE chips just land.
+func throw_drops(kind: int, pos: Vector2, r: float, count: int) -> void:
+    var pal := Element.Kind.FIRE if kind == DROP_BURNING else kind
+    var additive := kind == DROP_BURNING or kind == Element.Kind.FIRE or kind == Element.Kind.ICE
+    var shown := _count(count)
+    for n in maxi(count, shown):
+        var dir := Vector2.RIGHT.rotated(randf() * TAU)
+        var target := pos + dir * r * sqrt(randf_range(0.12, 1.0))
+        if n >= shown:
+            _land(kind, target, 44)   # left out of the show, still lands on the floor
+            continue
+        var dy := target.y - pos.y
+        var tf := randf_range(0.35, 0.6)
+        if dy < 0.0:
+            tf = maxf(tf, sqrt(-2.0 * dy / GRAVITY) * 1.3 + 0.1)
+        var v := Vector2((target.x - pos.x) / tf, dy / tf - 0.5 * GRAVITY * tf)
+        var sz := randf_range(3.0, 5.0) if kind == Element.Kind.STONE or kind == DROP_BURNING else randf_range(2.0, 4.0)
+        # Droplets past the base count (spectacle > 1) are visual only: code + VISUAL.
+        var code := kind + (DROP_VISUAL if n >= count else 0)
+        _px(pos + dir * 4.0, v, tf + 0.5, sz, randf_range(0.6, 0.72), B.DROP, pal, additive, Vector2(float(code), target.y))
+
+
+## throw_drops for the elements that are a material (or chips); others throw nothing.
+func _throw_for(kind: int, pos: Vector2, r: float, count: int) -> void:
+    if kind in [Element.Kind.WET, Element.Kind.OIL, Element.Kind.FIRE, Element.Kind.ICE, Element.Kind.POISON,
+            Element.Kind.ACID, Element.Kind.BLOOD, Element.Kind.STONE]:
+        throw_drops(kind, pos, r, count)
+
+
+## A particle ending on the floor: one cell of its material, within this frame's cap.
+func _land(code: int, p: Vector2, amount := 40) -> void:
+    if _mats == null or _stamps >= MAX_STAMPS or not is_instance_valid(_mats):
+        return
+    _stamps += 1
+    match code:
+        DROP_BURNING:
+            _mats.drop(Element.Kind.OIL, p, 64)
+            _mats.heat_at(p)
+        Element.Kind.FIRE:
+            _mats.heat_at(p)
+        Element.Kind.STONE:
+            pass
+        _:
+            _mats.drop(code, p, amount)
+
+
+## A fire pixel dying here: oil underneath catches, water hisses a steam pixel.
+func _hot(p: Vector2) -> void:
+    if _mats == null or _reads >= MAX_READS or _stamps >= MAX_STAMPS or not is_instance_valid(_mats):
+        return
+    _reads += 1
+    var m := _mats.heat_at(p)
+    if m == Materials.OIL:
+        _stamps += 1
+    elif m == Materials.WATER or m == Materials.CHARGED or m == Materials.TOXIC:
+        _px(p, Vector2(randf_range(-8.0, 8.0), -30.0), randf_range(0.4, 0.7), 3.0, 0.4, B.SMOKE, PAL_STEAM, false)
 
 
 ## One drifting pixel of an element (status shedding).
@@ -319,7 +469,8 @@ func shards(pos: Vector2, arms: int, length: float, pal := Element.Kind.ICE) -> 
     for k in arms:
         var d := Vector2.RIGHT.rotated(TAU * float(k) / float(arms) + randf_range(-0.12, 0.12))
         for m in 3:
-            _px(pos + d * (4.0 + 3.0 * m), d * length * 6.0 * (1.0 - 0.25 * m), randf_range(0.55, 0.8), 3.0 - 0.5 * m, 0.65 - 0.1 * m, B.ICE, pal, true)
+            var sticks := 1.0 if m == 0 and pal == Element.Kind.ICE else 0.0
+            _px(pos + d * (4.0 + 3.0 * m), d * length * 6.0 * (1.0 - 0.25 * m), randf_range(0.55, 0.8), 3.0 - 0.5 * m, 0.65 - 0.1 * m, B.ICE, pal, true, Vector2(0, sticks))
 
 
 ## Small pixels orbiting above `pos` (stun).
@@ -400,8 +551,9 @@ func _sparks(pos: Vector2, count: int) -> void:
 
 ## Spikes growing out of the ground from `pos`, fanned `fan` radians either side of up.
 func _spikes(pos: Vector2, count: int, length: float, pal := Element.Kind.ICE, fan := 1.25, hold := 0.35) -> void:
-    for k in count:
-        var q := 0.5 if count == 1 else float(k) / float(count - 1)
+    var cnt := _count(count)
+    for k in cnt:
+        var q := 0.5 if cnt == 1 else float(k) / float(cnt - 1)
         var ang := -PI * 0.5 + lerpf(-fan, fan, q) + randf_range(-0.12, 0.12)
         var base := pos + Vector2(randf_range(-5.0, 5.0), randf_range(0.0, 6.0))
         var tip := base + Vector2.RIGHT.rotated(ang) * length * randf_range(0.6, 1.0)
@@ -416,7 +568,8 @@ func _crumble(sh: Dictionary) -> void:
     var n := clampi(int(a0.distance_to(b0) / 6.0), 2, 5)
     for m in n:
         var p := a0.lerp(b0, (float(m) + 0.5) / float(n))
-        _px(p, Vector2(randf_range(-25.0, 25.0), randf_range(-30.0, 0.0)), randf_range(0.35, 0.6), randf_range(2.0, 3.0), 0.6, B.FALL, pal, true)
+        var sticks := 1.0 if pal == Element.Kind.ICE and randf() < 0.5 else 0.0
+        _px(p, Vector2(randf_range(-25.0, 25.0), randf_range(-30.0, 0.0)), randf_range(0.35, 0.6), randf_range(2.0, 3.0), 0.6, B.FALL, pal, true, Vector2(0, sticks))
 
 
 func _ray(a: Vector2, b: Vector2, c: Color, life: float, w := 1.0, delay := 0.0) -> void:
@@ -427,8 +580,8 @@ func _ray(a: Vector2, b: Vector2, c: Color, life: float, w := 1.0, delay := 0.0)
 # Each takes pos, size (reach in px) and strength (1 = a full signature, 20-60 pixels).
 
 
-static func _n(base: float, strength: float, lo: int, hi: int) -> int:
-    return clampi(roundi(base * strength), lo, hi)
+func _n(base: float, strength: float, lo: int, hi: int) -> int:
+    return _count(clampi(roundi(base * strength), lo, hi))
 
 
 ## The signature shape of an element. `dir` aims directional ones (blood).
@@ -461,21 +614,21 @@ func _tongue(base: Vector2, height: int, vy: float, life: float, sz: float) -> v
 
 ## FIRE: 5-9 flame tongues, embers; tongues leave a little smoke when they die.
 func sig_fire(pos: Vector2, size: float, strength := 1.0) -> void:
-    size *= _boost
+    size *= _sig_size()
     strength *= _sboost()
-    var n := _n(5.0 + size / 30.0, strength, 3, 12)
+    var n := _n((5.0 + size / 30.0) * 1.5, strength, 4, 18)
     for k in n:
         var x := lerpf(-size * 0.45, size * 0.45, (float(k) + randf_range(0.2, 0.8)) / float(n))
         var tall := 1.0 - absf(x) / maxf(size, 1.0) * 0.8
-        _tongue(pos + Vector2(x, randf_range(-4.0, 8.0)), 3 + randi() % 3, randf_range(-110.0, -60.0) * tall, randf_range(0.35, 0.6), randf_range(3.0, 4.0))
-    for k in _n(4.0, strength, 1, 8):
+        _tongue(pos + Vector2(x, randf_range(-4.0, 8.0)), 3 + randi() % 3, randf_range(-110.0, -60.0) * tall, randf_range(0.35, 0.6), randf_range(3.5, 5.0))
+    for k in _n(6.0, strength, 2, 12):
         ember(pos + Vector2(randf_range(-size * 0.4, size * 0.4), randf_range(-10.0, 4.0)))
     _glow(pos, size * 1.2, Color(1.0, 0.6, 0.2, 0.25), 0.25)
 
 
 ## WET: a crown of droplets thrown up and out that fall back and splash, plus a puddle sheen.
 func sig_wet(pos: Vector2, size: float, strength := 1.0) -> void:
-    size *= _boost
+    size *= _sig_size()
     strength *= _sboost()
     var n := _n(14.0, strength, 6, 22)
     var spd := clampf(size * 1.6, 60.0, 200.0)
@@ -491,7 +644,7 @@ func sig_wet(pos: Vector2, size: float, strength := 1.0) -> void:
 
 ## SHOCK: 3-5 branching bolts from the point outward, sparks at the tips.
 func sig_shock(pos: Vector2, size: float, strength := 1.0) -> void:
-    size *= _boost
+    size *= _sig_size()
     strength *= _sboost()
     var n := _n(3.0 + 2.0 * minf(strength, 1.0), maxf(strength, 1.0), 2, 7)
     var a0 := randf() * TAU
@@ -505,17 +658,17 @@ func sig_shock(pos: Vector2, size: float, strength := 1.0) -> void:
 
 ## ICE: 5-7 crystal spikes growing from the ground, holding, then crumbling; white tip glints.
 func sig_ice(pos: Vector2, size: float, strength := 1.0) -> void:
-    size *= _boost
+    size *= _sig_size()
     strength *= _sboost()
     _spikes(pos, _n(5.0 + 2.0 * minf(strength, 1.0), maxf(strength, 1.0), 3, 9), size * 0.8)
     for k in _n(5.0, strength, 2, 8):
-        _px(pos + Vector2(randf_range(-6.0, 6.0), randf_range(-4.0, 4.0)), Vector2.RIGHT.rotated(randf() * TAU) * randf_range(30.0, 70.0), randf_range(0.4, 0.7), randf_range(2.0, 3.0), 0.6, B.ICE, Element.Kind.ICE, true)
+        _px(pos + Vector2(randf_range(-6.0, 6.0), randf_range(-4.0, 4.0)), Vector2.RIGHT.rotated(randf() * TAU) * randf_range(30.0, 70.0), randf_range(0.4, 0.7), randf_range(2.0, 3.0), 0.6, B.ICE, Element.Kind.ICE, true, Vector2(0, float(k % 2)))
     _glow(pos, size, Color(0.8, 0.95, 1.0, 0.25), 0.25)
 
 
 ## OIL: dark droplets that arc out and stick as glossy dots, plus a small dark pool.
 func sig_oil(pos: Vector2, size: float, strength := 1.0) -> void:
-    size *= _boost
+    size *= _sig_size()
     strength *= _sboost()
     for k in _n(16.0, strength, 6, 22):
         var d := Vector2.RIGHT.rotated(randf() * TAU)
@@ -526,7 +679,7 @@ func sig_oil(pos: Vector2, size: float, strength := 1.0) -> void:
 
 ## POISON: 3-4 gas blooms (clusters with a light core) that rise slowly, wobble and thin out.
 func sig_poison(pos: Vector2, size: float, strength := 1.0) -> void:
-    size *= _boost
+    size *= _sig_size()
     strength *= _sboost()
     var blobs := _n(3.5, strength, 2, 5)
     var br := clampf(size * 0.12, 5.0, 12.0)
@@ -538,18 +691,18 @@ func sig_poison(pos: Vector2, size: float, strength := 1.0) -> void:
         for j in 6 + randi() % 5:
             var off := Vector2.RIGHT.rotated(randf() * TAU) * br * sqrt(randf())
             var step := 1 if off.length() < br * 0.45 else (0 if randf() < 0.7 else 2)
-            _px(c + off, vel + off * 0.6, life * randf_range(0.95, 1.0), randf_range(3.0, 4.0), randf_range(0.35, 0.5), B.BLOOM, Element.Kind.POISON, false, Vector2(ph, float(step)))
+            _px(c + off, vel + off * 0.6, life * randf_range(0.95, 1.0), randf_range(3.0, 4.0), randf_range(0.35, 0.5), B.BLOOM, Element.Kind.POISON, false, Vector2(ph + (64.0 if j == 0 else 0.0), float(step)))
 
 
 ## ACID: a bright fizzing pool, bubbles rising and popping, eating sparks on the ground.
 func sig_acid(pos: Vector2, size: float, strength := 1.0) -> void:
-    size *= _boost
+    size *= _sig_size()
     strength *= _sboost()
     var r := size * 0.35
     _patch(pos + Vector2(0, 4.0), r, Element.Kind.ACID, _n(6.0, strength, 3, 8), 0.3, 1.3)
     for k in _n(13.0, strength, 5, 18):
         var off := Vector2(randf_range(-r, r), randf_range(-r, r) * 0.35)
-        _px(pos + off, Vector2(0, randf_range(-35.0, -12.0)), randf_range(0.4, 1.0), randf_range(2.0, 3.0), 0.55, B.ACID, Element.Kind.ACID, false, Vector2(randf() * TAU, 0))
+        _px(pos + off, Vector2(0, randf_range(-35.0, -12.0)), randf_range(0.4, 1.0), randf_range(2.0, 3.0), 0.55, B.ACID, Element.Kind.ACID, false, Vector2(randf() * TAU + (64.0 if k % 3 == 0 else 0.0), 0))
     for k in _n(8.0, strength, 3, 12):
         var off2 := Vector2(randf_range(-r, r), randf_range(-r, r) * 0.35)
         _px(pos + off2 + Vector2(0, 4.0), Vector2.ZERO, randf_range(0.2, 0.5), 2.0, 0.7, B.SIZZLE, Element.Kind.ACID, true)
@@ -557,7 +710,7 @@ func sig_acid(pos: Vector2, size: float, strength := 1.0) -> void:
 
 ## BLOOD: a spray along `dir` (radial when zero); droplets arc out and splat into dots.
 func sig_blood(pos: Vector2, size: float, strength := 1.0, dir := Vector2.ZERO) -> void:
-    size *= _boost
+    size *= _sig_size()
     strength *= _sboost()
     var aim := dir.normalized()
     for k in _n(18.0, strength, 8, 24):
@@ -569,7 +722,7 @@ func sig_blood(pos: Vector2, size: float, strength := 1.0, dir := Vector2.ZERO) 
 ## VOID: an implosion. Pixels spiral in, a dark disc with a violet edge opens and closes,
 ## then a pulse of short lines collapses inward.
 func sig_void(pos: Vector2, size: float, strength := 1.0) -> void:
-    size *= _boost
+    size *= _sig_size()
     strength *= _sboost()
     spiral(pos, size, _n(22.0, strength, 8, 40), Element.Kind.VOID)
     _shape({ "k": SH_DISC, "c": pos, "r": clampf(size * 0.3, 8.0, 40.0) * clampf(strength, 0.6, 1.5) }, 0.45)
@@ -582,7 +735,7 @@ func sig_void(pos: Vector2, size: float, strength := 1.0) -> void:
 ## HOLY: a pillar of light. Rising white and gold column, a bright flash at the base, thin
 ## rays fanning up.
 func sig_holy(pos: Vector2, size: float, strength := 1.0) -> void:
-    size *= _boost
+    size *= _sig_size()
     strength *= _sboost()
     var w := clampf(size * 0.15, 6.0, 20.0)
     for k in _n(22.0, strength, 8, 50):
@@ -599,7 +752,7 @@ func sig_holy(pos: Vector2, size: float, strength := 1.0) -> void:
 
 ## GALE: a whirl. Streaks orbit the point once and fly off; grey dust swept up.
 func sig_gale(pos: Vector2, size: float, strength := 1.0) -> void:
-    size *= _boost
+    size *= _sig_size()
     strength *= _sboost()
     for k in _n(14.0, strength, 6, 24):
         var ang := randf() * TAU
@@ -611,7 +764,7 @@ func sig_gale(pos: Vector2, size: float, strength := 1.0) -> void:
 
 ## STONE: heavy chunks arcing out and bouncing once, a dust cloud at ground level.
 func sig_stone(pos: Vector2, size: float, strength := 1.0) -> void:
-    size *= _boost
+    size *= _sig_size()
     strength *= _sboost()
     for k in _n(10.0, strength, 4, 30):
         var d := Vector2.RIGHT.rotated(randf() * TAU)
@@ -669,7 +822,7 @@ func _tex_puff(tex: Texture2D, pos: Vector2, color: Color, size: float, life: fl
 
 ## Soft additive glow underlay (small Kenney light texture), kept faint.
 func _glow(pos: Vector2, size: float, color: Color, life: float) -> void:
-    _tex_puff(Art.PARTICLES["light"], pos, Color(color, minf(color.a, 0.3)), size, life, true, Vector2.ZERO, 0.0)
+    _tex_puff(Art.PARTICLES["light"], pos, Color(color, minf(color.a, 0.3) * (0.5 + 0.5 * _show())), size, life, true, Vector2.ZERO, 0.0)
 
 
 ## Thin wrapper for older callers (bomber): the element's signature at the blast's size.
@@ -741,9 +894,17 @@ func _light(pos: Vector2, r: float, color: Color) -> void:
 ## reactions does not stutter the game.
 func _impact(pos: Vector2, r: float, color: Color, kinds: Array) -> void:
     var k := clampf((r - 100.0) / 120.0, 0.0, 1.0)
-    _shake(5.0 + 9.0 * k)
-    PostFx.shockwave(pos, 0.55 + 0.6 * k, r * 1.5)
-    PostFx.aberration_pulse(0.8 + 1.6 * k)
+    # Spectacle tiers: tame runs get a small shake only, then half, then full, then extra.
+    var sp := _show()
+    if sp < 0.55:
+        _shake(2.0 + 2.0 * k)
+        return
+    var w := 0.5 if sp <= 0.85 else 1.0
+    _shake((5.0 + 9.0 * k) * (0.7 if w < 1.0 else 1.0))
+    PostFx.shockwave(pos, (0.55 + 0.6 * k) * w, r * 1.5)
+    PostFx.aberration_pulse((0.8 + 1.6 * k) * w)
+    if sp > 1.1:
+        _after(0.14, _second_ripple.bind(pos, (0.55 + 0.6 * k) * 0.55, r * 2.1))
     if kinds.has(Element.Kind.HOLY) or kinds.has(Element.Kind.SHOCK):
         PostFx.bloom_pulse(0.6 + 0.6 * k)
     if main == null:
@@ -752,14 +913,20 @@ func _impact(pos: Vector2, r: float, color: Color, kinds: Array) -> void:
     var now := Time.get_ticks_msec()
     if now - _impact_ms >= IMPACT_GAP_MS:
         _impact_ms = now
-        main.hitstop(lerpf(0.05, 0.12, k))
-        main.flash(fc, lerpf(0.12, 0.35, k), 0.2)
+        main.hitstop(lerpf(0.05, 0.12, k) * w)
+        main.flash(fc, lerpf(0.12, 0.35, k) * w, 0.2)
     else:
-        main.flash(fc, lerpf(0.06, 0.15, k), 0.15)
+        main.flash(fc, lerpf(0.06, 0.15, k) * w, 0.15)
+
+
+func _second_ripple(pos: Vector2, strength: float, world_radius: float) -> void:
+    PostFx.shockwave(pos, strength, world_radius)
 
 
 ## A signature moment: light, impact, and what each element leaves behind.
 func _moment(pos: Vector2, r: float, color: Color, kinds: Array) -> void:
+    if kinds.has(Element.Kind.FIRE):
+        PostFx.heat_pulse(1.0)
     _light(pos, r, color)
     _impact(pos, r, color, kinds)
     _aftermath(pos, r, kinds)
@@ -818,6 +985,7 @@ func _pull(c: Vector2, r: float, life: float) -> void:
 
 ## Boss death: a long freeze, a white flash, the heaviest shake, and a slow double ring.
 func boss_death(pos: Vector2) -> void:
+    _full = true
     if main != null:
         main.hitstop(0.35)
         main.flash(Color.WHITE, 0.6, 0.3)
@@ -834,10 +1002,12 @@ func boss_death(pos: Vector2) -> void:
     _boost = 1.0
     shards(pos, 12, 30.0, 0)
     pixels(0, pos, 30, 260.0, 10.0)
+    _full = false
 
 
 ## Elite death: a short freeze and a small ripple.
 func elite_death(pos: Vector2) -> void:
+    _full = true
     if main != null:
         main.hitstop(0.08)
         main.shake(6.0)
@@ -846,6 +1016,7 @@ func elite_death(pos: Vector2) -> void:
     PostFx.aberration_pulse(1.2)
     burst_outline(pos, 80.0, PAL_GOLD, 0.35)
     _glow(pos, 160.0, Color(1.0, 0.85, 0.4, 0.3), 0.3)
+    _full = false
 
 
 func _on_node_added(n: Node) -> void:
@@ -858,6 +1029,8 @@ func _on_node_added(n: Node) -> void:
 func _on_enemy_died(e: Enemy) -> void:
     if not is_instance_valid(e):
         return
+    if e.has_state(Element.Kind.BLOOD):
+        throw_drops(Element.Kind.BLOOD, e.global_position, 60.0, 14)
     if e.kind_name == "boss":
         boss_death(e.global_position)
     elif e.is_elite:
@@ -880,11 +1053,12 @@ func _on_reaction(reaction_name: String, position: Vector2, color: Color) -> voi
     Sfx.reaction(reaction_name)
     var mom: Array = MOMENTS.get(reaction_name, [])
     if not mom.is_empty():
-        _boost = MOMENT_SCALE
+        _boost = _moment_scale()
     match reaction_name:
         "Chain Lightning":
             sig_shock(position, 120.0, 1.6)
             sig_wet(position, 50.0, 0.5)
+            throw_drops(Element.Kind.WET, position, 90.0, 10)
             _sparks(position, 8)
             _glow(position, 90.0, Color(1, 1, 0.8, 0.3), 0.2)
             _shake(3.0)
@@ -895,6 +1069,7 @@ func _on_reaction(reaction_name: String, position: Vector2, color: Color) -> voi
                 _px(position + off, Vector2(randf_range(-25.0, 25.0), randf_range(-70.0, -25.0)), randf_range(0.9, 1.6), randf_range(3.0, 5.0), randf_range(0.3, 0.45), B.SMOKE, PAL_STEAM, false)
             sig_wet(position, 90.0, 0.9)
             sig_fire(position, 50.0, 0.4)
+            throw_drops(Element.Kind.WET, position, 100.0, 12)
             burst_outline(position, 130.0, PAL_STEAM, 0.3)
             _shake(2.0)
         "Deep Freeze":
@@ -902,6 +1077,7 @@ func _on_reaction(reaction_name: String, position: Vector2, color: Color) -> voi
             _spikes(position, 5, 26.0, Element.Kind.ICE, PI * 0.8, 0.5)
             sig_wet(position, 40.0, 0.4)
             linger(position, 50.0, 12, Element.Kind.ICE, true)
+            throw_drops(Element.Kind.ICE, position, 100.0, 12)
             _glow(position, 90.0, Color(0.8, 0.95, 1.0, 0.3), 0.3)
             _shake(3.0)
         "Inferno":
@@ -910,12 +1086,14 @@ func _on_reaction(reaction_name: String, position: Vector2, color: Color) -> voi
             for n in 8:
                 ember(position + Vector2(randf_range(-50.0, 50.0), randf_range(-10.0, 10.0)))
             smoke(position, 10, 30.0)
+            throw_drops(DROP_BURNING, position, 120.0, 18)
             scorch(position, 120.0)
             _shake(5.0)
         "Ignition":
             sig_shock(position, 70.0, 0.8)
             sig_fire(position, 70.0, 1.0)
             sig_oil(position, 50.0, 0.5)
+            throw_drops(DROP_BURNING, position, 80.0, 10)
             scorch(position, 70.0)
             _shake(3.0)
         "Fire Nova":
@@ -924,9 +1102,10 @@ func _on_reaction(reaction_name: String, position: Vector2, color: Color) -> voi
             for k in 8:
                 var fp := position + Vector2.RIGHT.rotated(TAU * float(k) / 8.0 + randf_range(-0.2, 0.2)) * Vector2(1.0, 0.6) * randf_range(70.0, 110.0)
                 _tongue(fp, 3 + randi() % 3, randf_range(-100.0, -60.0), randf_range(0.35, 0.55), randf_range(3.0, 4.0))
-            for n in 30:
+            for n in 45:
                 var d := Vector2.RIGHT.rotated(randf() * TAU)
-                _px(position + d * 8.0, d * randf_range(150.0, 320.0) + Vector2(0, -30.0), randf_range(0.3, 0.55), randf_range(3.0, 4.0), randf_range(0.45, 0.65), B.FIRE, Element.Kind.FIRE, true)
+                _px(position + d * 8.0, d * randf_range(150.0, 320.0) + Vector2(0, -30.0), randf_range(0.3, 0.55), randf_range(3.0, 6.0), randf_range(0.45, 0.65), B.FIRE, Element.Kind.FIRE, true)
+            throw_drops(Element.Kind.FIRE, position, 170.0, 24)
             smoke(position, 12, 50.0)
             for n in 8:
                 ember(position + Vector2.RIGHT.rotated(randf() * TAU) * randf_range(20.0, 90.0))
@@ -939,6 +1118,7 @@ func _on_reaction(reaction_name: String, position: Vector2, color: Color) -> voi
                 var ip := position + Vector2.RIGHT.rotated(TAU * float(k) / 4.0 + randf_range(-0.3, 0.3)) * Vector2(1.0, 0.6) * randf_range(70.0, 100.0)
                 _spikes(ip, 3, 26.0, Element.Kind.ICE, 0.8, 0.4)
             linger(position, 120.0, 16, Element.Kind.ICE, true)
+            throw_drops(Element.Kind.ICE, position, 160.0, 22)
             _glow(position, 140.0, Color(0.7, 0.9, 1.0, 0.25), 0.35)
             _shake(9.0)
         "Shield broken!":
@@ -1008,9 +1188,14 @@ func _react_data(reaction_name: String, pos: Vector2, color: Color) -> void:
     # A big burst or a deep pull is a signature moment: bigger, with impact and aftermath.
     var moment := burst_r >= 100.0 or pull_r >= 200.0
     if moment:
-        _boost = MOMENT_SCALE
+        _boost = _moment_scale()
     signature(ka, pos, sz, 1.0)
     signature(kb, pos, sz * 0.7, 0.7)
+    # Everything is material: the reaction throws droplets of both elements that land.
+    var tr := maxf(reach, burst_r)
+    if tr > 0.0:
+        _throw_for(ka, pos, clampf(tr * 0.7, 40.0, 160.0), clampi(10 + int(tr / 20.0), 10, 20))
+        _throw_for(kb, pos, clampf(tr * 0.55, 30.0, 130.0), clampi(6 + int(tr / 30.0), 6, 14))
     var shake := 2.5
     for ac in acts:
         var verb: String = ac[0]
@@ -1062,6 +1247,8 @@ func _react_data(reaction_name: String, pos: Vector2, color: Color) -> void:
     _shake(shake)
     _light(pos, maxf(reach, 60.0), color)
     if moment:
+        if ka == Element.Kind.FIRE or kb == Element.Kind.FIRE:
+            PostFx.heat_pulse(0.8)
         _impact(pos, maxf(burst_r, pull_r * 0.6), color, [ka, kb])
         _aftermath(pos, maxf(burst_r, pull_r * 0.6), [ka, kb])
     elif ka == Element.Kind.HOLY or kb == Element.Kind.HOLY or ka == Element.Kind.SHOCK or kb == Element.Kind.SHOCK:
@@ -1076,12 +1263,20 @@ func _on_nova(position: Vector2, radius: float, color: Color) -> void:
     var kind := _kind_of(color)
     if kind != Element.Kind.NONE:
         signature(kind, position, clampf(radius * 0.4, 30.0, 70.0), 0.35)
+        # Vents and cloud reactions throw their element; Fire/Frost Nova throw their own.
+        if kind != Element.Kind.FIRE and kind != Element.Kind.ICE:
+            _throw_for(kind, position, clampf(radius * 0.7, 50.0, 180.0), clampi(int(radius / 16.0), 6, 14))
 
 
 # --- Frame -----------------------------------------------------------------
 
 
 func _process(delta: float) -> void:
+    _mats = Materials.find(self)
+    if _mats != null and _mats.emit_scale != spectacle:
+        _mats.emit_scale = spectacle   # a new room's grid picks up the run's spectacle
+    _stamps = 0
+    _reads = 0
     for list in [_arcs, _rings, _texts, _puffs, _add_puffs, _corpses, _scorches]:
         for i in range(list.size() - 1, -1, -1):
             list[i]["t"] -= delta
@@ -1177,8 +1372,20 @@ func _step_pixels(delta: float) -> void:
         var p: Vector2 = _pp[i]
         if t <= 0.0:
             _pt[i] = 0.0
-            if (b == B.FIRE and randf() < 0.3) or (b == B.TONGUE and randf() < 0.2):
-                _px(p, Vector2(randf_range(-8.0, 8.0), -25.0), randf_range(0.6, 1.0), 3.0, 0.4, B.SMOKE, PAL_SMOKE, false)
+            match b:
+                B.FIRE, B.TONGUE:
+                    if (b == B.FIRE and randf() < 0.3) or (b == B.TONGUE and randf() < 0.2):
+                        _px(p, Vector2(randf_range(-8.0, 8.0), -25.0), randf_range(0.6, 1.0), 3.0, 0.4, B.SMOKE, PAL_SMOKE, false)
+                    _hot(p)
+                B.ACID:
+                    if _po[i].x >= 64.0:
+                        _land(Element.Kind.ACID, p, 48)   # the bubble pops onto the floor
+                B.BLOOM:
+                    if _po[i].x >= 64.0:
+                        _land(Element.Kind.POISON, p, 56)  # the bloom sinks to the floor
+                B.ICE, B.FALL:
+                    if _po[i].y > 0.5:
+                        _land(Element.Kind.ICE, p, 60)     # a fragment stops and sticks
             continue
         var v: Vector2 = _pv[i]
         match b:
@@ -1231,16 +1438,35 @@ func _step_pixels(delta: float) -> void:
                 v *= damp_soft
                 v.y -= 40.0 * delta
                 p.x += sin(t * 9.0 + _po[i].x) * 8.0 * delta
-            B.WET, B.OIL, B.BLOOD, B.STONE:
+            B.WET, B.OIL, B.BLOOD, B.STONE, B.DROP:
                 v.y += (GRAVITY * 1.6 if b == B.STONE else GRAVITY) * delta
                 var a: Vector2 = _po[i]
                 if v.y > 0.0 and p.y >= a.y:
                     p.y = a.y
-                    if b == B.WET:
+                    if b == B.DROP:
+                        # Thrown material lands: a cell of it, a small splash, a brief dot.
+                        var code := int(a.x)
+                        if code >= DROP_VISUAL:
+                            code -= DROP_VISUAL
+                        else:
+                            _land(code, p, 44)
+                        if code == DROP_BURNING or code == Element.Kind.FIRE:
+                            ember(p)
+                        elif code == Element.Kind.ICE:
+                            glint(p)
+                        elif code != Element.Kind.STONE and code != Element.Kind.POISON:
+                            _px(p, Vector2(randf_range(-60.0, 60.0), randf_range(-90.0, -40.0)), 0.3, 2.0, _pa[i], B.WET, _pc[i], false, Vector2(-1.0, p.y))
+                        _pb[i] = B.STUCK
+                        v = Vector2.ZERO
+                        t = randf_range(0.3, 0.5)
+                        _pl[i] = t
+                    elif b == B.WET:
                         if a.x >= 0.0:
-                            # Splash: two or three droplets, then gone.
+                            # Splash: two or three droplets, a white glint, a cell of water.
                             for k in 2 + randi() % 2:
                                 _px(p, Vector2(randf_range(-70.0, 70.0), randf_range(-110.0, -50.0)), 0.3, 2.0, _pa[i], B.WET, _pc[i], false, Vector2(-1.0, p.y))
+                            glint(p)
+                            _land(Element.Kind.WET, p, 36)
                         _pt[i] = 0.0
                         continue
                     elif b == B.STONE and a.x < 1.0:
@@ -1254,6 +1480,9 @@ func _step_pixels(delta: float) -> void:
                         if b == B.BLOOD:
                             for k in 1 + randi() % 2:
                                 _px(p, Vector2(randf_range(-60.0, 60.0), randf_range(-80.0, -40.0)), 0.3, 2.0, _pa[i], B.BLOOD, _pc[i], false, Vector2(-1.0, p.y))
+                            _land(Element.Kind.BLOOD, p, 40)
+                        elif b == B.OIL:
+                            _land(Element.Kind.OIL, p, 40)
                         # Stick to the floor as a dot that fades out.
                         _pb[i] = B.STUCK
                         v = Vector2.ZERO
@@ -1283,7 +1512,7 @@ func _step_pixels(delta: float) -> void:
                 _pp[i] = p
                 _pt[i] = t
                 continue
-            B.STUCK:
+            B.STUCK, B.GLINT:
                 _pt[i] = t
                 continue
         if b != B.VOID:
@@ -1332,8 +1561,10 @@ func _draw_pixels(canvas: CanvasItem, layer: int) -> void:
             B.SMOKE:
                 s *= 1.0 + 0.9 * (1.0 - f)
                 step = 0 if f > 0.4 else 2
-            B.WET, B.STUCK, B.OIL, B.BLOOD, B.STONE:
-                step = 1 if b == B.WET and (i + flick) % 9 == 0 else 0
+            B.WET, B.STUCK, B.OIL, B.BLOOD, B.STONE, B.DROP:
+                step = 1 if (b == B.WET or b == B.DROP) and (i + flick) % 9 == 0 else 0
+            B.GLINT:
+                step = 1
             B.ICE:
                 if f < 0.3:
                     s = maxf(1.0, s * f / 0.3)
@@ -1386,8 +1617,15 @@ func _draw_pixels(canvas: CanvasItem, layer: int) -> void:
             continue
         var x := floorf(p.x - s * 0.5)
         var y := floorf(p.y - s * 0.5)
+        if b == B.GLINT:
+            canvas.draw_rect(Rect2(x, y, s, s), Color(1, 1, 1, minf(1.0, f * 2.0)))   # a full-bright point for the bloom
+            continue
         canvas.draw_rect(Rect2(x, y, s, s), c)
-        if b == B.STUCK and _pc[i] == Element.Kind.OIL and s >= 3.0:
+        if layer == 1 and f > 0.3 and s >= 3.0 and (b == B.FIRE or b == B.TONGUE or b == B.EMBER or (b == B.DROP and _pc[i] == Element.Kind.FIRE)):
+            # A hot core at full brightness (above the alpha cap) so the bloom catches it.
+            var cs := 2.0 if s >= 5.0 else 1.0
+            canvas.draw_rect(Rect2(floorf(p.x - cs * 0.5), floorf(p.y - cs * 0.5), cs, cs), Color(1.0, 0.97, 0.8, 1.0))
+        elif b == B.STUCK and _pc[i] == Element.Kind.OIL and s >= 3.0:
             canvas.draw_rect(Rect2(x, y, 1.0, 1.0), Color(_pal[_pc[i] * 3 + 1], a))   # glossy glint
         elif b == B.SHOCK:
             if has_spark and p.distance_squared_to(last_spark) < 900.0:

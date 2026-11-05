@@ -287,6 +287,18 @@ All art is from Kenney (kenney.nl), CC0, no generative art:
   on it, gas drifts, acid eats oil and ice, door obstacles react to what touches them.
   Enemies and players standing in it take the effect. Only active cells are stepped
   (12 steps a second, 2,500 cells a step), drawn as translucent pixel squares.
+- **Materials and particles are one world** (Noita-inspired, 6 px cells): droplets that
+  land become floor material, bursts throw droplets of both elements, burning cells shed
+  embers, boiling water puffs steam, charged pools spark, oil creeps thin and far, fire
+  runs along oil as a bright front and leaves char that never fades, water and poison gas
+  make contaminated water, acid thins in water, fire dries blood, shocks pass through
+  ice. Hot cells draw on an additive layer that the bloom picks up; fire moments add
+  heat shimmer.
+- **The show grows over a run**: a spectacle value from 0.35 on the first floor to 1.3
+  on the last (floor, rooms cleared, difficulty and guns carried) scales particle counts,
+  signature sizes, flashes, hit-stop, ripples and bloom gain. Below 0.55 big moments
+  only shake; above 1.1 they get a second ripple. Boss and elite deaths are always full.
+  Gameplay never reads it. The tutorial is pinned at 0.6.
 - **Effects are generated, not drawn**: every reaction, status and nova is pixel
   particles in the game's own palette (2 to 5 px squares, translucent, additive for hot
   elements) with per-element physics: fire rises and flickers into smoke, water falls and
