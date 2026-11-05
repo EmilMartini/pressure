@@ -275,7 +275,17 @@ func _draw_minimap(vp: Vector2) -> float:
     var grid := float(FloorGen.GRID)
     var size := grid * pitch
     var origin := Vector2(vp.x - MARGIN - size, MARGIN)
-    draw_rect(Rect2(origin - Vector2(6, 6), Vector2(size + 12, size + 12)), Color(0, 0, 0, 0.45))
+    # Backdrop only behind the discovered rooms, not the whole grid: a full square read
+    # as a black box over the room once the dungeon art got darker.
+    var lo := Vector2(INF, INF)
+    var hi := Vector2(-INF, -INF)
+    for kpos in main.rooms.keys():
+        if (main.rooms[kpos] as RoomData).discovered:
+            var cpos := origin + Vector2(kpos.x, kpos.y) * pitch
+            lo = lo.min(cpos)
+            hi = hi.max(cpos + Vector2(CELL, CELL))
+    if lo.x < INF:
+        draw_rect(Rect2(lo - Vector2(6, 6), hi - lo + Vector2(12, 12)), Color(0, 0, 0, 0.3))
     for pos in main.rooms.keys():
         var r: RoomData = main.rooms[pos]
         if not r.discovered:

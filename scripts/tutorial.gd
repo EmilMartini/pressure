@@ -56,16 +56,15 @@ func _ready() -> void:
     fx.main = self
     add_child(fx)
     spectacle_override = 0.6
-    camera = Camera2D.new()
-    camera.position_smoothing_enabled = true
-    camera.position_smoothing_speed = 7.0
+    camera = PixelCamera.new()
+    camera.follow_speed = 7.0
     camera.zoom = Vector2(1.3, 1.3)
     add_child(camera)
     camera.make_current()
     RenderingServer.set_default_clear_color(Art.CLEAR)
     add_child(PostFx.new())
     var layer := CanvasLayer.new()
-    layer.layer = 2
+    layer.layer = 3   # over the PostFx (1) and the Crisp world-text layer (2)
     add_child(layer)
     hud = Hud.new()
     hud.main = self
@@ -287,8 +286,8 @@ func _process(delta: float) -> void:
     if _flash_rect != null and _flash_rect.color.a > 0.0:
         _flash_rect.color.a = maxf(0.0, _flash_rect.color.a - _flash_fade * real_delta)
     _handle_joins()
-    camera.position = _party_center()
-    camera.offset = Vector2(randf_range(-1.0, 1.0), randf_range(-1.0, 1.0)) * _shake
+    camera.target = _party_center()
+    camera.shake = Vector2(randf_range(-1.0, 1.0), randf_range(-1.0, 1.0)) * _shake
     _shake = move_toward(_shake, 0.0, 28.0 * delta)
     _message_time = maxf(0.0, _message_time - delta)
     if _message_time <= 0.0:

@@ -122,7 +122,8 @@ func _entry(text: String, color: Color) -> Button:
 
 ## Puts a 32 px icon at the left of an entry; `dim` greys it out (locked, not yet done).
 func _set_icon(b: Button, tex: Texture2D, dim: bool) -> void:
-    b.icon = tex
+    # The world's pixel treatment (one icon pixel per screen cell, in the palette).
+    b.icon = Art.icon_pixel(tex, 32) if Settings.flag("post_fx") else tex
     b.add_theme_constant_override("h_separation", 10)
     if dim:
         var grey := Color(0.32, 0.3, 0.32)

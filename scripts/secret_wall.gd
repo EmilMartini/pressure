@@ -91,16 +91,14 @@ func _ready() -> void:
     shape.shape = r
     add_child(shape)
     var spec: Dictionary = METHODS[method]
-    # Bricks lined up with the world, like every wall, a shade off the usual tint.
-    var s := Sprite2D.new()
-    s.texture = Art.WALL
-    s.texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
-    s.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-    s.region_enabled = true
-    s.region_rect = Rect2((global_position - size / 2.0) / 2.0, size / 2.0)
-    s.scale = Vector2(2, 2)
-    s.modulate = Art.WALL_TINT.lerp(spec["tint"], 0.55)
-    add_child(s)
+    # The theme's wall tiles lined up with the world, picking the same variants as the
+    # wall around it (Themes.wall_fill hashes world cells with the theme's wall seed), a
+    # shade off: the method's tint relative to the old brick tint, at the same strength.
+    var cam := get_viewport().get_camera_2d()
+    var shade: Color = spec["tint"]
+    var rel := Color(shade.r / Art.WALL_TINT.r, shade.g / Art.WALL_TINT.g, shade.b / Art.WALL_TINT.b)
+    var fill := Themes.wall_fill(Rect2(-size / 2.0, size), cam.zoom.x if cam != null else 1.3, Color.WHITE.lerp(rel, 0.55))
+    add_child(fill)
     _over = Node2D.new()
     _over.name = "Crack"
     _over.draw.connect(_draw_over)

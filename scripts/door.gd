@@ -129,11 +129,40 @@ func _draw() -> void:
     var r := Rect2(-size / 2.0, size)
     match state:
         State.LOCKED:
-            draw_rect(r, Color(0.30, 0.09, 0.10))
-            draw_rect(r.grow(-5.0), Color(0.6, 0.15, 0.15), false, 2.0)
+            draw_rect(r, Color(0.02, 0.02, 0.03))
+            _draw_gate("locked")
         State.OPEN:
             draw_rect(r, Color(0.02, 0.02, 0.03))
-            draw_rect(r.grow(-4.0), Color(0.55, 0.75, 0.7, 0.5), false, 2.0)
+            _draw_gate("open")
         State.OBSTACLE:
             if secret == null:
                 draw_rect(r, Color(0.02, 0.02, 0.03))
+                _draw_gate("open")
+
+
+## The theme's gate across the doorway (see Themes.door_tiles), one texel per pixel cell:
+## the left and right tiles give their outer halves (the frame), the middle tile its full
+## width; the depth crops the tile's foot. Side doors use the vertical gate tiles.
+func _draw_gate(kind: String) -> void:
+    var horizontal := dir.y != 0
+    var tiles: Array = Themes.door_tiles(horizontal, kind)
+    var cam := get_viewport().get_camera_2d() if is_inside_tree() else null
+    var tx := Themes.texel(cam.zoom.x if cam != null else 1.3)
+    var tint: Color = Themes.def()["door_tint"]
+    var along := (size.x if horizontal else size.y) / tx      # texels across the gap
+    var depth := minf(32.0, (size.y if horizontal else size.x) / tx)
+    var mid := minf(32.0, along)
+    var edge := maxf(0.0, (along - mid) / 2.0)
+    var parts := [[tiles[0], 0.0, edge], [tiles[1], 16.0 - mid / 2.0, mid], [tiles[2], 32.0 - edge, edge]]
+    var at := -along / 2.0
+    var c0 := (32.0 - depth) / 2.0   # side gates: the centred columns
+    for part in parts:
+        var w: float = part[2]
+        if w > 0.01:
+            var t: Texture2D = part[0]
+            var s0: float = part[1]
+            if horizontal:
+                draw_texture_rect_region(t, Rect2(Vector2(at, -depth / 2.0) * tx, Vector2(w, depth) * tx), Rect2(s0, 0.0, w, depth), tint)
+            else:
+                draw_texture_rect_region(t, Rect2(Vector2(-depth / 2.0, at) * tx, Vector2(depth, w) * tx), Rect2(c0, s0, depth, w), tint)
+        at += w

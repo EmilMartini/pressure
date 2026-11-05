@@ -173,6 +173,7 @@ func _ready() -> void:
     Elements.nova.connect(_on_nova)
     # Boss and elite deaths: hook every enemy as it enters the tree.
     get_tree().node_added.connect(_on_node_added)
+    Crisp.attach(self, _draw_texts, 10)
 
 
 func _build_palettes() -> void:
@@ -1764,11 +1765,17 @@ func _draw() -> void:
         col.a = minf(col.a, float(r.get("cap", 0.3))) * (1.0 - k)
         var rr: float = r["r"] * (1.0 - exp(-2.5 * el)) / (1.0 - exp(-2.5 * life))
         draw_arc(r["pos"], maxf(rr, 2.0), 0.0, TAU, 64 if rr > 150.0 else 48, col, float(r.get("w", 1.0)))
+
+
+
+## Floating texts (damage numbers, reaction names), on the Crisp layer so they stay sharp
+## above the post-process pixel grid.
+func _draw_texts(cv: CanvasItem) -> void:
     for t in _texts:
         var elapsed: float = t["life"] - t["t"]
         var pop: float = clampf(elapsed / 0.12, 0.0, 1.0)
         var col: Color = t["color"]
         col.a = clampf(t["t"] / 0.5, 0.0, 1.0)
         var size := int(t.get("size", 20) + 6 * pop)
-        draw_string(Art.FONT, t["pos"] + Vector2(-99, 1), t["text"], HORIZONTAL_ALIGNMENT_CENTER, 200, size, Color(0, 0, 0, col.a * 0.8))
-        draw_string(Art.FONT, t["pos"] + Vector2(-100, 0), t["text"], HORIZONTAL_ALIGNMENT_CENTER, 200, size, col)
+        cv.draw_string(Art.FONT, t["pos"] + Vector2(-99, 1), t["text"], HORIZONTAL_ALIGNMENT_CENTER, 200, size, Color(0, 0, 0, col.a * 0.8))
+        cv.draw_string(Art.FONT, t["pos"] + Vector2(-100, 0), t["text"], HORIZONTAL_ALIGNMENT_CENTER, 200, size, col)

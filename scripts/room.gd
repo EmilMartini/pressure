@@ -62,6 +62,8 @@ var _flow := PackedInt32Array()
 var _flow_t := 0.0
 var _goal_cache: Dictionary = {}   # goal cell -> [msec, PackedInt32Array]
 var _alcove_inner := Rect2()
+var theme := "crypt"                 # Themes key for this floor (the look and the ambience)
+var ambience: Ambience = null
 
 
 func _init(p_data: RoomData, p_main: Main) -> void:
@@ -83,6 +85,8 @@ func _exit_tree() -> void:
 
 func _ready() -> void:
     Telemetry.room_enter(self)
+    theme = Themes.for_floor(main.floor_number if main != null else 1)
+    Themes.current = theme
     enemies = Node2D.new()
     enemies.name = "Enemies"
     add_child(enemies)
@@ -100,6 +104,10 @@ func _ready() -> void:
         secrets = Secrets.new(self)
         add_child(secrets)
     Props.dress(self)   # crates, barrels, fountains, braziers... that react to every element
+    ambience = Ambience.new(self, theme)
+    _dress_theme()      # wall decor, lights and the floor's own extras (moss, ice, lava)
+    add_child(ambience)
+    Crisp.attach(self, _draw_crisp)
 
     data.visited = true
     data.discovered = true
@@ -668,39 +676,35 @@ class CrackLayer extends Node2D:
             draw_polyline(l, Color(0.09, 0.07, 0.08, 0.5), 1.0)
 
 
-func _wall(body: StaticBody2D, center: Vector2, size: Vector2, tint: Color = Art.WALL_TINT) -> void:
+## A solid wall block: collision plus the theme's wall tiles, lined up with the world so
+## neighbouring walls and secret walls join seamlessly. `tint` multiplies the theme tint
+## (pillars a shade lighter).
+func _wall(body: StaticBody2D, center: Vector2, size: Vector2, tint: Color = Color.WHITE) -> void:
     var shape := CollisionShape2D.new()
     var r := RectangleShape2D.new()
     r.size = size
     shape.shape = r
     shape.position = center
     body.add_child(shape)
-    var bricks := _tiled(Art.WALL, size, tint, center - size / 2.0)
-    bricks.position = center
+    var bricks := Themes.wall_fill(Rect2(center - size / 2.0, size), _zoom(), tint, theme)
     bricks.z_index = -1
     add_child(bricks)
 
 
-## A Sprite2D that repeats a 16px tile at 2x over `size`. `origin` (room space) lines the
-## pattern up with the world, so neighbouring walls and secret walls join seamlessly.
-func _tiled(tex: Texture2D, size: Vector2, tint: Color, origin: Vector2 = Vector2.ZERO) -> Sprite2D:
-    var s := Sprite2D.new()
-    s.texture = tex
-    s.texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
-    s.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-    s.region_enabled = true
-    s.region_rect = Rect2(origin / 2.0, size / 2.0)
-    s.scale = Vector2(2, 2)
-    s.modulate = tint
-    return s
+## The run camera's zoom (tiles are drawn one texel per screen pixel cell at it).
+func _zoom() -> float:
+    if main != null and "camera" in main and main.camera != null:
+        return main.camera.zoom.x
+    return 1.3
 
 
+## Special rooms tint the theme's floor a little, so a shop reads warm and a boss red.
 const FLOOR_TINTS := {
-    RoomData.Type.SHOP: Color(0.22, 0.17, 0.12),
-    RoomData.Type.TREASURE: Color(0.22, 0.19, 0.11),
-    RoomData.Type.BOSS: Color(0.20, 0.09, 0.10),
-    RoomData.Type.CHALLENGE: Color(0.17, 0.11, 0.21),
-    RoomData.Type.HIDDEN: Color(0.10, 0.17, 0.17),
+    RoomData.Type.SHOP: Color(1.22, 1.06, 0.84),
+    RoomData.Type.TREASURE: Color(1.22, 1.12, 0.78),
+    RoomData.Type.BOSS: Color(1.18, 0.72, 0.72),
+    RoomData.Type.CHALLENGE: Color(1.06, 0.84, 1.18),
+    RoomData.Type.HIDDEN: Color(0.80, 1.06, 1.06),
 }
 
 
@@ -755,21 +759,146 @@ func _dress_room() -> void:
                 _prop(Vector2i(14, 10), Vector2(-120.0 + float(i) * 240.0, -half.y + 70.0), 2.5, Color(1.0, 0.75, 0.3), 1)
 
 
+## The theme's floor tiles, one variant per tile cell from a seed fixed per room, so the
+## floor does not shuffle on re-entry.
 func _build_floor() -> void:
-    var floor_sprite := _tiled(Art.FLOOR, room_size, FLOOR_TINTS.get(data.type, Art.FLOOR_TINT))
-    floor_sprite.z_index = -2
-    add_child(floor_sprite)
+    var floor_seed := (hash(data.pos) + main.floor_number * 7919) & 0xFFFFFF
+    var floor_fill := Themes.floor_fill(rect, _zoom(), floor_seed, FLOOR_TINTS.get(data.type, Color.WHITE), theme)
+    floor_fill.z_index = -2
+    add_child(floor_fill)
     _dress_room()
-    # Bones, skulls and rubble, fixed per room so they do not shuffle on re-entry.
+
+
+## The theme's dressing (see Themes, Ambience): statues, altars or trees set into the top
+## wall between its lights (torches, flame braziers), and the floor's own extras, seeded
+## per room so a revisit looks the same: dry moss that burns (ruins), an ice sheet
+## (frozen), lava pools (forge, fight rooms only), small rifts (void).
+func _dress_theme() -> void:
+    var td := Themes.def(theme)
     var rng := RandomNumberGenerator.new()
-    rng.seed = hash(data.pos) + main.floor_number * 7919
-    var decals: Array = Art.TILES["decals"]
-    for i in 9:
-        var d := Art.sprite(decals[rng.randi() % decals.size()], 2.0, Art.DECAL_TINT)
-        d.position = Vector2(rng.randf_range(rect.position.x + 80, rect.end.x - 80), rng.randf_range(rect.position.y + 80, rect.end.y - 80))
-        d.rotation = float(rng.randi() % 4) * PI / 2.0
-        d.z_index = -1
-        add_child(d)
+    rng.seed = hash(data.pos) * 13 + main.floor_number * 31 + 5
+    var half := room_size / 2.0
+    var tx := Themes.texel(_zoom())
+    var tile := 32.0 * tx
+    var decor: Array = td["decor"]
+    var light := String(td["light"])
+    var tint: Color = td["decor_tint"]
+    # Slots along the top wall, clear of a doorway; lights and decor alternate.
+    var n := maxi(2, int(room_size.x / 200.0))
+    var k := rng.randi() % 2
+    for i in n:
+        var x := -half.x + room_size.x * (float(i) + 0.5) / float(n)
+        if data.doors.has(Vector2i.UP) and absf(x) < GAP / 2.0 + tile * 0.6:
+            continue
+        var foot := Vector2(x, -half.y + 4.0)
+        if light != "" and k % 2 == 0:
+            ambience.add_light(foot - Vector2(0, tile * 0.5 + 4.0), light)
+        elif not decor.is_empty():
+            var spr := Sprite2D.new()
+            spr.texture = Themes.tex(String(decor[rng.randi() % decor.size()]))
+            spr.scale = Vector2(tx, tx)
+            spr.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+            spr.position = ((foot - Vector2(0, tile * 0.5)) / tx).round() * tx
+            spr.modulate = tint
+            spr.z_index = -1
+            add_child(spr)
+        k += 1
+    # Torches on the side walls too, where no door is.
+    if light == "torch":
+        for sx in [-1, 1]:
+            var side := Vector2i(sx, 0)
+            for fy in [-0.45, 0.45]:
+                if data.doors.has(side) and absf(fy * half.y) < GAP / 2.0 + tile * 0.6:
+                    continue
+                ambience.add_light(Vector2(float(sx) * (half.x + WALL * 0.5), fy * half.y), "torch")
+    var fight := not data.is_safe()
+    match theme:
+        "ruins":
+            _moss_patches(rng)
+        "frozen":
+            if data.type != RoomData.Type.START and rng.randf() < 0.5:
+                _ice_patch(rng)
+        "forge":
+            if fight:
+                for i in rng.randi_range(1, 2):
+                    var at := _free_spot(rng, 70.0)
+                    if at != Vector2.INF:
+                        var lr := Rect2(((at - Vector2(30, 20)) / tx).round() * tx, (Vector2(60, 40) / tx).round() * tx)
+                        ambience.add_lava(lr)
+                        reserve(at, 50.0)
+        "void":
+            for i in rng.randi_range(1, 2):
+                var at := _free_spot(rng, 50.0)
+                if at != Vector2.INF:
+                    ambience.add_rift(at)
+                    reserve(at, 30.0)
+
+
+## A random open spot clear of doors, keep zones, puzzle pieces and props, or INF.
+func _free_spot(rng: RandomNumberGenerator, r: float) -> Vector2:
+    var props: Array[Vector2] = []
+    for c in find_children("*", "", true, false):
+        if c is Prop:
+            props.append((c as Node2D).global_position - global_position)
+    for attempt in 24:
+        var at := Vector2(rng.randf_range(rect.position.x + r + 40.0, rect.end.x - r - 40.0), rng.randf_range(rect.position.y + r + 40.0, rect.end.y - r - 40.0))
+        if not spot_ok(at, r):
+            continue
+        var clear := true
+        for pp in props:
+            if pp.distance_to(at) < r + 30.0:
+                clear = false
+                break
+        if clear:
+            return at
+    return Vector2.INF
+
+
+## Dry moss in a few patches (ruins): a thin oil film under tufts, so fire runs through it
+## like the layout's grass.
+func _moss_patches(rng: RandomNumberGenerator) -> void:
+    if materials == null:
+        return
+    var grass := GrassLayer.new()
+    grass.room = self
+    grass.name = "Moss"
+    grass.z_index = -1
+    grass.tuft_a = Color(0.46, 0.56, 0.26, 0.9)
+    grass.tuft_b = Color(0.56, 0.50, 0.24, 0.9)
+    for i in rng.randi_range(2, 4):
+        var at := _free_spot(rng, 40.0)
+        if at == Vector2.INF:
+            continue
+        var wr := Rect2((at - Vector2(40, 26)).snapped(Vector2(NAV, NAV)), Vector2(80, 52))
+        materials.lay_still(Element.Kind.OIL, materials.indices_in(wr), 0, 1 << 30, 30)
+        grass.beds.append(wr)
+        for t in int(wr.get_area() / 150.0):
+            var q := Vector2(rng.randf_range(wr.position.x + 3.0, wr.end.x - 3.0), rng.randf_range(wr.position.y + 3.0, wr.end.y - 3.0)).round()
+            if is_open(q, 2.0):
+                grass.tufts.append(q)
+    if not grass.tufts.is_empty():
+        add_child(grass)
+
+
+## A pre-laid ice sheet (frozen floor), drawn and melted like the layout's.
+func _ice_patch(rng: RandomNumberGenerator) -> void:
+    if materials == null:
+        return
+    var at := _free_spot(rng, 80.0)
+    if at == Vector2.INF:
+        return
+    var wr := Rect2((at - Vector2(80, 50)).snapped(Vector2(NAV, NAV)), Vector2(160, 100))
+    var idx := PackedInt32Array()
+    for i in materials.indices_in(wr):
+        if is_open(materials._cell_world(i), 3.0):
+            idx.append(i)
+    if idx.is_empty():
+        return
+    materials.lay_still(Element.Kind.ICE, idx, 0, idx.size(), 200)
+    var sheet := IceSheet.new()
+    sheet.name = "ThemeIce"
+    sheet.setup(materials, idx)
+    add_child(sheet)
 
 
 # --- Pedestals and interaction ---------------------------------------------
@@ -1097,7 +1226,7 @@ func _build_layout() -> void:
             if st == RoomLayouts.S_RUBBLE:
                 _rubble(wr)
             else:
-                _wall(_walls_body, wr.get_center(), wr.size, Art.WALL_TINT.lightened(0.08) if st == RoomLayouts.S_PILLAR else Art.WALL_TINT)
+                _wall(_walls_body, wr.get_center(), wr.size, Color(1.12, 1.12, 1.12) if st == RoomLayouts.S_PILLAR else Color.WHITE)
     var chasm_rects := RoomLayouts.rects_of(cells, nav_w, nav_h, RoomLayouts.CHASM)
     if not chasm_rects.is_empty():
         var pit := StaticBody2D.new()
@@ -1182,21 +1311,30 @@ func _rubble(wr: Rect2) -> void:
     shape.shape = rs
     shape.position = wr.get_center()
     _walls_body.add_child(shape)
-    var decals: Array = Art.TILES["decals"]
-    var k := 0
-    var step := 22.0
-    var y := wr.position.y + step / 2.0
-    while y < wr.end.y:
-        var x := wr.position.x + step / 2.0
-        while x < wr.end.x:
-            var s := Art.sprite(decals[3 + (k % 2)], 1.6, Color(0.5, 0.45, 0.42))
-            s.position = Vector2(x, y)
-            s.rotation = float(k % 4) * PI / 2.0
-            s.z_index = -1
-            add_child(s)
+    # Loose stone: the theme's wall tiles, darker, broken up by a few dark seams.
+    var heap := Themes.wall_fill(wr, _zoom(), Color(0.72, 0.68, 0.66), theme)
+    heap.z_index = -1
+    add_child(heap)
+    var seams := RubbleSeams.new()
+    seams.area = wr
+    seams.z_index = -1
+    add_child(seams)
+
+
+## Dark seams over a rubble heap, so it reads as broken stone and not as a wall.
+class RubbleSeams extends Node2D:
+    var area := Rect2()
+    func _draw() -> void:
+        var k := 0
+        var y := area.position.y + 7.0
+        while y < area.end.y - 3.0:
+            var x := area.position.x + 5.0 + float(k % 3) * 4.0
+            while x < area.end.x - 6.0:
+                draw_rect(Rect2(Vector2(x, y), Vector2(6, 2)).intersection(area), Color(0.02, 0.02, 0.03, 0.75))
+                x += 14.0
             k += 1
-            x += step
-        y += step
+            y += 9.0
+        draw_rect(area, Color(0.02, 0.02, 0.03, 0.6), false, 2.0)
 
 
 func _recount_blockers() -> void:
@@ -1519,6 +1657,11 @@ class LayoutLayer extends Node2D:
 
 func _draw_layout(cv: Node2D, mode: int, shadows: Array[Rect2]) -> void:
     var cs := NAV
+    var td := Themes.def(theme)
+    var lip: Color = td["lip"]
+    var water_list: Array = [[String(td["water"][0]), 1.0], [String(td["water"][1]), 1.0]]
+    var water_tint: Color = td["water_tint"]
+    var tx := Themes.texel(_zoom())
     for i in cells.size():
         var cx := i % nav_w
         var cy := i / nav_w
@@ -1529,14 +1672,12 @@ func _draw_layout(cv: Node2D, mode: int, shadows: Array[Rect2]) -> void:
                 continue
             if terrain[i] != RoomLayouts.T_DEEP:
                 continue
-            # The pool itself (its still water is not drawn by the Materials grid): deep
-            # blue, a few fixed ripples, a stone lip along the top edge.
-            cv.draw_rect(Rect2(p, Vector2(cs, cs)), Color(0.08, 0.18, 0.37))
-            var rh := (i * 2654435761) & 0xFFFF
-            if rh % 4 == 0:
-                cv.draw_rect(Rect2(p + Vector2(float(rh % 12) + 2.0, float((rh >> 5) % 14) + 2.0), Vector2(6, 2)), Color(0.30, 0.50, 0.85, 0.45))
+            # The pool itself (its still water is not drawn by the Materials grid): the
+            # theme's deep-water tiles on the world grid, a stone lip along the top edge.
+            cv.draw_rect(Rect2(p, Vector2(cs, cs)), Color(0.04, 0.08, 0.16))
+            Themes.draw_tiles(cv, water_list, Rect2(p, Vector2(cs, cs)), cv.global_position, tx, 9001, water_tint)
             if not _terrain_is(cx, cy - 1, RoomLayouts.T_DEEP):
-                cv.draw_rect(Rect2(p, Vector2(cs, 3)), Color(0.30, 0.27, 0.28))
+                cv.draw_rect(Rect2(p, Vector2(cs, 3)), lip)
                 cv.draw_rect(Rect2(p + Vector2(0, 3), Vector2(cs, 3)), Color(0.04, 0.09, 0.20))
             if not _terrain_is(cx, cy + 1, RoomLayouts.T_DEEP):
                 cv.draw_rect(Rect2(p + Vector2(0, cs - 2), Vector2(cs, 2)), Color(0.14, 0.18, 0.24))
@@ -1552,15 +1693,16 @@ func _draw_layout(cv: Node2D, mode: int, shadows: Array[Rect2]) -> void:
             if hsh % 5 == 0:
                 cv.draw_rect(Rect2(p + Vector2(float(hsh % 14) + 2.0, float((hsh >> 4) % 14) + 2.0), Vector2(2, 2)), Color(0.10, 0.07, 0.16, 0.8))
             if not _cell_is(cx, cy - 1, RoomLayouts.CHASM):
-                # The lip: the floor's broken edge, then the drop.
-                cv.draw_rect(Rect2(p, Vector2(cs, 4)), Color(0.32, 0.27, 0.28))
-                cv.draw_rect(Rect2(p + Vector2(0, 4), Vector2(cs, 5)), Color(0.07, 0.06, 0.08))
+                # The lip: the floor's broken edge in the theme's stone, then the drop.
+                cv.draw_rect(Rect2(p, Vector2(cs, 4)), lip)
+                cv.draw_rect(Rect2(p, Vector2(cs, 1)), lip.lightened(0.25))
+                cv.draw_rect(Rect2(p + Vector2(0, 4), Vector2(cs, 5)), lip.darkened(0.78))
             if not _cell_is(cx, cy + 1, RoomLayouts.CHASM):
-                cv.draw_rect(Rect2(p + Vector2(0, cs - 2), Vector2(cs, 2)), Color(0.22, 0.19, 0.20))
+                cv.draw_rect(Rect2(p + Vector2(0, cs - 2), Vector2(cs, 2)), lip.darkened(0.3))
             if not _cell_is(cx - 1, cy, RoomLayouts.CHASM):
-                cv.draw_rect(Rect2(p, Vector2(2, cs)), Color(0.20, 0.17, 0.18))
+                cv.draw_rect(Rect2(p, Vector2(2, cs)), lip.darkened(0.35))
             if not _cell_is(cx + 1, cy, RoomLayouts.CHASM):
-                cv.draw_rect(Rect2(p + Vector2(cs - 2, 0), Vector2(2, cs)), Color(0.20, 0.17, 0.18))
+                cv.draw_rect(Rect2(p + Vector2(cs - 2, 0), Vector2(2, cs)), lip.darkened(0.35))
     if mode == 1:
         for r in shadows:
             cv.draw_rect(Rect2(r.position.x + 2.0, r.end.y, r.size.x, 8.0), Color(0, 0, 0, 0.35))
@@ -1599,8 +1741,9 @@ class IceSheet extends Sprite2D:
         img.fill(Color(0, 0, 0, 0))
         for k in idx.size():
             var i := idx[k]
-            var h := (i * 2654435761) & 0xFF
-            var c := Color(0.72, 0.88, 1.0, 0.34) if h > 30 else Color(0.92, 0.98, 1.0, 0.6)
+            # A mixed hash, not i * constant: the linear one drew bold diagonal stripes.
+            var h := hash(i * 7919 + 104729) & 0xFF
+            var c := Color(0.72, 0.88, 1.0, 0.22) if h > 22 else Color(0.92, 0.98, 1.0, 0.42)
             img.set_pixel(i % mats._w, i / mats._w, c)
         tex = ImageTexture.create_from_image(img)
         texture = tex
@@ -1631,6 +1774,9 @@ class IceSheet extends Sprite2D:
 class GrassLayer extends Node2D:
     var room: Room
     var tufts: Array[Vector2] = []
+    var beds: Array[Rect2] = []       # faint base patches under the tufts (theme moss)
+    var tuft_a := Color(0.62, 0.55, 0.30, 0.9)
+    var tuft_b := Color(0.50, 0.46, 0.26, 0.9)
     var burnt := PackedByteArray()
     var _t := 0.0
 
@@ -1652,13 +1798,16 @@ class GrassLayer extends Node2D:
             queue_redraw()
 
     func _draw() -> void:
+        for b in beds:
+            draw_rect(b.grow(-4.0), Color(tuft_a, 0.14))
+            draw_rect(b.grow(-12.0), Color(tuft_a, 0.12))
         for i in tufts.size():
             var p := tufts[i]
             if burnt.size() > i and burnt[i] == 1:
                 draw_rect(Rect2(p - Vector2(1, 0), Vector2(3, 2)), Color(0.08, 0.07, 0.06, 0.7))
                 continue
             var h := (i * 7919) % 3
-            var c := Color(0.62, 0.55, 0.30, 0.9) if h != 0 else Color(0.50, 0.46, 0.26, 0.9)
+            var c := tuft_a if h != 0 else tuft_b
             draw_line(p, p + Vector2(-2, -5), c, 1.0)
             draw_line(p, p + Vector2(0, -6 - h), c, 1.0)
             draw_line(p, p + Vector2(2, -4), c, 1.0)
@@ -1670,4 +1819,9 @@ class GrassLayer extends Node2D:
 func _draw() -> void:
     # Inner shadow along the walls so the floor reads as sunken.
     draw_rect(rect.grow(-10.0), Color(0, 0, 0, 0.35), false, 20.0)
-    draw_string(Art.FONT, Vector2(-200, -rect.size.y / 2.0 + 44), data.type_name().to_upper(), HORIZONTAL_ALIGNMENT_CENTER, 400, 30, Color(data.color(), 0.3))
+    draw_rect(Rect2(rect.position, Vector2(rect.size.x, 26.0)), Color(0, 0, 0, 0.22))
+
+
+## Text that stays sharp above the pixel grid (see Crisp): the room's name on the floor.
+func _draw_crisp(cv: CanvasItem) -> void:
+    cv.draw_string(Art.FONT, Vector2(-200, -rect.size.y / 2.0 + 44), data.type_name().to_upper(), HORIZONTAL_ALIGNMENT_CENTER, 400, 30, Color(data.color(), 0.3))

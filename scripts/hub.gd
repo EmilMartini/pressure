@@ -65,13 +65,16 @@ var _esc_first: Button
 var _consent_center: CenterContainer
 var _consent_allow: Button
 var _class_select: ClassSelect = null
+var _cv: CanvasItem = null     # where _text and prompts draw (the Crisp proxy)
+var ambience: Ambience = null
 
 
 func _ready() -> void:
     randomize()
     var args := OS.get_cmdline_user_args()
     _shot = args.has("--menu-shot")
-    if _shot:
+    var theme_shot := args.has("--themes-shot")
+    if _shot or theme_shot:
         Progress.save_path = "user://save_autotest.json"
         Progress.load_save()
     elif not Settings.flag("tutorial_done"):
@@ -86,6 +89,7 @@ func _ready() -> void:
     camera.make_current()
     add_child(PostFx.new())
     _build_room()
+    Crisp.attach(self, _draw_texts)
     MenuPad.strip_joypad_from_ui_actions()
     _build_ui()
     var pads := Input.get_connected_joypads()
@@ -96,7 +100,9 @@ func _ready() -> void:
     Music.play("hub")
     if Music.current != "hub":
         Music.play("menu")
-    if _shot:
+    if theme_shot:
+        _theme_shot()
+    elif _shot:
         _menu_shot()
     elif not Settings.flag("seen_explainer"):
         _open(_explainer_center, _explainer_ok)
@@ -107,11 +113,14 @@ func _ready() -> void:
 # --- Room --------------------------------------------------------------------
 
 
+## The sanctum (Themes "sanctum"): ornate mosaic floor, carved relief walls, torches on
+## the top wall and warm dust (Ambience).
 func _build_room() -> void:
     var half := INNER / 2.0
-    var floor_sprite := _tiled(Art.FLOOR, INNER, Color(0.12, 0.105, 0.125))
-    floor_sprite.z_index = -2
-    add_child(floor_sprite)
+    Themes.current = "sanctum"
+    var floor_fill := Themes.floor_fill(Rect2(-half, INNER), camera.zoom.x, 4242, Color.WHITE, "sanctum")
+    floor_fill.z_index = -2
+    add_child(floor_fill)
     var body := StaticBody2D.new()
     body.collision_layer = Player.LAYER_WALLS
     body.collision_mask = 0
@@ -130,20 +139,24 @@ func _build_room() -> void:
         shape.shape = r
         shape.position = Vector2(s["pos"]) + Vector2(0, 4)
         body.add_child(shape)
-    var rng := RandomNumberGenerator.new()
-    rng.seed = 1337
-    var decals: Array = Art.TILES["decals"]
-    for i in 14:
-        var d := Art.sprite(decals[rng.randi() % decals.size()], 2.0, Art.DECAL_TINT.darkened(0.25))
-        d.position = Vector2(rng.randf_range(-half.x + 60, half.x - 60), rng.randf_range(-half.y + 120, half.y - 60))
-        d.rotation = float(rng.randi() % 4) * PI / 2.0
-        d.z_index = -1
-        add_child(d)
+    ambience = Ambience.new(null, "sanctum", Rect2(-half, INNER))
+    var tx := Themes.texel(camera.zoom.x)
     for x in [-480.0, -180.0, 180.0, 480.0]:
-        var lamp := Art.sprite(Vector2i(14, 10), 2.5, Color(1.0, 0.75, 0.3))
-        lamp.position = Vector2(x, -half.y - 22.0)
-        lamp.z_index = 1
-        add_child(lamp)
+        ambience.add_light(Vector2(x, -half.y - 30.0), "torch")
+    # Gold statues and an altar in the top wall between the torches.
+    var decor: Array = Themes.def("sanctum")["decor"]
+    var at := 0
+    for x in [-330.0, 330.0]:
+        var spr := Sprite2D.new()
+        spr.texture = Themes.tex(String(decor[at % decor.size()]))
+        spr.scale = Vector2(tx, tx)
+        spr.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+        spr.position = (Vector2(x, -half.y - 32.0) / tx).round() * tx
+        spr.modulate = Themes.def("sanctum")["decor_tint"]
+        spr.z_index = -1
+        add_child(spr)
+        at += 2
+    add_child(ambience)
 
 
 func _wall(body: StaticBody2D, center: Vector2, wall_size: Vector2) -> void:
@@ -153,22 +166,9 @@ func _wall(body: StaticBody2D, center: Vector2, wall_size: Vector2) -> void:
     shape.shape = r
     shape.position = center
     body.add_child(shape)
-    var bricks := _tiled(Art.WALL, wall_size, Art.WALL_TINT)
-    bricks.position = center
+    var bricks := Themes.wall_fill(Rect2(center - wall_size / 2.0, wall_size), camera.zoom.x, Color.WHITE, "sanctum")
     bricks.z_index = -1
     add_child(bricks)
-
-
-func _tiled(tex: Texture2D, area: Vector2, tint: Color) -> Sprite2D:
-    var s := Sprite2D.new()
-    s.texture = tex
-    s.texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
-    s.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-    s.region_enabled = true
-    s.region_rect = Rect2(Vector2.ZERO, area / 2.0)
-    s.scale = Vector2(2, 2)
-    s.modulate = tint
-    return s
 
 
 # --- Players -----------------------------------------------------------------
@@ -615,10 +615,6 @@ func _draw() -> void:
     var half := INNER / 2.0
     var rect := Rect2(-half, INNER)
     draw_rect(rect.grow(-10.0), Color(0, 0, 0, 0.35), false, 20.0)
-    var glow: Texture2D = Art.PARTICLES["light"]
-    for x in [-480.0, -180.0, 180.0, 480.0]:
-        var g := 220.0 + sin(_time * 2.0 + x) * 10.0
-        draw_texture_rect(glow, Rect2(Vector2(x - g / 2.0, -half.y - 22.0 - g / 2.0), Vector2(g, g)), false, Color(1.0, 0.7, 0.3, 0.12))
     _draw_trophy_wall()
     for s in STATIONS:
         match String(s["style"]):
@@ -630,10 +626,39 @@ func _draw() -> void:
                 _draw_wall_marker(s)
 
 
+## Station names, prompts, the trophy count and goals: drawn on the Crisp layer so they
+## stay sharp above the post-process pixel grid.
+func _draw_texts(cv: CanvasItem) -> void:
+    _cv = cv
+    var half := INNER / 2.0
+    var n: int = Progress.ACHIEVEMENTS.size()
+    var y := -half.y + 14.0
+    _text(Vector2(0, y + 10.0), "TROPHIES   %d / %d" % [Progress.achievements_count(), n], 24, LIT, 400.0)
+    var goals := goal_rows(3)
+    if goals.is_empty():
+        _text(Vector2(0, y + 36.0), "Every achievement earned.", 20, UiTheme.BONE, 400.0)
+    for i in goals.size():
+        draw_goal(cv, Vector2(-280, y + 18.0 + float(i) * 46.0), goals[i], 560.0)
+    for s in STATIONS:
+        var p: Vector2 = s["pos"]
+        match String(s["style"]):
+            "plinth":
+                _draw_label_and_prompt(s, p, -76.0)
+            "gate":
+                _draw_label_and_prompt(s, p, -50.0)
+            "wall":
+                if _highlight.has(String(s["id"])):
+                    var pr: Array = _highlight[s["id"]]
+                    Prompts.draw(cv, p + Vector2(0, -2.0 + sin(_time * 5.0) * 2.0), String(pr[0]), String(pr[1]), 24.0)
+                    _text(p + Vector2(0, 40), String(s["verb"]), 20, Color(0.6, 1.0, 1.0))
+    _cv = null
+
+
 func _text(at: Vector2, text: String, px: int, col: Color, width: float = 260.0) -> void:
+    var cv: CanvasItem = _cv if _cv != null else self
     var font: Font = Art.FONT
-    draw_string(font, at + Vector2(-width / 2.0 + 1.0, 1.0), text, HORIZONTAL_ALIGNMENT_CENTER, width, px, Color(0, 0, 0, 0.8))
-    draw_string(font, at + Vector2(-width / 2.0, 0), text, HORIZONTAL_ALIGNMENT_CENTER, width, px, col)
+    cv.draw_string(font, at + Vector2(-width / 2.0 + 1.0, 1.0), text, HORIZONTAL_ALIGNMENT_CENTER, width, px, Color(0, 0, 0, 0.8))
+    cv.draw_string(font, at + Vector2(-width / 2.0, 0), text, HORIZONTAL_ALIGNMENT_CENTER, width, px, col)
 
 
 func _draw_label_and_prompt(s: Dictionary, base: Vector2, top: float) -> void:
@@ -645,7 +670,7 @@ func _draw_label_and_prompt(s: Dictionary, base: Vector2, top: float) -> void:
         _text(base + Vector2(0, 46), String(s["sub"]), 20, UiTheme.DIM if not hl else UiTheme.BONE)
     if hl:
         var pr: Array = _highlight[id]
-        Prompts.draw(self, base + Vector2(0, top - 34.0 + sin(_time * 5.0) * 2.0), String(pr[0]), String(pr[1]), 24.0)
+        Prompts.draw(_cv if _cv != null else self, base + Vector2(0, top - 34.0 + sin(_time * 5.0) * 2.0), String(pr[0]), String(pr[1]), 24.0)
         _text(base + Vector2(0, 68), String(s["verb"]), 20, Color(0.6, 1.0, 1.0))
 
 
@@ -673,7 +698,6 @@ func _draw_plinth(s: Dictionary) -> void:
         Art.draw_icon(self, Art.icon(String(s["icon"]), s["tile"]), icon_rect)
     else:
         draw_texture_rect(Art.tile(s["tile"]), icon_rect, false, c)
-    _draw_label_and_prompt(s, p, -76.0)
 
 
 ## The Gate: a dark arch cut into the bottom wall, stairs going down, a cold glow.
@@ -691,7 +715,6 @@ func _draw_gate(s: Dictionary) -> void:
     draw_texture_rect(glow, Rect2(Vector2(-g / 2.0, half.y - g / 2.0), Vector2(g, g)), false, Color(c, 0.18 + (0.12 if _highlight.has("gate") else 0.0)))
     draw_arc(p, 34.0, 0.0, TAU, 40, Color(c, 0.35 + 0.15 * sin(_time * 3.0)), 2.0)
     draw_texture_rect(Art.tile(s["tile"]), Rect2(p + Vector2(-16, -16), Vector2(32, 32)), false, Color(c, 0.85))
-    _draw_label_and_prompt(s, p, -50.0)
 
 
 ## The Trophy Wall: a plaque on the top wall with one tile per achievement, the count,
@@ -717,13 +740,6 @@ func _draw_trophy_wall() -> void:
             Art.draw_icon(self, tex, r)
         else:
             Art.draw_icon(self, tex, r, Color(0.22, 0.2, 0.22))
-    var y := -half.y + 14.0
-    _text(Vector2(0, y + 10.0), "TROPHIES   %d / %d" % [Progress.achievements_count(), n], 24, LIT, 400.0)
-    var goals := goal_rows(3)
-    if goals.is_empty():
-        _text(Vector2(0, y + 36.0), "Every achievement earned.", 20, UiTheme.BONE, 400.0)
-    for i in goals.size():
-        draw_goal(self, Vector2(-280, y + 18.0 + float(i) * 46.0), goals[i], 560.0)
 
 
 func _draw_wall_marker(s: Dictionary) -> void:
@@ -731,10 +747,6 @@ func _draw_wall_marker(s: Dictionary) -> void:
     var hl := _highlight.has(String(s["id"]))
     draw_arc(p, 30.0, 0.0, TAU, 32, Color(LIT, 0.25 + (0.3 if hl else 0.0)), 2.0)
     draw_arc(p, 20.0, _time, _time + PI * 1.4, 16, Color(LIT, 0.3), 2.0)
-    if hl:
-        var pr: Array = _highlight[s["id"]]
-        Prompts.draw(self, p + Vector2(0, -2.0 + sin(_time * 5.0) * 2.0), String(pr[0]), String(pr[1]), 24.0)
-        _text(p + Vector2(0, 40), String(s["verb"]), 20, Color(0.6, 1.0, 1.0))
 
 
 # --- Test hook ---------------------------------------------------------------
@@ -770,6 +782,16 @@ func _menu_shot() -> void:
     _close_overlay()
     _show_class_select()
     await _capture("res://autotest/classes.png", 0.4)
+    get_tree().quit()
+
+
+## `-- --themes-shot` ends here (after Main's theme rooms): the sanctum with its ambience
+## running for 2 s, saved as res://autotest/theme_sanctum.png, then quit.
+func _theme_shot() -> void:
+    DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path("res://autotest"))
+    players[0].global_position = Vector2(0, 120)
+    await _capture("res://autotest/theme_sanctum.png", 2.0)
+    print("[THEME SHOT] sanctum  ambience=%d px" % (ambience.live() if ambience != null else 0))
     get_tree().quit()
 
 

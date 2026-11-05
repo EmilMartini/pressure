@@ -271,12 +271,25 @@ func icon_sized(tex: Texture2D, px: int) -> Texture2D:
     return out
 
 
-## Draws `tex` centred in `rect`, as large as fits while staying crisp: whole-number
-## upscales of the tile, or a smooth resample (in steps of 4 px) when the rect is smaller.
+## Draws `tex` centred in `rect`, as large as fits while staying crisp. On a UI layer
+## above the PostFx (HUD, cards, menus, the Crisp layer) with post-processing on, the
+## icon gets the world's pixel treatment (`icon_pixel`): one icon pixel per screen cell,
+## in the palette, so UI icons match the pixelated world. Elsewhere (world canvases, which
+## the PostFx pixelates anyway, or post-fx off): whole-number upscales of the tile, or a
+## smooth resample (in steps of 4 px) when the rect is smaller.
 func draw_icon(ci: CanvasItem, tex: Texture2D, rect: Rect2, modulate: Color = Color.WHITE) -> void:
     if tex == null:
         return
     var side := minf(rect.size.x, rect.size.y)
+    if _pixel_ui(ci):
+        var k := maxf(0.05, ci.get_global_transform_with_canvas().get_scale().x)
+        var ps := PostFx.pixel_size()
+        var screen_px := int(side * k)
+        var pt := icon_pixel(tex, screen_px)
+        var dside := float(pt.get_width()) / k
+        var pat := (rect.position + (rect.size - Vector2(dside, dside)) / 2.0).round()
+        ci.draw_texture_rect(pt, Rect2(pat, Vector2(dside, dside)), false, modulate)
+        return
     var base := float(maxi(1, tex.get_width()))
     var t := tex
     var px := base
@@ -288,6 +301,107 @@ func draw_icon(ci: CanvasItem, tex: Texture2D, rect: Rect2, modulate: Color = Co
         px = float(want)
     var at := (rect.position + (rect.size - Vector2(px, px)) / 2.0).round()
     ci.draw_texture_rect(t, Rect2(at, Vector2(px, px)), false, modulate)
+
+
+## True when `ci` draws above the PostFx layer with post-processing on: its icons get the
+## pixel treatment so they match the world under the grid.
+func _pixel_ui(ci: CanvasItem) -> bool:
+    if ci == null or not ci.is_inside_tree() or not Settings.flag("post_fx"):
+        return false
+    var layer := ci.get_canvas_layer_node()
+    return layer != null and layer.layer > 1
+
+
+## `tex` as the world's pixel grid would show it at `screen_px` on screen: box-filtered
+## down to screen_px / pixel_size texels (premultiplied, so edges do not go dark), alpha
+## cut to on/off, quantized to the PostFx palette (when Settings "palette" is on), then
+## scaled up by pixel_size with nearest. Cached per texture, size, pixel size and palette.
+func icon_pixel(tex: Texture2D, screen_px: int) -> Texture2D:
+    if tex == null:
+        return tex
+    var ps := int(PostFx.pixel_size())
+    # Never more icon pixels than the tile has: a big icon shows each tile pixel as a
+    # whole number of cells instead.
+    var cells := clampi(screen_px / maxi(1, ps), 4, maxi(4, tex.get_width()))
+    var up := ps * maxi(1, screen_px / maxi(1, cells * ps))
+    var pal := Settings.flag("palette")
+    var key := "px:%d:%d:%d:%s" % [tex.get_instance_id(), cells, up, pal]
+    if _sized_cache.has(key):
+        return _sized_cache[key]
+    var out: Texture2D = tex
+    var src: Image = tex.get_image()
+    if src != null and not src.is_empty():
+        src = src.duplicate()
+        if src.is_compressed():
+            src.decompress()
+        src.convert(Image.FORMAT_RGBA8)
+        var img := _box_down(src, cells)
+        if pal:
+            _quantize(img)
+        img.resize(cells * up, cells * up, Image.INTERPOLATE_NEAREST)
+        out = ImageTexture.create_from_image(img)
+    _sized_cache[key] = out
+    return out
+
+
+## Area-average `src` down to `n` x `n` (fractional coverage, premultiplied alpha); alpha
+## then cut at a half so the icon keeps a hard pixel edge.
+static func _box_down(src: Image, n: int) -> Image:
+    var sw := src.get_width()
+    var sh := src.get_height()
+    var out := Image.create_empty(n, n, false, Image.FORMAT_RGBA8)
+    var fx := float(sw) / float(n)
+    var fy := float(sh) / float(n)
+    for oy in n:
+        var y0 := float(oy) * fy
+        var y1 := y0 + fy
+        for ox in n:
+            var x0 := float(ox) * fx
+            var x1 := x0 + fx
+            var acc := Vector4.ZERO
+            var wsum := 0.0
+            for sy in range(int(y0), mini(sh, ceili(y1))):
+                var wy := minf(y1, float(sy + 1)) - maxf(y0, float(sy))
+                if wy <= 0.0:
+                    continue
+                for sx in range(int(x0), mini(sw, ceili(x1))):
+                    var wx := minf(x1, float(sx + 1)) - maxf(x0, float(sx))
+                    if wx <= 0.0:
+                        continue
+                    var c := src.get_pixel(sx, sy)
+                    var w := wx * wy
+                    acc += Vector4(c.r * c.a, c.g * c.a, c.b * c.a, c.a) * w
+                    wsum += w
+            if wsum <= 0.0 or acc.w / wsum < 0.5:
+                out.set_pixel(ox, oy, Color(0, 0, 0, 0))
+            else:
+                out.set_pixel(ox, oy, Color(acc.x / acc.w, acc.y / acc.w, acc.z / acc.w, 1.0))
+    return out
+
+
+var _lut_img: Image = null
+
+
+## Every opaque pixel of `img` to its nearest palette colour (the PostFx lookup table).
+func _quantize(img: Image) -> void:
+    if _lut_img == null:
+        var lt: Image = PostFx.LUT.get_image()
+        if lt == null or lt.is_empty():
+            return
+        _lut_img = lt.duplicate()
+        if _lut_img.is_compressed():
+            _lut_img.decompress()
+        _lut_img.convert(Image.FORMAT_RGBA8)
+    for y in img.get_height():
+        for x in img.get_width():
+            var c := img.get_pixel(x, y)
+            if c.a <= 0.0:
+                continue
+            var r := clampi(roundi(c.r * 31.0), 0, 31)
+            var g := clampi(roundi(c.g * 31.0), 0, 31)
+            var b := clampi(roundi(c.b * 31.0), 0, 31)
+            var q := _lut_img.get_pixel(b * 32 + r, g)
+            img.set_pixel(x, y, Color(q.r, q.g, q.b, 1.0))
 
 
 ## A ready-to-add Sprite2D showing an icon texture at `scale`, untinted.

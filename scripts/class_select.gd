@@ -112,7 +112,7 @@ func _make_card(i: int, c: Dictionary) -> Button:
     head.mouse_filter = Control.MOUSE_FILTER_IGNORE
     box.add_child(head)
     var icon := TextureRect.new()
-    icon.texture = Classes.icon(c)
+    icon.texture = Art.icon_pixel(Classes.icon(c), 32) if Settings.flag("post_fx") else Classes.icon(c)
     icon.custom_minimum_size = Vector2(32, 32)
     icon.stretch_mode = TextureRect.STRETCH_KEEP_CENTERED
     icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER

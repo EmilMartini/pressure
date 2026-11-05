@@ -81,6 +81,7 @@ func _init(p_index: int, p_input: PlayerInput) -> void:
 
 func _ready() -> void:
     add_to_group("players")
+    Crisp.attach(self, _draw_crisp)
     collision_layer = LAYER_PLAYERS
     collision_mask = LAYER_WALLS
     var shape := CollisionShape2D.new()
@@ -646,7 +647,11 @@ func _draw() -> void:
     draw_circle(Vector2(0, radius * 0.7), radius * 0.9, Color(0, 0, 0, 0.35))
     # Back layer (form and item auras, ring sparkles, the active item) under the body.
     Items.draw_costume(self, self, _sprite.position, 2.0, _facing(), false)
-    draw_string(Art.FONT, Vector2(-20, -radius - 8), str(index + 1), HORIZONTAL_ALIGNMENT_CENTER, 40, 16, color)
+
+
+## The player number over the head, sharp above the pixel grid (Crisp layer).
+func _draw_crisp(cv: CanvasItem) -> void:
+    cv.draw_string(Art.FONT, Vector2(-20, -radius - 8), str(index + 1), HORIZONTAL_ALIGNMENT_CENTER, 40, 16, color)
 
 
 func _facing() -> float:

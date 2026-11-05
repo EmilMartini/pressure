@@ -38,7 +38,7 @@ func show_for_test(path: String = "res://autotest/pause.png", sheet_player: Play
 func _init(p_main: Main) -> void:
     main = p_main
     _run_start_ms = Time.get_ticks_msec()
-    layer = 50   # above the post-process (1) and the HUD (2)
+    layer = 50   # above the post-process (1), the Crisp world text (2) and the HUD (3)
     process_mode = Node.PROCESS_MODE_ALWAYS
 
 

@@ -18,9 +18,12 @@ const DEFAULTS := {
     "hit_stop": true,
     "damage_numbers": true,
     "post_fx": true,
-    "crt": true,
+    "crt": false,                     # CRT curve, scanlines, a little aberration and grain
     "crt_intensity": 0.6,
     "bloom": true,
+    "pixel_size": 3,                  # world pixel grid in screen pixels, 2..4
+    "palette": true,                  # quantize the world to the palette, with dither
+    "fx_rev": 2,                      # post-fx defaults revision (FX_REV; migrations, see load)
     "controls_hint": false,
     "pause_on_disconnect": true,
     "seen_explainer": false,
@@ -29,9 +32,16 @@ const DEFAULTS := {
     "telemetry_device_id": "",        # random id, never a name
 }
 
-## PostFx shader defaults at full CRT intensity (see post_fx.gd); intensity scales them.
-const CRT_FULL := { "crt_curve": 0.1, "scanline": 0.26, "aberration": 1.5, "grain": 0.06 }
+## PostFx shader values at full CRT intensity (see post_fx.gd); intensity scales them.
+## Without the CRT option the picture is flat and crisp: no curve, no scanlines, no
+## standing aberration (only the brief pulses), and a faint grain.
+const CRT_FULL := { "crt_curve": 0.1, "scanline": 0.22, "aberration": 0.6, "grain": 0.04 }
+const GRAIN_BASE := 0.012
 const BLOOM_ON := 0.85
+## Bumped when post-fx defaults change in a way old settings files should pick up.
+const FX_REV := 2
+## Numeric keys that are not 0..1, with their range.
+const RANGES := { "pixel_size": [2.0, 4.0], "fx_rev": [0.0, 1000.0] }
 
 var values: Dictionary = {}
 var save_path := SAVE_PATH
@@ -169,8 +179,10 @@ func _apply_post_fx(post: Node) -> void:
         "crt_curve": CRT_FULL["crt_curve"] * k,
         "scanline": CRT_FULL["scanline"] * k,
         "aberration": CRT_FULL["aberration"] * k,
-        "grain": CRT_FULL["grain"] * k,
+        "grain": GRAIN_BASE + float(CRT_FULL["grain"]) * k,
         "bloom_strength": BLOOM_ON if flag("bloom") else 0.0,
+        "pixel_size": float(clampi(roundi(number("pixel_size")), 2, 4)),
+        "palette_on": 1.0 if flag("palette") else 0.0,
     }
     for c in post.get_children():
         if c is CanvasItem and (c as CanvasItem).material is ShaderMaterial:
@@ -233,6 +245,14 @@ func load_settings() -> void:
             values[key] = bool(d[key])
         elif def is String:
             values[key] = String(d[key])
+        elif RANGES.has(key):
+            var rg: Array = RANGES[key]
+            values[key] = roundi(clampf(float(d[key]), float(rg[0]), float(rg[1])))
         else:
             values[key] = clampf(float(d[key]), 0.0, 1.0)
+    # Post-fx defaults moved to a crisp pixel look: older files drop the CRT once.
+    if int(d.get("fx_rev", 0)) < FX_REV:
+        values["crt"] = false
+        values["fx_rev"] = FX_REV
+        save()
 

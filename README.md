@@ -345,7 +345,9 @@ Add `--short` after `--autotest` for a 70-second run, `--secs=N` for any length,
 `--arsenal` to start with every gun (a stress test; the default is a real naked start
 that measures the progression loop). The log prints `[FLOOR]` and `[DEATH]` lines. `godot --path . -- --menu-shot`
 screenshots the menu and codex. `godot --headless --path . res://scenes/main.tscn -- --obstacle-test`
-checks projectiles hit obstacles.
+checks projectiles hit obstacles. `godot --path . res://scenes/main.tscn -- --themes-shot` saves
+one arena per floor theme (crypt, ruins, frozen, forge, void, ambience running 2 s) and the
+hub's sanctum as `autotest/theme_<name>.png`.
 A bot plays by itself for up to five minutes: explores rooms, buys from pedestals,
 clears obstacles, fights elites and the boss, takes the stairs. It saves screenshots to
 `autotest/` and prints progress and reaction counts. Use it to check a build still

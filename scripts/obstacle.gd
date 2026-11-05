@@ -75,6 +75,7 @@ func _ready() -> void:
     rect.size = size
     shape.shape = rect
     add_child(shape)
+    Crisp.attach(self, _draw_crisp)
     var spec: Dictionary = KINDS[kind]
     match kind:
         "thicket":
@@ -128,6 +129,14 @@ func _clear() -> void:
     queue_free()
 
 
+## The obstacle's label, sharp above the pixel grid (Crisp layer).
+func _draw_crisp(cv: CanvasItem) -> void:
+    var spec: Dictionary = KINDS[kind]
+    var label_pos := inward * (size.length() * 0.5 + 22.0) + inward * 26.0 + Vector2(-180, 6)
+    cv.draw_string(Art.FONT_BODY, label_pos + Vector2(1, 1), spec["label"], HORIZONTAL_ALIGNMENT_CENTER, 360, 17, Color(0, 0, 0, 0.8))
+    cv.draw_string(Art.FONT_BODY, label_pos, spec["label"], HORIZONTAL_ALIGNMENT_CENTER, 360, 17, Color(0.92, 0.9, 0.85))
+
+
 func _draw() -> void:
     var spec: Dictionary = KINDS[kind]
     var r := Rect2(-size / 2.0, size)
@@ -150,6 +159,4 @@ func _draw() -> void:
     for k in states.keys():
         draw_circle(badge_pos + Vector2(-10.0 + 10.0 * i, 14), 3.5, Element.COLORS[k])
         i += 1
-    var label_pos := badge_pos + inward * 26.0 + Vector2(-180, 6)
-    draw_string(Art.FONT_BODY, label_pos + Vector2(1, 1), spec["label"], HORIZONTAL_ALIGNMENT_CENTER, 360, 17, Color(0, 0, 0, 0.8))
-    draw_string(Art.FONT_BODY, label_pos, spec["label"], HORIZONTAL_ALIGNMENT_CENTER, 360, 17, Color(0.92, 0.9, 0.85))
+

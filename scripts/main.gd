@@ -10,7 +10,7 @@ const CAMERA_PAD := 90.0
 var players: Array[Player] = []
 var fx: Fx
 var hud: Hud
-var camera: Camera2D
+var camera: PixelCamera
 var pause_menu: PauseMenu
 var levelup: LevelUpScreen
 var gun_pick: GunPickScreen
@@ -60,9 +60,8 @@ func _ready() -> void:
     fx.main = self
     add_child(fx)
 
-    camera = Camera2D.new()
-    camera.position_smoothing_enabled = true
-    camera.position_smoothing_speed = 7.0
+    camera = PixelCamera.new()
+    camera.follow_speed = 7.0
     camera.zoom = Vector2(1.3, 1.3)
     add_child(camera)
     camera.make_current()
@@ -71,7 +70,7 @@ func _ready() -> void:
 
     add_child(PostFx.new())
     var layer := CanvasLayer.new()
-    layer.layer = 2
+    layer.layer = 3   # over the PostFx (1) and the Crisp world-text layer (2)
     add_child(layer)
     hud = Hud.new()
     hud.main = self
@@ -130,7 +129,7 @@ func _ready() -> void:
 
     Elements.reaction_fired.connect(_count_reaction)
     Progress.unlocked.connect(_on_unlocked)
-    if args.has("--obstacle-test") or args.has("--start-shot") or args.has("--layouts-shot"):
+    if args.has("--obstacle-test") or args.has("--start-shot") or args.has("--layouts-shot") or args.has("--themes-shot"):
         # Test hooks never touch the real save.
         Progress.save_path = "user://save_autotest.json"
         Progress.reset()
@@ -148,6 +147,8 @@ func _ready() -> void:
         _obstacle_test()
     if OS.get_cmdline_user_args().has("--layouts-shot"):
         _layouts_shot()
+    if OS.get_cmdline_user_args().has("--themes-shot"):
+        _themes_shot()
     if OS.get_cmdline_user_args().has("--start-shot"):
         DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path("res://autotest"))
         await get_tree().create_timer(0.8).timeout
@@ -225,12 +226,37 @@ func _layouts_shot() -> void:
         camera.limit_top = -100000
         camera.limit_right = 100000
         camera.limit_bottom = 100000
-        camera.position = Vector2.ZERO
-        camera.reset_smoothing()
+        camera.target = Vector2.ZERO
+        camera.snap_now()
         await get_tree().create_timer(0.7).timeout
         await _screenshot("res://autotest/%s.png" % shot["file"])
         print("[LAYOUT SHOT] %s  layout=%s size=%s secret=%s alcove=%s blockers=%s" % [shot["file"], current.layout_name, current.room_size, current.data.secret, current.data.alcove, current.has_blockers])
     get_tree().quit()
+
+
+## Review capture: `godot --path . -- --themes-shot` (fresh test save) builds one cleared
+## arena per floor theme (Themes.ORDER) at the run's zoom, with a layout that shows the
+## theme's water, walls or chasms, lets its ambience run for 2 s, saves
+## res://autotest/theme_<name>.png, then opens the hub, which saves theme_sanctum.png and
+## quits (see Hub).
+func _themes_shot() -> void:
+    DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path("res://autotest"))
+    await get_tree().create_timer(0.5).timeout
+    var layouts := { "crypt": "four_pillars", "ruins": "flooded", "frozen": "frozen", "forge": "broken", "void": "rift" }
+    var centre := Vector2i(FloorGen.GRID / 2, FloorGen.GRID / 2)
+    for i in Themes.ORDER.size():
+        var tname := String(Themes.ORDER[i])
+        floor_number = i + 1
+        rooms = _shot_rooms(centre, { "layout": String(layouts.get(tname, "open")), "size": 1 })
+        enter_room(centre, Vector2i.ZERO)
+        for pl in players:
+            pl.global_position = Vector2(0, 60)
+        camera.target = Vector2.ZERO
+        camera.snap_now()
+        await get_tree().create_timer(2.0).timeout
+        await _screenshot("res://autotest/theme_%s.png" % tname)
+        print("[THEME SHOT] %s  layout=%s  ambience=%d px" % [tname, current.layout_name, current.ambience.live() if current.ambience != null else 0])
+    get_tree().change_scene_to_file("res://scenes/hub.tscn")
 
 
 ## A cleared arena at `centre` with a plain door on every side (one a secret wall, for the
@@ -459,8 +485,8 @@ func enter_room(pos: Vector2i, moved: Vector2i) -> void:
     camera.limit_top = int(r.position.y)
     camera.limit_right = int(r.end.x)
     camera.limit_bottom = int(r.end.y)
-    camera.position = _party_center()
-    camera.reset_smoothing()
+    camera.target = _party_center()
+    camera.snap_now()
 
 
 func _on_door_entered(dir: Vector2i) -> void:
@@ -660,8 +686,8 @@ func _process(delta: float) -> void:
     _handle_joins()
     _handle_sheet_buttons()
     _serve_levelups()
-    camera.position = _party_center()
-    camera.offset = Vector2(randf_range(-1.0, 1.0), randf_range(-1.0, 1.0)) * _shake
+    camera.target = _party_center()
+    camera.shake = Vector2(randf_range(-1.0, 1.0), randf_range(-1.0, 1.0)) * _shake
     _shake = move_toward(_shake, 0.0, 28.0 * delta)
     _message_time = maxf(0.0, _message_time - delta)
     if _message_time <= 0.0:

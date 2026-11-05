@@ -28,7 +28,7 @@ var prompt_kind := "kb"    # "pad" or "kb"
 var _sprite: Sprite2D
 
 var _t := randf() * TAU
-var _card: Node2D           # the ItemCard layer, above players and shots
+var _card: Node2D           # labels and the ItemCard, on the Crisp layer (sharp, above the pixel grid)
 var _gun_data: GunData      # cached for gun offers
 
 
@@ -61,11 +61,7 @@ func _ready() -> void:
             _sprite = Art.sprite(Art.TILES.get(kind(), Art.TILES["cog"]), 2.5, color())
     _sprite.position = Vector2(0, -36)
     add_child(_sprite)
-    _card = Node2D.new()
-    _card.z_index = 80
-    _card.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-    _card.draw.connect(_draw_card)
-    add_child(_card)
+    _card = Crisp.attach(self, _draw_crisp, 80)
 
 
 func kind() -> String:
@@ -137,8 +133,6 @@ func _process(delta: float) -> void:
     elif _sprite != null:
         _sprite.position.y = -12.0
     queue_redraw()
-    if _card != null:
-        _card.queue_redraw()
 
 
 func _draw() -> void:
@@ -174,20 +168,31 @@ func _draw() -> void:
         draw_circle(Vector2(0, -14), 10.0, Color(0, 0, 0, 0.35))
         if highlighted:
             draw_rect(Rect2(-18, -12, 36, 6), Color(c, 0.6))
-    # Name and price always; the description only when you are close enough to take it,
-    # so a row of plinths does not turn into a wall of overlapping text.
+
+
+## Labels, prompt and card, drawn on the Crisp layer so they stay sharp above the pixel
+## grid. Name and price always; the description only when you are close enough to take
+## it, so a row of plinths does not turn into a wall of overlapping text.
+func _draw_crisp(cv: CanvasItem) -> void:
+    if empty():
+        return
+    _draw_labels(cv)
+    _draw_card(cv)
+
+
+func _draw_labels(cv: CanvasItem) -> void:
     var y := 44.0
     var title_col := Color(0.92, 0.9, 0.85)
     if kind() == "item":
         title_col = Items.rarity_color(item())
     var body: Font = Art.FONT_BODY
-    draw_string(body, Vector2(-141, y + 1), title(), HORIZONTAL_ALIGNMENT_CENTER, 280, 20, Color(0, 0, 0, 0.8))
-    draw_string(body, Vector2(-140, y), title(), HORIZONTAL_ALIGNMENT_CENTER, 280, 20, title_col)
+    cv.draw_string(body, Vector2(-141, y + 1), title(), HORIZONTAL_ALIGNMENT_CENTER, 280, 20, Color(0, 0, 0, 0.8))
+    cv.draw_string(body, Vector2(-140, y), title(), HORIZONTAL_ALIGNMENT_CENTER, 280, 20, title_col)
     y += 22.0
     var pt := price_text()
     if pt != "":
-        draw_string(body, Vector2(-141, y + 1), pt, HORIZONTAL_ALIGNMENT_CENTER, 280, 20, Color(0, 0, 0, 0.8))
-        draw_string(body, Vector2(-140, y), pt, HORIZONTAL_ALIGNMENT_CENTER, 280, 20, Art.SCRAP_TINT)
+        cv.draw_string(body, Vector2(-141, y + 1), pt, HORIZONTAL_ALIGNMENT_CENTER, 280, 20, Color(0, 0, 0, 0.8))
+        cv.draw_string(body, Vector2(-140, y), pt, HORIZONTAL_ALIGNMENT_CENTER, 280, 20, Art.SCRAP_TINT)
         y += 22.0
     if highlighted:
         # Items and guns show their full ItemCard beside the plinth (see _draw_card).
@@ -205,18 +210,18 @@ func _draw() -> void:
                 desc = "Patch yourself up."
         if desc != "":
             var box_h := 52.0
-            draw_rect(Rect2(-170, y - 4, 340, box_h), Color(0.05, 0.04, 0.06, 0.92))
-            draw_multiline_string(body, Vector2(-162, y + 16), desc, HORIZONTAL_ALIGNMENT_CENTER, 324, 20, 2, Color(0.92, 0.9, 0.85))
+            cv.draw_rect(Rect2(-170, y - 4, 340, box_h), Color(0.05, 0.04, 0.06, 0.92))
+            cv.draw_multiline_string(body, Vector2(-162, y + 16), desc, HORIZONTAL_ALIGNMENT_CENTER, 324, 20, 2, Color(0.92, 0.9, 0.85))
             y += box_h + 4.0
         var verb := "begin" if kind() == "sigil" else ("descend" if kind() == "stairs" else ("equip" if kind() == "item" else "take"))
         # The player's own device's button, floating over the item.
-        Prompts.draw(self, Vector2(0, -78.0 + sin(_t * 5.0) * 2.0), prompt_key, prompt_kind, 24.0)
-        draw_string(body, Vector2(-140, y + 4.0), verb, HORIZONTAL_ALIGNMENT_CENTER, 280, 20, Color(0.6, 1.0, 1.0))
+        Prompts.draw(cv, Vector2(0, -78.0 + sin(_t * 5.0) * 2.0), prompt_key, prompt_kind, 24.0)
+        cv.draw_string(body, Vector2(-140, y + 4.0), verb, HORIZONTAL_ALIGNMENT_CENTER, 280, 20, Color(0.6, 1.0, 1.0))
 
 
 ## The item or gun card, beside the plinth on whichever side keeps it on screen, compared
 ## against what the nearest player wears in that slot.
-func _draw_card() -> void:
+func _draw_card(cv: CanvasItem) -> void:
     if not highlighted or empty() or not (kind() in ["item", "gun"]):
         return
     var p := _nearest_player()
@@ -251,9 +256,9 @@ func _draw_card() -> void:
         y = (vp.y - 12.0 - xf.origin.y) / s - h
     var rect := Rect2(Vector2(x, y), Vector2(w, h))
     if kind() == "item":
-        ItemCard.draw(_card, rect, it, opts)
+        ItemCard.draw(cv, rect, it, opts)
     else:
-        ItemCard.draw_gun(_card, rect, _gun_data, opts)
+        ItemCard.draw_gun(cv, rect, _gun_data, opts)
 
 
 func _nearest_player() -> Player:
