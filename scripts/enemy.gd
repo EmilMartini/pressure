@@ -1221,7 +1221,9 @@ func _update_sprite() -> void:
 func _nearest_player() -> Player:
     var best: Player = null
     var best_d := INF
-    for p in get_tree().get_nodes_in_group("players"):
+    for p in EnemyGrid.nodes(get_tree(), &"players"):   # cached: every enemy asks every tick
+        if not is_instance_valid(p):
+            continue
         var d: float = p.global_position.distance_squared_to(global_position)
         if d < best_d:
             best_d = d

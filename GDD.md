@@ -117,6 +117,207 @@ is not applied. Same element refreshes the timer.
 - Stone weighs: a stone-marked body moves at three quarters speed. Acid corrodes: +50%
   damage taken while corroded. Void pulls, gale pushes, blood bleeds while they move.
 
+#### Compounds and fusions (designed, data in `scripts/fusions.gd`, not wired in yet)
+Today a reaction is a dead end. The gimmick is broken combinations, so reactions now climb a
+**tier ladder** with a hard ceiling, and each rung is worth more than the last:
+
+| Tier | What | Made by | Leaves | Potency x |
+|---|---|---|---|---|
+| 1 | element state | a hit | the state (Element.DURATION) | 1.0 |
+| 2 | **reaction** (65) | state + element | a **compound** on the target and/or as a patch | 1.0 |
+| 3 | **fusion** (220) | compound + an element that is not one of its ingredients | nothing, or (19 signatures) a **fusion field** | 1.8 to 2.5 |
+| 4 | **cataclysm** (176) | fusion field + a fourth element | nothing, ever | 3.0 to 4.0 |
+
+`MAX_TIER = 4`. Anything can only make something one tier higher, and everything that
+happens inside a tier N effect (reactions set off by its applies and spreads, the payload a
+field keeps applying) runs at **context tier N** and may only create products above N. A
+fusion's apply that sets off Inferno on a neighbour still burns, but leaves no compound.
+Nothing exists above 4, so every chain stops by construction. That replaces the old
+"patches react once" rule as the guarantee; patches still react once.
+
+**Compounds.** Each of the 65 reactions leaves one of 22 compounds. The canonical pair is the
+compound's ingredients; the other reactions that make it are its members, and their extra
+ingredients are its **kin** (Petrichor and Erosion make Mud, so poison and acid are Mud's kin).
+A compound on an enemy lasts 1.5 to 3 s, a compound patch (cloud or floor) 3 to 5 s. One
+compound slot per enemy; a newer compound replaces the older. Compounds never react with
+each other. Colours are 30% the mix of the two element colours, 70% a hand-picked look.
+
+| Compound | From (canonical first) | Lives | Life (enemy / patch) | Flavour |
+|---|---|---|---|---|
+| **Steam** | Wet + Fire: Steam, Thermal Shock | cloud | - / 4s | A scalding fog that hangs where the water boiled. |
+| **Mud** | Wet + Stone: Mud, Petrichor, Erosion | floor | - / 5s | Churned earth that sucks at every step. |
+| **Plasma** | Shock + Fire: Plasma, Ignition, Electrolysis | enemy | 1.5s / - | A body crackling white-hot, one spark from going off. |
+| **Stormfront** | Shock + Gale: Thunderstorm, Chain Lightning, Monsoon | enemy + cloud | 2s / 3.5s | Charged air that hums before it strikes. |
+| **Brine** | Wet + Acid: Caustic Splash, Contamination, Dissolve, Acid Rain | floor | - / 4.5s | A hissing, corrosive slurry. |
+| **Magma** | Fire + Stone: Magma | floor | - / 5s | Molten rock, crusting at the edges. |
+| **Glass** | Shock + Stone: Grounded, Brittle, Cryoshock | enemy | 2.5s / - | Sand fused by lightning into a brittle shell. |
+| **Tar** | Oil + Stone: Asphalt, Tar Pit, Slick, Black Ice | floor | - / 5s | Black, sticky, and very flammable. |
+| **Napalm** | Fire + Oil: Inferno, Chemical Fire, Anointing, Oil Spray | enemy + floor | 2.5s / 4s | Fuel that clings and keeps burning. |
+| **Cinder** | Fire + Gale: Firestorm, Sandstorm | cloud | - / 3.5s | Glowing grit carried on a hot wind. |
+| **Smog** | Fire + Poison: Noxious Flame, Virulence | cloud | - / 4.5s | Acrid, choking smoke that pools low. |
+| **Miasma** | Poison + Gale: Plague Wind, Sepsis, Galvanic Rot | cloud | - / 4.5s | A sick green air that clings to the living. |
+| **Rime** | Wet + Ice: Deep Freeze, Glacier, Frostbite, Hemostasis | enemy | 3s / - | A hard glaze of ice over everything. |
+| **Blizzard** | Ice + Gale: Blizzard, Absolute Zero | cloud | - / 4s | Whirling snow that bites and blinds. |
+| **Nova** | Fire + Holy: Holy Fire, Smite, Neutralize | enemy | 2s / - | Radiance gathering under the skin. |
+| **Hallow** | Holy + Stone: Consecrate, Sanctuary, Divine Wind | floor | - / 5s | Sanctified ground that remembers. |
+| **Chrism** | Wet + Holy: Baptism, Cleanse | floor | - / 4s | Holy water, still glowing. |
+| **Hemo** | Wet + Blood: Thin Blood, Spray, Martyrdom | enemy + floor | 2.5s / 4s | Thin, spreading blood that will not clot. |
+| **Clot** | Acid + Blood: Coagulant, Cauterize, Bludgeon, Defibrillate | enemy | 2s / - | Seared, hardened blood clotting in the wound. |
+| **Rift** | Shock + Void: Singularity, Whirlpool, Black Hole, Gravity Well, Vacuum | cloud | - / 3s | A pinhole in space that will not stay shut. |
+| **Voidstuff** | Poison + Void: Decay, Null Acid, Exsanguinate | enemy | 2s / - | Matter that has started to forget itself. |
+| **Eclipse** | Void + Holy: Annihilation, Dark Flame | enemy + cloud | 1.5s / 3s | Light and its absence, held in a shaking balance. |
+
+**Fusions.** A compound meets a third element: the compound is consumed and the fusion
+plays, on the target, or once over everyone inside a patch (area actions once, at 0.7
+potency, like a cloud reaction today). An element that was an ingredient of the reaction that
+made this particular compound does not fuse (it refreshes), so the third element is always new.
+Forty fusions are hand-designed signatures; the other 180 come from four rules:
+
+- **Compose** (109): the compound's `core` plus the third element's `ROLE` (wet soaks and
+  slows, shock chains and stuns, fire burns and bursts, ice freezes, oil slicks, poison
+  spreads, acid corrodes, blood bleeds and feeds you, void pulls and decays, holy purges and
+  heals, gale throws, stone stuns). Same actions merge (bursts take the larger radius and sum
+  their damage). x2.2 for enemy-only compounds (same target inside 1.5 to 3 s), x1.9 for patch
+  compounds. Named "<element adjective> <compound noun>": Venomous Mire, Howling Pall.
+- **Amplify** (26): the element is kin to the compound, so it is the compose result with damage
+  over time, slows and corrosion lasting x1.5 and freeze/stun x1.25 (capped).
+- **Neutralize** (45): the element cancels one of the ingredients (wet cancels fire, fire
+  cancels ice and wet, oil and stone cancel wet, stone and oil ground shock, holy and void
+  cancel each other, holy cancels poison, acid and blood, stone cancels gale and acid, acid
+  cancels stone). The compound collapses into one hard burst (110 radius, 2.0) at x1.8.
+  Named "<cancel word> <noun>": Quenched Slag, Grounded Squall.
+- **Signature** (40): hand-designed, x1.9 to x2.5 by how hard the setup is; they override the
+  rules above (Obsidian is fire cancelled by ice, but it is a signature, not a fizzle).
+
+**Fusion fields.** Nineteen signature fusions linger (rain, storms, floods, fields): they
+leave a field (3 to 5 s, radius 160 to 220) that keeps applying a payload element every
+0.5 s (at context tier 3, so the reactions it sets off leave nothing) and can react **once**
+more, with a fourth element, into a cataclysm. Instant fusions (bursts, shatters, implosions)
+leave nothing. Fusions never spawn clouds; fields are the only thing that lingers.
+
+**Cataclysms.** A field meets a fourth element: the field is consumed and the cataclysm
+plays once over everything inside, then nothing is left. Twenty-five are signatures; the
+rest follow two rules, and only a genuinely new element (not one of the field's three)
+triggers a generated one, so each field answers to 9 or 10 elements:
+- **Surge** (128): an echo burst of the field (field radius x1.25, x2.0) plus the element's
+  cataclysm role (`CATA_ROLE`: a tidal wave, a chain storm, a firestorm, a flash freeze...),
+  x3.2. Named "<cataclysm adjective> <field noun>": Thundering Deluge, Abyssal Shallows.
+- **Fizzle** (23): the element cancels the field's payload: one small burst (120, 1.5) at
+  x3.0, so it still pays out a little but wastes the field.
+The element that made the fusion and the field's payload do not react with their own field.
+
+**Balance and anti-recursion rules** (constants in `fusions.gd`):
+- Tier multipliers: reactions x1.0, fusions x1.8 to x2.5, cataclysms x3.0 to x4.0, on
+  potency. Freeze, stun and the decay share are never multiplied.
+- `FUSION_COOLDOWN` 0.8 s per enemy after a fusion: no new fusion and no new compound on it.
+- Freeze and stun from any tier go through the existing diminishing returns in enemy.gd
+  (7 s window, half, quarter, immune; elites and bosses resist) and are capped at 3 s before it.
+- Radius caps: 260 for fusions, 320 for cataclysms; decay at most 20% of max health.
+- A fusion or cataclysm applies **at most one element kind**, and at most 10 (fusion) or 16
+  (cataclysm) element applications in all, so it can never put two reacting elements on the
+  same body. Reactions those applications cause leave nothing (context tier).
+- Room budgets: 4 compound patches, 3 fusion fields (a new one replaces the oldest), 6
+  fusions a second (past that the element lands as a plain element and the compound stays),
+  one cataclysm per 1.5 s, and a field cataclysms once and only after it has existed 0.4 s.
+- Repetition: the same fusion or cataclysm fired again inside 8 s in a room is worth x0.85 per
+  repeat, never under x0.55. Spamming one combination decays; rotating them does not.
+- Shields: a reaction cracks 1 pip (attuned pair 2, as now), a fusion 2, a cataclysm 3.
+
+Why this stays rewarding and finite: fusions are the fastest way to clear a floor (twice the
+potency of a reaction, usually over an area, and they crack shields twice), and a cataclysm
+is a room-clearer, but each rung asks for a new element at the right place within a few
+seconds, so a build has to carry and aim four elements to reach the top. The ceiling,
+the context tier, the one-kind apply rule and the per-enemy cooldown make loops impossible
+rather than merely unlikely; the repeat decay and the room budgets keep one combination from
+carrying a run, and the crowd target (more enemies for more guns and elements) means the
+extra clear speed is spent on a bigger horde, not on standing still.
+
+Signature fusions (tier 3). "Field" is life, radius and the payload the field keeps applying.
+Firedamp uses Shock, not Fire: fire is an ingredient of Smog, and a spark is what sets off
+firedamp. Steam + Acid is named **Acid Deluge** because Acid + Gale is already the reaction Acid Rain;
+renaming that reaction would free the name.
+
+| Fusion | Compound + element | x | Field | What it does |
+|---|---|---|---|---|
+| **Acid Deluge** | Steam + Acid | 2.0 | 4.5s, r220, Acid | The steam condenses into a corroding rain over a wide area |
+| **Storm Cloud** | Steam + Shock | 2.2 | 5s, r180, Shock | The steam takes a charge and hangs there, arcing into everything inside |
+| **Hailstorm** | Steam + Ice | 2.0 | 4s, r180, Ice | The steam freezes in the air and comes down as hail |
+| **Kiln** | Mud + Fire | 2.0 | - | The mud bakes hard around everyone standing in it |
+| **Permafrost** | Mud + Ice | 1.9 | 5s, r170, Ice | The mire freezes solid underfoot |
+| **Quicksand** | Mud + Void | 2.0 | 4s, r200, Void | The mud opens and swallows: everything is dragged to the middle |
+| **Collapse** | Plasma + Void | 2.5 | - | The plasma folds in on itself: everything is pulled in, then it implodes |
+| **Ball Lightning** | Plasma + Gale | 2.2 | 4s, r160, Shock | A drifting ball of plasma that arcs to everything it shocks |
+| **Starfall** | Plasma + Holy | 2.3 | - | The plasma ignites into a falling star |
+| **Hurricane** | Stormfront + Wet | 2.2 | 4.5s, r220, Wet | Rain drives into the storm: everything is soaked, shocked and thrown |
+| **Wildfire** | Stormfront + Fire | 2.0 | 4s, r200, Fire | Lightning on a dry wind: fire runs across the whole crowd |
+| **Galvanic Sea** | Brine + Shock | 2.3 | 4s, r180, Shock | The whole slurry conducts: lightning through every body in it, eating them as it goes |
+| **Brinicle** | Brine + Ice | 2.0 | - | A spear of salt ice forms through the target |
+| **Obsidian** | Magma + Ice | 2.4 | - | The lava glasses over and shatters into stone shards |
+| **Pyroclast** | Magma + Gale | 2.3 | - | Wind lifts the lava into a scorching blast |
+| **Eruption** | Magma + Oil | 2.3 | 4s, r180, Fire | Fuel in the lava: it erupts, and keeps erupting |
+| **Glass Storm** | Glass + Gale | 2.4 | 4s, r200, Gale | The shell shatters into a whirl of shards that cut everyone nearby |
+| **Burning Lens** | Glass + Fire | 2.3 | - | The glass focuses the fire into one searing beam |
+| **Pitch Fire** | Tar + Fire | 2.2 | 5s, r180, Fire | The tar goes up in a black, clinging blaze |
+| **Firewhirl** | Napalm + Gale | 2.2 | 4s, r180, Fire | The burning fuel spins up into a tornado of fire |
+| **Flashover** | Napalm + Wet | 2.4 | - | Water on burning fuel: it explodes outward |
+| **Firefall** | Cinder + Oil | 2.1 | - | Oil caught in the cinders comes down as burning rain |
+| **Firedamp** | Smog + Shock | 2.4 | - | A spark in the smog: the whole cloud detonates, and a bigger cloud is a bigger blast |
+| **Censer** | Smog + Holy | 2.0 | 4s, r160, Holy | The smoke turns to incense: it scours states and mends you |
+| **Black Death** | Miasma + Blood | 2.1 | 5s, r200, Poison | The sickness takes to the blood and leaps body to body |
+| **Plague Pyre** | Miasma + Fire | 2.0 | - | The tainted air catches: a burning, poisoned flash |
+| **Shatter Arc** | Rime + Shock | 2.4 | - | Lightning cracks the glaze and jumps to every frozen body |
+| **Ice Shrapnel** | Rime + Gale | 2.3 | - | The glaze is blown apart into freezing shrapnel |
+| **Thaw Flood** | Blizzard + Fire | 2.0 | 4s, r220, Wet | The blizzard melts at once: a wave of water that soaks and shoves |
+| **Avalanche** | Blizzard + Stone | 2.2 | - | Snow and rock come down together |
+| **Black Sun** | Nova + Void | 2.4 | 4s, r180, Void | The radiance inverts into a dark star that devours what it lights |
+| **Judgement** | Nova + Shock | 2.2 | - | A bolt from above, then every holy-marked body nearby is struck too |
+| **Blood Altar** | Hallow + Blood | 1.9 | 5s, r160, Holy | Blood on hallowed ground: an altar that wounds them and feeds you |
+| **Communion** | Chrism + Blood | 1.9 | - | Holy water and blood: every state is scoured and you are mended |
+| **Haemolysis** | Hemo + Acid | 2.1 | - | The blood boils away from the inside |
+| **Heartstop** | Clot + Void | 2.4 | - | The clot is pulled into the heart: the target stops dead |
+| **Accretion** | Rift + Fire | 2.2 | 4s, r200, Fire | Fire falls into the rift and spins into a burning disk |
+| **Unmaking** | Voidstuff + Holy | 2.2 | - | Light meets matter that has forgotten itself: it is erased |
+| **Fossilize** | Voidstuff + Stone | 2.2 | - | The fading body sets into stone |
+| **Corona** | Eclipse + Fire | 2.2 | - | A ring of fire flares around the eclipse |
+
+Signature cataclysms (tier 4):
+
+| Cataclysm | Field + element | x | What it does |
+|---|---|---|---|
+| **Chemical Firestorm** | Acid Deluge + Fire | 3.6 | The acid rain catches: a corroding firestorm over the whole field |
+| **Supercell** | Storm Cloud + Wet | 3.5 | The cloud drinks the water and becomes a supercell: everything soaked, everything struck |
+| **Eye of the Storm** | Storm Cloud + Void | 3.6 | The storm folds around a hole: dragged into the eye and struck there |
+| **Meteor Hail** | Hailstorm + Stone | 3.4 | The hail turns to stone and falls like meteors |
+| **Polar Vortex** | Hailstorm + Gale | 3.2 | The hail spins into a freezing vortex that drags everything in |
+| **Methane Bloom** | Permafrost + Fire | 3.5 | Thawed ground releases its gas, and the fire finds it |
+| **Sinkhole** | Quicksand + Stone | 3.4 | The ground gives way: everything falls in and is buried |
+| **Pulsar** | Ball Lightning + Void | 3.6 | The ball collapses into a spinning star that whips lightning around the room |
+| **Hypercane** | Hurricane + Fire | 3.5 | Heat feeds the hurricane until it tears itself apart |
+| **Perfect Storm** | Hurricane + Shock | 3.8 | Every soaked body in the storm is struck at once |
+| **Conflagration** | Wildfire + Oil | 3.6 | Fuel on a running fire: the whole field goes up |
+| **Maelstrom** | Galvanic Sea + Void | 3.8 | The charged sea drains into a hole, dragging and dissolving everything |
+| **Phreatic Blast** | Eruption + Wet | 3.6 | Water meets the eruption: a steam explosion that levels the field |
+| **Obsidian Rain** | Eruption + Ice | 3.4 | The eruption glasses in the air and rains black blades |
+| **Molten Glass** | Glass Storm + Fire | 3.4 | The shards melt mid-flight and stick, burning |
+| **Black Tornado** | Pitch Fire + Gale | 3.5 | The burning tar is torn up into a black tornado |
+| **Hellmouth** | Firewhirl + Void | 3.8 | The fire tornado bores down into the void, and the void opens |
+| **Sacrament** | Censer + Blood | 3.0 | Blood in the incense: a rite that scours them and restores you |
+| **Great Fire** | Black Death + Fire | 3.4 | The plague is burned out, and the city with it |
+| **Extinction** | Black Death + Void | 3.4 | The plague forgets its hosts, and they forget themselves |
+| **Live Water** | Thaw Flood + Shock | 3.6 | The flood is electrified: every body standing in it is struck |
+| **Flash Freeze** | Thaw Flood + Ice | 3.2 | The flood freezes in an instant, with everything in it |
+| **Syzygy** | Black Sun + Holy | 4.0 | Light and dark sun align: one blinding, room-wide detonation |
+| **Blood Moon** | Blood Altar + Void | 3.4 | The altar darkens: it drinks from everyone in reach and gives it to you |
+| **Quasar** | Accretion + Holy | 4.0 | The disk ignites into a quasar: everything is pulled into the beam |
+
+Integration notes: `Fusions.compound_for(reaction)`, `fusion(compound, element, origin)`,
+`cataclysm(field, element)`, `prepared_actions(entry, patch_radius)` (resolves the "-1 =
+this patch's radius x1.25" convention used by Firedamp, Censer, Plague Pyre and Haemolysis,
+and applies the caps), `can_produce(tier, context)`, `repeat_mult(n)`, `shield_cracks(tier)`,
+`all_fusion_names()` and `all_cataclysm_names()` for the Journal, `validate()` for a test.
+Fields reuse Cloud (element = payload) tagged with the fusion name; in patch and field
+contexts `heal_source` runs once, like other area actions.
+
 ### Pressure gauge (now: vent charge)
 - One gauge per player, from **cold (-100)** through **neutral (0)** to **hot (+100)**.
   Fire and Shock guns push hot, Wet and Ice push cold, it drifts back toward neutral.

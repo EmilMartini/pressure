@@ -614,7 +614,7 @@ func nearest_enemy(max_range: float, prefer_elite: bool = false) -> Node2D:
     var rm := Room.here
     var walls := rm != null and is_instance_valid(rm) and rm.has_walls
     var near: Array = []
-    for e in get_tree().get_nodes_in_group("enemies"):
+    for e in EnemyGrid.nodes(get_tree(), &"enemies"):   # cached: each gun asks every tick
         if not is_instance_valid(e) or e.is_queued_for_deletion() or e.emerge > 0.0:
             continue
         var d: float = e.global_position.distance_squared_to(global_position)

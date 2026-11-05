@@ -22,6 +22,8 @@ general/default_playback_type.web=0
 
 [autoload]
 
+Perf="*res://scripts/perf.gd"
+
 Elements="*res://scripts/elements.gd"
 Progress="*res://scripts/progress.gd"
 Guns="*res://scripts/gun_library.gd"

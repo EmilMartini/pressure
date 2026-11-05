@@ -22,11 +22,11 @@ extends Node2D
 ##   - Surges: at most MAX_SURGE (256) tendrils live, one cell move each per step.
 ##   - Settled liquids, ice and blood are not stepped: a 1 Hz sweep over the list of non-empty
 ##     cells ages them (evaporate, dry, melt) and compacts that list.
-##   - Drawing (12 Hz at most, only after a change, fire/charge flicker or a moving glint):
-##     the normal layer walks the non-empty list, 1-3 rects per cell (~600-1000 rects for the
-##     load above); the additive glow layer walks the same list and draws only hot cells
-##     (fire, charge, embers, acid, steam), 1-2 rects each. Char marks never expire and live
-##     in their own list on a static layer, redrawn at most twice a second when new char lands.
+##   - Drawing is on the GPU (see Drawing): one RGBA8 texel per cell in a data texture and two
+##     shaded quads over the room (normal, additive glow). The CPU rewrites only the texels of
+##     cells that changed (a dirty list, flushed once per step) and sets two uniforms when the
+##     picture should move on (flicker, glints, drift): no per-cell draw calls, so settled
+##     pools, dry blood and char marks (which never expire) cost nothing per frame.
 ##   - Fx out: FX_CAP (24) particles per step from all cells together (embers at 1 per 3
 ##     burning cells, smoke, steam puffs <= 3 a step, sparks, bubbles, glints, motes).
 ##   - Fx in: Fx caps particle landings at 40 drop()/heat_at() stamps a frame (one cell each).
@@ -78,8 +78,6 @@ var amt := PackedByteArray()
 var life := PackedByteArray()
 var _flag := PackedByteArray()
 var _char := PackedByteArray()     # permanent scorch level 0..3 under everything
-var _char_list := PackedInt32Array()
-var _char_dirty := false
 var _queue := PackedInt32Array()   # active cells, FIFO; _head is the next to step
 var _head := 0
 var _drawn := PackedInt32Array()   # every cell that may be non-empty
@@ -105,21 +103,20 @@ var emit_scale := 1.0
 var _cols := PackedColorArray()
 var _fire_cols := PackedColorArray()
 var _glow: GlowLayer
-var _char_layer: CharLayer
+var _tdata := PackedByteArray()    # the data texture's bytes, 4 per cell (see Drawing)
+var _tmark := PackedByteArray()    # 1 while a cell waits in _tlist
+var _tlist := PackedInt32Array()   # cells whose texel must be rewritten
+var _timg: Image
+var _ttex: ImageTexture
+var _draw_rng := RandomNumberGenerator.new()
 
 
-## Additive child: fire, charge, embers, acid and steam cores as soft 2x squares for bloom.
+## Additive child: fire, charge, embers, acid and steam cores as soft 2x squares for bloom
+## (one quad, see Drawing).
 class GlowLayer extends Node2D:
     var mats: Materials
     func _draw() -> void:
-        mats._draw_glow(self)
-
-
-## Static child under the materials: char marks that never expire.
-class CharLayer extends Node2D:
-    var mats: Materials
-    func _draw() -> void:
-        mats._draw_char(self)
+        draw_rect(mats._quad_rect(), Color.WHITE)
 
 
 func _init(room_rect: Rect2 = Rect2(-560, -360, 1120, 720)) -> void:
@@ -150,15 +147,14 @@ func _init(room_rect: Rect2 = Rect2(-560, -360, 1120, 720)) -> void:
     _cols[DRY_BLOOD] = Color(Element.COLORS[Element.Kind.BLOOD].darkened(0.68), 0.5)
     _cols[TOXIC] = Color(Element.COLORS[Element.Kind.WET].lerp(Element.COLORS[Element.Kind.POISON], 0.65), 0.5)
     _fire_cols = PackedColorArray([Color(1.0, 0.85, 0.35, 0.62), Color(1.0, 0.48, 0.14, 0.6), Color(0.78, 0.16, 0.06, 0.56)])
-    _char_layer = CharLayer.new()
-    _char_layer.mats = self
-    _char_layer.show_behind_parent = true
-    add_child(_char_layer)
+    _tdata.resize(_n * 4)
+    _tmark.resize(_n)
+    _timg = Image.create_from_data(_w, _h, false, Image.FORMAT_RGBA8, _tdata)
+    _ttex = ImageTexture.create_from_image(_timg)
+    material = _make_draw_material(false)
     _glow = GlowLayer.new()
     _glow.mats = self
-    var add := CanvasItemMaterial.new()
-    add.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
-    _glow.material = add
+    _glow.material = _make_draw_material(true)
     add_child(_glow)
     clear()
 
@@ -185,8 +181,11 @@ func clear() -> void:
     life.fill(0)
     _flag.fill(0)
     _char.fill(0)
-    _char_list = PackedInt32Array()
-    _char_dirty = true
+    _tdata.fill(0)
+    _tmark.fill(0)
+    _tlist = PackedInt32Array()
+    _timg.set_data(_w, _h, false, Image.FORMAT_RGBA8, _tdata)
+    _ttex.update(_timg)
     _queue = PackedInt32Array()
     _head = 0
     _drawn = PackedInt32Array()
@@ -312,6 +311,7 @@ func fill_rect(kind: int, world_rect: Rect2, amount: int, life_s: int = -1) -> v
             if m == WATER and (c == WATER or c == TOXIC):
                 amt[i] = maxi(int(amt[i]), a)
                 life[i] = maxi(int(life[i]), l)
+                _touch(i)
             elif _open(c):
                 _put(i, m, a, l)
     _dirty = true
@@ -351,6 +351,7 @@ func lay_still(kind: int, idx: PackedInt32Array, from: int, count: int, amount: 
             life[i] = 255
             if (_flag[i] & F_STILL) == 0 and (_flag[i] & F_DRAWN) != 0:
                 _flag[i] = _flag[i] | F_STILL
+                _touch(i)
                 _dirty = true
         elif c == TOXIC and m == WATER:
             life[i] = 255
@@ -359,6 +360,7 @@ func lay_still(kind: int, idx: PackedInt32Array, from: int, count: int, amount: 
             amt[i] = a
             life[i] = 255
             _flag[i] = _flag[i] | F_STILL
+            _touch(i)
             if (_flag[i] & F_DRAWN) != 0:
                 _dirty = true   # it was drawn as something else a moment ago
 
@@ -411,6 +413,9 @@ func _put(i: int, m: int, a: int, l: int) -> void:
     if m != NONE and (_flag[i] & F_DRAWN) == 0:
         _flag[i] = _flag[i] | F_DRAWN
         _drawn.append(i)
+    if m == WATER or m == TOXIC or m == OIL:
+        _glinty = true
+    _touch(i)
     _dirty = true
 
 
@@ -483,14 +488,13 @@ func _ignite_cell(i: int) -> void:
 func _char_mark(i: int, level: int) -> void:
     if int(_char[i]) >= level:
         return
-    if _char[i] == 0:
-        _char_list.append(i)
     _char[i] = level
-    _char_dirty = true
+    _touch(i)
 
 
 func _stamp_cell(kind: int, i: int, a: int, force: bool, lay: bool) -> void:
     var m := int(mat[i])
+    _touch(i)
     match kind:
         Element.Kind.WET:
             if m == WATER or m == TOXIC:
@@ -592,6 +596,7 @@ func _zap_cell(i: int) -> void:
         _put(i, CHARGED, amt[i], CHARGE_TICKS)
     else:
         _flag[i] = (_flag[i] | F_ZAP) & ~F_STILL
+        _touch(i)
         if (_flag[i] & F_DRAWN) == 0:
             _flag[i] = _flag[i] | F_DRAWN
             _drawn.append(i)   # still ice joins the draw list to strobe
@@ -689,6 +694,7 @@ func _surge_into(j: int, m: int, a: int) -> bool:
     var mj := int(mat[j])
     if mj == m:
         amt[j] = mini(255, int(amt[j]) + a / 2)
+        _touch(j)
     elif _open(mj) or mj == STEAM:
         _put(j, m, a, _life_of(m))
     else:
@@ -790,17 +796,16 @@ func _step() -> void:
         _sweep()
     if _dirty or _flicker or (_glinty and _step_n % 2 == 0):
         _dirty = false
-        queue_redraw()
-        _glow.queue_redraw()
-    if _char_dirty and _step_n % 6 == 0:
-        _char_dirty = false
-        _char_layer.queue_redraw()
+        _redraw_uniforms()
+    if not _tlist.is_empty():
+        _flush_texels()
 
 
 func _step_fire(i: int) -> void:
     _flicker = true
     if (_flag[i] & F_FRONT) != 0:
         _flag[i] = _flag[i] & ~F_FRONT   # the front moves on to the cells it lit
+        _touch(i)
     var doused := false
     for d in 4:
         var j := _nb(i, d)
@@ -817,6 +822,7 @@ func _step_fire(i: int) -> void:
                 _wake(j)
             else:
                 amt[j] = left
+                _touch(j)
         elif m == ICE:
             if randi() % 3 == 0:
                 _put(j, WATER, 48, 4)
@@ -889,6 +895,7 @@ func _step_liquid(i: int, m: int, min_amt: int, tries: int, slosh: bool) -> void
             if diff > 16:
                 var g := diff / 2
                 amt[j] = int(amt[j]) + g
+                _touch(j)
                 a -= g
                 _wake(j)
                 moved += 1
@@ -899,9 +906,11 @@ func _step_liquid(i: int, m: int, min_amt: int, tries: int, slosh: bool) -> void
         if s >= 0 and int(mat[s]) == m:
             var dv := randi_range(-6, 6)
             amt[s] = clampi(int(amt[s]) + dv, 8, 255)
+            _touch(s)
             a = clampi(a - dv, 8, 255)
     amt[i] = a
     if moved > 0:
+        _touch(i)
         _dirty = true
         if a > min_amt:
             _wake(i)
@@ -930,6 +939,7 @@ func _step_acid(i: int) -> void:
                 _put(j, NONE, 0, 0)
             else:
                 amt[j] = wl
+                _touch(j)
             if randi() % 3 == 0 and _fx_ok(1):
                 _fx.bubble(_cell_world(j))
     if l <= 0 or a <= 8:
@@ -937,6 +947,7 @@ func _step_acid(i: int) -> void:
         return
     life[i] = l
     amt[i] = a
+    _touch(i)
     if randi() % 6 == 0 and _fx_ok(1):
         _fx.bubble(_cell_world(i))
     _step_liquid(i, ACID, ACID_SPREAD, 2, false)
@@ -951,6 +962,7 @@ func _step_poison(i: int) -> void:
         _put(i, NONE, 0, 0)
         return
     life[i] = l
+    _touch(i)
     _dirty = true   # gas drifts every step
     if randi() % 10 == 0 and _fx_ok(1):
         _fx.mote(Element.Kind.POISON, _cell_world(i))
@@ -982,6 +994,7 @@ func _step_steam(i: int) -> void:
         _put(i, NONE, 0, 0)
         return
     life[i] = l
+    _touch(i)
     _dirty = true
     if randi() % 6 == 0 and _fx_ok(1):
         _fx.steam(_cell_world(i), 1)
@@ -1030,6 +1043,7 @@ func _step_ice(i: int) -> void:
             _spark(i)
         if randi() % 3 == 0:
             _flag[i] = _flag[i] & ~F_ZAP
+            _touch(i)
             _dirty = true
         else:
             left = true
@@ -1044,6 +1058,7 @@ func _step_ash(i: int) -> void:
         _put(i, NONE, 0, 0)
         return
     life[i] = l
+    _touch(i)
     _flicker = true
     if randi() % 10 == 0 and _fx_ok(1):
         _fx.smoke(_cell_world(i), 1, 3.0)
@@ -1054,6 +1069,7 @@ func _step_ash(i: int) -> void:
 ## list, and let obstacles at the doors feel what is on the floor beside them.
 func _sweep() -> void:
     var keep := PackedInt32Array()
+    var glinty := false
     for i: int in _drawn:
         var m := int(mat[i])
         if m == NONE:
@@ -1064,6 +1080,7 @@ func _sweep() -> void:
             if l > 0:
                 life[i] = l
                 if l < 8 and m == DRY_BLOOD:
+                    _touch(i)   # fading out
                     _dirty = true
                 if m == TOXIC and randi() % 8 == 0 and _fx_ok(1):
                     _fx.mote(Element.Kind.POISON, _cell_world(i))
@@ -1078,8 +1095,12 @@ func _sweep() -> void:
                 if mat[i] == NONE:
                     _flag[i] = _flag[i] & ~F_DRAWN
                     continue
+        var km := int(mat[i])
+        if (km == WATER or km == TOXIC or km == OIL) and (_flag[i] & F_STILL) == 0:
+            glinty = true
         keep.append(i)
     _drawn = keep
+    _glinty = glinty
     _touch_obstacles()
 
 
@@ -1133,153 +1154,326 @@ func _spark(i: int) -> void:
 
 
 # --- Drawing -----------------------------------------------------------------
+#
+# The grid is drawn by the GPU: one RGBA8 texel per cell (r = material | 16 fire front |
+# 32 zapped ice | 64 still, g = amount, b = life, a = char level) in a data texture, and two
+# quads over the room: the normal layer (this node, premultiplied blend) and the additive
+# glow layer (GlowLayer). Their fragment shaders read the texel under each world pixel (and
+# the neighbours that reach into it) and paint exactly what the old per-cell rects did: char
+# marks under everything, fire flicker and the white-hot front, ragged liquid edges, water
+# glints, oil sheen, acid sparkles, the charged strobe, drifting gas, dry blood fading out;
+# the glow layer adds the 12 px soft squares of fire, charge, acid and zapped ice and the
+# cores of embers and steam. The CPU only rewrites the texels of cells that changed
+# (`_touch` -> `_flush_texels`, once per step) and sets two uniforms when the old code would
+# have redrawn: `t` (the step, for flicker and glints) and `seed` (fire flicker).
+
+const MAT_SHADER := """
+shader_type canvas_item;
+render_mode {BLEND};
+uniform sampler2D data : filter_nearest;
+uniform int t = 0;
+uniform float seed = 0.0;
+uniform vec2 origin = vec2(0.0);
+uniform ivec2 grid = ivec2(1, 1);
+const int CELL = {CELL};
+const vec4 COLS[{N}] = {COLS};
+const vec4 FIRE_COLS[3] = {FIRE_COLS};
+varying vec2 lp;
+
+void vertex() {
+    lp = VERTEX;
+}
+
+bool inside(ivec2 c) {
+    return c.x >= 0 && c.y >= 0 && c.x < grid.x && c.y < grid.y;
+}
+
+// x: material | 16 front | 32 zap | 64 still, y: amount, z: life, w: char level.
+ivec4 cell_at(ivec2 c) {
+    if (!inside(c)) {
+        return ivec4(0);
+    }
+    return ivec4(texelFetch(data, c, 0) * 255.0 + 0.5);
+}
+
+int hash16(ivec2 c) {
+    return int((uint(c.y * grid.x + c.x) * 73856093u) & 65535u);
+}
+
+bool in_rect(ivec2 p, int x, int y, int w, int h) {
+    return p.x >= x && p.y >= y && p.x < x + w && p.y < y + h;
+}
+
+vec4 over(vec4 acc, vec4 c) {
+    return vec4(c.rgb * c.a + acc.rgb * (1.0 - c.a), c.a + acc.a * (1.0 - c.a));
+}
+
+bool liquid(int m) {
+    return m == {WATER} || m == {OIL} || m == {ACID} || m == {BLOOD} || m == {TOXIC};
+}
+
+// A gas cell's drifting square and its lighter centre, at `q` = pixel relative to that cell.
+vec4 gas(vec4 acc, ivec2 c, ivec4 d, ivec2 q) {
+    int m = d.x & 15;
+    int h = hash16(c);
+    ivec2 r = q - ivec2(((h >> 3) + t / 3) % 3 - 1, ((h >> 5) + t / 4) % 3 - 1);
+    if (in_rect(r, 0, 0, CELL, CELL)) {
+        vec4 col = COLS[m];
+        float fade = m == {POISON} ? min(1.0, float(d.z) / 12.0) : min(1.0, float(d.z) / 3.0);
+        col.a *= fade * clamp(float(d.y) / 64.0, 0.5, 1.0);
+        acc = over(acc, col);
+        if (in_rect(r, 2, 2, 2, 2)) {
+            acc = over(acc, vec4(col.rgb + (1.0 - col.rgb) * 0.45, col.a * 1.2));
+        }
+    }
+    return acc;
+}
+
+// A cell as four 3 px quadrants with one or two missing (edge) or a full square.
+vec4 ragged(vec4 acc, ivec2 sp, int h, vec4 c, bool edge) {
+    if (!edge) {
+        return over(acc, c);
+    }
+    int q = (sp.x >= {HALF} ? 1 : 0) + (sp.y >= {HALF} ? 2 : 0);
+    int skip2 = (h & 768) == 0 ? (h >> 4) & 3 : -1;
+    if (q != (h & 3) && q != skip2) {
+        acc = over(acc, c);
+    }
+    return acc;
+}
+
+void fragment() {
+    ivec2 px = ivec2(floor(lp - origin));
+    ivec2 c = ivec2(floor(vec2(px) / float(CELL)));
+    ivec2 sp = px - c * CELL;
+    ivec4 d = cell_at(c);
+#ifdef GLOW
+    // Additive: soft 12 px squares reach 3 px into the neighbours on this pixel's side.
+    vec3 sum = vec3(0.0);
+    ivec2 side = ivec2(sp.x < {HALF} ? -1 : 1, sp.y < {HALF} ? -1 : 1);
+    for (int k = 0; k < 4; k++) {
+        ivec2 n = c + ivec2((k & 1) * side.x, (k >> 1) * side.y);
+        ivec4 nd = k == 0 ? d : cell_at(n);
+        int m = nd.x & 15;
+        if (m == 0 || (nd.x & 64) != 0) {
+            continue;
+        }
+        ivec2 q = px - n * CELL;
+        bool own = k == 0;
+        int h = hash16(n);
+        if (m == {FIRE}) {
+            if ((nd.x & 16) != 0) {
+                sum += vec3(1.0, 0.72, 0.32) * 0.24;
+                if (own && in_rect(q, 2, 2, 2, 2)) {
+                    sum += vec3(1.0, 1.0, 0.9);
+                }
+            } else {
+                sum += vec3(1.0, 0.42, 0.1) * (0.1 + 0.05 * float((h + t * 5) % 3));
+            }
+        } else if (m == {CHARGED}) {
+            if ((t + h) % 2 == 0) {
+                sum += vec3(0.9, 0.9, 0.4) * 0.15;
+            }
+        } else if (m == {ASH}) {
+            if (own) {
+                sum += vec3(0.6, 0.15, 0.03) * 0.18 * clamp(float(nd.z) / {ASH_TICKS}.0, 0.0, 1.0);
+            }
+        } else if (m == {STEAM}) {
+            if (own && nd.y > 100) {
+                sum += vec3(0.45, 0.47, 0.5) * 0.07;
+            }
+        } else if (m == {ACID}) {
+            if ((h & 3) == 0) {
+                sum += vec3(0.4, 0.62, 0.1) * 0.08;
+            }
+        } else if (m == {ICE}) {
+            if ((nd.x & 32) != 0) {
+                sum += vec3(0.8, 0.9, 1.0) * 0.16;
+            }
+        }
+    }
+    if (sum.r + sum.g + sum.b <= 0.0) {
+        discard;
+    }
+    COLOR = vec4(sum, 1.0);
+#else
+    vec4 acc = vec4(0.0);
+    int h = hash16(c);
+    // Char marks: near-black dots, a darker patch where oil burned hard. Under everything.
+    if (d.w > 0) {
+        vec4 cc = vec4(0.03, 0.025, 0.02, 0.3 + 0.12 * float(d.w));
+        if (d.w >= 3) {
+            acc = over(acc, vec4(0.03, 0.025, 0.02, 0.26));
+        }
+        if (in_rect(sp, h % 4, (h >> 2) % 4, 2, 2)) {
+            acc = over(acc, cc);
+        }
+        if (d.w >= 2 && in_rect(sp, (h >> 4) % 5, (h >> 7) % 5, 1, 1)) {
+            acc = over(acc, cc);
+        }
+    }
+    int m = d.x & 15;
+    if (m != 0 && (d.x & 64) == 0) {
+        vec4 col = COLS[m];
+        if (m == {FIRE}) {
+            if ((d.x & 16) != 0) {
+                // The leading edge: hot white-yellow with a white core.
+                acc = over(acc, vec4(1.0, 0.93, 0.62, 0.75));
+                if (in_rect(sp, 2, 2, 2, 2)) {
+                    acc = over(acc, vec4(1.0, 1.0, 1.0, 0.95));
+                }
+            } else {
+                float r = fract(sin(dot(vec2(c) + vec2(seed, seed * 0.37), vec2(12.9898, 78.233))) * 43758.5453);
+                int k = min(2, int(r * 3.0));
+                acc = over(acc, FIRE_COLS[k]);
+                if (k == 0 && (h & 1) == 0 && in_rect(sp, 2, 2, 2, 2)) {
+                    acc = over(acc, vec4(1.0, 0.95, 0.6, 0.65));
+                }
+            }
+        } else if (m == {ASH}) {
+            acc = over(acc, col);
+            if ((h + t) % 3 != 0 && in_rect(sp, h % 4, (h >> 2) % 4, 2, 2)) {
+                acc = over(acc, vec4(1.0, 0.42, 0.12, 0.55 * clamp(float(d.z) / {ASH_TICKS}.0, 0.0, 1.0)));
+            }
+        } else if (m == {POISON} || m == {STEAM}) {
+            acc = gas(acc, c, d, sp);
+        } else if (m == {CHARGED}) {
+            acc = over(acc, (t + h) % 3 == 0 ? vec4(1.0, 1.0, 1.0, 0.7) : col);
+        } else if (m == {ICE}) {
+            if ((d.x & 32) != 0) {
+                acc = over(acc, (t + h) % 2 == 0 ? vec4(1.0, 1.0, 0.8, 0.75) : col);
+            } else {
+                acc = over(acc, col);
+                if ((h & 7) == 0 && in_rect(sp, 2, 1, 2, 2)) {
+                    acc = over(acc, vec4(1.0, 1.0, 1.0, 0.8));
+                }
+            }
+        } else if (m == {DRY_BLOOD}) {
+            col.a *= min(1.0, float(d.z) / 8.0);
+            acc = ragged(acc, sp, h, col, d.y < 200 || (h & 3) == 0);
+        } else {
+            // Liquids: inner cells full, edge and thin cells drop quadrants by a noise mask.
+            bool edge = d.y < 24;
+            if (!edge) {
+                for (int k = 0; k < 4; k++) {
+                    ivec2 n = c + ivec2(k == 0 ? -1 : (k == 1 ? 1 : 0), k == 2 ? -1 : (k == 3 ? 1 : 0));
+                    if (!inside(n) || !liquid(cell_at(n).x & 15)) {
+                        edge = true;
+                        break;
+                    }
+                }
+            }
+            if (m == {BLOOD} && d.y < 40) {
+                col.rgb *= 0.8;   // thin blood darkens as it soaks in
+            }
+            acc = ragged(acc, sp, h, col, edge);
+            if (m == {WATER} || m == {TOXIC}) {
+                if ((c.x + c.y * 2 + t) % 19 == 0 && in_rect(sp, 1 + (h & 1) * 2, 1, 2, 1)) {
+                    acc = over(acc, vec4(1.0, 1.0, 1.0, 0.6));
+                }
+            } else if (m == {OIL}) {
+                if ((c.x * 3 + c.y * 5 + t / 2) % 23 == 0) {
+                    if (in_rect(sp, 1 + (h & 3), 1, 1, 1)) {
+                        acc = over(acc, vec4(0.8, 0.7, 0.6, 0.7));
+                    }
+                } else if ((h & 31) == 0 && in_rect(sp, {HALF}, {HALF}, 1, 1)) {
+                    acc = over(acc, vec4(0.55, 0.47, 0.42, 0.6));
+                }
+            } else if (m == {ACID}) {
+                if ((h + t) % 11 == 0 && in_rect(sp, h % 5, (h >> 3) % 5, 1, 1)) {
+                    acc = over(acc, vec4(0.95, 1.0, 0.7, 0.8));
+                }
+            }
+        }
+    }
+    // Gas of the neighbours drifts a pixel into this cell's border.
+    if (sp.x == 0 || sp.y == 0 || sp.x == CELL - 1 || sp.y == CELL - 1) {
+        for (int k = 0; k < 9; k++) {
+            ivec2 o = ivec2(k % 3 - 1, k / 3 - 1);
+            if ((o.x == 0 && o.y == 0) || (o.x == -1 && sp.x != 0) || (o.x == 1 && sp.x != CELL - 1)
+                    || (o.y == -1 && sp.y != 0) || (o.y == 1 && sp.y != CELL - 1)) {
+                continue;
+            }
+            ivec2 n = c + o;
+            ivec4 nd = cell_at(n);
+            int nm = nd.x & 15;
+            if ((nm == {POISON} || nm == {STEAM}) && (nd.x & 64) == 0) {
+                acc = gas(acc, n, nd, px - n * CELL);
+            }
+        }
+    }
+    if (acc.a <= 0.0) {
+        discard;
+    }
+    COLOR = acc;
+#endif
+}
+"""
 
 
-func _is_liquid(m: int) -> bool:
-    return m == WATER or m == OIL or m == ACID or m == BLOOD or m == TOXIC
+func _shader_code(glow: bool) -> String:
+    var cols: Array = []
+    for c in _cols:
+        cols.append("vec4(%f, %f, %f, %f)" % [c.r, c.g, c.b, c.a])
+    var fire: Array = []
+    for c in _fire_cols:
+        fire.append("vec4(%f, %f, %f, %f)" % [c.r, c.g, c.b, c.a])
+    var code := MAT_SHADER.format({
+        "BLEND": "blend_add" if glow else "blend_premul_alpha",
+        "CELL": CELL, "HALF": HALF, "N": MAT_COUNT, "ASH_TICKS": ASH_TICKS,
+        "COLS": "{ %s }" % ", ".join(cols), "FIRE_COLS": "{ %s }" % ", ".join(fire),
+        "WATER": WATER, "OIL": OIL, "FIRE": FIRE, "ICE": ICE, "POISON": POISON, "ACID": ACID,
+        "BLOOD": BLOOD, "STEAM": STEAM, "CHARGED": CHARGED, "ASH": ASH, "DRY_BLOOD": DRY_BLOOD, "TOXIC": TOXIC,
+    })
+    if glow:
+        code = code.replace("render_mode blend_add;", "render_mode blend_add;\n#define GLOW")
+    return code
+
+
+func _make_draw_material(glow: bool) -> ShaderMaterial:
+    var sh := Shader.new()
+    sh.code = _shader_code(glow)
+    var m := ShaderMaterial.new()
+    m.shader = sh
+    m.set_shader_parameter("data", _ttex)
+    m.set_shader_parameter("origin", _origin)
+    m.set_shader_parameter("grid", Vector2i(_w, _h))
+    return m
+
+
+## The room's grid plus a half-cell margin (gas drifts and glow squares reach past the rim).
+func _quad_rect() -> Rect2:
+    return Rect2(_origin - Vector2(HALF, HALF), Vector2(_w * CELL + CELL, _h * CELL + CELL))
+
+
+## A cell's texel needs rewriting before the next flush.
+func _touch(i: int) -> void:
+    if _tmark[i] == 0:
+        _tmark[i] = 1
+        _tlist.append(i)
+
+
+## Rewrites the texels of the touched cells and uploads the data texture (once per step).
+func _flush_texels() -> void:
+    for i: int in _tlist:
+        _tmark[i] = 0
+        var o := i * 4
+        _tdata[o] = int(mat[i]) | ((int(_flag[i]) & (F_FRONT | F_ZAP | F_STILL)) << 2)
+        _tdata[o + 1] = amt[i]
+        _tdata[o + 2] = life[i]
+        _tdata[o + 3] = _char[i]
+    _tlist.clear()
+    _timg.set_data(_w, _h, false, Image.FORMAT_RGBA8, _tdata)
+    _ttex.update(_timg)
+
+
+## The old redraw moment: flicker, glints and drift advance to this step.
+func _redraw_uniforms() -> void:
+    var sd := _draw_rng.randf() * 997.0   # its own generator: drawing never shifts gameplay rolls
+    for m: ShaderMaterial in [material as ShaderMaterial, _glow.material as ShaderMaterial]:
+        m.set_shader_parameter(&"t", _step_n)
+        m.set_shader_parameter(&"seed", sd)
 
 
 func _draw() -> void:
-    var t := _step_n
-    var white := Color(1, 1, 1, 0.7)
-    var glints := 0
-    var cs := float(CELL)
-    var q := float(HALF)
-    for i: int in _drawn:
-        var m := int(mat[i])
-        if m == NONE or (_flag[i] & F_STILL) != 0:
-            continue
-        var cx := i % _w
-        var cy := i / _w
-        var x := _origin.x + float(cx * CELL)
-        var y := _origin.y + float(cy * CELL)
-        var h := (i * 73856093) & 0xFFFF
-        var c: Color = _cols[m]
-        match m:
-            FIRE:
-                if (_flag[i] & F_FRONT) != 0:
-                    # The leading edge: hot white-yellow with a white core.
-                    draw_rect(Rect2(x, y, cs, cs), Color(1.0, 0.93, 0.62, 0.75))
-                    draw_rect(Rect2(x + 2.0, y + 2.0, 2.0, 2.0), Color(1, 1, 1, 0.95))
-                else:
-                    var k := (h + t * 7 + randi()) % 3
-                    draw_rect(Rect2(x, y, cs, cs), _fire_cols[k])
-                    if k == 0 and (h & 1) == 0:
-                        draw_rect(Rect2(x + 2.0, y + 2.0, 2.0, 2.0), Color(1.0, 0.95, 0.6, 0.65))
-            ASH:
-                var heat := clampf(float(life[i]) / float(ASH_TICKS), 0.0, 1.0)
-                draw_rect(Rect2(x, y, cs, cs), c)
-                if (h + t) % 3 != 0:
-                    draw_rect(Rect2(x + float(h % 4), y + float((h >> 2) % 4), 2.0, 2.0), Color(1.0, 0.42, 0.12, 0.55 * heat))
-            POISON, STEAM:
-                # Soft drifting squares with a lighter centre.
-                var fade := minf(1.0, float(life[i]) / 12.0) if m == POISON else minf(1.0, float(life[i]) / 3.0)
-                c.a *= fade * clampf(float(amt[i]) / 64.0, 0.5, 1.0)
-                var ox := float(((h >> 3) + t / 3) % 3) - 1.0
-                var oy := float(((h >> 5) + t / 4) % 3) - 1.0
-                draw_rect(Rect2(x + ox, y + oy, cs, cs), c)
-                draw_rect(Rect2(x + ox + 2.0, y + oy + 2.0, 2.0, 2.0), Color(c.lightened(0.45), c.a * 1.2))
-            CHARGED:
-                draw_rect(Rect2(x, y, cs, cs), white if (t + h) % 3 == 0 else c)
-            ICE:
-                if (_flag[i] & F_ZAP) != 0:
-                    draw_rect(Rect2(x, y, cs, cs), Color(1.0, 1.0, 0.8, 0.75) if (t + h) % 2 == 0 else c)
-                else:
-                    draw_rect(Rect2(x, y, cs, cs), c)
-                    if (h & 7) == 0:
-                        draw_rect(Rect2(x + 2.0, y + 1.0, 2.0, 2.0), Color(1, 1, 1, 0.8))
-            DRY_BLOOD:
-                c.a *= minf(1.0, float(life[i]) / 8.0)
-                _draw_ragged(x, y, h, c, int(amt[i]) < 200 or (h & 3) == 0)
-            _:
-                # Liquids: inner cells full, edge and thin cells drop quadrants by a noise mask.
-                var edge := int(amt[i]) < 24
-                if not edge:
-                    for d in 4:
-                        var j := _nb(i, d)
-                        if j < 0 or not _is_liquid(int(mat[j])):
-                            edge = true
-                            break
-                if m == BLOOD and int(amt[i]) < 40:
-                    c = c.darkened(0.2)   # thin blood darkens as it soaks in
-                _draw_ragged(x, y, h, c, edge)
-                match m:
-                    WATER, TOXIC:
-                        glints += 1
-                        if (cx + cy * 2 + t) % 19 == 0:
-                            draw_rect(Rect2(x + 1.0 + float(h & 1) * 2.0, y + 1.0, 2.0, 1.0), Color(1, 1, 1, 0.6))
-                    OIL:
-                        glints += 1
-                        if (cx * 3 + cy * 5 + t / 2) % 23 == 0:
-                            draw_rect(Rect2(x + 1.0 + float(h & 3), y + 1.0, 1.0, 1.0), Color(0.8, 0.7, 0.6, 0.7))
-                        elif (h & 31) == 0:
-                            draw_rect(Rect2(x + q, y + q, 1.0, 1.0), Color(0.55, 0.47, 0.42, 0.6))
-                    ACID:
-                        if (h + t) % 11 == 0:
-                            draw_rect(Rect2(x + float(h % 5), y + float((h >> 3) % 5), 1.0, 1.0), Color(0.95, 1.0, 0.7, 0.8))
-    _glinty = glints > 0
-
-
-## A cell as four 3 px quadrants with one or two missing (edge) or a full square.
-func _draw_ragged(x: float, y: float, h: int, c: Color, edge: bool) -> void:
-    if not edge:
-        draw_rect(Rect2(x, y, float(CELL), float(CELL)), c)
-        return
-    var skip := h & 3
-    var skip2 := (h >> 4) & 3 if (h & 0x300) == 0 else -1
-    for k in 4:
-        if k != skip and k != skip2:
-            draw_rect(Rect2(x + float(k & 1) * float(HALF), y + float(k >> 1) * float(HALF), float(HALF), float(HALF)), c)
-
-
-## The additive layer: hot cells as soft double-size squares so the bloom catches them.
-func _draw_glow(cv: CanvasItem) -> void:
-    var t := _step_n
-    var cs := float(CELL)
-    for i: int in _drawn:
-        var m := int(mat[i])
-        if m == NONE or m == WATER or m == OIL or m == BLOOD or m == DRY_BLOOD or m == POISON or m == TOXIC:
-            continue
-        var x := _origin.x + float((i % _w) * CELL)
-        var y := _origin.y + float((i / _w) * CELL)
-        var h := (i * 73856093) & 0xFFFF
-        match m:
-            FIRE:
-                if (_flag[i] & F_FRONT) != 0:
-                    cv.draw_rect(Rect2(x - 3.0, y - 3.0, 12.0, 12.0), Color(1.0, 0.72, 0.32, 0.24))
-                    cv.draw_rect(Rect2(x + 2.0, y + 2.0, 2.0, 2.0), Color(1.0, 1.0, 0.9, 1.0))
-                else:
-                    var a := 0.1 + 0.05 * float((h + t * 5) % 3)
-                    cv.draw_rect(Rect2(x - 3.0, y - 3.0, 12.0, 12.0), Color(1.0, 0.42, 0.1, a))
-            CHARGED:
-                if (t + h) % 2 == 0:
-                    cv.draw_rect(Rect2(x - 3.0, y - 3.0, 12.0, 12.0), Color(0.9, 0.9, 0.4, 0.15))
-            ASH:
-                var heat := clampf(float(life[i]) / float(ASH_TICKS), 0.0, 1.0)
-                cv.draw_rect(Rect2(x, y, cs, cs), Color(0.6, 0.15, 0.03, 0.18 * heat))
-            STEAM:
-                if int(amt[i]) > 100:
-                    cv.draw_rect(Rect2(x, y, cs, cs), Color(0.45, 0.47, 0.5, 0.07))
-            ACID:
-                if (h & 3) == 0:
-                    cv.draw_rect(Rect2(x - 3.0, y - 3.0, 12.0, 12.0), Color(0.4, 0.62, 0.1, 0.08))
-            ICE:
-                if (_flag[i] & F_ZAP) != 0:
-                    cv.draw_rect(Rect2(x - 3.0, y - 3.0, 12.0, 12.0), Color(0.8, 0.9, 1.0, 0.16))
-
-
-## Char marks: near-black dots, a darker patch where oil burned hard. Never expire.
-func _draw_char(cv: CanvasItem) -> void:
-    for i: int in _char_list:
-        var lv := int(_char[i])
-        if lv == 0:
-            continue
-        var x := _origin.x + float((i % _w) * CELL)
-        var y := _origin.y + float((i / _w) * CELL)
-        var h := (i * 73856093) & 0xFFFF
-        var col := Color(0.03, 0.025, 0.02, 0.3 + 0.12 * float(lv))
-        if lv >= 3:
-            cv.draw_rect(Rect2(x, y, float(CELL), float(CELL)), Color(0.03, 0.025, 0.02, 0.26))
-        cv.draw_rect(Rect2(x + float(h % 4), y + float((h >> 2) % 4), 2.0, 2.0), col)
-        if lv >= 2:
-            cv.draw_rect(Rect2(x + float((h >> 4) % 5), y + float((h >> 7) % 5), 1.0, 1.0), col)
+    draw_rect(_quad_rect(), Color.WHITE)

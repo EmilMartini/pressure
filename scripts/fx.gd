@@ -76,6 +76,8 @@ const SH_DISC := 4       # { c, r }               a dark disc with a thin violet
 const PAL_SMOKE := 13
 const PAL_STEAM := 14
 const PAL_GOLD := 15
+## Palettes at most (element ones plus snapped arbitrary colours, see _pal_of).
+const PAL_MAX := 96
 const GRAVITY := 560.0
 ## Particle landings stamped into the Materials grid per frame; the rest stay visual.
 const MAX_STAMPS := 40
@@ -117,8 +119,8 @@ var _pt := PackedFloat32Array()   # life left (<= 0 is a free slot)
 var _pl := PackedFloat32Array()   # life at spawn
 var _ps := PackedFloat32Array()   # size in world px
 var _pa := PackedFloat32Array()   # alpha (<= MAX_ALPHA)
-var _pb := PackedInt32Array()     # behaviour (B)
-var _pc := PackedInt32Array()     # palette id
+var _pb := PackedByteArray()      # behaviour (B)
+var _pc := PackedByteArray()      # palette id (< PAL_MAX)
 var _pk := PackedByteArray()      # layer: 0 normal, 1 additive
 var _head := 0                    # next slot to write
 var _cnt := 0                     # slots in the live window, oldest first, ending at _head
@@ -126,13 +128,34 @@ var _cnt := 0                     # slots in the live window, oldest first, endi
 var _pal := PackedColorArray()    # 3 colours per palette: base, core, edge
 var _pal_count := 0
 var _pal_ids: Dictionary = {}     # snapped Color -> palette id
+var _pal_dirty := true            # the palette texture needs the new rows
+# GPU side of the pixels (see PIXELS ON THE GPU): data textures, per-layer instances.
+var _vimg: Image
+var _vtex: ImageTexture
+var _fimg: Image
+var _ftex: ImageTexture
+var _bimg: Image
+var _btex: ImageTexture
+var _palimg: Image
+var _paltex: ImageTexture
+var _px_mats: Array[ShaderMaterial] = []
+var _px_mms: Array[MultiMesh] = []
+var _px_was_live := false
+var _shape_layer: ShapeLayer
 
 
 class AddLayer extends Node2D:
     var fx: Fx
     func _draw() -> void:
         fx._draw_puffs(fx._add_puffs, self)
-        fx._draw_pixels(self, 1)
+
+
+## Over the normal pixels: bolts, spikes, rays, arcs and ring outlines.
+class ShapeLayer extends Node2D:
+    var fx: Fx
+    func _draw() -> void:
+        fx._draw_shapes(self)
+        fx._draw_lines(self)
 
 
 class GroundLayer extends Node2D:
@@ -166,6 +189,14 @@ func _ready() -> void:
     _pk.resize(MAX_PIXELS)
     _pt.fill(0.0)
     _build_palettes()
+    # Draw order inside Fx (z 20): own drawing (corpses, puffs), normal pixels, shapes; then
+    # the additive layer (z 21): glow puffs, additive pixels.
+    _make_pixel_textures()
+    add_child(_make_pixel_layer(0))
+    _shape_layer = ShapeLayer.new()
+    _shape_layer.fx = self
+    add_child(_shape_layer)
+    _add.add_child(_make_pixel_layer(1))
     for key in Art.PARTICLES:
         _tex_keys[Art.PARTICLES[key]] = key
     Elements.lightning_arc.connect(_on_arc)
@@ -213,7 +244,7 @@ func _pal_of(c: Color) -> int:
     var key := _snap(c)
     if _pal_ids.has(key):
         return _pal_ids[key]
-    if _pal_count >= 96:
+    if _pal_count >= PAL_MAX:
         return 0
     _pal.append(key)
     _pal.append(key.lightened(0.45))
@@ -221,6 +252,7 @@ func _pal_of(c: Color) -> int:
     var id := _pal_count
     _pal_count += 1
     _pal_ids[key] = id
+    _pal_dirty = true
     return id
 
 
@@ -1308,7 +1340,9 @@ func _process(delta: float) -> void:
             _shapes.remove_at(i)
     _step_later(delta)
     _step_pixels(delta)
+    _upload_pixels()
     queue_redraw()
+    _shape_layer.queue_redraw()
     _add.queue_redraw()
     _ground.queue_redraw()
 
@@ -1375,6 +1409,9 @@ func _step_pixels(delta: float) -> void:
             continue
         t -= delta
         var b: int = _pb[i]
+        if b == B.STUCK or b == B.GLINT:
+            _pt[i] = t if t > 0.0 else 0.0   # resting dots and glints only age (the common case)
+            continue
         var p: Vector2 = _pp[i]
         if t <= 0.0:
             _pt[i] = 0.0
@@ -1518,9 +1555,6 @@ func _step_pixels(delta: float) -> void:
                 _pp[i] = p
                 _pt[i] = t
                 continue
-            B.STUCK, B.GLINT:
-                _pt[i] = t
-                continue
         if b != B.VOID:
             p += v * delta
         for q in npull:
@@ -1537,110 +1571,283 @@ func _step_pixels(delta: float) -> void:
 
 
 ## Draw the pixels of one layer (0 normal, 1 additive) as snapped squares.
-func _draw_pixels(canvas: CanvasItem, layer: int) -> void:
-    var cnt := _cnt
-    var s0 := _head - cnt + MAX_PIXELS
-    var flick := randi() % 7
-    var has_spark := false
-    var last_spark := Vector2.ZERO
-    for j in cnt:
-        var i := (s0 + j) % MAX_PIXELS
-        var t: float = _pt[i]
-        if t <= 0.0 or _pk[i] != layer:
-            continue
-        var b: int = _pb[i]
-        var f: float = t / _pl[i]   # 1 at birth, 0 at death
-        var s: float = _ps[i]
-        var a: float = _pa[i]
-        var step := 0               # 0 base, 1 core, 2 edge
-        if f > 0.75:
-            step = 1
-        elif f < 0.3:
-            step = 2
-        match b:
-            B.FIRE, B.EMBER:
-                if f > 0.45:
-                    step = 1 if (i + flick) % 3 == 0 else 0
-                else:
-                    step = 0 if (i + flick) % 2 == 0 else 2
-                s = maxf(1.0, s * (0.4 + 0.6 * f))
-            B.SMOKE:
-                s *= 1.0 + 0.9 * (1.0 - f)
-                step = 0 if f > 0.4 else 2
-            B.WET, B.STUCK, B.OIL, B.BLOOD, B.STONE, B.DROP:
-                step = 1 if (b == B.WET or b == B.DROP) and (i + flick) % 9 == 0 else 0
-            B.GLINT:
-                step = 1
-            B.ICE:
-                if f < 0.3:
-                    s = maxf(1.0, s * f / 0.3)
-            B.SHOCK:
-                step = 1 if (i + flick) % 3 != 0 else 0
-            B.HOLY:
-                step = 1 if f > 0.5 else (0 if f > 0.25 else 2)
-            B.ACID:
-                if f < 0.15:
-                    s += 2.0      # the bubble pops
-                    a *= 0.6
-                    step = 1
-            B.RING, B.GALE, B.WHIRL:
-                step = 0 if f > 0.4 else 2
-            B.TONGUE:
-                step = int(_po[i].y)
-                if (i + flick) % 5 == 0:
-                    step = 1 if step == 0 else 0
-                if f < 0.35:
-                    step = 2
-                s = maxf(1.0, s * (0.5 + 0.5 * f))
-            B.BLOOM:
-                step = int(_po[i].y) if f > 0.3 else 2
-                s *= 1.0 + 0.7 * (1.0 - f)
-            B.SHEEN:
-                step = 1 if (i + flick) % 11 == 0 else 0
-                a *= minf(1.0, f * 2.0)
-            B.SIZZLE:
-                step = 1 if (i + flick) % 2 == 0 else 0
-        if f < 0.3:
-            a *= 0.55
-        var c: Color = _pal[_pc[i] * 3 + step]
-        c.a = a
-        var p: Vector2 = _pp[i]
-        s = floorf(s + 0.5)
-        if b == B.SHEEN:
-            var sw := s * 3.0
-            var sh := maxf(1.0, floorf(s * 0.5))
-            canvas.draw_rect(Rect2(floorf(p.x - sw * 0.5), floorf(p.y - sh * 0.5), sw, sh), c)
-            continue
-        if b == B.GALE or b == B.WHIRL:
-            var v: Vector2 = _pv[i]
-            if b == B.WHIRL:
-                v = Vector2(-sin(v.x), cos(v.x) * 0.55) * 200.0
-            var ln := clampf(v.length() * 0.05, s, 14.0)
-            if absf(v.x) >= absf(v.y):
-                canvas.draw_rect(Rect2(floorf(p.x - ln * 0.5), floorf(p.y - s * 0.5), ln, s), c)
-            else:
-                canvas.draw_rect(Rect2(floorf(p.x - s * 0.5), floorf(p.y - ln * 0.5), s, ln), c)
-            continue
-        var x := floorf(p.x - s * 0.5)
-        var y := floorf(p.y - s * 0.5)
-        if b == B.GLINT:
-            canvas.draw_rect(Rect2(x, y, s, s), Color(1, 1, 1, minf(1.0, f * 2.0)))   # a full-bright point for the bloom
-            continue
-        canvas.draw_rect(Rect2(x, y, s, s), c)
-        if layer == 1 and f > 0.3 and s >= 3.0 and (b == B.FIRE or b == B.TONGUE or b == B.EMBER or (b == B.DROP and _pc[i] == Element.Kind.FIRE)):
-            # A hot core at full brightness (above the alpha cap) so the bloom catches it.
-            var cs := 2.0 if s >= 5.0 else 1.0
-            canvas.draw_rect(Rect2(floorf(p.x - cs * 0.5), floorf(p.y - cs * 0.5), cs, cs), Color(1.0, 0.97, 0.8, 1.0))
-        elif b == B.STUCK and _pc[i] == Element.Kind.OIL and s >= 3.0:
-            canvas.draw_rect(Rect2(x, y, 1.0, 1.0), Color(_pal[_pc[i] * 3 + 1], a))   # glossy glint
-        elif b == B.SHOCK:
-            if has_spark and p.distance_squared_to(last_spark) < 900.0:
-                var mid := (p + last_spark) * 0.5 + Vector2(randf_range(-3.0, 3.0), randf_range(-3.0, 3.0))
-                var ac := Color(_pal[_pc[i] * 3 + 1], 0.5)
-                canvas.draw_line(last_spark, mid, ac, 1.0)
-                canvas.draw_line(mid, p, ac, 1.0)
-            last_spark = p
-            has_spark = true
+## PIXELS ON THE GPU. The simulation above stays on the CPU in the packed arrays; drawing them
+## is the GPU's job. Each frame `_upload_pixels` copies the arrays as they are into three
+## small data textures (bulk byte copies, no per-pixel script): RGF rows position, velocity,
+## anchor; RF rows life, life at spawn, size, alpha; R8 rows behaviour, palette, layer. One
+## MultiMeshInstance2D per layer (normal, a child of Fx right after its own drawing; additive,
+## a child of AddLayer) draws a unit square per instance with fixed identity transforms, and
+## the vertex shader below turns instance k into the k-th oldest pixel of the ring buffer:
+## the same palette step, size, snapped rect and alpha rules as the old per-pixel draw. A
+## pixel has 2 instances on the normal layer (its square, a stuck oil drop's glint right
+## after it) and 4 on the additive one (square, hot core, the two halves of a shock spark
+## to the previous shock pixel), so there is no per-pixel work on the CPU and two draw calls.
+const PX_PER := [2, 4]
+
+const PX_SHADER := """
+shader_type canvas_item;
+render_mode {BLEND};
+uniform sampler2D vec_tex : filter_nearest;
+uniform sampler2D f_tex : filter_nearest;
+uniform sampler2D b_tex : filter_nearest;
+uniform sampler2D pal_tex : filter_nearest;
+uniform int s0 = 0;
+uniform int cnt = 0;
+uniform int flick = 0;
+uniform float seed = 0.0;
+const int LAYER = {LAYER};
+const int PER = {PER};
+
+int byte_at(int i, int row) {
+    return int(texelFetch(b_tex, ivec2(i, row), 0).r * 255.0 + 0.5);
+}
+
+float hash(vec2 p) {
+    return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
+}
+
+void vertex() {
+    vec2 q = VERTEX;
+    vec2 pos = vec2(0.0);
+    vec2 size = vec2(0.0);
+    vec4 col = vec4(0.0);
+    bool line = false;
+    vec2 la = vec2(0.0);
+    vec2 lb = vec2(0.0);
+    int k = INSTANCE_ID / PER;
+    int sub = INSTANCE_ID - k * PER;
+    int i = (s0 + k) % {MAXP};
+    float t = texelFetch(f_tex, ivec2(i, 0), 0).r;
+    if (k < cnt && t > 0.0 && byte_at(i, 2) == LAYER) {
+        int bh = byte_at(i, 0);
+        int pc = byte_at(i, 1);
+        float f = t / texelFetch(f_tex, ivec2(i, 1), 0).r;
+        float s = texelFetch(f_tex, ivec2(i, 2), 0).r;
+        float a = texelFetch(f_tex, ivec2(i, 3), 0).r;
+        vec2 p = texelFetch(vec_tex, ivec2(i, 0), 0).rg;
+        int fl = i + flick;
+        int stp = f > 0.75 ? 1 : (f < 0.3 ? 2 : 0);
+        if (bh == {FIRE} || bh == {EMBER}) {
+            if (f > 0.45) {
+                stp = fl % 3 == 0 ? 1 : 0;
+            } else {
+                stp = fl % 2 == 0 ? 0 : 2;
+            }
+            s = max(1.0, s * (0.4 + 0.6 * f));
+        } else if (bh == {SMOKE}) {
+            s *= 1.0 + 0.9 * (1.0 - f);
+            stp = f > 0.4 ? 0 : 2;
+        } else if (bh == {WET} || bh == {STUCK} || bh == {OIL} || bh == {BLOOD} || bh == {STONE} || bh == {DROP}) {
+            stp = ((bh == {WET} || bh == {DROP}) && fl % 9 == 0) ? 1 : 0;
+        } else if (bh == {GLINT}) {
+            stp = 1;
+        } else if (bh == {ICE}) {
+            if (f < 0.3) {
+                s = max(1.0, s * f / 0.3);
+            }
+        } else if (bh == {SHOCK}) {
+            stp = fl % 3 != 0 ? 1 : 0;
+        } else if (bh == {HOLY}) {
+            stp = f > 0.5 ? 1 : (f > 0.25 ? 0 : 2);
+        } else if (bh == {ACID}) {
+            if (f < 0.15) {
+                s += 2.0;
+                a *= 0.6;
+                stp = 1;
+            }
+        } else if (bh == {RING} || bh == {GALE} || bh == {WHIRL}) {
+            stp = f > 0.4 ? 0 : 2;
+        } else if (bh == {TONGUE}) {
+            stp = int(texelFetch(vec_tex, ivec2(i, 2), 0).g);
+            if (fl % 5 == 0) {
+                stp = stp == 0 ? 1 : 0;
+            }
+            if (f < 0.35) {
+                stp = 2;
+            }
+            s = max(1.0, s * (0.5 + 0.5 * f));
+        } else if (bh == {BLOOM}) {
+            stp = f > 0.3 ? int(texelFetch(vec_tex, ivec2(i, 2), 0).g) : 2;
+            s *= 1.0 + 0.7 * (1.0 - f);
+        } else if (bh == {SHEEN}) {
+            stp = fl % 11 == 0 ? 1 : 0;
+            a *= min(1.0, f * 2.0);
+        } else if (bh == {SIZZLE}) {
+            stp = fl % 2 == 0 ? 1 : 0;
+        }
+        if (f < 0.3) {
+            a *= 0.55;
+        }
+        s = floor(s + 0.5);
+        vec4 c = vec4(texelFetch(pal_tex, ivec2(pc * 3 + stp, 0), 0).rgb, a);
+        vec2 rs = vec2(s);
+        bool plain = true;
+        if (bh == {SHEEN}) {
+            rs = vec2(s * 3.0, max(1.0, floor(s * 0.5)));
+            plain = false;
+        } else if (bh == {GALE} || bh == {WHIRL}) {
+            vec2 v = texelFetch(vec_tex, ivec2(i, 1), 0).rg;
+            if (bh == {WHIRL}) {
+                v = vec2(-sin(v.x), cos(v.x) * 0.55) * 200.0;
+            }
+            float ln = clamp(length(v) * 0.05, s, 14.0);
+            if (abs(v.x) >= abs(v.y)) {
+                rs.x = ln;
+            } else {
+                rs.y = ln;
+            }
+            plain = false;
+        } else if (bh == {GLINT}) {
+            c = vec4(1.0, 1.0, 1.0, min(1.0, f * 2.0));   // a full-bright point for the bloom
+            plain = false;
+        }
+        vec2 r0 = floor(p - rs * 0.5);
+        if (sub == 0) {
+            pos = r0;
+            size = rs;
+            col = c;
+        } else if (plain && sub == 1) {
+            if (LAYER == 1) {
+                // A hot core at full brightness (above the alpha cap) so the bloom catches it.
+                if (f > 0.3 && s >= 3.0 && (bh == {FIRE} || bh == {TONGUE} || bh == {EMBER} || (bh == {DROP} && pc == {PFIRE}))) {
+                    float cs = s >= 5.0 ? 2.0 : 1.0;
+                    pos = floor(p - vec2(cs * 0.5));
+                    size = vec2(cs);
+                    col = vec4(1.0, 0.97, 0.8, 1.0);
+                }
+            } else if (bh == {STUCK} && pc == {POIL} && s >= 3.0) {
+                pos = r0;   // glossy glint
+                size = vec2(1.0);
+                col = vec4(texelFetch(pal_tex, ivec2(pc * 3 + 1, 0), 0).rgb, a);
+            }
+        } else if (plain && sub >= 2 && bh == {SHOCK}) {
+            // A jagged spark to the previous shock pixel of this layer, if it is close.
+            for (int d = 1; d <= 8; d++) {
+                int kk = k - d;
+                if (kk < 0) {
+                    break;
+                }
+                int j = (s0 + kk) % {MAXP};
+                if (texelFetch(f_tex, ivec2(j, 0), 0).r > 0.0 && byte_at(j, 2) == LAYER && byte_at(j, 0) == {SHOCK}) {
+                    vec2 lp = texelFetch(vec_tex, ivec2(j, 0), 0).rg;
+                    vec2 dd = p - lp;
+                    if (dot(dd, dd) < 900.0) {
+                        vec2 jit = vec2(hash(vec2(float(i), seed)), hash(vec2(seed, float(i) + 0.5))) * 6.0 - 3.0;
+                        vec2 mid = (p + lp) * 0.5 + jit;
+                        line = true;
+                        la = sub == 2 ? lp : mid;
+                        lb = sub == 2 ? mid : p;
+                        col = vec4(texelFetch(pal_tex, ivec2(pc * 3 + 1, 0), 0).rgb, 0.5);
+                    }
+                    break;
+                }
+            }
+        }
+    }
+    if (line) {
+        // A 1 px wide quad along the segment, like draw_line(a, b, c, 1.0).
+        vec2 dl = lb - la;
+        float ll = length(dl);
+        vec2 n = ll > 0.0 ? vec2(dl.y, -dl.x) / ll * 0.5 : vec2(0.0);
+        VERTEX = mix(la, lb, q.x) + n * (q.y * 2.0 - 1.0);
+    } else {
+        VERTEX = pos + q * size;
+    }
+    COLOR = col;
+}
+"""
+
+
+func _make_pixel_layer(layer: int) -> MultiMeshInstance2D:
+    var quad := ArrayMesh.new()
+    var arrays := []
+    arrays.resize(Mesh.ARRAY_MAX)
+    arrays[Mesh.ARRAY_VERTEX] = PackedVector2Array([Vector2(0, 0), Vector2(1, 0), Vector2(1, 1), Vector2(0, 1)])
+    arrays[Mesh.ARRAY_TEX_UV] = PackedVector2Array([Vector2(0, 0), Vector2(1, 0), Vector2(1, 1), Vector2(0, 1)])
+    arrays[Mesh.ARRAY_COLOR] = PackedColorArray([Color.WHITE, Color.WHITE, Color.WHITE, Color.WHITE])
+    arrays[Mesh.ARRAY_INDEX] = PackedInt32Array([0, 1, 2, 0, 2, 3])
+    quad.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+    var per: int = PX_PER[layer]
+    var mm := MultiMesh.new()
+    mm.transform_format = MultiMesh.TRANSFORM_2D
+    mm.mesh = quad
+    mm.custom_aabb = AABB(Vector3(-100000, -100000, -1), Vector3(200000, 200000, 2))
+    mm.instance_count = MAX_PIXELS * per
+    var ident := PackedFloat32Array()
+    ident.resize(MAX_PIXELS * per * 8)
+    for n in MAX_PIXELS * per:
+        ident[n * 8] = 1.0
+        ident[n * 8 + 5] = 1.0
+    mm.buffer = ident   # identity transforms, written once: the shader places every instance
+    mm.visible_instance_count = 0
+    var code := PX_SHADER.format({ "BLEND": "blend_add" if layer == 1 else "blend_mix", "LAYER": layer, "PER": per,
+        "MAXP": MAX_PIXELS, "PFIRE": Element.Kind.FIRE, "POIL": Element.Kind.OIL })
+    for key in B.keys():
+        code = code.replace("{%s}" % key, str(B[key]))
+    var sh := Shader.new()
+    sh.code = code
+    var mat := ShaderMaterial.new()
+    mat.shader = sh
+    mat.set_shader_parameter("vec_tex", _vtex)
+    mat.set_shader_parameter("f_tex", _ftex)
+    mat.set_shader_parameter("b_tex", _btex)
+    mat.set_shader_parameter("pal_tex", _paltex)
+    var node := MultiMeshInstance2D.new()
+    node.name = "Pixels%d" % layer
+    node.multimesh = mm
+    node.material = mat
+    _px_mats.append(mat)
+    _px_mms.append(mm)
+    return node
+
+
+func _make_pixel_textures() -> void:
+    _vimg = Image.create_empty(MAX_PIXELS, 3, false, Image.FORMAT_RGF)
+    _vtex = ImageTexture.create_from_image(_vimg)
+    _fimg = Image.create_empty(MAX_PIXELS, 4, false, Image.FORMAT_RF)
+    _ftex = ImageTexture.create_from_image(_fimg)
+    _bimg = Image.create_empty(MAX_PIXELS, 3, false, Image.FORMAT_R8)
+    _btex = ImageTexture.create_from_image(_bimg)
+    _palimg = Image.create_empty(PAL_MAX * 3, 1, false, Image.FORMAT_RGBAF)
+    _paltex = ImageTexture.create_from_image(_palimg)
+
+
+## Hands this frame's pixel arrays to the GPU (see PIXELS ON THE GPU).
+func _upload_pixels() -> void:
+    if _pal_dirty:
+        _pal_dirty = false
+        for n in _pal.size():
+            _palimg.set_pixel(n, 0, _pal[n])
+        _paltex.update(_palimg)
+    var live := _cnt > 0
+    if live or _px_was_live:
+        var vb := _pp.to_byte_array()
+        vb.append_array(_pv.to_byte_array())
+        vb.append_array(_po.to_byte_array())
+        _vimg.set_data(MAX_PIXELS, 3, false, Image.FORMAT_RGF, vb)
+        _vtex.update(_vimg)
+        var fb := _pt.to_byte_array()
+        fb.append_array(_pl.to_byte_array())
+        fb.append_array(_ps.to_byte_array())
+        fb.append_array(_pa.to_byte_array())
+        _fimg.set_data(MAX_PIXELS, 4, false, Image.FORMAT_RF, fb)
+        _ftex.update(_fimg)
+        var bb := _pb.duplicate()
+        bb.append_array(_pc)
+        bb.append_array(_pk)
+        _bimg.set_data(MAX_PIXELS, 3, false, Image.FORMAT_R8, bb)
+        _btex.update(_bimg)
+    _px_was_live = live
+    var s0 := (_head - _cnt + MAX_PIXELS) % MAX_PIXELS
+    for layer in 2:
+        var mat: ShaderMaterial = _px_mats[layer]
+        mat.set_shader_parameter(&"s0", s0)
+        mat.set_shader_parameter(&"cnt", _cnt)
+        mat.set_shader_parameter(&"flick", randi() % 7)
+        if layer == 1:
+            mat.set_shader_parameter(&"seed", randf() * 1000.0)
+        var mm: MultiMesh = _px_mms[layer]
+        mm.visible_instance_count = _cnt * int(PX_PER[layer])
 
 
 func _draw_puffs(list: Array, canvas: CanvasItem) -> void:
@@ -1656,7 +1863,7 @@ func _draw_puffs(list: Array, canvas: CanvasItem) -> void:
 
 
 ## Short-lived vector shapes: bolts, ice spikes, light rays, collapse lines, void discs.
-func _draw_shapes() -> void:
+func _draw_shapes(cv: CanvasItem) -> void:
     for sh in _shapes:
         var life: float = sh["life"]
         var e: float = life + float(sh["d"]) - float(sh["t"])
@@ -1668,8 +1875,8 @@ func _draw_shapes() -> void:
                 var pts: PackedVector2Array = sh["pts"]
                 var bw: float = sh["w"]
                 var ba := (1.0 - k) * randf_range(0.6, 1.0)
-                draw_polyline(pts, Color(1.0, 0.9, 0.4, ba * 0.45), maxf(2.0, 5.0 * bw))
-                draw_polyline(pts, Color(1.0, 1.0, 0.85, ba * MAX_ALPHA), maxf(1.0, 1.5 * bw))
+                cv.draw_polyline(pts, Color(1.0, 0.9, 0.4, ba * 0.45), maxf(2.0, 5.0 * bw))
+                cv.draw_polyline(pts, Color(1.0, 1.0, 0.85, ba * MAX_ALPHA), maxf(1.0, 1.5 * bw))
             SH_SPIKE:
                 var sa: Vector2 = sh["a"]
                 var sb: Vector2 = sh["b"]
@@ -1686,13 +1893,13 @@ func _draw_shapes() -> void:
                     var ss := floorf(lerpf(sw, 2.0, q) + 0.5)
                     var sc: Color = _pal[spal * 3 + (1 if q > 0.6 else 0)]
                     sc.a = 0.6
-                    draw_rect(Rect2(floorf(sp.x - ss * 0.5), floorf(sp.y - ss * 0.5), ss, ss), sc)
+                    cv.draw_rect(Rect2(floorf(sp.x - ss * 0.5), floorf(sp.y - ss * 0.5), ss, ss), sc)
                 if g >= 1.0:
                     var ga := MAX_ALPHA if int(e * 20.0) % 3 != 0 else 0.4
-                    draw_rect(Rect2(floorf(tip.x) - 1.0, floorf(tip.y) - 1.0, 2.0, 2.0), Color(1, 1, 1, ga))
+                    cv.draw_rect(Rect2(floorf(tip.x) - 1.0, floorf(tip.y) - 1.0, 2.0, 2.0), Color(1, 1, 1, ga))
                     if e - grow < 0.1:
-                        draw_line(tip + Vector2(-3, 0), tip + Vector2(3, 0), Color(1, 1, 1, 0.6), 1.0)
-                        draw_line(tip + Vector2(0, -3), tip + Vector2(0, 3), Color(1, 1, 1, 0.6), 1.0)
+                        cv.draw_line(tip + Vector2(-3, 0), tip + Vector2(3, 0), Color(1, 1, 1, 0.6), 1.0)
+                        cv.draw_line(tip + Vector2(0, -3), tip + Vector2(0, 3), Color(1, 1, 1, 0.6), 1.0)
             SH_RAY:
                 var ra: Vector2 = sh["a"]
                 var rb: Vector2 = sh["b"]
@@ -1701,21 +1908,21 @@ func _draw_shapes() -> void:
                 var rw: float = sh["w"]
                 var rend := ra.lerp(rb, rg)
                 var fade := 1.0 - k
-                draw_line(ra, rend, Color(rc, 0.2 * fade), rw * 3.0)
-                draw_line(ra, rend, Color(rc, MAX_ALPHA * fade), rw)
+                cv.draw_line(ra, rend, Color(rc, 0.2 * fade), rw * 3.0)
+                cv.draw_line(ra, rend, Color(rc, MAX_ALPHA * fade), rw)
             SH_COLLAPSE:
                 var cc: Vector2 = sh["c"]
                 var ca: Vector2 = sh["a"]
                 var outer := cc + (ca - cc) * (1.0 - k * k)
                 var inner := outer.move_toward(cc, float(sh["len"]))
-                draw_line(outer, inner, Color(0.85, 0.65, 1.0, MAX_ALPHA * (1.0 - 0.5 * k)), 1.0 if (int(e * 30.0) % 2 == 0) else 2.0)
+                cv.draw_line(outer, inner, Color(0.85, 0.65, 1.0, MAX_ALPHA * (1.0 - 0.5 * k)), 1.0 if (int(e * 30.0) % 2 == 0) else 2.0)
             SH_DISC:
                 var dc: Vector2 = sh["c"]
                 var dr: float = sh["r"]
                 var rr := dr * minf(1.0, k / 0.2) * (1.0 - smoothstep(0.55, 1.0, k))
                 if rr >= 1.0:
-                    draw_circle(dc, rr, Color(0.06, 0.02, 0.1, 0.55))
-                    draw_arc(dc, rr, 0.0, TAU, 32, Color(0.75, 0.5, 1.0, 0.6), 1.0)
+                    cv.draw_circle(dc, rr, Color(0.06, 0.02, 0.1, 0.55))
+                    cv.draw_arc(dc, rr, 0.0, TAU, 32, Color(0.75, 0.5, 1.0, 0.6), 1.0)
 
 
 func _draw_scorches(canvas: CanvasItem) -> void:
@@ -1741,8 +1948,10 @@ func _draw() -> void:
         draw_texture(tex, -tex.get_size() / 2.0, col)
     draw_set_transform_matrix(Transform2D.IDENTITY)
     _draw_puffs(_puffs, self)
-    _draw_pixels(self, 0)
-    _draw_shapes()
+
+
+## Lightning arcs and ring outlines (ShapeLayer).
+func _draw_lines(cv: CanvasItem) -> void:
     for a in _arcs:
         var alpha: float = clampf(a["t"] / 0.22, 0.0, 1.0)
         var pts := PackedVector2Array()
@@ -1754,8 +1963,8 @@ func _draw() -> void:
             p += (to - from).orthogonal().normalized() * randf_range(-12.0, 12.0)
             pts.append(p)
         pts.append(to)
-        draw_polyline(pts, Color(1.0, 0.9, 0.4, alpha * 0.6), 6.0)
-        draw_polyline(pts, Color(1.0, 1.0, 0.85, alpha), 2.0)
+        cv.draw_polyline(pts, Color(1.0, 0.9, 0.4, alpha * 0.6), 6.0)
+        cv.draw_polyline(pts, Color(1.0, 1.0, 0.85, alpha), 2.0)
     for r in _rings:
         # Thin outline that tracks the pixel ring (same exponential ease), at most 30% alpha.
         var life: float = r["life"]
@@ -1764,8 +1973,7 @@ func _draw() -> void:
         var col: Color = r["color"]
         col.a = minf(col.a, float(r.get("cap", 0.3))) * (1.0 - k)
         var rr: float = r["r"] * (1.0 - exp(-2.5 * el)) / (1.0 - exp(-2.5 * life))
-        draw_arc(r["pos"], maxf(rr, 2.0), 0.0, TAU, 64 if rr > 150.0 else 48, col, float(r.get("w", 1.0)))
-
+        cv.draw_arc(r["pos"], maxf(rr, 2.0), 0.0, TAU, 64 if rr > 150.0 else 48, col, float(r.get("w", 1.0)))
 
 
 ## Floating texts (damage numbers, reaction names), on the Crisp layer so they stay sharp

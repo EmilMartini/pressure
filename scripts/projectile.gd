@@ -1,13 +1,17 @@
 class_name Projectile
-extends Area2D
+extends Node2D
 ## A bullet. Deals raw damage, then applies its element (which may react). Passing
 ## through a cloud of another element reacts with the whole cloud. Bounces redirect it
 ## to the next enemy. Drawn per element: droplets, bolts, embers, shards, tar...
 ## `behaviour` (from GunData) changes the flight: "straight", "lob" (arcs over everything
 ## and splashes on landing), "homing", "boomerang" (returns to the shooter and can hit the
 ## same enemies again on the way back) and "flak" (bursts into shards on hit or at range).
+## Not a physics body: each tick it asks EnemyGrid which enemy bodies its circle touches and
+## takes a hit from each one it newly touches (the Area2D body_entered rule), and tests
+## obstacles, walls and clouds directly.
 
-const LAYER_ENEMIES := 2
+## A body (enemy or obstacle) this shot just touched; the hit itself is _on_body_entered.
+signal body_entered(body: Node)
 
 static var _add_material: CanvasItemMaterial
 
@@ -40,24 +44,18 @@ var _ob_grace := 0.0
 var spectral := false   # passes through obstacles (Wisp Lantern and friends)
 var _home_target: Node2D = null
 var _landed := false
+var _inside: Dictionary = {}   # enemies the circle touched at the last check
+static var live := 0   # shots in the tree (the bot's --perf probe prints it)
 
 
 func _ready() -> void:
-    collision_layer = 0
-    collision_mask = LAYER_ENEMIES | Obstacle.LAYER_OBSTACLES
-    set_deferred("monitorable", false)   # may be spawned from inside a collision callback
-    var shape := CollisionShape2D.new()
-    var circle := CircleShape2D.new()
-    circle.radius = radius
-    shape.shape = circle
-    add_child(shape)
+    live += 1
     body_entered.connect(_on_body_entered)
     z_index = 5
     _life0 = maxf(0.01, lifetime)
     _pierce0 = pierce
     if behaviour == "lob":
-        # In the air: no contact with anything until it lands.
-        set_deferred("monitoring", false)
+        # In the air: no contact with anything until it lands (see _physics_process).
         z_index = 6
     if element != Element.Kind.OIL:
         if _add_material == null:
@@ -69,6 +67,8 @@ func _ready() -> void:
 func _physics_process(delta: float) -> void:
     if _landed:
         return
+    if behaviour != "lob":
+        _touch_enemies()
     _trail.push_front(global_position)
     if _trail.size() > 6:
         _trail.pop_back()
@@ -94,9 +94,9 @@ func _physics_process(delta: float) -> void:
         queue_redraw()
         return
     if _ob_grace <= 0.0 and not spectral:
-        for ob in get_tree().get_nodes_in_group("obstacles"):
+        for ob in EnemyGrid.nodes(get_tree(), &"obstacles"):
             if is_instance_valid(ob) and not ob.is_queued_for_deletion() and not _hit.has(ob) and ob.overlaps(global_position, radius):
-                _on_body_entered(ob)
+                body_entered.emit(ob)
                 if is_queued_for_deletion():
                     return
                 break   # a prop let the shot through (pierce): fly on
@@ -112,7 +112,7 @@ func _physics_process(delta: float) -> void:
             queue_free()
             return
     if element != Element.Kind.NONE:
-        for c in get_tree().get_nodes_in_group("clouds"):
+        for c in EnemyGrid.nodes(get_tree(), &"clouds"):
             if not is_instance_valid(c) or _clouds_hit.has(c) or c.element == element:
                 continue
             if c.global_position.distance_to(global_position) <= c.radius:
@@ -130,6 +130,24 @@ func _physics_process(delta: float) -> void:
             _burst_shards(null)
         queue_free()
     queue_redraw()
+
+
+func _exit_tree() -> void:
+    live -= 1
+
+
+## Enemy bodies the shot's circle touches now; each one it did not touch at the last check
+## is entered (one body_entered each, like an Area2D monitoring the enemy layer).
+func _touch_enemies() -> void:
+    var touching := EnemyGrid.overlapping(get_tree(), global_position, radius)
+    if touching.is_empty() and _inside.is_empty():
+        return
+    var now: Dictionary = {}
+    for e in touching:
+        now[e] = true
+        if not _inside.has(e):
+            body_entered.emit(e)
+    _inside = now
 
 
 ## Homing: turn toward the nearest enemy not yet hit, at most homing_turn rad/s.

@@ -25,6 +25,9 @@ var scrap := 0
 var rooms_cleared := 0
 var floor_rooms_cleared := 0   # difficulty creeps within a floor, resets at the stairs
 var _paused_secs := 0.0
+var _perf_probe := OS.get_cmdline_user_args().has("--perf")
+var _perf_t := 2.0
+var _perf_frames := 0
 var _bot_idle_fights := false
 var _hitstop_left := 0.0
 var _ticker: Node
@@ -143,6 +146,8 @@ func _ready() -> void:
         _setup_autotest()
 
     Settings.apply()
+    if autotest and OS.get_cmdline_user_args().has("--uncapped"):
+        DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)   # perf probe: measure past the refresh rate
     show_help = Settings.flag("controls_hint")
     Progress.start_run()
     Telemetry.run_start(self)
@@ -821,6 +826,24 @@ func _setup_autotest() -> void:
 
 func _autotest_tick(delta: float) -> void:
     _clock += delta
+    if _perf_probe:
+        _perf_t -= get_process_delta_time() / maxf(Engine.time_scale, 0.001)
+        if _perf_t <= 0.0:
+            _perf_t = 2.0
+            if get_node_or_null("/root/Perf") != null:
+                print("[PERF-SYS] per frame: %s" % get_node("/root/Perf").report(maxi(1, Engine.get_frames_drawn() - _perf_frames)))
+                _perf_frames = Engine.get_frames_drawn()
+            print("[PERF] t=%.0f fps=%d process_ms=%.2f physics_ms=%.2f draw_calls=%d objects=%d primitives=%d nodes=%d enemies=%d projectiles=%d pixels=%d" % [
+                _clock, Engine.get_frames_per_second(),
+                Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0,
+                Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS) * 1000.0,
+                Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME),
+                Performance.get_monitor(Performance.RENDER_TOTAL_OBJECTS_IN_FRAME),
+                Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME),
+                Performance.get_monitor(Performance.OBJECT_NODE_COUNT),
+                get_tree().get_nodes_in_group("enemies").size(),
+                Projectile.live,
+                fx.live_pixels() if fx != null and fx.has_method("live_pixels") else -1])
     if current == null or players.is_empty():
         return
     # Watchdog: nothing in a bot run may hold the tree paused. Report what did and go on.
