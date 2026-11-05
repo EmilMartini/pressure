@@ -56,6 +56,12 @@ jobs:
           mkdir -p export/web
           ~/godot/godot --headless --path . --import
           ~/godot/godot --headless --path . --export-release Web export/web/index.html
+          # Cache busting: the game data gets a per-commit file name, so a reload after a
+          # deploy can never run the previous build from the browser cache.
+          SHORT="${GITHUB_SHA:0:7}"
+          mv export/web/index.pck "export/web/index-${SHORT}.pck"
+          sed -i "s/\"executable\":\"index\"/\"executable\":\"index\",\"mainPack\":\"index-${SHORT}.pck\"/; s/\"index.pck\":/\"index-${SHORT}.pck\":/" export/web/index.html
+          grep -o '"mainPack":"[^"]*"' export/web/index.html
           touch export/web/.nojekyll
           ls -la export/web
 
