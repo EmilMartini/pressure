@@ -111,6 +111,7 @@ func _ready() -> void:
 
 func _enter_step(i: int) -> void:
     step = i
+    Telemetry.tutorial_step(i, String(STEPS[i]["id"]))
     _sub = 0
     _step_t = 0.0
     _wait = -1.0
@@ -228,10 +229,11 @@ func _instruction() -> Array:
     return [text, sub, action]
 
 
-func _finish() -> void:
+func _finish(skipped: bool = false) -> void:
     if _finishing:
         return
     _finishing = true
+    Telemetry.tutorial_end(step, skipped)
     Settings.set_value("tutorial_done", true)
     Engine.time_scale = 1.0
     get_tree().paused = false
@@ -302,7 +304,7 @@ func _process(delta: float) -> void:
     if _sheet_open():
         _sheet_pad.poll(get_viewport(), delta)
     if _skip_pressed():
-        _finish()
+        _finish(true)
         return
     _poll_sheet_button()
     if step < 0:

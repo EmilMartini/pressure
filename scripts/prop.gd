@@ -153,6 +153,7 @@ func apply_element(element: int, _potency: float = 1.0, dir: Vector2 = Vector2.Z
             used = _pillar(element)
     if used:
         _flash = 0.1
+        Telemetry.prop(self, element)
     return used
 
 
@@ -625,6 +626,7 @@ func _explode() -> void:
             e.add_burn(5.0, 3.0)
             e.apply_element(Element.Kind.FIRE, 1.0)
     for p in _players_within(150.0):
+        Telemetry.hurt_hint = "prop:" + kind
         p.take_damage(15.0, null)
     _fxc("signature", [Element.Kind.FIRE, gp, 80.0, 1.6, Vector2.ZERO])
     _fxc("smoke", [gp, 18, 40.0, Fx.PAL_SMOKE])

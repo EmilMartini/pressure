@@ -23,6 +23,7 @@ var color := Color.WHITE
 var crit := false
 var extra_elements: Array = []   # from Coating gun mods, one element each
 var shooter: Player = null
+var gun_id := ""   # the GunData id that fired it, for telemetry ("" for item and prop shots)
 var behaviour := "straight"
 var splash_radius := 0.0
 var shard_count := 0
@@ -207,6 +208,7 @@ func _burst_shards(exclude: Node) -> void:
         s.color = color
         s.crit = crit
         s.shooter = shooter
+        s.gun_id = gun_id
         s.position = position
         if exclude != null:
             s._hit[exclude] = true
@@ -425,12 +427,14 @@ func _deal_hit(enemy: Enemy, dmg: float, pot: float) -> void:
             raw *= 1.0 + shooter.stat("vs_shocked")
         if enemy.has_state(Element.Kind.OIL):
             raw *= 1.0 + shooter.stat("vs_oiled")
+    Telemetry.begin_shot(gun_id, element)
     enemy.take_damage(raw, color, true, shooter, crit)
     if is_instance_valid(enemy) and not enemy.is_queued_for_deletion():
         enemy.apply_element(element, pot, shooter)
     for extra in extra_elements:
         if is_instance_valid(enemy) and not enemy.is_queued_for_deletion():
             enemy.apply_element(extra, pot * 0.8, shooter)
+    Telemetry.end_shot()
     if shooter != null:
         Items.fire(shooter, "hit", { "target": enemy, "pos": global_position, "element": element })
 

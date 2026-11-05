@@ -218,6 +218,7 @@ func _choose(i: int) -> void:
         return
     var gun = _guns[i]
     var cb := _on_pick
+    Telemetry.gun_pick(_guns, gun)
     Sfx.play("ui_confirm")
     # Close before calling back, so the callback may open another overlay (or this one).
     _close()

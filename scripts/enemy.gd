@@ -432,6 +432,7 @@ func take_damage(amount: float, color: Color, flash: bool = true, source: Player
     if corroded_time > 0.0:
         amount *= 1.5
     hp -= amount
+    Telemetry.hit(amount + minf(hp, 0.0), color, flash, source)
     _since_hit = 0.0
     if flash:
         var fx := _fx()
@@ -927,6 +928,7 @@ func _tick_affix(delta: float) -> void:
 func _tick_boss_passive(delta: float) -> void:
     if _phase == 1 and hp <= max_hp * 0.5:
         _phase = 2
+        Telemetry.boss_phase2(self)
         Elements.reaction_fired.emit("ENRAGED", global_position, Color(1.0, 0.3, 0.2))
         var fx := _fx()
         if fx != null:

@@ -63,6 +63,7 @@ func _physics_process(delta: float) -> void:
             hit = p
     if hit != null:
         var attacker: Node2D = owner_enemy if is_instance_valid(owner_enemy) else null
+        Telemetry.hurt_hint = "projectile:" + (Telemetry.enemy_label(attacker) if attacker != null else "unknown")
         hit.take_damage(damage, attacker)
         var scene := get_tree().current_scene
         if scene != null and "fx" in scene and scene.fx != null:

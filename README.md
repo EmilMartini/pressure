@@ -198,7 +198,9 @@ only. The run-over screen reports this run, what you unlocked and the next goals
 
 Options (saved to `user://settings.json`): master, music and sound volume, fullscreen,
 vsync, screen shake, hit-stop, damage numbers, post-processing, CRT and its intensity,
-bloom, the controls strip, pause when a pad drops.
+bloom, the controls strip, pause when a pad drops, Share play data (on / off) and Export
+play data (see Telemetry). The Ledger's totals end with a line on play data: how many
+runs are kept on this device and whether sharing is on.
 
 ## Props that react
 
@@ -227,6 +229,49 @@ runs on any static host without special headers). Two ways to get it:
 The web build keeps controllers (browser Gamepad API: press a button once so the page
 sees the pad), keyboard and mouse. Co-op is local, so friends on their own machines each
 play their own run.
+
+## Telemetry
+
+Anonymous, opt-in play data for balancing (`scripts/telemetry.gd`, autoload `Telemetry`).
+
+- **What.** One record per run: a random run id, a random device id (saved in settings,
+  never a name), the build (`Telemetry.VERSION`, bump it with each shared build),
+  platform, party size and classes, then small events: run and floor start / end, room
+  enter / clear (time, kills by kind, health lost, elites, reactions), health every 5 s
+  in fights, damage taken by source (enemy kind, `projectile:<kind>`, `material:<mat>`,
+  `prop:<kind>`), damage dealt per room by gun, element and reaction, elites and bosses,
+  shop views, purchases, rerolls and skipped offers, level-up / gun / treasure picks,
+  equips, drops, combines, vents, actives, prop reactions, death (killer, last 10 health
+  samples), run end, frame rate every 10 s (with enemy and particle counts). Outside runs:
+  tutorial steps, completion or skip step, and settings changes. No names, addresses or
+  typed text. Bot runs (`--autotest`) are stored with `bot: true` and never uploaded.
+- **Where.** `user://telemetry/runs.jsonl`, one JSON line per run (a partial is written at
+  every floor so a crash keeps data; the file stays under 5 MB by dropping the oldest
+  lines). In the browser `user://` is IndexedDB, so use Options > Export play data: the
+  web build downloads a `.jsonl`, desktop writes it to your Downloads folder and shows the
+  path.
+- **Consent.** Settings key `telemetry`: `ask` (default), `on`, `off`. After the explainer
+  card the hub asks once (Allow / No thanks); Options > Share play data flips it later.
+  Data is kept locally either way; it only leaves the device when sharing is on and an
+  endpoint is set.
+- **Endpoint.** Set `ENDPOINT` in `scripts/telemetry.gd`. Each stored record is POSTed as
+  JSON (`Content-Type: application/json`, `X-Build: <VERSION>`); the partial goes up at
+  every floor and the finished run replaces it. Lines keep an `uploaded` flag; anything
+  that failed is retried on the next launch. Two ready endpoints, with setup steps at the
+  top of each file: `tools/telemetry_worker.js` (Cloudflare Worker + KV, free tier;
+  `GET /dump` with the `X-Dump-Key` header returns everything) and
+  `tools/telemetry_sheet.gs` (Google Apps Script appending to a Sheet; set
+  `ENDPOINT_SIMPLE = true` for it, since Apps Script cannot answer the browser's CORS
+  preflight).
+- **Analysis.** `python tools/analyze_telemetry.py export.jsonl dump.jsonl` (standard
+  library only; `--build X` to filter, `--include-bots`, `--min-seen N`). It prints runs
+  and win rate, deaths by floor and room, top killers, time / level / health per floor,
+  health over time, shop buy and skip rates with prices, level-up pick rates against how
+  often each was offered, damage share by gun and element, reactions by count and damage,
+  bosses, elites, rooms, props, frame-rate percentiles per floor, the tutorial funnel,
+  and a "What to look at" list (never-bought items, never-picked level-ups, the floor
+  where health drops fastest, guns whose damage share far exceeds how often they are
+  carried).
 
 ## Guns: six slots, duplicates, combining
 
@@ -321,7 +366,8 @@ To change which sprite something uses, edit the coordinates in `scripts/art.gd`
 ```
 project.godot        project settings, autoloads, renderer
 export_presets.cfg   the Web export preset;  .github/workflows/deploy.yml publishes it
-tools/               export_web.sh (export + serve), get_templates.sh
+tools/               export_web.sh (export + serve), get_templates.sh, analyze_telemetry.py,
+                     telemetry_worker.js (Cloudflare), telemetry_sheet.gs (Google Sheets)
 scenes/main.tscn     the only scene; everything is built in code
 scripts/
   main.gd            run orchestrator: floors, current room, scrap, camera, HUD, joins, bot
@@ -362,4 +408,5 @@ scripts/
   music.gd           autoload `Music`: looping tracks with crossfades
   menu_pad.gd        direct controller polling for menu navigation
   ui_theme.gd        shared dark theme for menus
+  telemetry.gd       autoload `Telemetry`: opt-in anonymous play data, local log, upload, export
 ```

@@ -137,6 +137,7 @@ func combine(a: Gun, b: Gun) -> Gun:
     b.queue_free()
     _layout_guns()
     recalc_stats()
+    Telemetry.combine(a.data.id, a.tier)
     say("%s" % a.display_name())
     Sfx.play("unlock")
     return a
@@ -187,6 +188,7 @@ func drop_gun(gun: Gun) -> String:
     if not guns.has(gun):
         return ""
     var id := gun.data.id
+    Telemetry.drop_gun(id)
     guns.erase(gun)
     remove_child(gun)
     gun.queue_free()
@@ -229,6 +231,7 @@ func equip_mod_on(gun: Gun, id: String) -> void:
     if gun == null or not is_instance_valid(gun):
         return
     gun.mods.append(id)
+    Telemetry.equip(id, "mod:" + gun.data.id, "")
     say("%s fitted to %s" % [Items.get_item(id)["name"], gun.display_name()])
     recalc_stats()
 
@@ -263,6 +266,7 @@ func equip(id: String) -> String:
                 key = slot + "1"
         old = equipment.get(key, "")
         equipment[key] = id
+        Telemetry.equip(id, key, old)
         if slot == "active":
             active_charges = Items.active_max_charges(self)
         say("Equipped %s" % item["name"])
@@ -272,7 +276,10 @@ func equip(id: String) -> String:
 
 ## Use the active item (Isaac's spacebar item). False when empty or out of charges.
 func use_active() -> bool:
-    return Items.use_active(self)
+    var used: bool = Items.use_active(self)
+    if used:
+        Telemetry.active_use(String(equipment.get("active", "")))
+    return used
 
 
 func equipped_item_ids() -> Array:
@@ -382,6 +389,7 @@ func vent() -> void:
     _squash = 1.0
     var kind: int = Element.Kind.FIRE if hot else Element.Kind.ICE
     var col: Color = Element.COLORS[kind]
+    Telemetry.vent(kind, pressure)
     Elements.nova.emit(global_position, vent_radius, Color(col, 0.55))
     Elements.reaction_fired.emit("Fire Nova" if hot else "Frost Nova", global_position, col)
     for e in get_tree().get_nodes_in_group("enemies"):
@@ -415,6 +423,7 @@ func take_damage(amount: float, attacker: Node2D = null) -> void:
         return
     amount = maxf(1.0, amount - stat("armor"))
     hp -= amount
+    Telemetry.player_hurt(self, amount, attacker)
     invuln = 0.6
     var tree_scene := get_tree().current_scene
     if tree_scene != null and "fx" in tree_scene and tree_scene.fx != null:
@@ -505,7 +514,7 @@ func _feel_floor() -> void:
         return
     match mats.material_at(global_position):
         Materials.FIRE:
-            take_damage(3.0, null)
+            take_damage(2.0, null)
         Materials.CHARGED:
             take_damage(4.0, null)
         Materials.ICE:

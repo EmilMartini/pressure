@@ -188,11 +188,13 @@ func try_react(enemy: Node2D, existing: int, incoming: int, potency: float) -> S
         return ""
     var name: String = d["name"]
     reaction_fired.emit(name, enemy.global_position, COLORS[incoming])
+    var tel_prev: String = Telemetry.begin_reaction(name)
     for act in d["do"]:
         if not is_instance_valid(enemy) or enemy.is_queued_for_deletion():
             # The target died mid-reaction; area actions still fire from where it was.
             break
         _act(enemy, potency, act)
+    Telemetry.end_reaction(tel_prev)
     return name
 
 
@@ -212,6 +214,7 @@ func react_cloud(cloud: Cloud, incoming: int, potency: float, source: Player) ->
     reaction_fired.emit(name, pos, COLORS[incoming])
     nova.emit(pos, cloud.radius, Color(COLORS[incoming], 0.6))
     var inside := _enemies_within(pos, cloud.radius)
+    var tel_prev: String = Telemetry.begin_reaction(name)
     var area_done := false
     for e in inside:
         if not is_instance_valid(e) or e.is_queued_for_deletion():
@@ -231,6 +234,7 @@ func react_cloud(cloud: Cloud, incoming: int, potency: float, source: Player) ->
                 continue
             _act(e, potency * 0.7, act)
         area_done = true
+    Telemetry.end_reaction(tel_prev)
     cloud.dissipate()
     return name
 

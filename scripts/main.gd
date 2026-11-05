@@ -106,6 +106,7 @@ func _ready() -> void:
     Settings.apply()
     show_help = Settings.flag("controls_hint")
     Progress.start_run()
+    Telemetry.run_start(self)
     Music.play("run")
     Items.new_run()
     start_floor(1)
@@ -191,6 +192,7 @@ func _on_unlocked(unlock_id: String, achievement_name: String) -> void:
 
 
 func _end_run(won: bool) -> void:
+    Telemetry.run_end(self, won)
     Progress.end_run(won, floor_number, total_kills)
     var mastery := get_node_or_null("/root/Mastery")
     if mastery != null and not autotest:
@@ -264,6 +266,7 @@ func start_floor(n: int) -> void:
     if autotest and not players.is_empty():
         print("[FLOOR] %d at t=%.0f kills=%d scrap=%d hp=%.0f level=%d guns=%d items=%d" % [
             n, _clock, total_kills, scrap, players[0].hp, players[0].level, players[0].guns.size(), players[0].equipment.size()])
+    Telemetry.floor_start(self)
     rooms = FloorGen.generate(n, party_luck(), players)
     for p in players:
         p.pressure = 0.0
@@ -288,6 +291,7 @@ func enter_room(pos: Vector2i, moved: Vector2i) -> void:
         print("[BOT] enter %s (%s) moved=%s visited=%s doors=%s" % [pos, rooms[pos].type_name(), moved, str(vis), str(rooms[pos].doors)])
     Sfx.stop_all()
     if current != null:
+        Telemetry.room_exit(current)
         current.collect_all_scrap()
         remove_child(current)
         current.queue_free()
@@ -364,7 +368,9 @@ func add_scrap(v: int) -> void:
     var gain := 0.0
     for p in players:
         gain = maxf(gain, p.stat("scrap_gain"))
-    scrap += ceili(float(v) * (1.0 + gain))
+    var got := ceili(float(v) * (1.0 + gain))
+    scrap += got
+    Telemetry.scrap_earned(got)
 
 
 func announce(text: String) -> void:

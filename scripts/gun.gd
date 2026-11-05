@@ -181,6 +181,7 @@ func _shoot(dir: Vector2) -> void:
         p.color = Element.COLORS[el]
         p.crit = crit
         p.shooter = player
+        p.gun_id = data.id
         p.behaviour = shape
         p.splash_radius = data.splash_radius * (1.0 + 0.1 * float(tier - 1)) + splash
         p.shard_count = data.shard_count + shards

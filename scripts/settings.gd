@@ -25,6 +25,8 @@ const DEFAULTS := {
     "pause_on_disconnect": true,
     "seen_explainer": false,
     "tutorial_done": false,
+    "telemetry": "ask",               # anonymous play data: "ask", "on" or "off"
+    "telemetry_device_id": "",        # random id, never a name
 }
 
 ## PostFx shader defaults at full CRT intensity (see post_fx.gd); intensity scales them.
@@ -57,6 +59,7 @@ func set_value(key: String, v: Variant) -> void:
     save()
     apply()
     changed.emit(key)
+    Telemetry.setting_changed(key, v)
 
 
 func flag(key: String) -> bool:
@@ -228,6 +231,8 @@ func load_settings() -> void:
         var def: Variant = DEFAULTS[key]
         if def is bool:
             values[key] = bool(d[key])
+        elif def is String:
+            values[key] = String(d[key])
         else:
             values[key] = clampf(float(d[key]), 0.0, 1.0)
 

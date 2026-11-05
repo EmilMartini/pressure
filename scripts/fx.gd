@@ -237,6 +237,11 @@ static func _kind_of(c: Color) -> int:
 
 ## How much show effects put on (0.35 tame .. 1.3 wild). Forwards to PostFx and the
 ## current room's Materials; Fx re-forwards to each new room's Materials on its own.
+## Live particle pixels (the ring buffer's window), for telemetry frame-rate samples.
+func live_pixels() -> int:
+    return _cnt
+
+
 func set_spectacle(v: float) -> void:
     spectacle = clampf(v, 0.35, 1.3)
     PostFx.set_spectacle(spectacle)

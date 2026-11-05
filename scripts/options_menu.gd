@@ -20,6 +20,8 @@ const ROWS := [
     { "key": "bloom", "label": "Bloom", "type": "bool" },
     { "key": "controls_hint", "label": "Controls strip in runs", "type": "bool" },
     { "key": "pause_on_disconnect", "label": "Pause when a pad drops", "type": "bool" },
+    { "key": "telemetry", "label": "Share play data", "type": "consent" },
+    { "key": "", "label": "Export play data", "type": "action" },
 ]
 const STEPS := 10
 const ROW_H := 40.0
@@ -31,6 +33,7 @@ var _values: Array[Control] = []
 var _back: Button
 var _pad := MenuPad.new()
 var _held_lr: Dictionary = {}
+var _action_note := ""   # result line of the last action row (export path)
 
 
 func _init(p_on_close: Callable) -> void:
@@ -79,6 +82,7 @@ func _make_row(i: int) -> Button:
     b.custom_minimum_size = Vector2(660, ROW_H)
     b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
     b.add_theme_font_size_override("font_size", 24)
+    b.clip_text = true
     b.pressed.connect(func(): _step(i, 1, true))
     var val := Control.new()
     val.mouse_filter = Control.MOUSE_FILTER_STOP if spec["type"] == "slider" else Control.MOUSE_FILTER_IGNORE
@@ -158,7 +162,14 @@ func _step_focused(dir: int) -> void:
 func _step(i: int, dir: int, wrap: bool) -> void:
     var spec: Dictionary = ROWS[i]
     var key := String(spec["key"])
-    if spec["type"] == "bool":
+    if spec["type"] == "action":
+        if not wrap:
+            return
+        _action_note = Telemetry.export_file()
+        _rows[i].text = "%s: %s" % [spec["label"], _action_note]
+    elif spec["type"] == "consent":
+        Settings.set_value(key, "off" if Telemetry.consent() == "on" else "on")
+    elif spec["type"] == "bool":
         Settings.set_value(key, not Settings.flag(key))
     else:
         var n := roundi(Settings.number(key) * STEPS) + dir
@@ -186,6 +197,14 @@ func _draw_value(val: Control, i: int) -> void:
     var key := String(spec["key"])
     var h := val.size.y
     var font: Font = Art.FONT
+    if spec["type"] == "action":
+        if _action_note == "":
+            val.draw_string(font, Vector2(0, h * 0.5 + 8.0), "SAVE", HORIZONTAL_ALIGNMENT_RIGHT, val.size.x, 24, UiTheme.BONE)
+        return
+    if spec["type"] == "consent":
+        var shared: bool = Telemetry.consent() == "on"
+        val.draw_string(font, Vector2(0, h * 0.5 + 8.0), "ON" if shared else "OFF", HORIZONTAL_ALIGNMENT_RIGHT, val.size.x, 24, Color(0.55, 1.0, 0.7) if shared else UiTheme.DIM)
+        return
     if spec["type"] == "bool":
         var on := Settings.flag(key)
         val.draw_string(font, Vector2(0, h * 0.5 + 8.0), "ON" if on else "OFF", HORIZONTAL_ALIGNMENT_RIGHT, val.size.x, 24, Color(0.55, 1.0, 0.7) if on else UiTheme.DIM)

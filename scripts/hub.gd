@@ -62,6 +62,8 @@ var _explainer_center: CenterContainer
 var _explainer_ok: Button
 var _esc_center: CenterContainer
 var _esc_first: Button
+var _consent_center: CenterContainer
+var _consent_allow: Button
 var _class_select: ClassSelect = null
 
 
@@ -98,6 +100,8 @@ func _ready() -> void:
         _menu_shot()
     elif not Settings.flag("seen_explainer"):
         _open(_explainer_center, _explainer_ok)
+    elif Telemetry.consent() == "ask":
+        _open(_consent_center, _consent_allow)
 
 
 # --- Room --------------------------------------------------------------------
@@ -310,7 +314,8 @@ func _open(c: Control, focus: Control) -> void:
 func _close_overlay() -> void:
     if _overlay == null:
         return
-    if _overlay == _explainer_center:
+    var after_explainer := _overlay == _explainer_center
+    if after_explainer:
         Settings.set_value("seen_explainer", true)
     _overlay.visible = false
     _overlay = null
@@ -323,6 +328,8 @@ func _close_overlay() -> void:
     if f != null:
         f.release_focus()
     Sfx.play("ui_back")
+    if after_explainer and Telemetry.consent() == "ask" and not _shot:
+        _open(_consent_center, _consent_allow)
 
 
 func _show_class_select() -> void:
@@ -401,6 +408,7 @@ func _build_ui() -> void:
     _build_names()
     _build_ledger()
     _build_explainer()
+    _build_consent()
     _build_esc_menu()
 
 
@@ -476,6 +484,7 @@ func _fill_ledger() -> void:
         "  Kills %d    elites %d    reactions %d" % [Progress.stat("kills"), Progress.stat("elites"), Progress.stat("reactions")],
         "  Achievements %d / %d    guns %d / %d" % [Progress.achievements_count(), Progress.ACHIEVEMENTS.size(), Guns.ids().size(), Guns.all_ids().size()],
         "  Mastery: %d points to spend, %d earned, %d / %d nodes" % [Mastery.points, Mastery.earned, Mastery.purchased_count(), Mastery.total_nodes()],
+        "  Play data: %d runs kept on this device, sharing %s (Workshop options)" % [Telemetry.stored_count(), "on" if Telemetry.consent() == "on" else "off"],
     ]
     for t in totals:
         _ledger_body.add_child(_left(UiTheme.label(t, 22, UiTheme.DIM)))
@@ -502,6 +511,38 @@ func _build_explainer() -> void:
         col.add_child(l)
     _explainer_ok = UiTheme.button("Got it", _close_overlay)
     col.add_child(_explainer_ok)
+
+
+## One-time card after the explainer: may anonymous play data be shared?
+func _build_consent() -> void:
+    _consent_center = _center()
+    var panel := PanelContainer.new()
+    panel.custom_minimum_size = Vector2(820, 0)
+    _consent_center.add_child(panel)
+    var col := VBoxContainer.new()
+    col.add_theme_constant_override("separation", 12)
+    panel.add_child(col)
+    col.add_child(UiTheme.label("SHARE PLAY DATA?", 40, LIT))
+    for line in [
+        "Help balance the game: anonymous play data from your runs (floors, deaths, purchases, level-up picks, guns used, frame rate).",
+        "No names, no addresses, no text you type. A random id stands in for this device.",
+        "It is kept on this device either way; change it any time under Options: Share play data.",
+    ]:
+        var l := UiTheme.label(line, 24, UiTheme.BONE)
+        l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+        l.custom_minimum_size = Vector2(760, 0)
+        col.add_child(l)
+    var row := HBoxContainer.new()
+    row.add_theme_constant_override("separation", 16)
+    row.alignment = BoxContainer.ALIGNMENT_CENTER
+    col.add_child(row)
+    _consent_allow = UiTheme.button("Allow", func():
+        Settings.set_value("telemetry", "on")
+        _close_overlay())
+    row.add_child(_consent_allow)
+    row.add_child(UiTheme.button("No thanks", func():
+        Settings.set_value("telemetry", "off")
+        _close_overlay()))
 
 
 func _build_esc_menu() -> void:

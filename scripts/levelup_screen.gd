@@ -226,6 +226,7 @@ func _choose(i: int) -> void:
         return
     var opt: Dictionary = _options[i]
     if is_instance_valid(_player):
+        Telemetry.levelup(_options, i, int(_player.level))
         _player.apply_upgrade(opt)
     Sfx.play("ui_confirm")
     _show_next()

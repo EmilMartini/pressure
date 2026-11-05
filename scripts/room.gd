@@ -41,6 +41,7 @@ func _init(p_data: RoomData, p_main: Main) -> void:
 
 
 func _ready() -> void:
+    Telemetry.room_enter(self)
     enemies = Node2D.new()
     enemies.name = "Enemies"
     add_child(enemies)
@@ -224,6 +225,7 @@ func _begin_boss() -> void:
             boss_pos = away * 300.0
     boss = _spawn_enemy("boss", boss_pos)
     boss.set_boss(SpawnTable.boss_for(main.floor_number))
+    Telemetry.boss_start(boss)
     var pairs := Elements.available_reactions(main.party_elements())
     var hits := 5 + main.difficulty() / 3
     if not pairs.is_empty():
@@ -254,6 +256,7 @@ func _tick_boss(delta: float) -> void:
 
 func _finish_fight(bonus_scrap: int) -> void:
     active = false
+    Telemetry.room_clear(self)
     Music.set_intensity(0.2)
     data.cleared = true
     for e in enemies.get_children():
@@ -336,6 +339,7 @@ func _spawn_elite(count: int) -> void:
         e.set_affix(SpawnTable.elite_affix(diff))
         if not pairs.is_empty():
             e.set_shield(pairs.pick_random(), hits)
+        Telemetry.elite_spawned(e)
         Elements.reaction_fired.emit("ELITE", e.global_position, Color(1.0, 0.85, 0.3))
 
 
@@ -365,6 +369,7 @@ func _perimeter_point() -> Vector2:
 
 func _on_enemy_died(e: Enemy) -> void:
     main.total_kills += 1
+    Telemetry.kill(e)
     Progress.add("kills")
     if e.kind_name == "boss":
         Progress.add("bosses")
@@ -681,6 +686,7 @@ func _fit_mod(pl: Player, gun: Gun, o: Dictionary) -> void:
     if not is_instance_valid(gun) or main.scrap < o["price"]:
         return
     main.scrap -= o["price"]
+    Telemetry.mod_fitted(o, self)
     pl.equip_mod_on(gun, o["id"])
     Progress.add("items_picked")
     Sfx.play("buy")
@@ -694,6 +700,7 @@ func _fit_mod(pl: Player, gun: Gun, o: Dictionary) -> void:
 
 func activate(ped: Pedestal, pl: Player) -> void:
     var o := ped.offer
+    var tel_snap: Dictionary = Telemetry.offer_snapshot(o, self)
     match o["kind"]:
         "gun":
             var gdata := Guns.make(o["id"])
@@ -831,6 +838,7 @@ func activate(ped: Pedestal, pl: Player) -> void:
             o["taken"] = true
             Sfx.play("confirm")
             begin_challenge()
+    Telemetry.offer_used(tel_snap, self)
     _build_pedestals()
 
 
