@@ -2,18 +2,27 @@ class_name Room
 extends Node2D
 ## One room of the dungeon, rebuilt from its RoomData every time the party enters.
 ## Owns walls, doors, pedestals, the enemies and pickups inside, and the fight logic
-## for arena waves, challenges and the boss.
+## for arena waves, challenges and the boss. Its size comes from RoomData (three classes);
+## its interior (walls, chasms, pools, slicks, ice, grass, a secret alcove) from
+## RoomLayouts, laid on a 20 px nav grid that spawns, shots, sight lines, enemy pathing
+## (a flow field toward the party) and the bot's routes read. A hidden puzzle, if the
+## room has one, is a Secrets child.
 
 signal door_entered(dir: Vector2i)
 
-const SIZE := Vector2(1120, 720)
+const SIZE := Vector2(1120, 720)   # the normal size; RoomData.room_size() picks per room
 const WALL := 60.0
 const GAP := 150.0
+const NAV := RoomLayouts.CELL       # navigation / layout grid
+const WADE := 0.6                   # speed in deep water
+## The room the party is in (Projectile, Player, Enemy read its walls and paths).
+static var here: Room = null
 ## Kinds that leave blood on the floor when they die.
 const BLOODY_KINDS := ["grunt", "runner", "brute", "swarmer", "spitter", "charger", "splitter", "shaman", "elite", "boss"]
 
 var data: RoomData
 var main: Main
+var room_size := SIZE
 var rect := Rect2(-SIZE / 2.0, SIZE)
 var enemies: Node2D
 var pickups: Node2D
@@ -33,11 +42,43 @@ var _elite_timer2 := INF
 var _add_timer := 0.0
 var _add_time_left := 0.0
 
+# Layout: interior walls, chasms and terrain on a NAV grid (see RoomLayouts).
+var layout_name := "open"
+var nav_w := 0
+var nav_h := 0
+var cells := PackedByteArray()
+var terrain := PackedByteArray()
+var has_walls := false       # interior walls: they stop shots and sight lines
+var has_blockers := false    # anything walkers must path around
+var secrets: Secrets = null
+var reserved: Array = []     # [pos, radius]: spots puzzle pieces hold
+var _keep: Array = []        # [pos, radius]: spots the layout keeps open
+var _walls_body: StaticBody2D
+var _deep_rects: Array[Rect2] = []
+var _deep_idx := PackedInt32Array()   # Materials cells of the deep pools
+var _deep_cursor := 0
+var _deep_t := 0.0
+var _flow := PackedInt32Array()
+var _flow_t := 0.0
+var _goal_cache: Dictionary = {}   # goal cell -> [msec, PackedInt32Array]
+var _alcove_inner := Rect2()
+
 
 func _init(p_data: RoomData, p_main: Main) -> void:
     data = p_data
     main = p_main
     name = "Room"
+    room_size = data.room_size()
+    rect = Rect2(-room_size / 2.0, room_size)
+
+
+func _enter_tree() -> void:
+    here = self
+
+
+func _exit_tree() -> void:
+    if here == self:
+        here = null
 
 
 func _ready() -> void:
@@ -54,6 +95,10 @@ func _ready() -> void:
     _build_walls()
     _build_doors()
     _build_pedestals()
+    _build_layout()     # interior walls, chasms, pools, slicks, ice, grass; the nav grid
+    if data.secret != "":
+        secrets = Secrets.new(self)
+        add_child(secrets)
     Props.dress(self)   # crates, barrels, fountains, braziers... that react to every element
 
     data.visited = true
@@ -82,6 +127,7 @@ func _ready() -> void:
 
 func _process(delta: float) -> void:
     _handle_interact()
+    _tick_layout(delta)
     if not active:
         return
     match data.type:
@@ -222,6 +268,7 @@ func _begin_boss() -> void:
     for pl in main.players:
         if pl.alive and (pl.global_position - global_position).distance_to(boss_pos) < 320.0:
             boss_pos = away * 300.0
+    boss_pos = nearest_open(boss_pos, 40.0)
     boss = _spawn_enemy("boss", boss_pos)
     boss.set_boss(SpawnTable.boss_for(main.floor_number))
     Telemetry.boss_start(boss)
@@ -355,6 +402,8 @@ func _spawn_group() -> float:
             var inner := rect.grow(-60.0)
             pos = Vector2(clampf(ringp.x, inner.position.x, inner.end.x), clampf(ringp.y, inner.position.y, inner.end.y))
         group_i += 1
+        if not is_open(pos, 22.0):
+            pos = _spawn_point()
         var e := _spawn_enemy(type, pos)
         e.emerge = 0.75
         total_hp += e.max_hp
@@ -395,15 +444,29 @@ func _spawn_elite(count: int) -> void:
 
 
 func _spawn_point() -> Vector2:
-    for attempt in 12:
+    for attempt in 16:
         var p := _perimeter_point()
+        if not is_open(p, 22.0):
+            continue
         var ok := true
         for pl in main.players:
             if pl.global_position.distance_to(p) < 260.0:
                 ok = false
         if ok:
             return p
-    return _perimeter_point()
+    # A layout can wall off most of the edge: any open floor away from the party.
+    var inner := rect.grow(-60.0)
+    for attempt in 30:
+        var q := Vector2(randf_range(inner.position.x, inner.end.x), randf_range(inner.position.y, inner.end.y))
+        if not is_open(q, 22.0):
+            continue
+        var far := true
+        for pl in main.players:
+            if pl.global_position.distance_to(q) < 220.0:
+                far = false
+        if far:
+            return q
+    return nearest_open(_perimeter_point(), 22.0)
 
 
 func _perimeter_point() -> Vector2:
@@ -440,7 +503,7 @@ func _on_enemy_died(e: Enemy) -> void:
         _elites_alive -= 1
     # Loot: bosses always drop rare or better, elites drop sometimes.
     var inner := rect.grow(-90.0)
-    var drop_pos := Vector2(clampf(e.global_position.x, inner.position.x, inner.end.x), clampf(e.global_position.y, inner.position.y, inner.end.y))
+    var drop_pos := nearest_open(Vector2(clampf(e.global_position.x, inner.position.x, inner.end.x), clampf(e.global_position.y, inner.position.y, inner.end.y)), 26.0)
     if e.kind_name == "boss":
         data.stock.append(Items.offer(Drops.roll_item(main.difficulty() + 4, Items.Rarity.RARE, [], main.party_luck(), "boss", main.players), 0, Vector2(0, 150)))
         _build_pedestals()
@@ -473,19 +536,39 @@ func collect_all_scrap() -> void:
 func _build_doors() -> void:
     for d in data.doors.keys():
         var door := Door.new(d, GAP, WALL)
-        door.position = Vector2(d) * (SIZE / 2.0 + Vector2(WALL / 2.0, WALL / 2.0))
+        door.position = Vector2(d) * (room_size / 2.0 + Vector2(WALL / 2.0, WALL / 2.0))
         add_child(door)
         doors[d] = door
         door.entered.connect(func(dir: Vector2i): door_entered.emit(dir))
         var ob: String = data.doors[d]["obstacle"]
-        if ob != "":
+        if ob == "secret":
+            door.set_secret(_secret_method(d))
+            door.obstacle_cleared.connect(_on_obstacle_cleared)
+        elif ob != "":
             door.set_obstacle(ob)
             door.obstacle_cleared.connect(_on_obstacle_cleared)
 
 
+## The method a hidden room's secret wall opens to: chosen the first time the party sees
+## it, from what the party can make then (fire, ice + stone, acid, shock, water, a blast).
+func _secret_method(d: Vector2i) -> String:
+    var m := String(data.doors[d].get("secret", ""))
+    if m == "":
+        var rng := RandomNumberGenerator.new()
+        rng.seed = data.layout_seed + 31337
+        m = SecretWall.pick_method(main.party_elements(), rng)
+        data.doors[d]["secret"] = m
+    return m
+
+
 func _on_obstacle_cleared(dir: Vector2i) -> void:
+    var was_secret := String(data.doors[dir]["obstacle"]) == "secret"
     data.doors[dir]["obstacle"] = ""
     main.rooms[data.doors[dir]["to"]].discovered = true
+    if was_secret:
+        Telemetry.event("hidden_room_found", { "floor": main.floor_number })
+        call_deferred("_add_door_cap", dir)
+    _apply_doors()
 
 
 func _apply_doors() -> void:
@@ -503,7 +586,7 @@ func door_world_position(dir: Vector2i) -> Vector2:
 
 ## Where the party appears when entering from a given side of this room.
 func entry_position(side: Vector2i) -> Vector2:
-    return Vector2(side) * (SIZE / 2.0 - Vector2(90.0, 90.0))
+    return Vector2(side) * (room_size / 2.0 - Vector2(90.0, 90.0))
 
 
 func _build_walls() -> void:
@@ -512,50 +595,101 @@ func _build_walls() -> void:
     body.collision_layer = Player.LAYER_WALLS
     body.collision_mask = 0
     add_child(body)
-    var half := SIZE / 2.0
+    _walls_body = body
+    var half := room_size / 2.0
     for d in FloorGen.DIRS:
         var has_door := data.doors.has(d)
+        # A secret wall gets no cap behind it: the wall line stays flat, as if no door.
+        var capped := has_door and String(data.doors[d]["obstacle"]) != "secret"
         if d.y != 0:
             var y := float(d.y) * (half.y + WALL / 2.0)
             if has_door:
-                var seg := (SIZE.x + 2.0 * WALL - GAP) / 2.0
+                var seg := (room_size.x + 2.0 * WALL - GAP) / 2.0
                 _wall(body, Vector2(-(GAP / 2.0 + seg / 2.0), y), Vector2(seg, WALL))
                 _wall(body, Vector2(GAP / 2.0 + seg / 2.0, y), Vector2(seg, WALL))
-                _wall(body, Vector2(0, float(d.y) * (half.y + WALL * 1.5)), Vector2(GAP + WALL, WALL))
+                if capped:
+                    _add_door_cap(d)
             else:
-                _wall(body, Vector2(0, y), Vector2(SIZE.x + 2.0 * WALL, WALL))
+                _wall(body, Vector2(0, y), Vector2(room_size.x + 2.0 * WALL, WALL))
         else:
             var x := float(d.x) * (half.x + WALL / 2.0)
             if has_door:
-                var seg := (SIZE.y + 2.0 * WALL - GAP) / 2.0
+                var seg := (room_size.y + 2.0 * WALL - GAP) / 2.0
                 _wall(body, Vector2(x, -(GAP / 2.0 + seg / 2.0)), Vector2(WALL, seg))
                 _wall(body, Vector2(x, GAP / 2.0 + seg / 2.0), Vector2(WALL, seg))
-                _wall(body, Vector2(float(d.x) * (half.x + WALL * 1.5), 0), Vector2(WALL, GAP + WALL))
+                if capped:
+                    _add_door_cap(d)
             else:
-                _wall(body, Vector2(x, 0), Vector2(WALL, SIZE.y + 2.0 * WALL))
+                _wall(body, Vector2(x, 0), Vector2(WALL, room_size.y + 2.0 * WALL))
+    _add_cracks()
 
 
-func _wall(body: StaticBody2D, center: Vector2, size: Vector2) -> void:
+## The block behind a doorway that keeps players from walking past the door trigger.
+func _add_door_cap(d: Vector2i) -> void:
+    if _walls_body == null or not is_instance_valid(_walls_body):
+        return
+    var half := room_size / 2.0
+    if d.y != 0:
+        _wall(_walls_body, Vector2(0, float(d.y) * (half.y + WALL * 1.5)), Vector2(GAP + WALL, WALL))
+    else:
+        _wall(_walls_body, Vector2(float(d.x) * (half.x + WALL * 1.5), 0), Vector2(WALL, GAP + WALL))
+
+
+## Hairline cracks here and there in the walls, so a crack alone gives no secret away.
+func _add_cracks() -> void:
+    var rng := RandomNumberGenerator.new()
+    rng.seed = data.layout_seed + 77
+    var half := room_size / 2.0
+    var layer := CrackLayer.new()
+    layer.name = "Cracks"
+    layer.z_index = -1
+    for k in rng.randi_range(3, 6):
+        var side: Vector2i = FloorGen.DIRS[rng.randi() % 4]
+        var span := (half.x if side.y != 0 else half.y) - 60.0
+        var along := rng.randf_range(-span, span)
+        if data.doors.has(side) and absf(along) < GAP:
+            continue
+        var c := Vector2(along, float(side.y) * (half.y + WALL / 2.0)) if side.y != 0 else Vector2(float(side.x) * (half.x + WALL / 2.0), along)
+        var dir := Vector2(1, 0) if side.y != 0 else Vector2(0, 1)
+        var pts := PackedVector2Array()
+        var off := 0.0
+        var n := rng.randi_range(4, 7)
+        for i in n + 1:
+            off = clampf(off + rng.randf_range(-3.0, 3.0), -14.0, 14.0)
+            pts.append((c + dir * (float(i) / float(n) - 0.5) * rng.randf_range(50.0, 80.0) + dir.orthogonal() * off).round())
+        layer.lines.append(pts)
+    add_child(layer)
+
+
+class CrackLayer extends Node2D:
+    var lines: Array = []
+    func _draw() -> void:
+        for l in lines:
+            draw_polyline(l, Color(0.09, 0.07, 0.08, 0.5), 1.0)
+
+
+func _wall(body: StaticBody2D, center: Vector2, size: Vector2, tint: Color = Art.WALL_TINT) -> void:
     var shape := CollisionShape2D.new()
     var r := RectangleShape2D.new()
     r.size = size
     shape.shape = r
     shape.position = center
     body.add_child(shape)
-    var bricks := _tiled(Art.WALL, size, Art.WALL_TINT)
+    var bricks := _tiled(Art.WALL, size, tint, center - size / 2.0)
     bricks.position = center
     bricks.z_index = -1
     add_child(bricks)
 
 
-## A Sprite2D that repeats a 16px tile at 2x over `size`.
-func _tiled(tex: Texture2D, size: Vector2, tint: Color) -> Sprite2D:
+## A Sprite2D that repeats a 16px tile at 2x over `size`. `origin` (room space) lines the
+## pattern up with the world, so neighbouring walls and secret walls join seamlessly.
+func _tiled(tex: Texture2D, size: Vector2, tint: Color, origin: Vector2 = Vector2.ZERO) -> Sprite2D:
     var s := Sprite2D.new()
     s.texture = tex
     s.texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
     s.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
     s.region_enabled = true
-    s.region_rect = Rect2(Vector2.ZERO, size / 2.0)
+    s.region_rect = Rect2(origin / 2.0, size / 2.0)
     s.scale = Vector2(2, 2)
     s.modulate = tint
     return s
@@ -581,7 +715,7 @@ func _prop(coord: Vector2i, pos: Vector2, scale: float, tint: Color, z: int = -1
 
 ## Dressing per room type, so a shop reads as a shop before you see a price.
 func _dress_room() -> void:
-    var half := SIZE / 2.0
+    var half := room_size / 2.0
     match data.type:
         RoomData.Type.SHOP:
             # A counter along the back wall with a hooded keeper behind it, lanterns at the ends.
@@ -622,7 +756,7 @@ func _dress_room() -> void:
 
 
 func _build_floor() -> void:
-    var floor_sprite := _tiled(Art.FLOOR, SIZE, FLOOR_TINTS.get(data.type, Art.FLOOR_TINT))
+    var floor_sprite := _tiled(Art.FLOOR, room_size, FLOOR_TINTS.get(data.type, Art.FLOOR_TINT))
     floor_sprite.z_index = -2
     add_child(floor_sprite)
     _dress_room()
@@ -693,7 +827,7 @@ func add_gun_choice() -> void:
 ## Put a gun on the floor at a position (dropped from the character sheet).
 func add_floor_gun(id: String, pos: Vector2) -> void:
     var inner := rect.grow(-90.0)
-    var p := Vector2(clampf(pos.x, inner.position.x, inner.end.x), clampf(pos.y, inner.position.y, inner.end.y))
+    var p := nearest_open(Vector2(clampf(pos.x, inner.position.x, inner.end.x), clampf(pos.y, inner.position.y, inner.end.y)), 26.0)
     var o := FloorGen.offer("gun", id, 0)
     o["pos"] = p
     data.stock.append(o)
@@ -742,9 +876,9 @@ func _fit_mod(pl: Player, gun: Gun, o: Dictionary) -> void:
     Progress.add("items_picked")
     Sfx.play("buy")
     o["taken"] = true
-    if o["price"] == 0 and data.type in [RoomData.Type.TREASURE, RoomData.Type.CHALLENGE]:
+    if o["price"] == 0 and data.type in [RoomData.Type.TREASURE, RoomData.Type.CHALLENGE] and not o.get("secret", false):
         for other in data.stock:
-            if other["kind"] in ["gun", "item", "boon"]:
+            if other["kind"] in ["gun", "item", "boon"] and not other.get("secret", false):
                 other["taken"] = true
     _build_pedestals()
 
@@ -777,9 +911,9 @@ func activate(ped: Pedestal, pl: Player) -> void:
                     for other in data.stock:
                         if other.get("choice", false):
                             other["taken"] = true
-            elif o["price"] == 0 and data.type in [RoomData.Type.TREASURE, RoomData.Type.CHALLENGE]:
+            elif o["price"] == 0 and data.type in [RoomData.Type.TREASURE, RoomData.Type.CHALLENGE] and not o.get("secret", false):
                 for other in data.stock:
-                    if other["kind"] in ["gun", "item", "boon"]:
+                    if other["kind"] in ["gun", "item", "boon"] and not other.get("secret", false):
                         other["taken"] = true
         "item":
             if main.scrap < o["price"]:
@@ -804,9 +938,9 @@ func activate(ped: Pedestal, pl: Player) -> void:
             Progress.add("items_picked")
             Sfx.play("buy")
             o["taken"] = true
-            if o["price"] == 0 and data.type in [RoomData.Type.TREASURE, RoomData.Type.CHALLENGE]:
+            if o["price"] == 0 and data.type in [RoomData.Type.TREASURE, RoomData.Type.CHALLENGE] and not o.get("secret", false):
                 for other in data.stock:
-                    if other["kind"] in ["gun", "item", "boon"]:
+                    if other["kind"] in ["gun", "item", "boon"] and not other.get("secret", false):
                         other["taken"] = true
             if replaced != "":
                 # The old piece takes the plinth the new one came from.
@@ -829,9 +963,9 @@ func activate(ped: Pedestal, pl: Player) -> void:
             pl.say("%s" % FloorGen.BOONS[o["id"]]["name"])
             Sfx.play("buy")
             o["taken"] = true
-            if data.type == RoomData.Type.TREASURE:
+            if data.type == RoomData.Type.TREASURE and not o.get("secret", false):
                 for other in data.stock:
-                    if other["kind"] in ["gun", "item", "boon"]:
+                    if other["kind"] in ["gun", "item", "boon"] and not other.get("secret", false):
                         other["taken"] = true
         "gunsmith":
             if main.scrap < o["price"]:
@@ -891,6 +1025,643 @@ func activate(ped: Pedestal, pl: Player) -> void:
             begin_challenge()
     Telemetry.offer_used(tel_snap, self)
     _build_pedestals()
+
+
+# --- Layout and navigation ---------------------------------------------------
+
+
+## Spots the layout keeps open: the centre, the reward / pedestal row, the chest, every
+## pedestal already standing.
+func _keep_zones() -> Array:
+    var keep: Array = [[Vector2.ZERO, 120.0], [Vector2(0, 90), 100.0]]
+    var half := room_size / 2.0
+    match data.type:
+        RoomData.Type.TREASURE:
+            keep.append([Vector2(0, -170), 110.0])
+        RoomData.Type.SHOP:
+            for x in [-240.0, 0.0, 240.0]:
+                keep.append([Vector2(x, -half.y + 100.0), 90.0])
+        RoomData.Type.BOSS:
+            keep.append([Vector2(0, 150), 80.0])
+    if data.type != RoomData.Type.ARENA:
+        for x in [-315.0, -210.0, -105.0, 105.0, 210.0, 315.0]:
+            keep.append([Vector2(x, 90.0), 90.0])
+    for p in pedestals:
+        if is_instance_valid(p):
+            keep.append([p.position, 100.0])
+    return keep
+
+
+func _build_layout() -> void:
+    # The spots kept open are fixed on the first visit, so pedestals dropped later (always
+    # on open floor) never reshape the room on a revisit.
+    if data.has_meta("layout_keep"):
+        _keep = data.get_meta("layout_keep")
+    else:
+        _keep = _keep_zones()
+        data.set_meta("layout_keep", _keep)
+    var door_pts: Array = []
+    for d in data.doors.keys():
+        door_pts.append(Vector2(d) * (room_size / 2.0 + Vector2(WALL / 2.0, WALL / 2.0)))
+    var plan := RoomLayouts.build(data.layout, data.layout_seed, room_size, _keep, door_pts, data.alcove)
+    layout_name = plan.name
+    nav_w = plan.w
+    nav_h = plan.h
+    cells = plan.cells
+    terrain = plan.terrain
+    var alcove: Dictionary = plan.alcove
+    if not alcove.is_empty():
+        _alcove_inner = alcove["inner"]
+        if data.alcove_open:
+            _open_alcove_cells()
+    _recount_blockers()
+
+    var under := LayoutLayer.new()
+    under.room = self
+    under.mode = 0
+    under.name = "LayoutUnder"
+    under.z_index = -2
+    add_child(under)
+    var over := LayoutLayer.new()
+    over.room = self
+    over.mode = 1
+    over.name = "LayoutOver"
+    over.z_index = -1
+    add_child(over)
+
+    # Walls and pillars: the same bricks as the outer walls; rubble: loose stone.
+    for st in [RoomLayouts.S_WALL, RoomLayouts.S_PILLAR, RoomLayouts.S_RUBBLE]:
+        for r in RoomLayouts.rects_of(cells, nav_w, nav_h, RoomLayouts.WALL, plan.style, st):
+            var wr := _cell_rect(r)
+            over.shadows.append(wr)
+            if st == RoomLayouts.S_RUBBLE:
+                _rubble(wr)
+            else:
+                _wall(_walls_body, wr.get_center(), wr.size, Art.WALL_TINT.lightened(0.08) if st == RoomLayouts.S_PILLAR else Art.WALL_TINT)
+    var chasm_rects := RoomLayouts.rects_of(cells, nav_w, nav_h, RoomLayouts.CHASM)
+    if not chasm_rects.is_empty():
+        var pit := StaticBody2D.new()
+        pit.name = "Chasms"
+        pit.collision_layer = Player.LAYER_WALLS   # walkers stop at the lip; shots fly over
+        pit.collision_mask = 0
+        add_child(pit)
+        for r in chasm_rects:
+            var wr := _cell_rect(r)
+            var shape := CollisionShape2D.new()
+            var rs := RectangleShape2D.new()
+            rs.size = wr.size
+            shape.shape = rs
+            shape.position = wr.get_center()
+            pit.add_child(shape)
+
+    # Terrain lies on the Materials grid, so it reacts like anything else on the floor.
+    _deep_rects.clear()
+    _deep_idx = PackedInt32Array()
+    for r in RoomLayouts.rects_of(terrain, nav_w, nav_h, RoomLayouts.T_DEEP):
+        _deep_rects.append(_cell_rect(r))
+    if materials != null:
+        for wr in _deep_rects:
+            _deep_idx.append_array(materials.indices_in(wr))
+        materials.lay_still(Element.Kind.WET, _deep_idx, 0, _deep_idx.size(), 90)
+        for r in RoomLayouts.rects_of(terrain, nav_w, nav_h, RoomLayouts.T_OIL):
+            materials.fill_rect(Element.Kind.OIL, _cell_rect(r), 150, 255)
+        var ice_idx := PackedInt32Array()
+        for r in RoomLayouts.rects_of(terrain, nav_w, nav_h, RoomLayouts.T_ICE):
+            ice_idx.append_array(materials.indices_in(_cell_rect(r)))
+        if not ice_idx.is_empty():
+            # An ice sheet: still ice on the grid, drawn by one texture that loses each
+            # cell as it melts or cracks away.
+            materials.lay_still(Element.Kind.ICE, ice_idx, 0, ice_idx.size(), 200)
+            var sheet := IceSheet.new()
+            sheet.name = "IceSheet"
+            sheet.setup(materials, ice_idx)
+            add_child(sheet)
+        var grass_rects := RoomLayouts.rects_of(terrain, nav_w, nav_h, RoomLayouts.T_GRASS)
+        if not grass_rects.is_empty():
+            var grass := GrassLayer.new()
+            grass.room = self
+            grass.name = "Grass"
+            grass.z_index = -1
+            var rng := RandomNumberGenerator.new()
+            rng.seed = data.layout_seed + 5
+            for r in grass_rects:
+                var wr := _cell_rect(r)
+                materials.lay_still(Element.Kind.OIL, materials.indices_in(wr), 0, 1 << 30, 30)
+                for k in int(wr.get_area() / 260.0):
+                    grass.tufts.append(Vector2(rng.randf_range(wr.position.x + 3.0, wr.end.x - 3.0), rng.randf_range(wr.position.y + 3.0, wr.end.y - 3.0)).round())
+            add_child(grass)
+
+    if not plan.props.is_empty():
+        var holder := Node2D.new()
+        holder.name = "LayoutProps"
+        add_child(holder)
+        for pr in plan.props:
+            var prop := Prop.new(String(pr["kind"]))
+            prop.room = self
+            prop.position = pr["pos"]
+            holder.add_child(prop)
+            reserve(pr["pos"], 40.0)
+
+    if not alcove.is_empty() and not data.alcove_open:
+        var front: Rect2 = alcove["front"]
+        var sw := SecretWall.new("alcove", "rubble", front.size, alcove["out"])
+        sw.position = front.get_center()
+        add_child(sw)
+        sw.cleared.connect(_on_alcove_opened)
+        reserve(_alcove_inner.get_center(), 110.0)
+
+
+func _cell_rect(r: Rect2i) -> Rect2:
+    return Rect2(rect.position + Vector2(r.position) * NAV, Vector2(r.size) * NAV)
+
+
+func _rubble(wr: Rect2) -> void:
+    var shape := CollisionShape2D.new()
+    var rs := RectangleShape2D.new()
+    rs.size = wr.size
+    shape.shape = rs
+    shape.position = wr.get_center()
+    _walls_body.add_child(shape)
+    var decals: Array = Art.TILES["decals"]
+    var k := 0
+    var step := 22.0
+    var y := wr.position.y + step / 2.0
+    while y < wr.end.y:
+        var x := wr.position.x + step / 2.0
+        while x < wr.end.x:
+            var s := Art.sprite(decals[3 + (k % 2)], 1.6, Color(0.5, 0.45, 0.42))
+            s.position = Vector2(x, y)
+            s.rotation = float(k % 4) * PI / 2.0
+            s.z_index = -1
+            add_child(s)
+            k += 1
+            x += step
+        y += step
+
+
+func _recount_blockers() -> void:
+    has_walls = false
+    has_blockers = false
+    for c in cells:
+        if c == RoomLayouts.WALL or c == RoomLayouts.BREAK:
+            has_walls = true
+        if c != RoomLayouts.OPEN:
+            has_blockers = true
+    _goal_cache.clear()
+    _flow = PackedInt32Array()
+
+
+func _open_alcove_cells() -> void:
+    for i in cells.size():
+        if cells[i] == RoomLayouts.BREAK or cells[i] == RoomLayouts.POCKET:
+            cells[i] = RoomLayouts.OPEN
+
+
+## The alcove's front gave way: the pocket joins the room and pays out once.
+func _on_alcove_opened() -> void:
+    data.alcove_open = true
+    _open_alcove_cells()
+    _recount_blockers()
+    Secrets.record("alcove", main.floor_number)
+    if data.alcove_paid:
+        return
+    data.alcove_paid = true
+    var c := _alcove_inner.get_center()
+    _drop_scrap(c, 12 + 6 * main.floor_number, 5)
+    if randf() < 0.5:
+        var o := Items.offer(Drops.roll_item(main.difficulty(), Items.Rarity.COMMON, [], main.party_luck(), "", main.players), 0, c)
+        o["secret"] = true
+        data.stock.append(o)
+        call_deferred("_build_pedestals")
+
+
+## Deep pools are topped up a slice at a time (a frozen or boiled pool comes back as
+## water within a couple of seconds), and the walkers' flow field is refreshed while
+## anything is chasing anyone.
+func _tick_layout(delta: float) -> void:
+    if not _deep_idx.is_empty() and materials != null:
+        _deep_t -= delta
+        if _deep_t <= 0.0:
+            _deep_t = 0.1
+            materials.lay_still(Element.Kind.WET, _deep_idx, _deep_cursor, 700, 90)
+            _deep_cursor += 700
+            if _deep_cursor >= _deep_idx.size():
+                _deep_cursor = 0
+    if has_blockers and enemies != null and enemies.get_child_count() > 0:
+        _flow_t -= delta
+        if _flow_t <= 0.0:
+            _flow_t = 0.3
+            _update_flow()
+
+
+func cell_index(pos: Vector2) -> int:
+    if nav_w <= 0:
+        return -1
+    var l := pos - global_position - rect.position
+    var cx := floori(l.x / NAV)
+    var cy := floori(l.y / NAV)
+    if cx < 0 or cy < 0 or cx >= nav_w or cy >= nav_h:
+        return -1
+    return cy * nav_w + cx
+
+
+## What the layout has at a point (RoomLayouts.OPEN, WALL, CHASM...); WALL off the grid.
+func cell_at(pos: Vector2) -> int:
+    var i := cell_index(pos)
+    if i < 0:
+        return RoomLayouts.WALL
+    return cells[i]
+
+
+## Floor a body of `radius` can stand on: inside the room, no wall, chasm or closed alcove.
+func is_open(pos: Vector2, radius: float = 20.0) -> bool:
+    var local := pos - global_position
+    if not rect.grow(-radius).has_point(local):
+        return false
+    if not has_blockers:
+        return true
+    var r := maxf(radius, 1.0)
+    var y := local.y - r
+    while true:
+        var x := local.x - r
+        while true:
+            if cell_at(global_position + Vector2(x, y)) != RoomLayouts.OPEN:
+                return false
+            if x >= local.x + r:
+                break
+            x = minf(x + NAV, local.x + r)
+        if y >= local.y + r:
+            break
+        y = minf(y + NAV, local.y + r)
+    return true
+
+
+## Open floor whose cells around `pos` carry no terrain (no pool, slick, ice or grass).
+func is_dry(pos: Vector2, radius: float) -> bool:
+    if terrain.is_empty():
+        return true
+    var local := pos - global_position
+    for oy in [-radius, 0.0, radius]:
+        for ox in [-radius, 0.0, radius]:
+            var i := cell_index(global_position + local + Vector2(ox, oy))
+            if i >= 0 and terrain[i] != RoomLayouts.T_NONE:
+                return false
+    return true
+
+
+func is_deep(pos: Vector2) -> bool:
+    if _deep_rects.is_empty():
+        return false
+    var i := cell_index(pos)
+    if i < 0 or terrain[i] != RoomLayouts.T_DEEP or materials == null:
+        return false
+    var m := materials.material_at(pos)
+    return m == Materials.WATER or m == Materials.POISON or m == Materials.CHARGED
+
+
+## Interior wall at this point: shots stop here (chasms they fly over).
+func blocks_shot(pos: Vector2) -> bool:
+    return has_walls and cell_at(pos) == RoomLayouts.WALL
+
+
+## No wall between a and b (sight, shots); with `walk`, no chasm either.
+func line_clear(a: Vector2, b: Vector2, walk: bool = false) -> bool:
+    if not has_blockers or (not walk and not has_walls):
+        return true
+    var n := int(a.distance_to(b) / 14.0)
+    for k in range(1, n):
+        var i := cell_index(a.lerp(b, float(k) / float(n)))
+        if i < 0:
+            continue   # past the floor's edge: a doorway or the outer wall, not the layout
+        var c := cells[i]
+        if c == RoomLayouts.WALL or c == RoomLayouts.BREAK:
+            return false
+        if walk and c != RoomLayouts.OPEN:
+            return false
+    return true
+
+
+## Puzzle pieces claim their spot so props keep away.
+func reserve(pos: Vector2, radius: float) -> void:
+    reserved.append([pos, radius])
+
+
+func _near_door(pos: Vector2, dist: float) -> bool:
+    for d in data.doors.keys():
+        if pos.distance_to(Vector2(d) * (room_size / 2.0)) < dist:
+            return true
+    return false
+
+
+func _near_reserved(pos: Vector2, r: float) -> bool:
+    for q in reserved:
+        var qp: Vector2 = q[0]
+        if pos.distance_to(qp) < float(q[1]) + r:
+            return true
+    return false
+
+
+## A spot for a puzzle piece: open (and dry unless `dry` is false), off the doors, the keep
+## zones and other pieces.
+func spot_ok(pos: Vector2, r: float, dry: bool = true) -> bool:
+    if not is_open(pos, r) or (dry and not is_dry(pos, r)) or _near_door(pos, 190.0) or _near_reserved(pos, r):
+        return false
+    for k in _keep:
+        var kp: Vector2 = k[0]
+        if pos.distance_to(kp) < float(k[1]) + r:
+            return false
+    return true
+
+
+## As spot_ok, but keep zones and shallow terrain are allowed (statues, trails); deep
+## water too when `deep` is true.
+func spot_ok_loose(pos: Vector2, r: float, deep: bool = false) -> bool:
+    if not is_open(pos, r) or _near_door(pos, 150.0) or _near_reserved(pos, r):
+        return false
+    var i := cell_index(pos)
+    return deep or i < 0 or terrain.is_empty() or terrain[i] != RoomLayouts.T_DEEP
+
+
+## For Props.dress: open, dry floor clear of puzzle pieces.
+func prop_ok(pos: Vector2) -> bool:
+    return is_open(pos, 34.0) and is_dry(pos, 30.0) and not _near_reserved(pos, 30.0)
+
+
+## The closest standable point to `pos` (spiralling out), else the centre.
+func nearest_open(pos: Vector2, radius: float = 24.0) -> Vector2:
+    if is_open(pos, radius):
+        return pos
+    for ring in range(1, 16):
+        var dist := float(ring) * 20.0
+        var steps := 8 + ring * 2
+        for k in steps:
+            var q := pos + Vector2.RIGHT.rotated(TAU * float(k) / float(steps)) * dist
+            if is_open(q, radius):
+                return q
+    return Vector2.ZERO
+
+
+## Multi-source BFS from every living player: walkers descend it around walls and pits.
+func _update_flow() -> void:
+    var seeds := PackedInt32Array()
+    for pl in main.players:
+        if pl.alive:
+            var i := cell_index(pl.global_position)
+            if i >= 0:
+                seeds.append(i)
+    _flow = _bfs(seeds)
+
+
+func _bfs(seeds: PackedInt32Array) -> PackedInt32Array:
+    var dist := PackedInt32Array()
+    dist.resize(nav_w * nav_h)
+    dist.fill(1 << 20)
+    var queue := PackedInt32Array()
+    for s in seeds:
+        if dist[s] != 0:
+            dist[s] = 0
+            queue.append(s)
+    var head := 0
+    while head < queue.size():
+        var i := queue[head]
+        head += 1
+        var cx := i % nav_w
+        var cy := i / nav_w
+        var nd := dist[i] + 1
+        for oy in range(-1, 2):
+            for ox in range(-1, 2):
+                if ox == 0 and oy == 0:
+                    continue
+                var nx := cx + ox
+                var ny := cy + oy
+                if nx < 0 or ny < 0 or nx >= nav_w or ny >= nav_h:
+                    continue
+                var j := ny * nav_w + nx
+                if cells[j] != RoomLayouts.OPEN or dist[j] <= nd:
+                    continue
+                if ox != 0 and oy != 0 and (cells[cy * nav_w + nx] != RoomLayouts.OPEN or cells[ny * nav_w + cx] != RoomLayouts.OPEN):
+                    continue   # no cutting corners
+                dist[j] = nd
+                queue.append(j)
+    return dist
+
+
+## Step down a distance field from `from`: the direction to the best neighbouring cell.
+func _descend(dist: PackedInt32Array, from: Vector2) -> Vector2:
+    var i := cell_index(from)
+    if i < 0 or dist.size() != nav_w * nav_h:
+        return Vector2.ZERO
+    var cx := i % nav_w
+    var cy := i / nav_w
+    var best := dist[i]
+    var best_j := -1
+    for oy in range(-1, 2):
+        for ox in range(-1, 2):
+            if ox == 0 and oy == 0:
+                continue
+            var nx := cx + ox
+            var ny := cy + oy
+            if nx < 0 or ny < 0 or nx >= nav_w or ny >= nav_h:
+                continue
+            var j := ny * nav_w + nx
+            if dist[j] >= best:
+                continue
+            if ox != 0 and oy != 0 and (cells[cy * nav_w + nx] != RoomLayouts.OPEN or cells[ny * nav_w + cx] != RoomLayouts.OPEN):
+                continue
+            best = dist[j]
+            best_j = j
+    if best_j < 0:
+        return Vector2.ZERO
+    var target := global_position + rect.position + Vector2(float(best_j % nav_w) + 0.5, float(best_j / nav_w) + 0.5) * NAV
+    var v := target - from
+    return v.normalized() if v.length() > 0.5 else Vector2.ZERO
+
+
+## Which way a walker should go to reach the nearest player: ZERO when the way is
+## straight (or the room has nothing in it), else around walls and chasms.
+func nav_dir(from: Vector2) -> Vector2:
+    if not has_blockers or _flow.is_empty():
+        return Vector2.ZERO
+    return _descend(_flow, from)
+
+
+## Which way to walk from `from` to `to` (the bot): straight when nothing is in the way.
+func path_dir(from: Vector2, to: Vector2) -> Vector2:
+    var direct := (to - from).normalized()
+    if not has_blockers or line_clear(from, to, true):
+        return direct
+    var inner := rect.grow(-NAV * 0.5)
+    var local := to - global_position
+    var goal := global_position + Vector2(clampf(local.x, inner.position.x, inner.end.x), clampf(local.y, inner.position.y, inner.end.y))
+    var gi := cell_index(goal)
+    if gi < 0:
+        return direct
+    var now := Time.get_ticks_msec()
+    var entry: Array = _goal_cache.get(gi, [])
+    if entry.is_empty() or now - int(entry[0]) > 1500:
+        if _goal_cache.size() > 6:
+            _goal_cache.clear()
+        entry = [now, _bfs(PackedInt32Array([gi]))]
+        _goal_cache[gi] = entry
+    var d := _descend(entry[1], from)
+    return d if d != Vector2.ZERO else direct
+
+
+## Drawing for the layout: mode 0 under the floor materials (deep pool basins), mode 1
+## over them (chasms, wall shadows).
+class LayoutLayer extends Node2D:
+    var room: Room
+    var mode := 0
+    var shadows: Array[Rect2] = []
+    func _draw() -> void:
+        room._draw_layout(self, mode, shadows)
+
+
+func _draw_layout(cv: Node2D, mode: int, shadows: Array[Rect2]) -> void:
+    var cs := NAV
+    for i in cells.size():
+        var cx := i % nav_w
+        var cy := i / nav_w
+        var p := rect.position + Vector2(cx, cy) * cs
+        if mode == 0:
+            if terrain[i] == RoomLayouts.T_GRASS:
+                cv.draw_rect(Rect2(p, Vector2(cs, cs)), Color(0.40, 0.34, 0.16, 0.22))
+                continue
+            if terrain[i] != RoomLayouts.T_DEEP:
+                continue
+            # The pool itself (its still water is not drawn by the Materials grid): deep
+            # blue, a few fixed ripples, a stone lip along the top edge.
+            cv.draw_rect(Rect2(p, Vector2(cs, cs)), Color(0.08, 0.18, 0.37))
+            var rh := (i * 2654435761) & 0xFFFF
+            if rh % 4 == 0:
+                cv.draw_rect(Rect2(p + Vector2(float(rh % 12) + 2.0, float((rh >> 5) % 14) + 2.0), Vector2(6, 2)), Color(0.30, 0.50, 0.85, 0.45))
+            if not _terrain_is(cx, cy - 1, RoomLayouts.T_DEEP):
+                cv.draw_rect(Rect2(p, Vector2(cs, 3)), Color(0.30, 0.27, 0.28))
+                cv.draw_rect(Rect2(p + Vector2(0, 3), Vector2(cs, 3)), Color(0.04, 0.09, 0.20))
+            if not _terrain_is(cx, cy + 1, RoomLayouts.T_DEEP):
+                cv.draw_rect(Rect2(p + Vector2(0, cs - 2), Vector2(cs, 2)), Color(0.14, 0.18, 0.24))
+            if not _terrain_is(cx - 1, cy, RoomLayouts.T_DEEP):
+                cv.draw_rect(Rect2(p, Vector2(2, cs)), Color(0.16, 0.21, 0.28))
+            if not _terrain_is(cx + 1, cy, RoomLayouts.T_DEEP):
+                cv.draw_rect(Rect2(p + Vector2(cs - 2, 0), Vector2(2, cs)), Color(0.16, 0.21, 0.28))
+        else:
+            if cells[i] != RoomLayouts.CHASM:
+                continue
+            cv.draw_rect(Rect2(p, Vector2(cs, cs)), Color(0.010, 0.008, 0.016))
+            var hsh := (i * 2654435761) & 0xFFFF
+            if hsh % 5 == 0:
+                cv.draw_rect(Rect2(p + Vector2(float(hsh % 14) + 2.0, float((hsh >> 4) % 14) + 2.0), Vector2(2, 2)), Color(0.10, 0.07, 0.16, 0.8))
+            if not _cell_is(cx, cy - 1, RoomLayouts.CHASM):
+                # The lip: the floor's broken edge, then the drop.
+                cv.draw_rect(Rect2(p, Vector2(cs, 4)), Color(0.32, 0.27, 0.28))
+                cv.draw_rect(Rect2(p + Vector2(0, 4), Vector2(cs, 5)), Color(0.07, 0.06, 0.08))
+            if not _cell_is(cx, cy + 1, RoomLayouts.CHASM):
+                cv.draw_rect(Rect2(p + Vector2(0, cs - 2), Vector2(cs, 2)), Color(0.22, 0.19, 0.20))
+            if not _cell_is(cx - 1, cy, RoomLayouts.CHASM):
+                cv.draw_rect(Rect2(p, Vector2(2, cs)), Color(0.20, 0.17, 0.18))
+            if not _cell_is(cx + 1, cy, RoomLayouts.CHASM):
+                cv.draw_rect(Rect2(p + Vector2(cs - 2, 0), Vector2(2, cs)), Color(0.20, 0.17, 0.18))
+    if mode == 1:
+        for r in shadows:
+            cv.draw_rect(Rect2(r.position.x + 2.0, r.end.y, r.size.x, 8.0), Color(0, 0, 0, 0.35))
+
+
+func _cell_is(cx: int, cy: int, v: int) -> bool:
+    if cx < 0 or cy < 0 or cx >= nav_w or cy >= nav_h:
+        return false
+    return cells[cy * nav_w + cx] == v
+
+
+func _terrain_is(cx: int, cy: int, v: int) -> bool:
+    if cx < 0 or cy < 0 or cx >= nav_w or cy >= nav_h:
+        return false
+    return terrain[cy * nav_w + cx] == v
+
+
+## An ice sheet laid by the layout: one pale texture over the Materials grid (a pixel per
+## grid cell) instead of thousands of drawn cells. A slice of cells is checked every tick;
+## a cell that is no longer ice (melted, eaten by acid) is cleared from the texture.
+class IceSheet extends Sprite2D:
+    var mats: Materials
+    var idx := PackedInt32Array()
+    var gone := PackedByteArray()
+    var img: Image
+    var tex: ImageTexture
+    var _cursor := 0
+    var _t := 0.0
+
+    func setup(p_mats: Materials, p_idx: PackedInt32Array) -> void:
+        mats = p_mats
+        idx = p_idx
+        gone.resize(idx.size())
+        gone.fill(0)
+        img = Image.create(mats._w, mats._h, false, Image.FORMAT_RGBA8)
+        img.fill(Color(0, 0, 0, 0))
+        for k in idx.size():
+            var i := idx[k]
+            var h := (i * 2654435761) & 0xFF
+            var c := Color(0.72, 0.88, 1.0, 0.34) if h > 30 else Color(0.92, 0.98, 1.0, 0.6)
+            img.set_pixel(i % mats._w, i / mats._w, c)
+        tex = ImageTexture.create_from_image(img)
+        texture = tex
+        centered = false
+        position = mats._origin
+        scale = Vector2(Materials.CELL, Materials.CELL)
+        texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+        z_index = -1
+
+    func _process(delta: float) -> void:
+        _t -= delta
+        if _t > 0.0 or mats == null or not is_instance_valid(mats):
+            return
+        _t = 0.2
+        var changed := false
+        var end := mini(idx.size(), _cursor + 1200)
+        for k in range(_cursor, end):
+            if gone[k] == 0 and mats.mat[idx[k]] != Materials.ICE:
+                gone[k] = 1
+                img.set_pixel(idx[k] % mats._w, idx[k] / mats._w, Color(0, 0, 0, 0))
+                changed = true
+        _cursor = 0 if end >= idx.size() else end
+        if changed:
+            tex.update(img)
+
+
+## Dry grass: tufts over a thin oil film. A tuft whose oil is gone (burnt, eaten) is char.
+class GrassLayer extends Node2D:
+    var room: Room
+    var tufts: Array[Vector2] = []
+    var burnt := PackedByteArray()
+    var _t := 0.0
+
+    func _ready() -> void:
+        burnt.resize(tufts.size())
+        burnt.fill(0)
+
+    func _process(delta: float) -> void:
+        _t -= delta
+        if _t > 0.0 or room == null or room.materials == null:
+            return
+        _t = 0.5
+        var changed := false
+        for i in tufts.size():
+            if burnt[i] == 0 and room.materials.material_at(room.global_position + tufts[i]) != Materials.OIL:
+                burnt[i] = 1
+                changed = true
+        if changed:
+            queue_redraw()
+
+    func _draw() -> void:
+        for i in tufts.size():
+            var p := tufts[i]
+            if burnt.size() > i and burnt[i] == 1:
+                draw_rect(Rect2(p - Vector2(1, 0), Vector2(3, 2)), Color(0.08, 0.07, 0.06, 0.7))
+                continue
+            var h := (i * 7919) % 3
+            var c := Color(0.62, 0.55, 0.30, 0.9) if h != 0 else Color(0.50, 0.46, 0.26, 0.9)
+            draw_line(p, p + Vector2(-2, -5), c, 1.0)
+            draw_line(p, p + Vector2(0, -6 - h), c, 1.0)
+            draw_line(p, p + Vector2(2, -4), c, 1.0)
 
 
 # --- Drawing ---------------------------------------------------------------

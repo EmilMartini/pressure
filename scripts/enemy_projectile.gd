@@ -52,6 +52,13 @@ func _physics_process(delta: float) -> void:
     if room_rect.has_area() and not room_rect.grow(radius).has_point(global_position):
         queue_free()
         return
+    var rm := Room.here
+    if rm != null and rm.has_walls and rm.blocks_shot(global_position):
+        var sc := get_tree().current_scene
+        if sc != null and "fx" in sc and sc.fx != null:
+            sc.fx.puff(Art.PARTICLES["circle"], global_position, Color(color(), 0.5), radius * 3.0, 0.2, true)
+        queue_free()
+        return
     var hit: Player = null
     var best := INF
     for p in get_tree().get_nodes_in_group("players"):

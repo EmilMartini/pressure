@@ -159,6 +159,9 @@ const REWARD_ICONS := {
     "shop": "item/scroll/scroll-yellow.png",
     "room": "item/scroll/scroll-red.png",
     "obstacle": "item/scroll/scroll-brown.png",
+    "secret:lantern": "item/misc/misc_lantern.png",
+    "secret:alcove": "item/misc/key.png",
+    "secret:hoard": "item/misc/misc_box.png",
 }
 const REWARD_ICON_DEFAULT := "item/scroll/scroll_old.png"
 

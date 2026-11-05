@@ -151,6 +151,9 @@ var _spawn_t := 0.0
 var _squash := 0.0
 var _floor_t := randf() * 0.25   # next floor-material check, staggered across enemies
 var _on_ice := false
+var _wading := false               # deep water in a room layout: slowed
+var _nav_t := randf() * 0.25       # next sight-line check, staggered
+var _nav_blocked := false          # a wall or chasm between us and the target: follow the room's flow
 
 var _wave := 0
 var _dead := false
@@ -646,6 +649,8 @@ func _explode(dmg: float, rad: float) -> void:
 ## What the floor does to us, a few times a second (see Materials).
 func _feel_floor() -> void:
     _on_ice = false
+    var rm := Room.here
+    _wading = rm != null and is_instance_valid(rm) and rm.is_deep(global_position)
     var mats := Materials.find(self)
     if mats == null:
         return
@@ -848,8 +853,25 @@ func _physics_process(delta: float) -> void:
     queue_redraw()
 
 
+## Around the room's walls and chasms: when the straight line to the target is blocked,
+## the direction down the room's flow field (see Room.nav_dir); ZERO to go straight.
+func _nav_dir(delta: float, target: Player) -> Vector2:
+    var rm := Room.here
+    if rm == null or not is_instance_valid(rm) or not rm.has_blockers:
+        return Vector2.ZERO
+    _nav_t -= delta
+    if _nav_t <= 0.0:
+        _nav_t = 0.3
+        _nav_blocked = not rm.line_clear(global_position, target.global_position, true)
+    if not _nav_blocked:
+        return Vector2.ZERO
+    return rm.nav_dir(global_position)
+
+
 func _speed_mult() -> float:
     var m := slow_factor if slow_time > 0.0 else 1.0
+    if _wading:
+        m *= Room.WADE
     if has_state(Element.Kind.STONE):
         m *= 0.75   # weighed down
     if affix == "hasted":
@@ -866,6 +888,9 @@ func _think(delta: float, target: Player) -> Vector2:
     var to_target := target.global_position - global_position
     var dist := to_target.length()
     var dir := to_target / dist if dist > 0.01 else Vector2.RIGHT
+    var around := _nav_dir(delta, target)
+    if around != Vector2.ZERO:
+        dir = around
     var mult := _speed_mult()
     if kind_name == "boss":
         return _think_boss(delta, target, dir, dist, mult)

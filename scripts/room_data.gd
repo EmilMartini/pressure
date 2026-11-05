@@ -33,7 +33,8 @@ var discovered := false   # drawn on the minimap
 var started := false      # arena / challenge / boss fight has begun at least once
 
 ## dir (Vector2i) -> { "to": Vector2i, "obstacle": String }
-## obstacle is "" for a plain door, else "pool" / "thicket" / "valve".
+## obstacle is "" for a plain door, "secret" for a hidden room's secret wall (then
+## "secret" holds the method that opens it, picked on first sight), else an Obstacle kind.
 var doors: Dictionary = {}
 
 ## Pedestal offers: { "kind": "gun"|"carry"|"repair"|"stairs"|"sigil", "id": String,
@@ -45,6 +46,26 @@ var loose_scrap := 0
 
 ## Treasure rooms: how big the chest is (1 small, 2 medium, 3+ large).
 var chest_tier := 1
+
+## Floor size class, picked at floor generation: 0 small, 1 normal, 2 large (SIZES).
+## Doors sit at the middle of each wall whatever the size.
+const SIZES := [Vector2(900, 600), Vector2(1120, 720), Vector2(1400, 880)]
+var size_class := 1
+## Interior geometry (RoomLayouts name) and the seed that shapes it, its puzzle and its
+## terrain, so a room keeps its layout on every visit.
+var layout := "open"
+var layout_seed := 0
+## Hidden environmental puzzle (Secrets kind) or "", and whether it has been solved.
+var secret := ""
+var secret_done := false
+## A secret alcove behind a breakable interior wall; open once broken, paid once looted.
+var alcove := false
+var alcove_open := false
+var alcove_paid := false
+
+
+func room_size() -> Vector2:
+    return SIZES[clampi(size_class, 0, SIZES.size() - 1)]
 
 
 func type_name() -> String:

@@ -27,6 +27,7 @@ var floor_rooms_cleared := 0   # difficulty creeps within a floor, resets at the
 var _paused_secs := 0.0
 var _bot_idle_fights := false
 var _hitstop_left := 0.0
+var _ticker: Node
 var _flash_rect: ColorRect
 var _flash_life := 0.0
 var _flash_fade := 0.0
@@ -87,11 +88,13 @@ func _ready() -> void:
     if autotest:
         # Fresh, separate save so the bot never touches the real one. `--veteran` unlocks
         # every gun and class first, to measure a player whose pool is wide open.
-        Progress.save_path = "user://save_autotest.json"
+        Progress.save_path = "user://save_autotest%s.json" % _instance_tag()
+        if _instance_tag() != "":
+            Telemetry.FILE = "user://telemetry/runs%s.jsonl" % _instance_tag()
         Progress.reset()
         # The bot never uses the player's real mastery tree: a throwaway file, empty unless
         # --mastery=N or --mastery=full buys nodes on it.
-        Mastery.save_path = "user://mastery_autotest.json"
+        Mastery.save_path = "user://mastery_autotest%s.json" % _instance_tag()
         Mastery.reset()
         for a in args:
             if a.begins_with("--mastery="):
@@ -127,7 +130,7 @@ func _ready() -> void:
 
     Elements.reaction_fired.connect(_count_reaction)
     Progress.unlocked.connect(_on_unlocked)
-    if args.has("--obstacle-test") or args.has("--start-shot"):
+    if args.has("--obstacle-test") or args.has("--start-shot") or args.has("--layouts-shot"):
         # Test hooks never touch the real save.
         Progress.save_path = "user://save_autotest.json"
         Progress.reset()
@@ -143,6 +146,8 @@ func _ready() -> void:
     start_floor(1)
     if OS.get_cmdline_user_args().has("--obstacle-test"):
         _obstacle_test()
+    if OS.get_cmdline_user_args().has("--layouts-shot"):
+        _layouts_shot()
     if OS.get_cmdline_user_args().has("--start-shot"):
         DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path("res://autotest"))
         await get_tree().create_timer(0.8).timeout
@@ -190,6 +195,69 @@ func _ready() -> void:
                     await _screenshot("res://autotest/room_%s.png" % rooms[pos].type_name().to_lower().replace(" ", "_"))
                     break
         get_tree().quit()
+
+
+## Debug capture: `godot --path . -- --layouts-shot` (fresh test save) builds every room
+## layout once in a cleared arena and every puzzle kind once (plus a secret wall and a
+## secret alcove), saves res://autotest/layout_<name>.png and secret_<kind>.png, then quits.
+func _layouts_shot() -> void:
+    DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path("res://autotest"))
+    await get_tree().create_timer(0.5).timeout
+    var shots: Array = []
+    for lname in RoomLayouts.ALL:
+        shots.append({ "file": "layout_" + String(lname), "layout": lname, "size": maxi(1, RoomLayouts.min_size(lname)) })
+    for k in Secrets.ORDER:
+        shots.append({ "file": "secret_" + String(k), "layout": "open", "secret": k, "size": 1 })
+    shots.append({ "file": "secret_wall", "layout": "open", "size": 1, "wall": true })
+    shots.append({ "file": "secret_alcove", "layout": "open", "size": 1, "alcove": true })
+    var centre := Vector2i(FloorGen.GRID / 2, FloorGen.GRID / 2)
+    for shot in shots:
+        rooms = _shot_rooms(centre, shot)
+        enter_room(centre, Vector2i.ZERO)
+        for pl in players:
+            pl.global_position = Vector2.ZERO
+        # Fit the whole room and its walls in the frame.
+        var vp := get_viewport().get_visible_rect().size
+        var span := current.rect.size + Vector2.ONE * (2.0 * Room.WALL + 80.0)
+        var z := minf(vp.x / span.x, vp.y / span.y)
+        camera.zoom = Vector2(z, z)
+        camera.limit_left = -100000
+        camera.limit_top = -100000
+        camera.limit_right = 100000
+        camera.limit_bottom = 100000
+        camera.position = Vector2.ZERO
+        camera.reset_smoothing()
+        await get_tree().create_timer(0.7).timeout
+        await _screenshot("res://autotest/%s.png" % shot["file"])
+        print("[LAYOUT SHOT] %s  layout=%s size=%s secret=%s alcove=%s blockers=%s" % [shot["file"], current.layout_name, current.room_size, current.data.secret, current.data.alcove, current.has_blockers])
+    get_tree().quit()
+
+
+## A cleared arena at `centre` with a plain door on every side (one a secret wall, for the
+## "wall" shot), shaped as `shot` asks.
+func _shot_rooms(centre: Vector2i, shot: Dictionary) -> Dictionary:
+    var out: Dictionary = {}
+    var r := RoomData.new()
+    r.pos = centre
+    r.type = RoomData.Type.ARENA
+    r.cleared = true
+    r.size_class = int(shot.get("size", 1))
+    r.layout = String(shot.get("layout", "open"))
+    r.layout_seed = 1234567
+    r.secret = String(shot.get("secret", ""))
+    r.alcove = bool(shot.get("alcove", false))
+    out[centre] = r
+    for d in FloorGen.DIRS:
+        var n := RoomData.new()
+        n.pos = centre + d
+        n.type = RoomData.Type.ARENA
+        n.doors[-d] = { "to": centre, "obstacle": "" }
+        out[centre + d] = n
+        r.doors[d] = { "to": centre + d, "obstacle": "" }
+    if bool(shot.get("wall", false)):
+        r.doors[Vector2i.RIGHT] = { "to": centre + Vector2i.RIGHT, "obstacle": "secret", "secret": "roots" }
+        (out[centre + Vector2i.RIGHT] as RoomData).type = RoomData.Type.HIDDEN
+    return out
 
 
 ## Headless check that projectiles hit obstacles: `godot --headless --path . -- --obstacle-test`
@@ -262,14 +330,54 @@ func _update_spectacle() -> void:
 
 ## Hit-stop: freeze the world for a beat on a big moment (unscaled, HUD keeps drawing).
 func hitstop(secs: float, scale: float = 0.05) -> void:
-    if secs <= 0.0 or not Settings.flag("hit_stop"):
+    if secs <= 0.0 or not Settings.flag("hit_stop") or get_tree().paused:
         return
+    if _ticker == null:
+        _ticker = FeedbackTicker.new()
+        _ticker.main = self
+        _ticker.process_mode = Node.PROCESS_MODE_ALWAYS
+        add_child(_ticker)
     _hitstop_left = maxf(_hitstop_left, secs)
     Engine.time_scale = scale
 
 
+## Parallel bot runs: `--instance=N` gives each its own save, mastery and telemetry files
+## (and `--audio-driver Dummy` on the command line keeps them silent).
+static func _instance_tag() -> String:
+    for a in OS.get_cmdline_user_args():
+        if a.begins_with("--instance="):
+            return "_" + a.substr(11)
+    return ""
+
+
+## Hit-stop and flash run on real time in a node that keeps processing while the tree is
+## paused: a menu that opens mid hit-stop (the boss dies, a level-up pops) must never be
+## left in slow motion, which made its grace timer crawl and blocked every pick.
+class FeedbackTicker extends Node:
+    var main: Main
+    func _process(delta: float) -> void:
+        main._tick_feedback(delta / maxf(Engine.time_scale, 0.001))
+
+
+func _tick_feedback(real_delta: float) -> void:
+    if _hitstop_left > 0.0:
+        _hitstop_left -= real_delta
+        if _hitstop_left <= 0.0 or get_tree().paused:
+            _hitstop_left = 0.0
+            Engine.time_scale = 1.0
+    elif Engine.time_scale != 1.0 and get_tree().paused:
+        Engine.time_scale = 1.0
+    if _flash_rect != null and _flash_rect.color.a > 0.0:
+        _flash_rect.color.a = maxf(0.0, _flash_rect.color.a - _flash_fade * real_delta)
+
+
 ## A full-screen tinted flash that fades out; strength is the starting alpha.
 func flash(color: Color, strength: float = 0.5, life: float = 0.25) -> void:
+    if _ticker == null:
+        _ticker = FeedbackTicker.new()
+        _ticker.main = self
+        _ticker.process_mode = Node.PROCESS_MODE_ALWAYS
+        add_child(_ticker)
     if _flash_rect == null:
         var layer := CanvasLayer.new()
         layer.layer = 90
@@ -547,13 +655,6 @@ func _on_player_died(_p: Player) -> void:
 
 
 func _process(delta: float) -> void:
-    var real_delta := delta / maxf(Engine.time_scale, 0.001)
-    if _hitstop_left > 0.0:
-        _hitstop_left -= real_delta
-        if _hitstop_left <= 0.0:
-            Engine.time_scale = 1.0
-    if _flash_rect != null and _flash_rect.color.a > 0.0:
-        _flash_rect.color.a = maxf(0.0, _flash_rect.color.a - _flash_fade * real_delta)
     if autotest:
         _autotest_tick(delta)
     _handle_joins()
@@ -739,7 +840,7 @@ func _bot_navigate(p: Player) -> void:
     # Just through a door: step into the room first, so kiting or a door's own trigger
     # cannot bounce the bot straight back out.
     if Time.get_ticks_msec() - _room_entered_ms < 1200:
-        p.input.force_move = -p.global_position.normalized() if p.global_position.length() > 80.0 else Vector2.ZERO
+        p.input.force_move = room.path_dir(p.global_position, Vector2.ZERO) if p.global_position.length() > 80.0 else Vector2.ZERO
         return
     # Pedestals worth using.
     for ped in room.pedestals:
@@ -754,12 +855,13 @@ func _bot_navigate(p: Player) -> void:
                 room.activate(ped, p)
                 _bot_idle = 0.0
             else:
-                p.input.force_move = d.normalized()
+                p.input.force_move = room.path_dir(p.global_position, ped.global_position)
             return
-    # Obstacles the bot can clear with what it carries.
+    # Obstacles the bot can clear with what it carries. Secret walls it never looks for:
+    # a hidden room is only used once someone opened it.
     for dir in room.data.doors.keys():
         var ob: String = room.data.doors[dir]["obstacle"]
-        if ob == "" or _bot_skip.has([current_pos, dir]):
+        if ob == "" or not Obstacle.KINDS.has(ob) or _bot_skip.has([current_pos, dir]):
             continue
         _bot_obstacle_time += get_process_delta_time()
         if _bot_obstacle_time > 25.0:
@@ -780,11 +882,11 @@ func _bot_navigate(p: Player) -> void:
         # Guns fire at obstacles on their own once in range; just walk up to it.
         var target := room.door_world_position(dir)
         var to := target - p.global_position
-        p.input.force_move = to.normalized() if to.length() > 130.0 else Vector2.ZERO
+        p.input.force_move = room.path_dir(p.global_position, target) if to.length() > 130.0 else Vector2.ZERO
         return
     _bot_obstacle_time = 0.0
     if not room.data.cleared:
-        p.input.force_move = -p.global_position.normalized() if p.global_position.length() > 60.0 else Vector2.ZERO
+        p.input.force_move = room.path_dir(p.global_position, Vector2.ZERO) if p.global_position.length() > 60.0 else Vector2.ZERO
         return
     var dir := _bot_next_dir()
     if dir == Vector2i.ZERO:
@@ -795,7 +897,7 @@ func _bot_navigate(p: Player) -> void:
         _bot_idle = 0.0
         enter_room(current_pos + dir, dir)
         return
-    p.input.force_move = (room.door_world_position(dir) - p.global_position).normalized()
+    p.input.force_move = room.path_dir(p.global_position, room.door_world_position(dir))
 
 
 ## Whether the bot would use an offer right now (same rule for walking to it and for

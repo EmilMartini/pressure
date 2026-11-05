@@ -250,7 +250,7 @@ func _process(delta: float) -> void:
     if not visible:
         return
     if _armed_in > 0.0:
-        _armed_in -= delta
+        _armed_in -= delta / maxf(Engine.time_scale, 0.001)   # real time, immune to hit-stop
     # Something else (the pause menu closing) may unpause underneath us.
     if not get_tree().paused:
         get_tree().paused = true

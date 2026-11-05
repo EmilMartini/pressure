@@ -247,6 +247,7 @@ const UNLOCK_KINDS := {
     "room": "a new room type",
     "shop": "bigger shops",
     "rarity": "rarer gear can drop",
+    "secret": "the dungeon hides more",
 }
 
 

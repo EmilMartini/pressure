@@ -20,6 +20,8 @@ const ACHIEVEMENTS := [
         "stat": "floors", "goal": 3, "rewards": ["gun:vein_pistol"] },
     { "id": "plumber", "name": "Plumber", "desc": "Open a hidden room",
         "stat": "hidden_rooms", "goal": 1, "rewards": ["obstacle:valve", "gun:mist_sprayer"] },
+    { "id": "curious", "name": "Curious", "desc": "Find a secret",
+        "stat": "secrets_found", "goal": 1, "rewards": ["secret:lantern"] },
     { "id": "regular", "name": "Regular", "desc": "Start 2 runs",
         "stat": "runs_started", "goal": 2, "rewards": ["gun:spark_needler"] },
     { "id": "sparkplug", "name": "Sparkplug", "desc": "Fire 50 Ignitions",
@@ -36,6 +38,8 @@ const ACHIEVEMENTS := [
         "stat": "reaction:Ignition", "goal": 60, "rewards": ["class:tarsmith"] },
     { "id": "slayer", "name": "Slayer", "desc": "Kill 12 elites",
         "stat": "elites", "goal": 12, "rewards": ["gun:ember_carbine"] },
+    { "id": "delver", "name": "Delver", "desc": "Find 10 secrets",
+        "stat": "secrets_found", "goal": 10, "rewards": ["secret:alcove"] },
     { "id": "thermal", "name": "Thermal", "desc": "Fire 50 Thermal Shocks",
         "stat": "reaction:Thermal Shock", "goal": 50, "rewards": ["gun:duality_burst"] },
     { "id": "plasma", "name": "Plasma Physicist", "desc": "Fire 50 Plasmas",
@@ -114,6 +118,8 @@ const ACHIEVEMENTS := [
         "stat": "runs_started", "goal": 12, "rewards": ["gun:gravel_shotgun"] },
     { "id": "pyromaniac", "name": "Pyromaniac", "desc": "Fire 180 Infernos",
         "stat": "reaction:Inferno", "goal": 180, "rewards": ["gun:napalm_lobber"] },
+    { "id": "riddler", "name": "Riddler", "desc": "Solve every kind of secret",
+        "stat": "secret_kinds", "goal": 10, "rewards": ["secret:hoard"] },
     { "id": "survivor", "name": "Survivor", "desc": "Clear the dungeon",
         "stat": "runs_won", "goal": 1, "rewards": ["gun:storm_pike", "shop:extra"] },
     { "id": "sunbreaker", "name": "Sunbreaker", "desc": "Kill 12 bosses",
@@ -182,6 +188,9 @@ func unlock_label(unlock_id: String) -> String:
             return "Fourth shop slot" if parts[1] == "extra" else "Third shop item"
         "rarity":
             return "%s gear" % parts[1].capitalize()
+        "secret":
+            return { "lantern": "More hidden puzzles", "alcove": "More secret alcoves",
+                "hoard": "Richer puzzle rewards" }.get(parts[1], parts[1])
     return unlock_id
 
 

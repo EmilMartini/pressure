@@ -90,6 +90,9 @@ static func dress(room) -> void:
         var found := false
         for attempt in 40:
             var p := Vector2(rng.randf_range(inner.position.x, inner.end.x), rng.randf_range(inner.position.y, inner.end.y))
+            # The room's layout (walls, chasms, pools, puzzle pieces) has the last word.
+            if room.has_method("prop_ok") and not room.prop_ok(p):
+                continue
             if _ok(p, data.type, doors, blocked, placed):
                 pos = p
                 found = true

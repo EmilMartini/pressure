@@ -1,11 +1,12 @@
 class_name Journal
 extends PanelContainer
 ## The journal: what is unlocked, what is not, and how to unlock it.
-## Tabs: Achievements, Arsenal (guns), Gear (items by rarity). Entries are flat buttons
+## Tabs: Achievements, Arsenal (guns), Gear (items by rarity), Reactions, Secrets (puzzle
+## kinds found, hidden rooms and alcoves). Entries are flat buttons
 ## so a controller can walk the list and the scroll follows focus. On the Gear tab the
 ## focused entry's ItemCard shows on the right.
 
-const TABS := ["Achievements", "Arsenal", "Gear", "Reactions"]
+const TABS := ["Achievements", "Arsenal", "Gear", "Reactions", "Secrets"]
 
 var on_close: Callable
 var tab := 0
@@ -90,6 +91,8 @@ func set_tab(i: int) -> void:
             _fill_gear()
         3:
             _fill_reactions()
+        4:
+            _fill_secrets()
     Sfx.play("ui_move")
     await get_tree().process_frame
     if is_visible_in_tree():
@@ -177,6 +180,19 @@ func _fill_reactions() -> void:
             _entry("%s   %s   x%d\n      %s" % [d["name"], pair, Progress.stat("reaction:" + d["name"]), d["desc"]], col)
         else:
             _entry("???   %s\n      undiscovered" % pair, Color(0.45, 0.42, 0.45))
+
+
+## Each puzzle kind stays ??? until it has been solved once; then its name and how.
+func _fill_secrets() -> void:
+    _header("Secrets   (%d / %d kinds solved)   %d found in all" % [Secrets.kinds_solved(), Secrets.ORDER.size(), Progress.stat("secrets_found")], UiTheme.BONE)
+    _header("Hidden rooms opened: %d      Alcoves broken open: %d" % [Progress.stat("hidden_rooms"), Progress.stat("secret:alcove")], UiTheme.DIM)
+    for k in Secrets.ORDER:
+        var n := Progress.stat("secret:" + k)
+        if n > 0:
+            var spec: Dictionary = Secrets.KINDS[k]
+            _entry("%s   x%d\n      %s" % [spec["name"], n, spec["desc"]], Color(1.0, 0.85, 0.5))
+        else:
+            _entry("???\n      not yet found", Color(0.45, 0.42, 0.45))
 
 
 func _fill_gear() -> void:

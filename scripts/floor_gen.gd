@@ -1,7 +1,8 @@
 class_name FloorGen
 extends RefCounted
 ## Generates an Isaac-style floor: a tree of rooms on a grid, specials on dead ends,
-## and a hidden room reachable only through an elemental obstacle.
+## and a hidden room behind a secret wall that looks like any other wall. Each room also
+## gets a size, an interior layout, maybe a hidden puzzle and, rarely, a secret alcove.
 
 const GRID := 9
 const DIRS: Array[Vector2i] = [Vector2i.UP, Vector2i.DOWN, Vector2i.LEFT, Vector2i.RIGHT]
@@ -43,6 +44,7 @@ static func generate(floor_number: int, luck: float = 0.0, players: Array = []) 
         rooms[candidates[i]].type = specials[i]
 
     _place_hidden_room(rooms, start)
+    _shape_rooms(rooms, start)
     _stock_rooms(rooms, floor_number, luck, players)
 
     rooms[start].discovered = true
@@ -107,11 +109,53 @@ static func _place_hidden_room(rooms: Dictionary, start: Vector2i) -> void:
         return
     var d: Vector2i = links.pick_random()
     var from: RoomData = rooms[best + d]
-    from.doors[-d] = { "to": best, "obstacle": unlocked_obstacles().pick_random() }
+    # A secret wall: no door shows, no outline on the map. The method that opens it
+    # ("secret") is picked when the party first stands in that room (Room._secret_method).
+    from.doors[-d] = { "to": best, "obstacle": "secret", "secret": "" }
     hidden.doors[d] = { "to": best + d, "obstacle": "" }
 
 
-## Obstacle kinds the save has unlocked; the pool is always available.
+## Size class, layout, seed and puzzle for every room; one floor in four (one in two with
+## the "secret:alcove" unlock) hides an alcove in an arena too.
+static func _shape_rooms(rooms: Dictionary, start: Vector2i) -> void:
+    var rng := RandomNumberGenerator.new()
+    rng.seed = randi()
+    var used: Array = []
+    for p in rooms.keys():
+        var r: RoomData = rooms[p]
+        r.layout_seed = rng.randi()
+        match r.type:
+            RoomData.Type.ARENA:
+                var roll := rng.randf()
+                r.size_class = 0 if roll < 0.25 else (1 if roll < 0.7 else 2)
+            RoomData.Type.TREASURE:
+                r.size_class = rng.randi_range(0, 1)
+            RoomData.Type.CHALLENGE:
+                r.size_class = rng.randi_range(1, 2)
+            RoomData.Type.HIDDEN:
+                r.size_class = 0
+            RoomData.Type.BOSS:
+                r.size_class = 2
+            _:
+                r.size_class = 1
+        var lr := RandomNumberGenerator.new()
+        lr.seed = r.layout_seed
+        r.layout = "open" if p == start else RoomLayouts.pick(r.type, r.size_class, lr)
+        r.secret = Secrets.pick(r.type, lr, used, r.layout) if p != start else ""
+        if r.secret != "":
+            used.append(r.secret)
+    var alcove_chance := 0.5 if Progress.has("secret:alcove") else 0.25
+    if rng.randf() < alcove_chance:
+        var arenas: Array = []
+        for p in rooms.keys():
+            if rooms[p].type == RoomData.Type.ARENA and rooms[p].secret == "":
+                arenas.append(p)
+        if not arenas.is_empty():
+            rooms[arenas[rng.randi() % arenas.size()]].alcove = true
+
+
+## Obstacle kinds the save has unlocked; the pool is always available. (Hidden rooms now
+## sit behind secret walls; the visible obstacles are kept for tests and future use.)
 static func unlocked_obstacles() -> Array:
     var out: Array = []
     for kind in OBSTACLES:

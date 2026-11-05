@@ -65,6 +65,7 @@ var _orbit_angle := 0.0
 var _orbit_hits: Dictionary = {}  # enemy instance id -> msec when an orbital may hit it again
 var _floor_t := 0.0               # next floor-material check
 var _on_ice := false
+var _wading := false               # deep water in a room layout slows us
 
 const ORBIT_RADIUS := 60.0
 const ORBIT_HIT := 10.0
@@ -473,7 +474,7 @@ func _physics_process(delta: float) -> void:
         if not alive:
             return
     var mv := input.move_vector()
-    var want := mv * move_speed()
+    var want := mv * move_speed() * (Room.WADE if _wading else 1.0)
     if _on_ice:
         var keep := pow(Materials.ICE_KEEP, delta * 60.0)
         velocity = velocity * keep + want * (1.0 - keep)
@@ -511,6 +512,8 @@ func _physics_process(delta: float) -> void:
 ## What the floor does to us: fire and charged water hurt (invuln still applies), ice slides.
 func _feel_floor() -> void:
     _on_ice = false
+    var rm := Room.here
+    _wading = rm != null and is_instance_valid(rm) and rm.is_deep(global_position)
     var mats := Materials.find(self)
     if mats == null:
         return
@@ -569,16 +572,40 @@ func nearest_enemy(max_range: float, prefer_elite: bool = false) -> Node2D:
     var best_d := max_range * max_range
     var best_elite: Node2D = null
     var best_elite_d := max_range * max_range
+    var rm := Room.here
+    var walls := rm != null and is_instance_valid(rm) and rm.has_walls
+    var near: Array = []
     for e in get_tree().get_nodes_in_group("enemies"):
         if not is_instance_valid(e) or e.is_queued_for_deletion() or e.emerge > 0.0:
             continue
         var d: float = e.global_position.distance_squared_to(global_position)
+        if walls and d < max_range * max_range:
+            near.append([d, e])
         if d < best_d:
             best_d = d
             best = e
         if prefer_elite and e.is_elite and d < best_elite_d:
             best_elite_d = d
             best_elite = e
+    if walls and not near.is_empty():
+        # Interior walls stop shots: aim at the nearest enemy in sight, if one of the
+        # closest few is; else the nearest anyway (it may step out).
+        if best_elite != null and rm.line_clear(global_position, best_elite.global_position):
+            return best_elite
+        if best != null and rm.line_clear(global_position, best.global_position):
+            return best
+        var taken := {}
+        for tries in mini(6, near.size()):
+            var pick := -1
+            var pick_d := INF
+            for k in near.size():
+                if not taken.has(k) and float(near[k][0]) < pick_d:
+                    pick_d = float(near[k][0])
+                    pick = k
+            taken[pick] = true
+            var cand: Node2D = near[pick][1]
+            if cand != best and rm.line_clear(global_position, cand.global_position):
+                return cand
     return best_elite if best_elite != null else best
 
 

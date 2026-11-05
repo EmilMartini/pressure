@@ -12,6 +12,7 @@ var dir: Vector2i
 var state: int = State.OPEN
 var size: Vector2
 var obstacle: Obstacle = null
+var secret: SecretWall = null   # a hidden room's way in, looking like plain wall
 
 var _blocker_shape: CollisionShape2D
 var _lock: Sprite2D
@@ -79,8 +80,18 @@ func set_obstacle(kind: String) -> void:
     _apply()
 
 
+## The doorway is bricked over by a SecretWall until the right element opens it.
+func set_secret(method: String) -> void:
+    state = State.OBSTACLE
+    secret = SecretWall.new("door", method, size, -Vector2(dir))
+    add_child(secret)
+    secret.cleared.connect(_on_obstacle_cleared)
+    _apply()
+
+
 func _on_obstacle_cleared() -> void:
     obstacle = null
+    secret = null
     set_state(State.OPEN)
     obstacle_cleared.emit(dir)
 
@@ -124,4 +135,5 @@ func _draw() -> void:
             draw_rect(r, Color(0.02, 0.02, 0.03))
             draw_rect(r.grow(-4.0), Color(0.55, 0.75, 0.7, 0.5), false, 2.0)
         State.OBSTACLE:
-            draw_rect(r, Color(0.02, 0.02, 0.03))
+            if secret == null:
+                draw_rect(r, Color(0.02, 0.02, 0.03))

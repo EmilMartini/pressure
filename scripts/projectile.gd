@@ -100,6 +100,17 @@ func _physics_process(delta: float) -> void:
                 if is_queued_for_deletion():
                     return
                 break   # a prop let the shot through (pierce): fly on
+    # Interior walls of a room layout stop shots (chasms they fly over).
+    var rm := Room.here
+    if not spectral and rm != null and rm.has_walls and rm.blocks_shot(global_position):
+        if behaviour == "boomerang" and not _returning:
+            _turn_back()
+        else:
+            if shard_count > 0:
+                _burst_shards(null)
+            _splash(null)
+            queue_free()
+            return
     if element != Element.Kind.NONE:
         for c in get_tree().get_nodes_in_group("clouds"):
             if not is_instance_valid(c) or _clouds_hit.has(c) or c.element == element:

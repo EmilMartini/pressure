@@ -24,7 +24,8 @@ const ENDPOINT := ""
 const ENDPOINT_SIMPLE := false
 
 const DIR := "user://telemetry"
-const FILE := "user://telemetry/runs.jsonl"
+const FILE_DEFAULT := "user://telemetry/runs.jsonl"
+var FILE := FILE_DEFAULT   # parallel bot instances write runs_<n>.jsonl
 const MAX_BYTES := 5 * 1024 * 1024
 const WAVE_HP_EVERY := 5.0
 const FPS_EVERY := 10.0

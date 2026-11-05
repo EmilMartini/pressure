@@ -67,6 +67,7 @@ const F_ACTIVE := 1
 const F_DRAWN := 2
 const F_FRONT := 4               # a fire cell lit this step: the bright leading edge
 const F_ZAP := 8                 # ice carrying a shock
+const F_STILL := 16              # laid by a room layout and drawn by the room until it changes
 
 # 8 directions for surge tendrils, clockwise from +x (y down).
 const DX := [1, 1, 0, -1, -1, -1, 0, 1]
@@ -278,6 +279,90 @@ func is_slippery(pos: Vector2) -> bool:
     return material_at(pos) == ICE
 
 
+## Lays still terrain (a room layout's pools, slicks, ice sheets, grass) over every cell
+## whose centre is inside a world rect, without waking it, so it sits where it was put
+## until something touches it. Water tops up water and poisoned water and fills bare
+## floor; oil and ice only cover bare floor. `life_s` (seconds, <= 255) outlasts the
+## usual evaporation; -1 keeps the material's own lifetime. Fire, ice, steam and charged
+## cells are left alone, so a pool can still be frozen, boiled or shocked.
+func fill_rect(kind: int, world_rect: Rect2, amount: int, life_s: int = -1) -> void:
+    var m := NONE
+    match kind:
+        Element.Kind.WET:
+            m = WATER
+        Element.Kind.OIL:
+            m = OIL
+        Element.Kind.ICE:
+            m = ICE
+        _:
+            return
+    var a := clampi(amount, 8, 255)
+    var l := ICE_LIFE if m == ICE else _life_of(m)
+    if life_s > 0:
+        l = clampi(life_s, 1, 255)
+    var lr := Rect2(world_rect.position - global_position - _origin, world_rect.size)
+    var x0 := maxi(0, ceili(lr.position.x / float(CELL) - 0.5))
+    var y0 := maxi(0, ceili(lr.position.y / float(CELL) - 0.5))
+    var x1 := mini(_w - 1, floori(lr.end.x / float(CELL) - 0.5))
+    var y1 := mini(_h - 1, floori(lr.end.y / float(CELL) - 0.5))
+    for cy in range(y0, y1 + 1):
+        for cx in range(x0, x1 + 1):
+            var i := cy * _w + cx
+            var c := int(mat[i])
+            if m == WATER and (c == WATER or c == TOXIC):
+                amt[i] = maxi(int(amt[i]), a)
+                life[i] = maxi(int(life[i]), l)
+            elif _open(c):
+                _put(i, m, a, l)
+    _dirty = true
+
+
+## Grid indices of every cell whose centre is inside a world rect (see lay_still_water).
+func indices_in(world_rect: Rect2) -> PackedInt32Array:
+    var out := PackedInt32Array()
+    var lr := Rect2(world_rect.position - global_position - _origin, world_rect.size)
+    var x0 := maxi(0, ceili(lr.position.x / float(CELL) - 0.5))
+    var y0 := maxi(0, ceili(lr.position.y / float(CELL) - 0.5))
+    var x1 := mini(_w - 1, floori(lr.end.x / float(CELL) - 0.5))
+    var y1 := mini(_h - 1, floori(lr.end.y / float(CELL) - 0.5))
+    for cy in range(y0, y1 + 1):
+        for cx in range(x0, x1 + 1):
+            out.append(cy * _w + cx)
+    return out
+
+
+## A room layout's terrain (deep pools, an ice sheet, the oil film under dry grass): laid
+## straight into the grid without entering the draw list or the slow sweep. The room draws
+## it (thousands of still cells would swamp the budget above). It is real material to
+## everything else: bodies wade, slip and soak in it, shock charges a whole pool, ice
+## freezes it, fire boils water, melts ice and runs along the oil. A cell that changes goes
+## through _put and is drawn and ages as usual from then on. Pools are topped back up by
+## calling this again over time, a slice of `idx` at a time.
+func lay_still(kind: int, idx: PackedInt32Array, from: int, count: int, amount: int) -> void:
+    var m := WATER if kind == Element.Kind.WET else (OIL if kind == Element.Kind.OIL else ICE)
+    var a := clampi(amount, 8, 255)
+    var end := mini(idx.size(), from + count)
+    for k in range(from, end):
+        var i := idx[k]
+        var c := int(mat[i])
+        if c == m:
+            if int(amt[i]) < a:
+                amt[i] = a
+            life[i] = 255
+            if (_flag[i] & F_STILL) == 0 and (_flag[i] & F_DRAWN) != 0:
+                _flag[i] = _flag[i] | F_STILL
+                _dirty = true
+        elif c == TOXIC and m == WATER:
+            life[i] = 255
+        elif _open(c):
+            mat[i] = m
+            amt[i] = a
+            life[i] = 255
+            _flag[i] = _flag[i] | F_STILL
+            if (_flag[i] & F_DRAWN) != 0:
+                _dirty = true   # it was drawn as something else a moment ago
+
+
 ## Wipes every cell overlapping a world rect.
 func clear_rect(world_rect: Rect2) -> void:
     var lr := Rect2(world_rect.position - global_position - _origin, world_rect.size)
@@ -322,6 +407,7 @@ func _put(i: int, m: int, a: int, l: int) -> void:
     mat[i] = m
     amt[i] = clampi(a, 0, 255)
     life[i] = clampi(l, 0, 255)
+    _flag[i] = _flag[i] & ~F_STILL   # changed: the grid draws it from now on
     if m != NONE and (_flag[i] & F_DRAWN) == 0:
         _flag[i] = _flag[i] | F_DRAWN
         _drawn.append(i)
@@ -505,7 +591,10 @@ func _zap_cell(i: int) -> void:
     if mat[i] == WATER:
         _put(i, CHARGED, amt[i], CHARGE_TICKS)
     else:
-        _flag[i] = _flag[i] | F_ZAP
+        _flag[i] = (_flag[i] | F_ZAP) & ~F_STILL
+        if (_flag[i] & F_DRAWN) == 0:
+            _flag[i] = _flag[i] | F_DRAWN
+            _drawn.append(i)   # still ice joins the draw list to strobe
         _dirty = true
     _wake(i)
 
@@ -1058,7 +1147,7 @@ func _draw() -> void:
     var q := float(HALF)
     for i: int in _drawn:
         var m := int(mat[i])
-        if m == NONE:
+        if m == NONE or (_flag[i] & F_STILL) != 0:
             continue
         var cx := i % _w
         var cy := i / _w
