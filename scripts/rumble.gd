@@ -18,6 +18,11 @@ const LOW_BAND := Vector2(20.0, 180.0)
 const MID_BAND := Vector2(180.0, 3000.0)
 ## dB window per band: at or below the floor is 0, at the ceiling 1.
 const LOW_FLOOR_DB := -50.0
+const BED_SECS := 2.5          # how fast the adaptive floor rises to meet steady sound
+const BED_MARGIN_DB := 6.0     # a sound must rise this far above the steady bed to rumble
+var _low_bed := -90.0
+var _bed_age := 0.0
+var _mid_bed := -90.0
 const LOW_CEIL_DB := -14.0
 const MID_FLOOR_DB := -46.0
 const MID_CEIL_DB := -12.0
@@ -180,8 +185,16 @@ func _process(delta: float) -> void:
     var low_t := 0.0
     var mid_t := 0.0
     if _instance != null and _bus_idx >= 0 and _bus_idx < AudioServer.bus_count and _bus_active():
-        low_t = _map(_band_db(LOW_BAND), LOW_FLOOR_DB, LOW_CEIL_DB)
-        mid_t = _map(_band_db(MID_BAND), MID_FLOOR_DB, MID_CEIL_DB) * MID_GAIN
+        # Adaptive floor: a slow average of each band follows steady sound (ambient beds,
+        # drones, wind) so only what rises above it rumbles; transients still punch through.
+        var low_db := _band_db(LOW_BAND)
+        var mid_db := _band_db(MID_BAND)
+        _bed_age += delta
+        var rise := BED_SECS if _bed_age > 3.0 else 0.25   # catch the ambience fast at start
+        _low_bed = lerpf(_low_bed, low_db, 1.0 - exp(-delta / rise)) if low_db > _low_bed else lerpf(_low_bed, low_db, 1.0 - exp(-delta / 0.6))
+        _mid_bed = lerpf(_mid_bed, mid_db, 1.0 - exp(-delta / rise)) if mid_db > _mid_bed else lerpf(_mid_bed, mid_db, 1.0 - exp(-delta / 0.6))
+        low_t = _map(low_db, maxf(LOW_FLOOR_DB, _low_bed + BED_MARGIN_DB), LOW_CEIL_DB)
+        mid_t = _map(mid_db, maxf(MID_FLOOR_DB, _mid_bed + BED_MARGIN_DB), MID_CEIL_DB) * MID_GAIN
     _low = _smooth(_low, low_t, delta)
     _mid = _smooth(_mid, mid_t, delta)
     # Pulses age even while vibration is off, so they never pile up.
@@ -258,11 +271,25 @@ func _stop_all() -> void:
 func _web_rumble(device: int, weak: float, strong: float, secs: float) -> void:
     if not OS.has_feature("web") or device < 0:
         return
-    var js := ""
-    if secs <= 0.0:
-        js = "(function(){var g=(navigator.getGamepads?navigator.getGamepads():[])[%d];if(g&&g.vibrationActuator&&g.vibrationActuator.reset){g.vibrationActuator.reset();}})()" % device
-    else:
-        js = "(function(){var g=(navigator.getGamepads?navigator.getGamepads():[])[%d];if(g&&g.vibrationActuator&&g.vibrationActuator.playEffect){g.vibrationActuator.playEffect('dual-rumble',{startDelay:0,duration:%d,weakMagnitude:%.3f,strongMagnitude:%.3f}).catch(function(){});}})()" % [device, int(secs * 1000.0), clampf(weak, 0.0, 1.0), clampf(strong, 0.0, 1.0)]
+    # Try the pad at Godot's index first; if the browser numbers pads differently (or the
+    # slot is empty), fall back to every connected pad that can rumble. Counters on
+    # window.__pressureRumble help debugging from the browser console.
+    var js := """(function(d,w,s,ms){
+var R=window.__pressureRumble=window.__pressureRumble||{calls:0,played:0,resets:0,noApi:0,noPad:0,last:null};
+R.calls++;
+var list=navigator.getGamepads?Array.from(navigator.getGamepads()):null;
+if(!list){R.noApi++;return;}
+var pads=[];
+if(list[d]&&list[d].vibrationActuator){pads=[list[d]];}
+else{pads=list.filter(function(g){return g&&g.vibrationActuator;});}
+if(!pads.length){R.noPad++;return;}
+pads.forEach(function(g){
+ var a=g.vibrationActuator;
+ if(ms<=0){if(a.reset){a.reset();R.resets++;}return;}
+ if(a.playEffect){a.playEffect(a.type||'dual-rumble',{startDelay:0,duration:ms,weakMagnitude:w,strongMagnitude:s}).catch(function(){});R.played++;R.last=[w,s,ms,g.index,g.id];}
+ else if(a.pulse){a.pulse(Math.max(w,s),ms);R.played++;}
+});
+})(%d,%.3f,%.3f,%d)""" % [device, clampf(weak, 0.0, 1.0), clampf(strong, 0.0, 1.0), int(maxf(secs, 0.0) * 1000.0)]
     JavaScriptBridge.eval(js, true)
 
 
