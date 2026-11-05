@@ -251,6 +251,17 @@ break into clouds and puddles; lightning rods arc to every enemy nearby; wind ch
 push; blood altars heal, purge or summon; stone pillars block shots until void or acid
 takes them. Broken props stay broken. See `scripts/prop.gd` for the full table.
 
+## Windows build
+
+Every push to main also builds `Pressure.exe` (the game embedded in one file) and attaches
+it, zipped, to the **latest** release:
+https://github.com/EmilMartini/pressure/releases/latest/download/Pressure-windows.zip
+Unzip and run `Pressure.exe`. The exe is not code-signed, so Windows SmartScreen warns on
+the first launch: "More info", then "Run anyway". The desktop build has full controller
+rumble for every pad; the browser cannot rumble some controllers (Chrome exposes no rumble
+for the DualSense). Local build: the "Windows" export preset, or
+`godot --headless --path . --export-release Windows export/windows/Pressure.exe`.
+
 ## Play in the browser
 
 The game exports to a single-page web build (GL Compatibility, single-threaded, so it

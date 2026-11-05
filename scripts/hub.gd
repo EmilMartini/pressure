@@ -72,6 +72,12 @@ var ambience: Ambience = null
 func _ready() -> void:
     randomize()
     var args := OS.get_cmdline_user_args()
+    # Exported release builds cannot pick a scene on the command line, so the hub (the
+    # start scene) hands bot and capture runs straight to the run scene.
+    for flag in ["--autotest", "--start-shot", "--obstacle-test", "--layouts-shot"]:
+        if args.has(flag):
+            get_tree().call_deferred("change_scene_to_file", "res://scenes/main.tscn")
+            return
     _shot = args.has("--menu-shot")
     var theme_shot := args.has("--themes-shot")
     if _shot or theme_shot:

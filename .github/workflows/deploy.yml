@@ -1,6 +1,7 @@
 name: Deploy web build
 
-# Every push to main exports the Web preset and publishes it on GitHub Pages.
+# Every push to main exports the Web preset and publishes it on GitHub Pages, and builds
+# the Windows exe and attaches it (zipped) to the "latest" GitHub release.
 # One-time setup in the repository: Settings > Pages > Source: "GitHub Actions".
 
 on:
@@ -9,7 +10,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write   # the Windows job moves the "latest" tag and uploads the release zip
   pages: write
   id-token: write
 
@@ -78,3 +79,58 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
+
+  windows:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache Godot and export templates
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/godot
+            ~/.local/share/godot/export_templates
+          key: godot-${{ env.GODOT_VERSION }}
+
+      - name: Download Godot and the export templates
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          set -e
+          mkdir -p ~/godot ~/.local/share/godot/export_templates
+          BASE="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable"
+          curl -sSL -o godot.zip "$BASE/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          unzip -q godot.zip -d ~/godot
+          mv ~/godot/Godot_v${GODOT_VERSION}-stable_linux.x86_64 ~/godot/godot
+          chmod +x ~/godot/godot
+          curl -sSL -o templates.tpz "$BASE/Godot_v${GODOT_VERSION}-stable_export_templates.tpz"
+          unzip -q templates.tpz -d ~/godot
+          mv ~/godot/templates ~/.local/share/godot/export_templates/${GODOT_VERSION}.stable
+          rm -f godot.zip templates.tpz
+
+      - name: Export the Windows exe
+        run: |
+          set -e
+          mkdir -p export/windows
+          ~/godot/godot --headless --path . --import
+          ~/godot/godot --headless --path . --export-release Windows export/windows/Pressure.exe
+          cd export/windows
+          zip -q -9 ../Pressure-windows.zip Pressure.exe
+          ls -la ..
+
+      - name: Publish to the "latest" release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          SHORT="${GITHUB_SHA:0:7}"
+          NOTES="Latest Windows build, commit ${SHORT}. Unzip and run Pressure.exe. The first launch may show a Windows SmartScreen warning because the exe is not code-signed: click More info, then Run anyway. Browser version: https://emilmartini.github.io/pressure/"
+          git tag -f latest "$GITHUB_SHA"
+          git push -f origin refs/tags/latest
+          if gh release view latest >/dev/null 2>&1; then
+            gh release edit latest --title "Pressure (latest)" --notes "$NOTES"
+          else
+            gh release create latest --title "Pressure (latest)" --notes "$NOTES" --verify-tag
+          fi
+          gh release upload latest export/Pressure-windows.zip --clobber
