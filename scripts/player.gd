@@ -371,7 +371,8 @@ func on_reaction(_reaction_name: String) -> void:
 ## Pressure is vent charge. Hot and cold guns push it either way; it never stalls you.
 func add_pressure(amount: float) -> void:
     var limit := pressure_limit()
-    pressure = clampf(pressure + amount, -limit, limit)
+    # The gauge is the vent's charge: vent_charge makes every shot fill it faster.
+    pressure = clampf(pressure + amount * (1.0 + stat("vent_charge")), -limit, limit)
 
 
 ## Nudge the figure opposite to a shot; called by Gun.
@@ -484,7 +485,7 @@ func _physics_process(delta: float) -> void:
     if input.take_pressed("active"):
         use_active()
 
-    pressure = move_toward(pressure, 0.0, PRESSURE_DECAY * (1.0 + stat("pressure_decay")) * delta)
+    pressure = move_toward(pressure, 0.0, PRESSURE_DECAY * delta)
     invuln = maxf(0.0, invuln - delta)
     var regen := stat("regen")
     if regen > 0.0:
@@ -568,7 +569,7 @@ func nearest_enemy(max_range: float, prefer_elite: bool = false) -> Node2D:
     var best_elite: Node2D = null
     var best_elite_d := max_range * max_range
     for e in get_tree().get_nodes_in_group("enemies"):
-        if not is_instance_valid(e) or e.is_queued_for_deletion():
+        if not is_instance_valid(e) or e.is_queued_for_deletion() or e.emerge > 0.0:
             continue
         var d: float = e.global_position.distance_squared_to(global_position)
         if d < best_d:

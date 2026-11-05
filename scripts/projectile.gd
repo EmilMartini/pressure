@@ -358,7 +358,7 @@ func _on_body_entered(body: Node) -> void:
         _splash(null)
         queue_free()
         return
-    if not body is Enemy or _hit.has(body):
+    if not body is Enemy or _hit.has(body) or (body as Enemy).emerge > 0.0:
         return
     var enemy := body as Enemy
     _hit[enemy] = true
@@ -443,7 +443,7 @@ func _next_target() -> Node2D:
     var best: Node2D = null
     var best_d := (450.0 * 450.0) if behaviour == "homing" else (320.0 * 320.0)
     for e in get_tree().get_nodes_in_group("enemies"):
-        if _hit.has(e) or not is_instance_valid(e) or e.is_queued_for_deletion():
+        if _hit.has(e) or not is_instance_valid(e) or e.is_queued_for_deletion() or e.emerge > 0.0:
             continue
         var d: float = e.global_position.distance_squared_to(global_position)
         if d < best_d:

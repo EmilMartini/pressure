@@ -119,20 +119,19 @@ func _tick_arena(delta: float) -> void:
     _spawn_timer -= delta
     _elite_timer -= delta
     if _spawn_timer <= 0.0:
-        # Pacing by hit-point budget: each group buys itself a pause proportional to its
-        # total hp against what a party of this difficulty is expected to put out, so a
-        # starter pistol holds floor 1 and a built party gets a flood on floor 5.
-        if enemies.get_child_count() < mini(100, 24 + diff * 3):
-            var before_count := enemies.get_child_count()
-            var spawned_hp := _spawn_group()
-            var spawned_n := enemies.get_child_count() - before_count
-            # Two budgets: hit points per second, and bodies per second (a swarm of
-            # cheap bodies is a different kind of pressure than one brute).
-            var by_hp := spawned_hp / hp_inflow_target(diff)
-            var by_bodies := float(spawned_n) / (1.2 + 0.15 * float(diff))
-            _spawn_timer = clampf(maxf(by_hp, by_bodies), 0.5, 4.0)
+        # A crowd target, not a spawn rate: the room keeps about crowd_target() enemies
+        # alive and refills as fast as the party clears them. A starter faces a handful;
+        # a six-gun build that melts everything gets a constant horde (many enemies, not
+        # tankier ones). The first seconds of a wave ramp up from a third of the target.
+        var ramp := clampf((wave_duration - wave_time_left) / 8.0, 0.35, 1.0)
+        var target := int(round(float(crowd_target(diff)) * ramp))
+        var alive := enemies.get_child_count()
+        if alive < target:
+            _spawn_group()
+            # Far below target: refill quickly; close to it: trickle.
+            _spawn_timer = 0.3 if alive < target * 0.6 else 0.7
         else:
-            _spawn_timer = 1.0
+            _spawn_timer = 0.5
     if _elite_timer <= 0.0:
         _elite_timer = INF
         _spawn_elite(SpawnTable.elite_count(diff))
@@ -275,6 +274,17 @@ func _finish_fight(bonus_scrap: int) -> void:
 # --- Spawning ----------------------------------------------------------------
 
 
+## How many enemies an arena keeps alive: grows with difficulty and with the guns and
+## elements the party fields (a full build covers six targets and locks groups down).
+func crowd_target(diff: int) -> int:
+    var base := 6.0 + 1.1 * float(diff)
+    var guns := 0
+    for pl in main.players:
+        guns += (pl as Player).guns.size()
+    var build := 1.0 + 0.22 * float(maxi(0, guns - 1)) + 0.12 * float(maxi(0, party_elements_count() - 1))
+    return clampi(int(base * build), 5, 130)
+
+
 ## Enemy hit points per second the arena feeds the party at a difficulty. Sized for a
 ## party with six gun slots and tiers; party_power() scales enemy hp on top of it.
 static func hp_inflow_target(diff: int) -> float:
@@ -295,7 +305,28 @@ func party_power() -> float:
         for g in pl.guns:
             var gun: Gun = g
             total += gun.data.dps() * gun.tier_mult()
-    return clampf(total / expected_dps(main.difficulty()), 0.8, 2.2)
+    # Every extra element adds reaction pairs that hit whole groups and lock them down;
+    # gun DPS alone undercounts that by a lot (telemetry: reactions were 41% of damage).
+    var ratio := total / expected_dps(main.difficulty())
+    ratio *= 1.0 + 0.22 * float(maxi(0, party_elements_count() - 1))
+    return clampf(ratio, 0.8, 3.5)
+
+
+func party_elements_count() -> int:
+    var seen := {}
+    for pl in main.players:
+        for g in pl.guns:
+            seen[(g as Gun).data.element] = true
+    return seen.size()
+
+
+## Bodies per second scale with how many guns the party fields: six guns cover six
+## targets at once, so the room needs more of them to press a full build.
+func party_guns_factor() -> float:
+    var n := 0
+    for pl in main.players:
+        n += (pl as Player).guns.size()
+    return 1.0 + 0.14 * float(maxi(0, n - 1))
 
 
 ## Floors three to five hit harder: contact and shot damage x1.15, x1.3, x1.5.
@@ -306,8 +337,26 @@ static func floor_damage_mult(floor_number: int) -> float:
 func _spawn_group() -> float:
     var diff := main.difficulty()
     var total_hp := 0.0
-    for type in SpawnTable.group(diff, main.floor_number, main.players.size()):
-        var e := _spawn_enemy(type, _spawn_point())
+    var ring := randf() < 0.55 and main.floor_number >= 1
+    var anchor: Player = null
+    if ring:
+        var alive: Array = main.players.filter(func(q): return q.alive)
+        if not alive.is_empty():
+            anchor = alive.pick_random()
+    var group_i := 0
+    var group: Array = SpawnTable.group(diff, main.floor_number, main.players.size())
+    for type in group:
+        var pos := _spawn_point()
+        if anchor != null:
+            # Brotato spawns anywhere on screen: here half the groups close in from a ring
+            # around a player, so standing in the middle is not a safe corner.
+            var ang := TAU * float(group_i) / float(maxi(1, group.size())) + randf_range(-0.3, 0.3)
+            var ringp := (anchor.global_position - global_position) + Vector2.RIGHT.rotated(ang) * randf_range(190.0, 300.0)
+            var inner := rect.grow(-60.0)
+            pos = Vector2(clampf(ringp.x, inner.position.x, inner.end.x), clampf(ringp.y, inner.position.y, inner.end.y))
+        group_i += 1
+        var e := _spawn_enemy(type, pos)
+        e.emerge = 0.75
         total_hp += e.max_hp
         if e.immune_to == Element.Kind.NONE and diff >= 2 and randf() < minf(0.5, 0.05 * float(diff)):
             # Never immune to the party's only element: that would be unkillable.
@@ -320,7 +369,9 @@ func _spawn_group() -> float:
 func _spawn_enemy(type: String, pos: Vector2) -> Enemy:
     var e := Enemy.new()
     e.configure(type, main.difficulty())
-    e.max_hp *= sqrt(party_power())
+    # A stronger build meets more enemies, not tankier ones: health grows at most 25%;
+    # the rest of the party's power goes into the bodies budget (party_guns_factor).
+    e.max_hp *= clampf(1.0 + 0.12 * (party_power() - 1.0), 0.9, 1.25)
     e.hp = e.max_hp
     e.damage_mult = floor_damage_mult(main.floor_number)
     e.contact_damage *= e.damage_mult

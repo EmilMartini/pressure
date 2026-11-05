@@ -16,7 +16,7 @@ extends RefCounted
 ## Keys whose amount is a fraction and reads as a percentage.
 const PERCENT_KEYS := [
     "dmg", "fire_rate", "crit", "dodge", "speed", "range", "potency", "state_duration",
-    "scrap_gain", "pressure_decay", "vent_radius", "vent_power", "xp_gain", "proj_speed",
+    "scrap_gain", "vent_charge", "vent_radius", "vent_power", "xp_gain", "proj_speed",
     "focus_gain", "luck",
 ]
 
@@ -28,8 +28,8 @@ const STAT_LABELS := {
     "dodge": "dodge", "regen": "regeneration", "speed": "move speed", "range": "range",
     "potency": "reaction potency", "state_duration": "element duration",
     "chain_jumps": "chain jump", "lifesteal": "lifesteal", "thorns": "thorns",
-    "scrap_gain": "scrap gain", "pressure_limit": "pressure limit",
-    "pressure_decay": "pressure decay", "vent_radius": "vent radius", "carry": "carry",
+    "scrap_gain": "scrap gain", "pressure_limit": "vent capacity",
+    "vent_charge": "vent charge speed", "vent_radius": "vent radius", "carry": "carry",
     "xp_gain": "XP gain", "proj_speed": "projectile speed", "vent_power": "vent power",
     "focus_gain": "focus gain", "luck": "luck",
 }
@@ -48,7 +48,7 @@ const KEY_TINTS := {
     "speed": DEFENCE, "lifesteal": DEFENCE, "thorns": DEFENCE,
     "potency": ELEMENTAL, "state_duration": ELEMENTAL, "chain_jumps": ELEMENTAL,
     "scrap_gain": ECONOMY, "carry": ECONOMY, "xp_gain": ECONOMY, "luck": ECONOMY,
-    "pressure_limit": PRESSURE, "pressure_decay": PRESSURE, "vent_radius": PRESSURE,
+    "pressure_limit": PRESSURE, "vent_charge": PRESSURE, "vent_radius": PRESSURE,
     "vent_power": PRESSURE, "focus_gain": PRESSURE,
 }
 
@@ -111,10 +111,10 @@ const CATALOG: Array = [
         "key": "scrap_gain", "amounts": PCT, "weight": 7, "icon": Vector2i(45, 16) },
     { "id": "luck", "name": "Fortune", "desc": "Better odds of rare finds and upgrades.",
         "key": "luck", "amounts": [0.05, 0.10, 0.15, null], "weight": 5, "icon": Vector2i(36, 4) },
-    { "id": "pressure_limit", "name": "Reinforced Tank", "desc": "Hold more pressure before overheating.",
+    { "id": "pressure_limit", "name": "Reinforced Tank", "desc": "A bigger tank: your vent can charge further.",
         "key": "pressure_limit", "amounts": [6, 10, 15, 22], "weight": 6, "icon": Vector2i(44, 9) },
-    { "id": "pressure_decay", "name": "Heat Sink", "desc": "Pressure bleeds off faster.",
-        "key": "pressure_decay", "amounts": PCT, "weight": 6, "icon": Vector2i(41, 9) },
+    { "id": "vent_charge", "name": "Bellows", "desc": "Your vent charges faster.",
+        "key": "vent_charge", "amounts": PCT, "weight": 6, "icon": Vector2i(41, 9) },
     { "id": "vent_radius", "name": "Wide Vent", "desc": "Your vent blast reaches further.",
         "key": "vent_radius", "amounts": PCT, "weight": 6, "icon": Vector2i(34, 5) },
     { "id": "carry", "name": "Deep Pockets", "desc": "Carry one more item.",

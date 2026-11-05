@@ -25,8 +25,8 @@ const INT_KEYS := ["max_hp", "armor", "pierce", "carry", "chain_jumps", "bounce"
 const STAT_WORDS := {
     "dmg": "damage", "fire_rate": "fire rate", "crit": "crit chance", "pierce": "pierce",
     "bounce": "bounce", "proj_count": "projectile", "max_hp": "max HP", "armor": "armour",
-    "dodge": "dodge", "thorns": "thorns", "pressure_limit": "pressure limit",
-    "pressure_decay": "pressure decay", "vent_radius": "vent radius", "vent_power": "vent power",
+    "dodge": "dodge", "thorns": "thorns", "pressure_limit": "vent capacity",
+    "vent_charge": "vent charge speed", "vent_radius": "vent radius", "vent_power": "vent power",
     "scrap_gain": "scrap gain", "carry": "carry slot", "starting_scrap": "starting scrap",
     "xp_gain": "XP gain", "state_duration": "state duration", "chain_jumps": "chain jump",
     "lifesteal": "HP per reaction", "range": "range",
@@ -271,8 +271,8 @@ func _build_defense() -> void:
 func _build_pressure() -> void:
     var b := "Pressure"
     var root := _add("prs_root", b, "Gauge Reader", "Know the needle before it knows you.", 1, "", { "pressure_limit": 2 })
-    var lim_end := _track(b, "prs_limit", "Reinforced Tank", "Hold a little more before it blows.", root, "pressure_limit", 3, 6)
-    _track(b, "prs_decay", "Bleed Valve", "Pressure drains away faster.", root, "pressure_decay", 0.02, 5)
+    var lim_end := _track(b, "prs_limit", "Reinforced Tank", "A little more room in the tank.", root, "pressure_limit", 3, 6)
+    _track(b, "prs_decay", "Quick Charge", "The vent fills a little faster.", root, "vent_charge", 0.03, 5)
     _track(b, "prs_radius", "Wide Vent", "Vents reach further.", root, "vent_radius", 0.02, 5)
     _track(b, "prs_power", "Hard Vent", "Vents hit harder.", root, "vent_power", 0.02, 5)
     _add("prs_cap", b, "Pressure Cooker", "Capstone. Live at the red line.", 3, lim_end, { "pressure_limit": 5, "vent_power": 0.03 })

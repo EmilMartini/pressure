@@ -16,7 +16,7 @@ extends Node
 ## Mods (fractions unless noted):
 ##   dmg, dmg_<el>, potency, potency_<el>, potency:<Reaction Name>, fire_rate,
 ##   fire_rate_<el>, proj_speed, range, pierce (int), pierce_<el> (int), proj_count (int),
-##   max_hp (int), regen (hp/s), speed, carry (int), pressure_decay, pressure_limit (int),
+##   max_hp (int), regen (hp/s), speed, carry (int), vent_charge (vent fills faster), pressure_limit (int, vent capacity),
 ##   vent_radius, vent_power, scrap_gain, crit, crit_dmg (added to the x2 base), armor (int),
 ##   dodge, state_duration, vs_wet, vs_burning, vs_frozen, vs_shocked, vs_oiled, lifesteal
 ##   (hp per reaction), thorns (int), chain_jumps (int), bounce (int), xp_gain,
@@ -103,7 +103,7 @@ const SLOT_ICONS := {
 const POOLS := ["shop", "treasure", "boss", "hidden", "challenge", "arena"]
 const ECONOMY_KEYS := ["scrap_gain", "luck", "xp_gain", "carry"]
 const DEFENCE_KEYS := ["armor", "max_hp", "regen", "thorns", "dodge", "speed"]
-const UTILITY_KEYS := ["range", "proj_speed", "pressure_limit", "pressure_decay", "vent_radius", "vent_power"]
+const UTILITY_KEYS := ["range", "proj_speed", "pressure_limit", "vent_charge", "vent_radius", "vent_power"]
 const MECHANIC_KEYS := ["bounce", "pierce", "chain_jumps", "proj_count", "lifesteal", "state_duration", "g_count", "g_pierce", "extra_element"]
 const BOSS_KEYS := ["max_hp", "dmg", "armor", "potency", "fire_rate", "crit", "regen", "speed", "crit_dmg", "lifesteal", "state_duration", "luck"]
 const ELEMENTS := {
@@ -593,7 +593,7 @@ func _build_catalog() -> void:
     _add("scavenger_hood", "Scavenger Hood", "head", U, "+15% scrap, +6% XP gain", { "scrap_gain": 0.15, "xp_gain": 0.06 })
     _add("fume_mask", "Fume Mask", "head", U, "+6% potency, elements last 10% longer", { "potency": 0.06, "state_duration": 0.10 })
     _add("sniper_visor", "Sniper Visor", "head", U, "+10% range, +3% crit chance", { "range": 0.10, "crit": 0.03 })
-    _add("hothead", "Hothead Bandana", "head", U, "+10% damage, pressure fades 15% slower", { "dmg": 0.10, "pressure_decay": -0.15 })
+    _add("hothead", "Hothead Bandana", "head", U, "+10% damage, vent charges 15% faster", { "dmg": 0.10, "vent_charge": 0.15 })
     _add("divers_goggles", "Diver's Goggles", "head", U, "+10% damage to wet and shocked foes", { "vs_wet": 0.10, "vs_shocked": 0.10 })
     _add("thinking_cap", "Thinking Cap", "head", U, "+12% XP gain, +4% potency", { "xp_gain": 0.12, "potency": 0.04 })
     # Rare
@@ -602,7 +602,7 @@ func _build_catalog() -> void:
     _add("storm_hood", "Storm Hood", "head", R, "Chains jump to 2 more enemies, +5% potency", { "chain_jumps": 2, "potency": 0.05 })
     _add("seer_circlet", "Seer's Circlet", "head", R, "+15% luck, +10% XP gain", { "luck": 0.15, "xp_gain": 0.10 })
     # Epic
-    _add("boiler_cap", "Boiler Cap", "head", E, "+40 pressure limit, +30% vent power, -8% speed", { "pressure_limit": 40, "vent_power": 0.30, "speed": -0.08 })
+    _add("boiler_cap", "Boiler Cap", "head", E, "+40 vent capacity, +30% vent power, -8% speed", { "pressure_limit": 40, "vent_power": 0.30, "speed": -0.08 })
     _add("berserker_helm", "Berserker Helm", "head", E, "Below 40% HP: +40% damage, +20% fire rate", {}, [], { "cond_mods": { "low_hp": { "dmg": 0.40, "fire_rate": 0.20 } } })
     # Legendary
     _add("skullcap_vented", "Skullcap of the Vented", "head", L, "Venting fires 8 shots of its element. +15% vent radius", { "vent_radius": 0.15 }, [{ "on": "vent", "do": "shoot", "element": "last", "count": 8, "potency": 8 }])
@@ -698,10 +698,10 @@ func _build_catalog() -> void:
     _add("ledger", "Dusty Ledger", "trinket", U, "+10% luck, +8% XP gain", { "luck": 0.10, "xp_gain": 0.08 })
     _add("pocket_watch", "Pocket Watch", "trinket", U, "Elements last 10% longer, +4% fire rate", { "state_duration": 0.10, "fire_rate": 0.04 })
     _add("spark_plug", "Spark Plug", "trinket", U, "10% of hits shock the target", {}, [{ "on": "hit", "chance": 0.10, "do": "apply", "element": "shock", "potency": 3 }])
-    _add("heat_gauge", "Heat Gauge", "trinket", U, "+15 pressure limit, +8% vent power", { "pressure_limit": 15, "vent_power": 0.08 })
+    _add("heat_gauge", "Heat Gauge", "trinket", U, "+15 vent capacity, +8% vent power", { "pressure_limit": 15, "vent_power": 0.08 })
     # Rare
     _add("steam_whistle", "Steam Whistle", "trinket", R, "Steam soaks everything nearby", {}, [{ "on": "reaction:Steam", "do": "nova", "element": "wet", "radius": 140, "potency": 3 }])
-    _add("pressure_valve", "Pressure Valve", "trinket", R, "Pressure fades 40% faster, +15% vent power", { "pressure_decay": 0.4, "vent_power": 0.15 })
+    _add("pressure_valve", "Pressure Valve", "trinket", R, "Vent charges 40% faster, +15% vent power", { "vent_charge": 0.4, "vent_power": 0.15 })
     _add("alembic", "Alembic", "trinket", R, "Elements last 25% longer, +8% potency", { "state_duration": 0.25, "potency": 0.08 })
     _add("rabbit_foot", "Rabbit's Foot", "trinket", R, "+20% luck", { "luck": 0.20 }, [], { "price": 38 })
     _add("grisly_trophy", "Grisly Trophy", "trinket", R, "+5% damage. Kills have 15% to heal 4", { "dmg": 0.05 }, [{ "on": "kill", "chance": 0.15, "do": "heal", "amount": 4 }])

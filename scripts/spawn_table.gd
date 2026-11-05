@@ -9,7 +9,7 @@ const KINDS := {
     "runner": [1, 6.0, -0.10],
     "swarmer": [1, 3.0, 0.05],
     "brute": [2, 1.0, 0.15],
-    "spitter": [2, 2.0, 0.20],
+    "spitter": [1, 1.6, 0.20],   # from floor 1: standing still must cost something
     "charger": [2, 1.5, 0.15],
     "bomber": [2, 1.5, 0.12],
     "splitter": [3, 1.5, 0.15],

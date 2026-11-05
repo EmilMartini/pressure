@@ -25,6 +25,7 @@ var scrap := 0
 var rooms_cleared := 0
 var floor_rooms_cleared := 0   # difficulty creeps within a floor, resets at the stairs
 var _paused_secs := 0.0
+var _bot_idle_fights := false
 var _hitstop_left := 0.0
 var _flash_rect: ColorRect
 var _flash_life := 0.0
@@ -84,6 +85,16 @@ func _ready() -> void:
     var args := OS.get_cmdline_user_args()
     autotest = args.has("--autotest")
     if autotest:
+        # Fresh, separate save so the bot never touches the real one. `--veteran` unlocks
+        # every gun and class first, to measure a player whose pool is wide open.
+        Progress.save_path = "user://save_autotest.json"
+        Progress.reset()
+        if args.has("--veteran"):
+            for gid in Guns.all_ids():
+                Progress.unlocks["gun:" + gid] = true
+            for cdef in Classes.all():
+                Progress.unlocks["class:" + str(cdef["id"])] = true
+            print("[VETERAN] pool: %d guns" % Guns.ids().size())
         # The bot plays the Vagrant unless told otherwise: `-- --autotest --class=pyromancer`.
         Progress.chosen_class = "vagrant"
         for a in args:
@@ -599,11 +610,18 @@ func _count_reaction(reaction_name: String, _pos: Vector2, _col: Color) -> void:
 
 
 func _setup_autotest() -> void:
-    # Fresh, separate save so the bot exercises unlocks without touching the real one.
-    Progress.save_path = "user://save_autotest.json"
-    Progress.reset()
+    _bot_idle_fights = OS.get_cmdline_user_args().has("--idle")
     # Default: a real naked start, so the run measures the progression loop. `--arsenal`
     # hands over every gun to stress every element and effect at once.
+    for a in OS.get_cmdline_user_args():
+        if a.begins_with("--loadout="):
+            # Balance probe: start with exactly these guns, e.g. --loadout=water_pistol,flare_pistol
+            var p0 := players[0]
+            p0.weight_capacity_base = 40
+            p0.recalc_stats()
+            for gid in a.substr(10).split(","):
+                p0.add_gun(gid)
+            print("[LOADOUT] %s" % a.substr(10))
     if OS.get_cmdline_user_args().has("--arsenal"):
         var p := players[0]
         p.weight_capacity_base = 80
@@ -648,6 +666,9 @@ func _autotest_tick(delta: float) -> void:
         # Low on health: run, don't orbit. Otherwise circle at range like a player kiting.
         var flee := p.hp < p.max_hp * 0.5
         p.input.force_move = (-to_enemy * (1.0 if flee else 0.8) + circle * (0.25 if flee else 0.6)).normalized()
+        if _bot_idle_fights:
+            # Balance probe: stand still in the middle of every fight, as a lazy player would.
+            p.input.force_move = -p.global_position.normalized() if p.global_position.length() > 40.0 else Vector2.ZERO
         var inner := current.rect.grow(-120.0)
         if not inner.has_point(p.global_position):
             p.input.force_move = (inner.get_center() - p.global_position).normalized()

@@ -51,7 +51,7 @@ const STATS := {
     "proj_speed": ["projectile speed", "pct"], "range": ["range", "pct"], "pierce": ["pierce", "int"],
     "proj_count": ["projectile per shot", "int", "projectiles per shot"], "max_hp": ["max HP", "int"],
     "regen": ["HP regen per second", "dec"], "speed": ["move speed", "pct"], "carry": ["carry weight", "int"],
-    "pressure_decay": ["pressure decay", "pct"], "pressure_limit": ["pressure limit", "int"],
+    "vent_charge": ["vent charge speed", "pct"], "pressure_limit": ["vent capacity", "int"],
     "vent_radius": ["vent radius", "pct"], "vent_power": ["vent power", "pct"], "scrap_gain": ["scrap", "pct"],
     "crit": ["crit chance", "pct"], "crit_dmg": ["crit damage", "x"], "armor": ["armour", "int"],
     "dodge": ["dodge", "pct"], "state_duration": ["element duration", "pct"],

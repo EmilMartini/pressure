@@ -23,7 +23,7 @@ const STATS := {
     "bomber": [29.0, 5.4, 160.0, 10.0, 6.0, 2],
     "warden": [190.0, 32.0, 60.0, 22.0, 14.0, 5],
     "wisp": [19.0, 4.0, 170.0, 9.0, 6.0, 2],
-    "elite": [420.0, 70.0, 95.0, 17.0, 14.0, 10],
+    "elite": [300.0, 60.0, 95.0, 17.0, 14.0, 10],
     "boss": [1800.0, 420.0, 85.0, 30.0, 20.0, 40],
 }
 
@@ -116,6 +116,11 @@ var burn_dps := 0.0
 var burn_time := 0.0
 var frozen_time := 0.0
 var slow_time := 0.0
+var _lunge_t := 0.0
+## Emerging: a telegraphed spawn. The enemy fades in where it will appear and cannot
+## move or hurt for this long; shots can already hit it (killing it early is the reward).
+var emerge := 0.0
+var _lunge_cd := 0.0
 var slow_factor := 1.0
 var poison_dps := 0.0
 var poison_time := 0.0
@@ -354,7 +359,7 @@ func weakness_name() -> String:
 ## Lands an element on this enemy. If a different state is already present and the
 ## pair reacts, the reaction fires and the old state is consumed. Returns the reaction name.
 func apply_element(kind: int, potency: float, source: Player = null) -> String:
-    if kind == Element.Kind.NONE:
+    if kind == Element.Kind.NONE or emerge > 0.0:
         return ""
     if source != null:
         last_hit_by = source
@@ -415,8 +420,8 @@ func is_armoured() -> bool:
 
 
 func take_damage(amount: float, color: Color, flash: bool = true, source: Player = null, crit: bool = false) -> void:
-    if hp <= 0.0:
-        return
+    if hp <= 0.0 or emerge > 0.0:
+        return   # a spawn marker is not a target yet
     if source != null:
         last_hit_by = source
     if shielded():
@@ -428,7 +433,7 @@ func take_damage(amount: float, color: Color, flash: bool = true, source: Player
     if armour_time > 0.0:
         amount *= SHAMAN_ARMOUR
     if frozen_time > 0.0:
-        amount *= 3.0
+        amount *= 1.6   # shatter bonus; it was x3, which made freeze builds trivial
     if corroded_time > 0.0:
         amount *= 1.5
     hp -= amount
@@ -476,12 +481,49 @@ func vanish() -> void:
     queue_free()
 
 
+## Crowd control has diminishing returns (WoW style): within DR_WINDOW seconds of the
+## first freeze or stun, the next lasts half, then a quarter, then the enemy is immune
+## until the window runs out. Elites shrug off half, bosses three quarters. Without this,
+## six elements lock a room down for good and standing still wins.
+const DR_WINDOW := 7.0
+const SLOW_FLOOR := 0.5   # nothing slows an enemy below half speed
+var _dr_count := { "freeze": 0, "stun": 0 }
+var _dr_left := { "freeze": 0.0, "stun": 0.0 }
+
+
+func cc_resist() -> float:
+    if kind_name == "boss":
+        return 0.25
+    if is_elite:
+        return 0.5
+    if kind_name in ["brute", "warden"]:
+        return 0.7
+    return 1.0
+
+
+## How much of a freeze or stun lands now, and count it toward diminishing returns.
+func _cc_scale(kind: String) -> float:
+    if _dr_left[kind] <= 0.0:
+        _dr_count[kind] = 0
+    var step: int = _dr_count[kind]
+    var k: float = [1.0, 0.5, 0.25, 0.0][mini(step, 3)]
+    _dr_count[kind] = step + 1
+    if step == 0:
+        _dr_left[kind] = DR_WINDOW
+    return k * cc_resist()
+
+
 func freeze(seconds: float) -> void:
-    frozen_time = maxf(frozen_time, seconds)
+    var s := seconds * _cc_scale("freeze")
+    if s < 0.15:
+        return
+    frozen_time = maxf(frozen_time, s)
     queue_redraw()
 
 
 func apply_slow(factor: float, seconds: float) -> void:
+    # Resistance pulls the factor back toward full speed; the floor caps any slow at 50%.
+    factor = maxf(SLOW_FLOOR, lerpf(1.0, factor, cc_resist()))
     slow_factor = minf(slow_factor, factor) if slow_time > 0.0 else factor
     slow_time = maxf(slow_time, seconds)
 
@@ -512,12 +554,15 @@ func corrode(seconds: float) -> void:
 
 
 func stun(seconds: float) -> void:
-    stun_time = maxf(stun_time, seconds)
+    var s := seconds * _cc_scale("stun")
+    if s < 0.15:
+        return
+    stun_time = maxf(stun_time, s)
 
 
-## A one-off kick, decays over a few frames.
+## A one-off kick, decays over a few frames. Heavy enemies move less.
 func shove(v: Vector2) -> void:
-    shove_vel += v
+    shove_vel += v * cc_resist()
 
 
 ## Strip every element state; returns how many were removed.
@@ -704,6 +749,10 @@ func _teleport_to(to: Vector2) -> void:
 
 
 func _physics_process(delta: float) -> void:
+    if emerge > 0.0:
+        emerge -= delta
+        queue_redraw()
+        return
     for kind in states.keys():
         states[kind] -= delta
         if states[kind] <= 0.0:
@@ -746,6 +795,10 @@ func _physics_process(delta: float) -> void:
                 return
     frozen_time = maxf(0.0, frozen_time - delta)
     stun_time = maxf(0.0, stun_time - delta)
+    _dr_left["freeze"] = maxf(0.0, _dr_left["freeze"] - delta)
+    _dr_left["stun"] = maxf(0.0, _dr_left["stun"] - delta)
+    _lunge_cd = maxf(0.0, _lunge_cd - delta)
+    _lunge_t = maxf(0.0, _lunge_t - delta)
     corroded_time = maxf(0.0, corroded_time - delta)
     slow_time = maxf(0.0, slow_time - delta)
     armour_time = maxf(0.0, armour_time - delta)
@@ -848,6 +901,15 @@ func _think(delta: float, target: Player) -> Vector2:
             _wisp_phase += delta * 5.0
             var wobble := sin(_wisp_phase) * 1.1 + sin(_wisp_phase * 0.37) * 0.5
             return dir.rotated(wobble) * speed * mult
+    if kind_name in ["grunt", "swarmer", "splitter"]:
+        # Lunge: close the last stretch in a burst, so a wall of bullets has to stop
+        # them rather than merely slow them.
+        if _lunge_t <= 0.0 and _lunge_cd <= 0.0 and dist < 150.0 and dist > radius + target.radius + 6.0:
+            _lunge_t = 0.32
+            _lunge_cd = 1.6
+            _squash = 0.8
+        if _lunge_t > 0.0:
+            return dir * minf(speed * 2.6, 300.0) * maxf(mult, 0.7)
     return dir * speed * mult
 
 
@@ -1147,6 +1209,19 @@ func _nearest_player() -> Player:
 
 
 func _draw() -> void:
+    if emerge > 0.0:
+        # Telegraph: a red pixel ring closing in, the body faint until it arrives.
+        var k := clampf(1.0 - emerge / 0.75, 0.0, 1.0)
+        var r := radius * (2.6 - 1.6 * k)
+        for i in 10:
+            var a := TAU * float(i) / 10.0 + _fx_t * 3.0
+            draw_rect(Rect2(Vector2.RIGHT.rotated(a) * r - Vector2(1.5, 1.5), Vector2(3, 3)), Color(1.0, 0.25, 0.2, 0.5 + 0.4 * k))
+        if _sprite != null:
+            _sprite.modulate.a = 0.25 + 0.6 * k
+        _fx_t += get_process_delta_time()
+        return
+    if _sprite != null and _sprite.modulate.a < 1.0:
+        _sprite.modulate.a = 1.0
     draw_circle(Vector2(0, radius * 0.6), radius * 0.9, Color(0, 0, 0, 0.35))
     _draw_kind()
     if is_elite:

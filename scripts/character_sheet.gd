@@ -636,7 +636,7 @@ func _build_stats() -> void:
     _stats_begin()
     var limit := p.pressure_limit()
     _nz("Pressure limit", limit - Player.PRESSURE_LIMIT, "%d" % int(limit))
-    _nz("Pressure decay", p.stat("pressure_decay"), _pct(p.stat("pressure_decay")))
+    _nz("Vent charge speed", p.stat("vent_charge"), _pct(p.stat("vent_charge")))
     _nz("Vent radius", p.stat("vent_radius"), _pct(p.stat("vent_radius")))
     _nz("Vent power", p.stat("vent_power"), _pct(p.stat("vent_power")))
     groups.append(["PRESSURE", _stats_end()])

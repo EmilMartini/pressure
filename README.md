@@ -273,6 +273,27 @@ Anonymous, opt-in play data for balancing (`scripts/telemetry.gd`, autoload `Tel
   where health drops fastest, guns whose damage share far exceeds how often they are
   carried).
 
+## Threat: crowds, not sponges
+
+Measured with a stand-still bot (`--idle`) and a fixed loadout (`--loadout=a,b,c`):
+six light guns of five elements used to clear floor 1 standing still without losing
+health, because reactions locked every group down and six guns out-killed any spawn rate.
+Now:
+- **Crowd target**: an arena keeps a number of enemies alive (6 + 1.1 x difficulty, x1.22
+  per extra gun and x1.12 per extra element) and refills as fast as you clear them, so a
+  full build meets a horde rather than tankier enemies (health grows at most 25%).
+- **Spawns close in**: half of every group appears in a ring around a player, behind a
+  0.75 s telegraph during which it cannot be hit; spitters from floor 1; grunts, swarmers
+  and splitters lunge the last stretch.
+- **Control has diminishing returns**: a second freeze or stun within 7 s lasts half, a
+  third a quarter, then the enemy is immune; elites resist half, bosses three quarters;
+  slows cap at 50%; frozen enemies take x1.6, not x3.
+- Result: six guns standing still die in the first arena; six guns moving clear floor 1
+  through about 600 kills of a 20-strong horde, dipping to three quarters health.
+
+The vent gauge is the vent's charge, so "pressure decay" upgrades were a trap: they are
+now vent charge speed (the vent fills faster), and pressure limit reads as vent capacity.
+
 ## Guns: six slots, duplicates, combining
 
 Brotato's shape: six gun slots (a few items add one), duplicates allowed so three oil
