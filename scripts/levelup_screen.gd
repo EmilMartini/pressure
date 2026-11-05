@@ -18,8 +18,8 @@ var _names: Array[Label] = []
 var _rarities: Array[Label] = []
 var _effects: Array[Label] = []
 var _descs: Array[Label] = []
-var _card_icons: Array = []    # Vector2i per card
-var _card_tints: Array = []    # icon tint per card
+var _card_icons: Array = []    # icon Texture2D per card
+var _card_tints: Array = []    # icon modulate per card (white: the tiles are coloured)
 var _card_cols: Array = []     # rarity colour per card (the frame)
 var _title: Label
 var _hint: Label
@@ -61,7 +61,7 @@ func _ready() -> void:
     row.add_theme_constant_override("separation", CARD_GAP)
     v.add_child(row)
     for i in 3:
-        _card_icons.append(Vector2i(45, 16))
+        _card_icons.append(Art.icon("", Vector2i(45, 16)))
         _card_tints.append(Color.WHITE)
         _card_cols.append(Items.RARITY_COLORS[0])
         var card := _make_card(i)
@@ -143,12 +143,12 @@ func _draw_card(i: int) -> void:
     var col: Color = _card_cols[i]
     var focused := b.has_focus()
     ItemCard.draw_frame(b, r, col, focused)
-    # Icon well at the top, the tile at 6x.
+    # Icon well at the top, the 32 px tile at 3x.
     var well := Rect2(Vector2((r.size.x - ICON_BOX) / 2.0, 20.0), Vector2(ICON_BOX, ICON_BOX))
     b.draw_texture_rect(Art.PARTICLES["light"], well.grow(30.0), false, Color(col, 0.22 if focused else 0.12))
     b.draw_rect(well, Color(0, 0, 0, 0.45))
     b.draw_rect(well, Color(col, 0.5), false, 2.0)
-    b.draw_texture_rect(Art.tile(_card_icons[i]), well.grow(-12.0), false, _card_tints[i])
+    Art.draw_icon(b, _card_icons[i], well.grow(-12.0), _card_tints[i])
     b.draw_line(Vector2(20, well.end.y + 6.0), Vector2(r.size.x - 20.0, well.end.y + 6.0), Color(col, 0.4), 2.0)
 
 
@@ -189,8 +189,8 @@ func _show_next() -> void:
         var rarity: int = clampi(int(opt.get("rarity", 0)), 0, Items.RARITY_COLORS.size() - 1)
         var rarity_col: Color = Items.RARITY_COLORS[rarity]
         card.visible = true
-        _card_icons[i] = opt["icon"]
-        _card_tints[i] = LevelUps.tint(opt)
+        _card_icons[i] = LevelUps.icon(opt)
+        _card_tints[i] = Color.WHITE
         _card_cols[i] = rarity_col
         card.queue_redraw()
         _names[i].text = opt["name"]

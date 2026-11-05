@@ -775,9 +775,16 @@ func _draw_graph() -> void:
         var fill := _state_color(st)
         c.draw_circle(p, r, fill)
         c.draw_arc(p, r, 0.0, TAU, 32, Color(0, 0, 0, 0.6), maxf(1.0, 2.0 * z), true)
-        if str(Mastery.nodes[id]["parent"]) == "":
+        var is_root := str(Mastery.nodes[id]["parent"]) == ""
+        if is_root or _is_cap(id):
+            # Roots and capstones carry their branch's icon, greyed until reachable.
             var bi: int = _branch_of[id]
-            c.draw_circle(p, r * 0.4, _branch_color[bi] if _element_index(_branch_names[bi]) >= 0 else Color(0, 0, 0, 0.35))
+            var side := r * 1.5
+            if side >= 12.0:
+                var tint := Color.WHITE if st != St.LOCKED else Color(0.45, 0.42, 0.45)
+                Art.draw_icon(c, Mastery.branch_icon(String(_branch_names[bi])), Rect2(p - Vector2(side, side) * 0.5, Vector2(side, side)), tint)
+            elif is_root:
+                c.draw_circle(p, r * 0.4, _branch_color[bi] if _element_index(_branch_names[bi]) >= 0 else Color(0, 0, 0, 0.35))
         if _is_cap(id):
             c.draw_arc(p, r + 5.0 * z, 0.0, TAU, 40, fill, maxf(1.5, 2.5 * z), true)
         if st == St.READY:

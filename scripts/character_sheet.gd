@@ -490,14 +490,14 @@ func _draw_slot(c: Dictionary, focused: bool) -> void:
     _canvas.draw_rect(rect, Color(0.08, 0.06, 0.08, 0.95))
     if filled:
         var charged := key != "active" or player.active_charges > 0
-        _canvas.draw_texture_rect(Art.tile(Items.icon(it)), rect.grow(-8.0), false, Items.icon_tint(it) if charged else Color(0.4, 0.38, 0.4))
+        Art.draw_icon(_canvas, Items.icon(it), rect.grow(-4.0), Items.icon_tint(it) if charged else Color(0.4, 0.38, 0.4))
         if key == "active":
             var max_charges := Items.active_max_charges(player)
             for k in max_charges:
                 var pip := Rect2(rect.position.x + 5.0 + float(k) * 9.0, rect.end.y - 9.0, 7.0, 5.0)
                 _canvas.draw_rect(pip, Color(1.0, 0.9, 0.4) if k < player.active_charges else Color(0.25, 0.22, 0.24))
     else:
-        _canvas.draw_texture_rect(Art.tile(Items.SLOT_ICONS[key.rstrip("12")]), rect.grow(-12.0), false, Color(0.32, 0.3, 0.32))
+        Art.draw_icon(_canvas, Items.slot_icon(key), rect.grow(-4.0), Color(0.32, 0.3, 0.32, 0.8))
     _canvas.draw_rect(rect, Color.WHITE if focused else border, false, 3.0 if focused else 2.0)
 
 
@@ -527,7 +527,7 @@ func _draw_guns() -> void:
         if focused:
             _canvas.draw_rect(rect.grow(6.0), Color(ec, 0.3))
         _canvas.draw_rect(rect, Color(0.08, 0.06, 0.08, 0.95))
-        _canvas.draw_texture_rect(Art.tile(Art.gun_tile(g.data.id)), rect.grow(-9.0), false, ec)
+        Art.draw_icon(_canvas, Art.gun_icon(g.data.id), rect.grow(-4.0))
         for k in int(g.tier):
             var pip := Rect2(rect.position.x + 5.0 + float(k) * 7.0, rect.end.y - 9.0, 5.0, 5.0)
             _canvas.draw_rect(pip.grow(1.0), Color(0, 0, 0, 0.7))
@@ -572,7 +572,7 @@ func _draw_card() -> void:
     else:
         var slot := key.rstrip("12")
         ItemCard.draw_note(_canvas, rect, String(ItemCard.SLOT_TITLES.get(slot, slot.capitalize())), "Empty slot",
-            "Gear drops from elites and bosses, and sits in shops and treasure rooms.", Items.SLOT_ICONS[slot])
+            "Gear drops from elites and bosses, and sits in shops and treasure rooms.", Items.slot_icon(slot))
 
 
 # --- Stats -------------------------------------------------------------------------

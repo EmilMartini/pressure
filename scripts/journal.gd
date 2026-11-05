@@ -117,6 +117,16 @@ func _entry(text: String, color: Color) -> Button:
     return b
 
 
+## Puts a 32 px icon at the left of an entry; `dim` greys it out (locked, not yet done).
+func _set_icon(b: Button, tex: Texture2D, dim: bool) -> void:
+    b.icon = tex
+    b.add_theme_constant_override("h_separation", 10)
+    if dim:
+        var grey := Color(0.32, 0.3, 0.32)
+        for k in ["icon_normal_color", "icon_focus_color", "icon_hover_color", "icon_pressed_color"]:
+            b.add_theme_color_override(k, grey)
+
+
 func _header(text: String, color: Color) -> void:
     var l := UiTheme.label(text, 22, color)
     l.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
@@ -131,7 +141,7 @@ func _fill_achievements() -> void:
             rewards.append(Progress.unlock_label(r))
         var progress := mini(Progress.stat(a["stat"]), a["goal"])
         var text := "%s  %s    %d / %d\n      %s   ->   %s" % ["[x]" if done else "[ ]", a["name"], progress, a["goal"], a["desc"], ", ".join(rewards)]
-        _entry(text, Color(0.6, 1.0, 0.75) if done else UiTheme.BONE)
+        _set_icon(_entry(text, Color(0.6, 1.0, 0.75) if done else UiTheme.BONE), Progress.achievement_icon(a), not done)
 
 
 func _fill_arsenal() -> void:
@@ -145,10 +155,12 @@ func _fill_arsenal() -> void:
             line += "   x%d shots" % g.projectile_count
         if g.pierce > 0:
             line += "   pierce %d" % g.pierce
+        var b: Button
         if unlocked:
-            _entry(line, Element.COLORS[g.element])
+            b = _entry(line, Element.COLORS[g.element])
         else:
-            _entry(line + "\n      LOCKED   " + Progress.unlock_source("gun:" + id), Color(0.5, 0.48, 0.5))
+            b = _entry(line + "\n      LOCKED   " + Progress.unlock_source("gun:" + id), Color(0.5, 0.48, 0.5))
+        _set_icon(b, Art.gun_icon(id), not unlocked)
 
 
 func _fill_reactions() -> void:
@@ -182,6 +194,8 @@ func _fill_gear() -> void:
         for id in sorted:
             var it := Items.get_item(id)
             var b := _entry("%s   [%s]" % [it["name"], ItemCard.SLOT_TITLES.get(it["slot"], it["slot"])], col)
+            _set_icon(b, Items.icon(it), false)
+            b.add_theme_color_override("icon_normal_color", Items.icon_tint(it))
             b.focus_entered.connect(_show_card.bind(it))
             b.mouse_entered.connect(_show_card.bind(it))
 

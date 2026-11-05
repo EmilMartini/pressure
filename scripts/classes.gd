@@ -7,6 +7,24 @@ extends RefCounted
 const AFFINITY_POTENCY := 0.20
 const AFFINITY_DMG := 0.10
 
+## Class id -> icon under Art.ICON_ROOT: a spell from the class's element school (a
+## figure where the pack has one), a ragged cloak for the elementless Vagrant.
+const ICONS := {
+    "vagrant": "item/armor/artefact/urand_ratskin_cloak.png",
+    "pyromancer": "gui/spells/fire/inner_flame.png",
+    "tidecaller": "gui/spells/ice/ensorcelled_hibernation_new.png",
+    "stormcaller": "gui/spells/air/insulation.png",
+    "frostbinder": "gui/spells/ice/ice_form_old.png",
+    "tarsmith": "gui/spells/earth/ledas_liquefaction.png",
+    "plaguewright": "gui/spells/poison/olgrebs_toxic_radiance_new.png",
+    "alchemist": "gui/invocations/gozag_potion_petition.png",
+    "bloodletter": "gui/spells/necromancy/sublimation_of_blood_old.png",
+    "voidwalker": "gui/spells/translocation/disjunction.png",
+    "templar": "gui/invocations/tso_bless_weapon.png",
+    "windrunner": "gui/spells/air/swiftness_old.png",
+    "stonewarden": "gui/spells/earth/statue_form_old.png",
+}
+
 static var _cache: Array = []
 
 
@@ -55,6 +73,16 @@ static func all() -> Array:
                 "gravel_shotgun", "charm_stone", { "armor": 1, "speed": -0.05, "carry": 2 }, "class_stonewarden"),
         ]
     return _cache
+
+
+## Icon path of a class (its "icon" field), "" when it has none.
+static func icon_path(c: Dictionary) -> String:
+    return String(c.get("icon", ""))
+
+
+## A class's icon texture (a 1-bit figure when the class has no icon).
+static func icon(c: Dictionary) -> Texture2D:
+    return Art.icon(icon_path(c), Vector2i(31, 0))
 
 
 ## One class by id, or {} when unknown.
@@ -172,5 +200,5 @@ static func _make(id: String, title: String, element: int, desc: String, start_g
     return {
         "id": id, "name": title, "element": element, "desc": desc,
         "start_gun": start_gun, "start_item": start_item, "mods": mods,
-        "tint": Element.COLORS[element], "unlock": unlock,
+        "tint": Element.COLORS[element], "unlock": unlock, "icon": String(ICONS.get(id, "")),
     }

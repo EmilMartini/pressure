@@ -17,7 +17,7 @@ const CARD_GAP := 12.0
 const SLOT := 44.0
 const SLOT_GAP := 6.0
 const SLOTS_PER_ROW := 10
-const GEAR_BIG := 30.0
+const GEAR_BIG := 36.0   # fits a 32 px icon at 1x
 const GEAR_SMALL := 22.0
 
 const VENT_W := 240.0
@@ -126,7 +126,7 @@ func _announce_gun(p: Player, g: Gun) -> void:
     var dps: float = dmg * g.fire_rate() * float(g.data.projectile_count * g.data.burst_count)
     _pick = {
         "name": g.display_name(), "effect": "%s, DPS %.0f, weight %d" % [Element.NAMES[g.data.element], dps, g.data.weight],
-        "col": g.data.color(), "icon": Art.gun_tile(g.data.id), "icon_tint": g.data.color(),
+        "col": g.data.color(), "icon": Art.gun_icon(g.data.id), "icon_tint": Color.WHITE,
         "who": p.display_name(), "t": PICK_TIME,
     }
 
@@ -202,6 +202,11 @@ func _bar(rect: Rect2, fraction: float, color: Color, border := Color(0, 0, 0, 0
 
 func _icon(coord: Vector2i, rect: Rect2, color: Color) -> void:
     draw_texture_rect(Art.tile(coord), rect, false, color)
+
+
+## An item, gun or upgrade icon (a Dungeon Crawl tile), drawn crisply into `rect`.
+func _icon_tex(tex: Texture2D, rect: Rect2, color: Color) -> void:
+    Art.draw_icon(self, tex, rect, color)
 
 
 func _backdrop(rect: Rect2, alpha := 0.4) -> void:
@@ -409,7 +414,7 @@ func _draw_hotbars(vp: Vector2, bottom: float) -> void:
 func _draw_gun_slot(gun: Gun, slot: Rect2) -> void:
     var ec: Color = gun.data.color()
     draw_rect(slot, Color(0.08, 0.06, 0.08, 0.9))
-    _icon(Art.gun_tile(gun.data.id), slot.grow(-6.0), ec)
+    _icon_tex(Art.gun_icon(gun.data.id), slot.grow(-6.0), Color.WHITE)
     draw_rect(slot, Color(ec, 0.85), false, 1.5)
     # Tier pips, bottom-left.
     for t in gun.tier:
@@ -453,12 +458,12 @@ func _draw_gear(p: Player, origin: Vector2, s: float) -> void:
         if p.equipment.has(key):
             var it := Items.get_item(p.equipment[key])
             var charged := not is_active or p.active_charges > 0
-            _icon(Items.icon(it), gbox.grow(-3.0), Items.icon_tint(it) if charged else Color(0.4, 0.38, 0.4))
+            _icon_tex(Items.icon(it), gbox.grow(-2.0), Items.icon_tint(it) if charged else Color(0.4, 0.38, 0.4))
             draw_rect(gbox, Items.rarity_color(it), false, 2.0)
             if is_active:
                 _draw_charge_pips(gbox, p.active_charges, Items.active_max_charges(p))
         else:
-            _icon(Items.SLOT_ICONS[key.rstrip("12")], gbox.grow(-4.0), Color(0.3, 0.28, 0.3))
+            _icon_tex(Items.slot_icon(key), gbox.grow(-2.0), Color(0.32, 0.3, 0.32, 0.8))
             draw_rect(gbox, Color(0.25, 0.22, 0.24), false, 1.0)
 
 
@@ -481,7 +486,7 @@ func _draw_pick(bottom: float) -> void:
     var col: Color = _pick["col"]
     draw_rect(Rect2(box.position, Vector2(4.0, box.size.y)), Color(col, a))
     draw_rect(box, Color(col, 0.6 * a), false, 1.5)
-    _icon(_pick["icon"], Rect2(box.position + Vector2(10, 4), Vector2(22, 22)), Color(_pick["icon_tint"], a))
+    _icon_tex(_pick["icon"], Rect2(box.position + Vector2(10, 4), Vector2(22, 22)), Color(_pick["icon_tint"], a))
     var x := box.position.x + 38.0
     _body_in(Rect2(x, y, name_w, 30.0), name_text, 20, Color(col, a), HORIZONTAL_ALIGNMENT_LEFT)
     x += name_w + 14.0

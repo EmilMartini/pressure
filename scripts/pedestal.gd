@@ -4,12 +4,29 @@ extends Node2D
 ## stairs, or the challenge sigil. The Room decides what activating it does.
 
 const RANGE := 52.0
+## 32 px icons at 1.25x sit where the old 16 px tiles did at 2.5x.
+const ICON_SCALE := 1.25
+## Boon id -> icon under Art.ICON_ROOT.
+const BOON_ICONS := {
+    "vitality": "gui/spells/enchantment/enslavement_new.png",
+    "haul": "gui/spells/translocation/apportation_new.png",
+    "boiler": "gui/invocations/gozag_potion_petition.png",
+    "hoard": "item/gold/gold_pile_25.png",
+}
+## Service pedestals -> icon under Art.ICON_ROOT.
+const KIND_ICONS := {
+    "gunsmith": "gui/spells/earth/maxwells_silver_hammer.png",
+    "reroll": "item/misc/misc_deck_new.png",
+    "carry": "gui/spells/translocation/apportation_new.png",
+    "repair": "gui/spells/necromancy/regeneration_new.png",
+}
 
 var offer: Dictionary
 var highlighted := false
 var prompt_key := "E"      # set by the room from the nearest player's device
 var prompt_kind := "kb"    # "pad" or "kb"
 var _sprite: Sprite2D
+
 var _t := randf() * TAU
 var _card: Node2D           # the ItemCard layer, above players and shots
 var _gun_data: GunData      # cached for gun offers
@@ -28,23 +45,20 @@ func empty() -> bool:
 func _ready() -> void:
     if empty():
         return
-    var coord: Vector2i
-    var tint := color()
+    # Guns, gear and upgrades show their 32 px Dungeon Crawl icon untinted (the frame and
+    # the card carry the rarity); stairs and sigils keep their 1-bit tiles.
     match kind():
         "gun":
-            coord = Art.gun_tile(offer["id"])
+            _sprite = Art.icon_sprite(Art.gun_icon(offer["id"]), ICON_SCALE)
         "item":
-            coord = Items.icon(item())
-            tint = Items.icon_tint(item())
+            _sprite = Art.icon_sprite(Items.icon(item()), ICON_SCALE)
+            _sprite.modulate = Items.icon_tint(item())
         "boon":
-            coord = { "vitality": Vector2i(40, 10), "haul": Vector2i(47, 4), "boiler": Vector2i(45, 16), "hoard": Vector2i(45, 16) }.get(offer["id"], Vector2i(45, 16))
-        "gunsmith":
-            coord = Vector2i(41, 5)
-        "reroll":
-            coord = Vector2i(45, 16)
+            _sprite = Art.icon_sprite(Art.icon(String(BOON_ICONS.get(offer["id"], "item/gold/gold_pile_25.png"))), ICON_SCALE)
+        "gunsmith", "reroll", "carry", "repair":
+            _sprite = Art.icon_sprite(Art.icon(String(KIND_ICONS[kind()])), ICON_SCALE)
         _:
-            coord = Art.TILES.get(kind(), Art.TILES["cog"])
-    _sprite = Art.sprite(coord, 2.5, tint)
+            _sprite = Art.sprite(Art.TILES.get(kind(), Art.TILES["cog"]), 2.5, color())
     _sprite.position = Vector2(0, -36)
     add_child(_sprite)
     _card = Node2D.new()

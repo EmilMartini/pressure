@@ -19,6 +19,27 @@ const ELEMENT_TITLES := {
     "holy": "Radiant", "gale": "Zephyr", "stone": "Granite",
 }
 
+## Branch name -> icon under Art.ICON_ROOT, shown on the branch root and capstone.
+const BRANCH_ICONS := {
+    "Offense": "gui/spells/enchantment/tukimas_vorpal_blade.png",
+    "Defense": "item/armor/shields/large_shield_1_new.png",
+    "Pressure": "gui/spells/fire/evaporate.png",
+    "Economy": "item/gold/gold_pile_25.png",
+    "Utility": "gui/spells/divination/magic_mapping.png",
+    "Wet": "gui/spells/ice/ensorcelled_hibernation_new.png",
+    "Shock": "gui/spells/air/lightning_bolt_new.png",
+    "Fire": "gui/spells/fire/fireball_new.png",
+    "Ice": "gui/spells/ice/throw_icicle_new.png",
+    "Oil": "gui/spells/earth/ledas_liquefaction.png",
+    "Poison": "gui/spells/poison/venom_bolt_new.png",
+    "Acid": "gui/spells/poison/poisonous_cloud_new.png",
+    "Blood": "gui/spells/necromancy/sublimation_of_blood_new.png",
+    "Void": "gui/spells/enchantment/darkness.png",
+    "Holy": "gui/invocations/tso_bless_weapon.png",
+    "Gale": "gui/spells/air/tornado.png",
+    "Stone": "gui/spells/earth/lees_rapid_deconstruction_new.png",
+}
+
 ## Stats counted in whole units rather than fractions.
 const INT_KEYS := ["max_hp", "armor", "pierce", "carry", "chain_jumps", "bounce", "starting_scrap",
     "pressure_limit", "thorns", "proj_count", "lifesteal"]
@@ -55,6 +76,15 @@ func _ready() -> void:
 
 func branches() -> Array:
     return _branches.duplicate()
+
+
+func branch_icon_path(branch: String) -> String:
+    return String(BRANCH_ICONS.get(branch, ""))
+
+
+## The icon of a branch (a 1-bit sigil when the branch has none).
+func branch_icon(branch: String) -> Texture2D:
+    return Art.icon(branch_icon_path(branch), Vector2i(28, 12))
 
 
 ## Nodes of one branch in tree order: every parent comes before its children.

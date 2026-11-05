@@ -200,7 +200,7 @@ func _draw_card(b: Button, gun) -> void:
     b.draw_texture_rect(Art.PARTICLES["light"], well.grow(24.0), false, Color(col, 0.22 if focused else 0.1))
     b.draw_rect(well, Color(0, 0, 0, 0.45))
     b.draw_rect(well, Color(col, 0.5), false, 2.0)
-    b.draw_texture_rect(Art.tile(Art.gun_tile(gun.data.id)), well.grow(-8.0), false, col)
+    Art.draw_icon(b, Art.gun_icon(gun.data.id), well)
 
 
 func _close() -> void:

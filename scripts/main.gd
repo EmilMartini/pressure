@@ -147,6 +147,8 @@ func _ready() -> void:
         DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path("res://autotest"))
         await get_tree().create_timer(0.8).timeout
         await _screenshot("res://autotest/start.png")
+        Art.debug_icon_sheet("res://autotest/icons.png")
+        FigureGen.debug_sheet("res://autotest/figures.png")
         # Stand next to the first pedestal to show the prompt, once per device kind.
         if current != null and not current.pedestals.is_empty():
             var ped: Pedestal = current.pedestals[0]

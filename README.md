@@ -386,6 +386,10 @@ All art is from Kenney (kenney.nl), CC0, no generative art:
   blood spray, void implosion, light pillar, whirl, stone chunks) and a reaction draws
   both of its elements' signatures plus accents for what it does; the ring is only a
   thin outline of a burst radius. Nothing opaque ever covers the fight.
+- **Dungeon Crawl Stone Soup tiles** (`assets/icons/`, CC0, see its CREDITS.txt): the
+  32 px icons for every item, gun, level-up, class, mastery branch and trophy, chosen by
+  hand per item (`Art.icon`, `Items.icon`, `Art.gun_icon`, `LevelUps.icon`). The world
+  stays in Kenney's one-bit style; `Art.debug_icon_sheet(path)` renders every mapping.
 - **Kenney Fonts** (`assets/fonts/`): Kenney Pixel for the HUD and world text.
 - **Kenney audio** (`assets/audio/`): a curated set from Sci-fi Sounds, Impact Sounds,
   Interface Sounds and RPG Audio, renamed to what they do in the game. The `Sfx` autoload

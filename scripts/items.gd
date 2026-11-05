@@ -94,10 +94,238 @@ const RARITY_ODDS := {
     Rarity.LEGENDARY: [2, 0.004, 0.04],
 }
 const SLOTS := ["head", "chest", "hands", "feet", "ring", "trinket", "mod", "active"]
+## Slot -> icon (path under Art.ICON_ROOT): the fallback for an item without its own icon
+## and, dimmed, the placeholder of an empty gear slot.
 const SLOT_ICONS := {
+    "head": "item/armor/headgear/helmet_1.png", "chest": "item/armor/torso/leather_armor_1.png",
+    "hands": "item/armor/hands/glove_1_new.png", "feet": "item/armor/feet/boots_1_brown_new.png",
+    "ring": "item/ring/iron.png", "trinket": "item/amulet/bone_gray.png",
+    "mod": "gui/spells/components/bolt.png", "active": "item/potion/clear.png",
+}
+## Old 1-bit sheet tiles per slot, used only when an icon file is missing.
+const SLOT_TILES := {
     "head": Vector2i(33, 0), "chest": Vector2i(35, 1), "hands": Vector2i(41, 1),
     "feet": Vector2i(40, 0), "ring": Vector2i(43, 7), "trinket": Vector2i(44, 6), "mod": Vector2i(45, 16),
     "active": Vector2i(44, 9),
+}
+## Hand-made item id -> icon (path under Art.ICON_ROOT), each picked to match the name and
+## slot. `_apply_icons` copies these into the items' "icon" field.
+const ICONS := {
+    # Head
+    "rusted_helm": "item/armor/headgear/helmet_1.png",
+    "iron_pot": "item/armor/headgear/helmet_5.png",
+    "feather_cap": "item/armor/headgear/elven_leather_helm.png",
+    "miners_lamp": "item/misc/misc_lamp_new.png",
+    "leather_cap": "item/armor/artefact/urand_bear.png",
+    "wide_brim": "item/armor/headgear/hat_2.png",
+    "scavenger_hood": "item/armor/headgear/cap_1.png",
+    "fume_mask": "item/armor/headgear/green_mask.png",
+    "sniper_visor": "item/armor/headgear/helmet_1_visored.png",
+    "hothead": "item/armor/headgear/cap_2.png",
+    "divers_goggles": "item/armor/headgear/helmet_art_2.png",
+    "thinking_cap": "item/armor/headgear/wizard_hat_1.png",
+    "crown_of_focus": "item/armor/artefact/urand_dyrovepreva_new.png",
+    "marksman_monocle": "item/armor/artefact/urand_bullseye.png",
+    "storm_hood": "item/armor/headgear/cornuthaum.png",
+    "seer_circlet": "item/armor/headgear/helmet_art_1.png",
+    "boiler_cap": "item/armor/headgear/helmet_4_visor.png",
+    "berserker_helm": "item/armor/headgear/helmet_4.png",
+    "skullcap_vented": "item/armor/headgear/helmet_3_new.png",
+    "seeker_lens": "item/armor/headgear/helmet_ego_1.png",
+    "cerebral_spark": "item/armor/headgear/hat_3.png",
+    "detonator_cap": "item/armor/headgear/helmet_ego_4.png",
+    "godhead": "item/armor/artefact/urand_eternal_torment.png",
+    # Chest
+    "padded_vest": "item/armor/torso/leather_armor_1.png",
+    "quilted_jerkin": "item/armor/torso/elven_leather_armor.png",
+    "hide_vest": "item/armor/torso/animal_skin_1_new.png",
+    "lab_apron": "item/armor/torso/robe_1_new.png",
+    "patched_coat": "item/armor/torso/robe_2_new.png",
+    "cargo_vest": "item/armor/torso/studded_leather_armor.png",
+    "thorn_vest": "item/armor/torso/orcish_leather_armor.png",
+    "tar_coat": "item/armor/artefact/urand_night_new.png",
+    "riveted_plate": "item/armor/torso/plate_1.png",
+    "bandolier": "item/armor/torso/banded_mail_1.png",
+    "slipstream_cloak": "item/armor/back/cloak_3.png",
+    "bellows": "item/armor/torso/splint_mail_1.png",
+    "chain_shirt": "item/armor/torso/chain_mail_1.png",
+    "conductors_mail": "item/armor/torso/blue_dragon_scale_mail_new.png",
+    "leech_mail": "item/armor/artefact/urand_salamander.png",
+    "spiked_cuirass": "item/armor/torso/orcish_plate_2.png",
+    "glacier_plate": "item/armor/torso/ice_dragon_armor_new.png",
+    "ammo_harness": "item/armor/torso/ring_mail_1_new.png",
+    "phoenix_mantle": "item/armor/artefact/urand_flash.png",
+    "gilded_carapace": "item/armor/torso/gold_dragon_armor_new.png",
+    "shrapnel_vest": "item/armor/torso/crystal_plate_mail.png",
+    "phantom_shroud": "item/armor/artefact/urand_augmentation.png",
+    "hive_heart": "item/armor/artefact/urand_lear.png",
+    # Hands
+    "worn_gloves": "item/armor/hands/glove_1_new.png",
+    "hair_trigger": "item/armor/hands/glove_3_new.png",
+    "knuckle_wraps": "item/armor/hands/glove_3_old.png",
+    "steady_gloves": "item/armor/hands/glove_2_new.png",
+    "gardening_gloves": "item/armor/hands/glove_4_old.png",
+    "lab_gloves": "item/armor/artefact/urand_fencer_new.png",
+    "quick_hands": "item/armor/artefact/urand_fencer_old.png",
+    "spiked_gauntlets": "item/armor/hands/glove_4_new.png",
+    "fingerless_gloves": "gui/spells/components/hand_4.png",
+    "chilled_knuckles": "item/armor/hands/glove_5.png",
+    "scrappers_mitts": "item/armor/hands/glove_1_old.png",
+    "grip_of_pierce": "gui/spells/earth/stone_arrow_new.png",
+    "ricochet_gloves": "item/armor/hands/glove_4_gauntlets.png",
+    "kindling_mitts": "item/armor/hands/glove_2_old.png",
+    "twin_triggers": "item/weapon/ranged/hand_crossbow_3.png",
+    "executioners_grip": "item/armor/artefact/urand_war.png",
+    "hands_of_storm": "gui/spells/air/static_discharge_new.png",
+    "rifled_sleeve": "gui/spells/components/hand_3.png",
+    "cluster_rounds": "gui/spells/earth/shatter_new.png",
+    "mothers_blade": "item/weapon/artefact/spwpn_sword_of_cerebov_new.png",
+    # Feet
+    "leather_boots": "item/armor/feet/boots_1_brown_new.png",
+    "runner_wraps": "item/armor/feet/low_boots.png",
+    "hobnail_boots": "item/armor/feet/boots_1_brown_old.png",
+    "sturdy_boots": "item/armor/feet/boots_2_jackboots.png",
+    "sandals": "item/armor/feet/boots_3_stripe_old.png",
+    "treaders": "item/armor/feet/boots_3_stripe_new.png",
+    "mudwaders": "item/armor/feet/boots_4_green.png",
+    "jogging_shoes": "gui/spells/components/running.png",
+    "puddle_jumpers": "gui/abilities/jump.png",
+    "stompers": "item/armor/feet/boots_iron_2.png",
+    "cinder_clogs": "gui/spells/fire/conjure_flame_new.png",
+    "frost_treads": "gui/spells/ice/freeze_new.png",
+    "anvil_boots": "item/armor/artefact/urand_assassin.png",
+    "greased_soles": "gui/spells/earth/ledas_liquefaction.png",
+    "tidewalkers": "gui/spells/ice/condensation_shield_old.png",
+    "hover_greaves": "gui/spells/air/levitation.png",
+    "vent_striders": "gui/spells/fire/ring_of_flames_new.png",
+    "seven_league": "gui/spells/air/swiftness_new.png",
+    "tracker_boots": "gui/spells/divination/detect_creatures.png",
+    # Trinkets
+    "scrap_magnet": "item/amulet/ring_red.png",
+    "reagent_satchel": "item/misc/misc_bottle.png",
+    "four_leaf_clover": "item/amulet/penta_green.png",
+    "whetstone": "item/misc/misc_stone_new.png",
+    "bandage_roll": "item/scroll/blank_paper.png",
+    "brass_spyglass": "gui/spells/components/eye.png",
+    "ticking_clock": "gui/spells/enchantment/slow_new.png",
+    "lucky_cog": "item/amulet/face_1_gold.png",
+    "coin_purse": "item/gold/gold_pile_10.png",
+    "ledger": "item/book/parchment_old.png",
+    "pocket_watch": "gui/spells/enchantment/extension.png",
+    "spark_plug": "gui/spells/air/shock_new.png",
+    "heat_gauge": "item/misc/misc_disc_new.png",
+    "steam_whistle": "gui/abilities/evoke_fog.png",
+    "pressure_valve": "gui/spells/fire/evaporate.png",
+    "alembic": "item/potion/effervescent.png",
+    "rabbit_foot": "item/amulet/penta_orange.png",
+    "grisly_trophy": "item/amulet/artefact/urand_finger.png",
+    "static_jar": "item/misc/misc_lamp_old.png",
+    "hot_rod": "item/rod/rod_0_new.png",
+    "cold_snap": "item/misc/misc_crystal_old.png",
+    "blood_pact": "gui/spells/necromancy/sublimation_of_blood_old.png",
+    "plague_censer": "item/misc/misc_lantern.png",
+    "heart_of_forge": "item/misc/runes/rune_gehenna_new.png",
+    "permafrost_core": "item/misc/runes/rune_cocytus_new.png",
+    "bone_orbit": "item/misc/runes/rune_tartarus_new.png",
+    "powder_horn": "gui/spells/components/horn.png",
+    "wisp_lantern": "item/misc/misc_lamp_inert.png",
+    "twin_moons": "gui/spells/conjuration/orb_of_destruction_big.png",
+    "skull_choir": "gui/spells/necromancy/symbol_of_torment.png",
+    # Rings
+    "bone_ring": "item/ring/ring_ivory.png",
+    "gasket_ring": "item/ring/steel.png",
+    "copper_ring": "item/ring/copper.png",
+    "tin_ring": "item/ring/silver.png",
+    "jade_ring": "item/ring/jade.png",
+    "oak_ring": "item/ring/wooden.png",
+    "wishbone_ring": "item/ring/ring_twisted.png",
+    "ring_of_reach": "item/ring/ring_gold_white.png",
+    "catalyst_ring": "item/ring/emerald.png",
+    "gilded_ring": "item/ring/ring_gold_yellow.png",
+    "iron_band": "item/ring/iron.png",
+    "ring_of_embers": "item/ring/tiger_eye.png",
+    "band_of_lingering": "item/ring/moonstone.png",
+    "vampiric_loop": "item/ring/ring_ruby.png",
+    "quicksilver_band": "item/ring/diamond.png",
+    "bloodstone": "item/ring/ruby.png",
+    "echo_loop": "item/ring/opal.png",
+    "ring_of_multiplicity": "item/ring/tourmaline.png",
+    "frenzy_band": "item/ring/gold_red.png",
+    "signet_of_overload": "item/ring/artefact/urand_mage.png",
+    "storm_halo": "item/ring/ring_shiny.png",
+    "lead_shot": "item/ring/artefact/urand_shadows_new.png",
+    "splinter_charm": "item/ring/ring_engagement.png",
+    "big_iron": "item/ring/artefact/urand_robustness.png",
+    "feral_fang": "item/ring/artefact/urand_octoring.png",
+    # Gun mods
+    "sight_rail": "gui/spells/translocation/portal_projectile_new.png",
+    "oiled_bolt": "gui/spells/components/bolt.png",
+    "heavy_barrel": "gui/spells/earth/iron_shot_new.png",
+    "long_barrel": "item/weapon/ranged/blowgun_1.png",
+    "gun_oil": "item/potion/murky.png",
+    "exhaust_pipes": "gui/spells/fire/fire_storm_new.png",
+    "piercing_rounds": "item/weapon/ranged/silver_arrow.png",
+    "pressure_coupler": "item/misc/key.png",
+    "arc_emitter": "gui/spells/air/lightning_bolt_new.png",
+    "overclock": "gui/spells/enchantment/haste_old.png",
+    "split_chamber": "gui/spells/conjuration/dazzling_spray.png",
+    "chain_reactor": "gui/spells/conjuration/iskenderuns_mystic_blast_new.png",
+    # Active items
+    "smelling_salts": "item/potion/cloudy.png",
+    "flash_powder": "item/potion/potion_fizzy.png",
+    "tin_whistle": "item/misc/misc_horn.png",
+    "pocket_storm": "gui/spells/air/conjure_ball_lightning_new.png",
+    "water_bucket": "gui/spells/components/bowl.png",
+    "ember_flask": "item/potion/orange_old.png",
+    "grease_gun": "gui/spells/fire/ignite_poison_new.png",
+    "frost_grenade": "gui/spells/ice/ozocubus_refrigeration_new.png",
+    "dowsing_rod": "item/rod/rod_forked.png",
+    "tesla_coil": "gui/spells/air/static_discharge_old.png",
+    "overpressure": "gui/abilities/shaft_self.png",
+    "blood_chalice": "gui/spells/necromancy/sublimation_of_blood.png",
+    "pressure_bomb": "gui/spells/fire/delayed_fireball.png",
+    "prism_engine": "gui/spells/conjuration/fulminant_prism.png",
+}
+## Generated per-element families: "<family>_<el>" -> the element's tile when the pack has
+## a matching colour, else `base` with a faint element tint of strength `tint`.
+const FAMILY_ICONS := {
+    "ring": { "base": "item/ring/steel.png", "tint": 0.45,
+        "wet": "item/ring/ring_plain_blue.png", "shock": "item/ring/plain_yellow.png",
+        "fire": "item/ring/plain_red.png", "ice": "item/ring/glass.png",
+        "oil": "item/ring/plain_black.png", "poison": "item/ring/ring_plain_green.png",
+        "acid": "item/ring/agate.png", "blood": "item/ring/coral.png",
+        "void": "item/ring/ring_plain_magenta.png", "holy": "item/ring/gold.png",
+        "gale": "item/ring/pearl.png", "stone": "item/ring/granite.png" },
+    "vial": { "base": "item/potion/clear.png", "tint": 0.45,
+        "wet": "item/potion/brilliant_blue_new.png", "shock": "item/potion/yellow_new.png",
+        "fire": "item/potion/orange_new.png", "ice": "item/potion/sky_blue.png",
+        "oil": "item/potion/black_new.png", "poison": "item/potion/emerald.png",
+        "acid": "item/potion/potion_bubbly.png", "blood": "item/potion/ruby_new.png",
+        "void": "item/potion/dark.png", "holy": "item/potion/white_new.png",
+        "gale": "item/potion/cyan_new.png", "stone": "item/potion/brown_new.png" },
+    "charm": { "base": "item/amulet/bone_gray.png", "tint": 0.45,
+        "wet": "item/amulet/stone_2_blue.png", "shock": "item/amulet/celtic_yellow.png",
+        "fire": "item/amulet/celtic_red.png", "ice": "item/amulet/stone_1_cyan.png",
+        "oil": "item/amulet/cylinder_gray.png", "poison": "item/amulet/stone_1_green.png",
+        "acid": "item/amulet/eye_green.png", "blood": "item/amulet/stone_2_red.png",
+        "void": "item/amulet/stone_3_magenta.png", "holy": "item/amulet/crystal_white.png",
+        "gale": "item/amulet/eye_cyan.png", "stone": "item/amulet/bone_gray.png" },
+    "mantle": { "base": "item/armor/back/cloak_2.png", "tint": 0.45,
+        "wet": "item/armor/torso/robe_ego_2.png", "shock": "item/armor/artefact/urand_starlight.png",
+        "fire": "item/armor/artefact/urand_folly.png", "ice": "item/armor/torso/robe_1_old.png",
+        "oil": "item/armor/back/cloak_1_leather.png", "poison": "item/armor/torso/robe_3.png",
+        "acid": "item/armor/torso/robe_art_1.png", "blood": "item/armor/torso/robe_ego_1.png",
+        "void": "item/armor/torso/robe_art_2.png", "holy": "item/armor/artefact/urand_misfortune.png",
+        "gale": "item/armor/back/cloak_2.png", "stone": "item/armor/artefact/urand_thief.png" },
+    # Scrolls of branding: coloured ribbons where the pack has the colour, a tinted plain
+    # scroll for the rest.
+    "coating": { "base": "item/scroll/scroll_new.png", "tint": 0.5,
+        "wet": "item/scroll/scroll-blue.png", "shock": "item/scroll/scroll-yellow.png",
+        "fire": "item/scroll/scroll-red.png", "ice": "item/scroll/scroll-cyan.png",
+        "oil": "item/scroll/scroll-grey.png", "poison": "item/scroll/scroll-green.png",
+        "void": "item/scroll/scroll-purple.png", "stone": "item/scroll/scroll-brown.png" },
+    # No element-coloured gloves in the pack: a white gauntlet tinted by the element.
+    "gloves": { "base": "item/armor/hands/gauntlet_1.png", "tint": 0.6 },
 }
 ## Item pools, Isaac style. Which pool a room draws from shapes what it offers.
 const POOLS := ["shop", "treasure", "boss", "hidden", "challenge", "arena"]
@@ -232,14 +460,54 @@ func price(item: Dictionary, floor_number: int) -> int:
     return int(roundf(base + 2.0 * diff + base * 0.10 * diff))
 
 
-func icon(item: Dictionary) -> Vector2i:
-    return SLOT_ICONS.get(item.get("slot", "trinket"), SLOT_ICONS["trinket"])
+## Icon path of an item: its own "icon" field, else its slot's icon.
+func icon_path(item: Dictionary) -> String:
+    var own := String(item.get("icon", ""))
+    if own != "":
+        return own
+    return String(SLOT_ICONS.get(item.get("slot", "trinket"), SLOT_ICONS["trinket"]))
 
 
+## An item's icon texture (Dungeon Crawl tile; the old 1-bit slot tile if missing).
+func icon(item: Dictionary) -> Texture2D:
+    var slot := String(item.get("slot", "trinket"))
+    return Art.icon(icon_path(item), SLOT_TILES.get(slot, SLOT_TILES["trinket"]))
+
+
+## Modulate for an item's icon: white (the tiles are coloured already), or a faint
+## element tint for the family items that share one base tile.
 func icon_tint(item: Dictionary) -> Color:
-    if item.has("element"):
-        return Element.COLORS[ELEMENTS[item["element"]]]
-    return rarity_color(item)
+    var amount := float(item.get("icon_tint", 0.0))
+    if amount > 0.0 and item.has("element"):
+        return Color.WHITE.lerp(Element.COLORS[ELEMENTS[item["element"]]], amount)
+    return Color.WHITE
+
+
+## Placeholder icon of an empty slot ("ring1" and "trinket2" read as their slot).
+func slot_icon(slot: String) -> Texture2D:
+    var key := slot.rstrip("12")
+    return Art.icon(String(SLOT_ICONS.get(key, SLOT_ICONS["trinket"])), SLOT_TILES.get(key, SLOT_TILES["trinket"]))
+
+
+## Gives every item its "icon" (and "icon_tint" for tinted family pieces): hand-made
+## items from ICONS, element families from FAMILY_ICONS. Anything left falls back to its
+## slot icon in `icon_path`.
+func _apply_icons() -> void:
+    for id in catalog.keys():
+        var it: Dictionary = catalog[id]
+        if ICONS.has(id):
+            it["icon"] = ICONS[id]
+            continue
+        var family := String(id).get_slice("_", 0)
+        var el := String(it.get("element", ""))
+        if el == "" or not FAMILY_ICONS.has(family) or String(id) != "%s_%s" % [family, el]:
+            continue
+        var fam: Dictionary = FAMILY_ICONS[family]
+        if fam.has(el):
+            it["icon"] = fam[el]
+        else:
+            it["icon"] = fam["base"]
+            it["icon_tint"] = float(fam["tint"])
 
 
 func max_rarity_unlocked() -> int:
@@ -831,6 +1099,7 @@ func _build_catalog() -> void:
         _add("mantle_%s" % e, "Mantle of %s" % T, "chest", E, "+30%% potency for %s reactions, +15 max HP" % en, { "potency_%s" % e: 0.3, "max_hp": 15 }, [], { "element": e })
 
     _apply_looks()
+    _apply_icons()
 
     # --- Pools: an explicit "pools" in extra wins; everything else is sorted by shape.
     for id in catalog.keys():
@@ -1022,7 +1291,7 @@ func look_of(item: Dictionary) -> Dictionary:
     if out.has("aura"):
         out["aura"] = _look_color(out["aura"], rarity_color(item))
     if slot == "active" and not out.has("tile"):
-        out["tile"] = icon(item)
+        out["icon"] = icon(item)
     return out
 
 
@@ -1160,11 +1429,15 @@ func draw_costume(canvas: CanvasItem, player: Player, center: Vector2, unit: flo
             for i in 3:
                 var p := center + Vector2(unit * 10.0, 0).rotated(phase + TAU * float(i) / 3.0) * Vector2(1.0, 0.55)
                 canvas.draw_rect(Rect2(p - Vector2(unit, unit) * 0.5, Vector2(unit, unit)), Color(tint, 0.75))
-        if slot == "active" and lk.has("tile"):
+        if slot == "active" and (lk.has("tile") or lk.has("icon")):
             # Slung on the back: behind the figure, on the side away from where it faces.
             var size_b := 16.0 * unit * 0.5
             var at_b := center + Vector2(-facing * 6.0, -3.0) * unit
-            canvas.draw_texture_rect(Art.tile(lk["tile"]), Rect2(at_b - Vector2(size_b, size_b) / 2.0, Vector2(size_b, size_b)), false, tint)
+            var rect_b := Rect2(at_b - Vector2(size_b, size_b) / 2.0, Vector2(size_b, size_b))
+            if lk.has("icon"):
+                Art.draw_icon(canvas, lk["icon"], rect_b, icon_tint(it))
+            else:
+                canvas.draw_texture_rect(Art.tile(lk["tile"]), rect_b, false, tint)
             var max_charges := active_max_charges(player)
             for c in max_charges:
                 var pip := Rect2(at_b + Vector2(-size_b / 2.0 + float(c) * unit * 2.0, size_b / 2.0 + unit * 0.5), Vector2(unit * 1.5, unit * 1.5))

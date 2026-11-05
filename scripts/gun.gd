@@ -6,6 +6,8 @@ extends Node2D
 
 const MAX_TIER := 4
 const TIER_NAMES := ["", " II", " III", " IV"]
+## On-screen size of the orbiting gun icon at tier I (a 32 px tile resampled down).
+const ICON_PX := 22
 
 var data: GunData
 var player: Player
@@ -19,6 +21,7 @@ var _recoil := 0.0
 var _burst_left := 0      # burst shots still queued from the last trigger
 var _burst_timer := 0.0
 var _alt_flip := false    # alternating-element guns flip this per projectile
+var _upright := false     # flask and orb icons stand upright instead of pointing
 
 
 func _init(p_data: GunData, p_player: Player) -> void:
@@ -29,7 +32,8 @@ func _init(p_data: GunData, p_player: Player) -> void:
 
 func _ready() -> void:
     z_index = 1
-    _sprite = Art.sprite(Art.gun_tile(data.id), 1.5, data.color())
+    _upright = Art.gun_icon_upright(data.id)
+    _sprite = Art.icon_sprite(Art.icon_sized(Art.gun_icon(data.id), ICON_PX), 1.0)
     add_child(_sprite)
 
 
@@ -49,9 +53,15 @@ func _process(delta: float) -> void:
                 _aim = (tgt.global_position - global_position).normalized()
             _shoot(_aim)
     _sprite.position = -_aim * _recoil
-    _sprite.rotation = _aim.angle()
-    _sprite.flip_v = _aim.x < 0.0
-    _sprite.scale = Vector2.ONE * (1.5 + 0.12 * float(tier - 1))
+    var left := _aim.x < 0.0
+    _sprite.flip_h = left
+    if _upright:
+        _sprite.rotation = 0.0
+    else:
+        # The tiles lie diagonally with the business end up and to the right (-45 degrees);
+        # mirrored for a left aim it points up-left (-135 degrees). Turn that end to the aim.
+        _sprite.rotation = _aim.angle() + (PI * 0.75 if left else PI * 0.25)
+    _sprite.scale = Vector2.ONE * (1.0 + 0.08 * float(tier - 1))
 
 
 func display_name() -> String:

@@ -17,11 +17,11 @@ const LIT := Color(1.0, 0.82, 0.35)
 
 const STATIONS := [
     { "id": "gate", "name": "THE GATE", "sub": "start a run", "pos": Vector2(0, 236), "tile": Vector2i(4, 10), "tint": Color(0.55, 1.0, 1.0), "verb": "descend", "style": "gate" },
-    { "id": "armory", "name": "ARMORY", "sub": "guns and gear", "pos": Vector2(-420, -100), "tile": Vector2i(42, 9), "tint": Color(1.0, 0.6, 0.3), "verb": "browse", "style": "plinth" },
-    { "id": "shrine", "name": "SHRINE", "sub": "mastery", "pos": Vector2(-420, 150), "tile": Vector2i(28, 12), "tint": Color(0.8, 0.5, 1.0), "verb": "kneel", "style": "plinth" },
-    { "id": "mirror", "name": "MIRROR", "sub": "names", "pos": Vector2(420, -100), "tile": Vector2i(31, 0), "tint": Color(0.6, 0.85, 1.0), "verb": "look", "style": "plinth" },
-    { "id": "workshop", "name": "WORKSHOP", "sub": "options", "pos": Vector2(420, 150), "tile": Vector2i(41, 5), "tint": Color(0.85, 0.8, 0.7), "verb": "tinker", "style": "plinth" },
-    { "id": "ledger", "name": "LEDGER", "sub": "run history", "pos": Vector2(-230, 210), "tile": Vector2i(44, 6), "tint": Color(0.95, 0.8, 0.5), "verb": "read", "style": "plinth" },
+    { "id": "armory", "name": "ARMORY", "sub": "guns and gear", "pos": Vector2(-420, -100), "tile": Vector2i(42, 9), "icon": "item/weapon/ranged/crossbow_2.png", "tint": Color(1.0, 0.6, 0.3), "verb": "browse", "style": "plinth" },
+    { "id": "shrine", "name": "SHRINE", "sub": "mastery", "pos": Vector2(-420, 150), "tile": Vector2i(28, 12), "icon": "gui/invocations/kiku_necronomicon.png", "tint": Color(0.8, 0.5, 1.0), "verb": "kneel", "style": "plinth" },
+    { "id": "mirror", "name": "MIRROR", "sub": "names", "pos": Vector2(420, -100), "tile": Vector2i(31, 0), "icon": "item/misc/mirror.png", "tint": Color(0.6, 0.85, 1.0), "verb": "look", "style": "plinth" },
+    { "id": "workshop", "name": "WORKSHOP", "sub": "options", "pos": Vector2(420, 150), "tile": Vector2i(41, 5), "icon": "gui/spells/earth/maxwells_silver_hammer.png", "tint": Color(0.85, 0.8, 0.7), "verb": "tinker", "style": "plinth" },
+    { "id": "ledger", "name": "LEDGER", "sub": "run history", "pos": Vector2(-230, 210), "tile": Vector2i(44, 6), "icon": "item/book/parchment_new.png", "tint": Color(0.95, 0.8, 0.5), "verb": "read", "style": "plinth" },
     { "id": "trophies", "name": "", "sub": "", "pos": Vector2(0, -80), "tile": Vector2i(9, 11), "tint": LIT, "verb": "all achievements", "style": "wall" },
 ]
 
@@ -667,8 +667,12 @@ func _draw_plinth(s: Dictionary) -> void:
     if hl:
         draw_rect(Rect2(p + Vector2(-18, -12), Vector2(36, 6)), Color(c, 0.6))
     var bob := sin(_time * 2.2 + p.x * 0.01) * 3.0
-    var tex := Art.tile(s["tile"])
-    draw_texture_rect(tex, Rect2(p + Vector2(-20, -58 + bob), Vector2(40, 40)), false, c)
+    var icon_rect := Rect2(p + Vector2(-20, -58 + bob), Vector2(40, 40))
+    if s.has("icon"):
+        # A 32 px Dungeon Crawl tile at 1x, untinted: the glow carries the station colour.
+        Art.draw_icon(self, Art.icon(String(s["icon"]), s["tile"]), icon_rect)
+    else:
+        draw_texture_rect(Art.tile(s["tile"]), icon_rect, false, c)
     _draw_label_and_prompt(s, p, -76.0)
 
 
@@ -707,17 +711,12 @@ func _draw_trophy_wall() -> void:
         var done: bool = Progress.achievements_done.has(a["id"])
         var at := Vector2(-w / 2.0 + float(i % cols) * cell, top + 3.0 + float(i / cols) * cell)
         var r := Rect2(at + Vector2(1, 1), Vector2(cell - 2.0, cell - 2.0))
-        var reward: String = String(a["rewards"][0]) if not a["rewards"].is_empty() else ""
-        var coord := Vector2i(45, 16)
-        if reward.begins_with("gun:"):
-            coord = Art.gun_tile(reward.substr(4))
-        elif reward.begins_with("class:"):
-            coord = Vector2i(31, 0)
+        var tex := Progress.achievement_icon(a)
         if done:
             draw_rect(r, Color(LIT, 0.18))
-            draw_texture_rect(Art.tile(coord), r, false, LIT)
+            Art.draw_icon(self, tex, r)
         else:
-            draw_texture_rect(Art.tile(coord), r, false, Color(0.22, 0.2, 0.22))
+            Art.draw_icon(self, tex, r, Color(0.22, 0.2, 0.22))
     var y := -half.y + 14.0
     _text(Vector2(0, y + 10.0), "TROPHIES   %d / %d" % [Progress.achievements_count(), n], 24, LIT, 400.0)
     var goals := goal_rows(3)

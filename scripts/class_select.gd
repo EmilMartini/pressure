@@ -105,7 +105,24 @@ func _make_card(i: int, c: Dictionary) -> Button:
     box.mouse_filter = Control.MOUSE_FILTER_IGNORE
     b.add_child(box)
     var title_col: Color = tint if c["element"] != Element.Kind.NONE else UiTheme.BONE
-    box.add_child(_card_label(String(c["name"]), 28, title_col if open else LOCKED_COLOR))
+    # Title row: the class icon (a 32 px spell tile, greyed while locked) and the name.
+    var head := HBoxContainer.new()
+    head.alignment = BoxContainer.ALIGNMENT_CENTER
+    head.add_theme_constant_override("separation", 8)
+    head.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    box.add_child(head)
+    var icon := TextureRect.new()
+    icon.texture = Classes.icon(c)
+    icon.custom_minimum_size = Vector2(32, 32)
+    icon.stretch_mode = TextureRect.STRETCH_KEEP_CENTERED
+    icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+    icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    if not open:
+        icon.modulate = Color(0.32, 0.3, 0.32)
+    head.add_child(icon)
+    var title := UiTheme.label(String(c["name"]), 28, title_col if open else LOCKED_COLOR)
+    title.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    head.add_child(title)
     if not open:
         box.add_child(_card_label("Locked", 20, UiTheme.DIM))
         var how := _card_label(Classes.unlock_text(c), 20, UiTheme.DIM)

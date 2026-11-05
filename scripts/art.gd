@@ -2,6 +2,13 @@ extends Node
 ## Autoload "Art": Kenney 1-Bit Pack sheet lookups, particle textures, fonts and the
 ## dark palette. Everything visual that is not element-coloured comes through here.
 ## Assets are CC0 by Kenney (kenney.nl); see assets/*/LICENSE_*.txt.
+##
+## Icons: items, guns, level-up options, classes and mastery branches use the 32 px
+## Dungeon Crawl Stone Soup tiles under ICON_ROOT (CC0, see assets/icons/CREDITS.txt).
+## `icon(path)` loads one (cached; a missing path warns once and falls back to a 1-bit
+## tile), `draw_icon` draws one crisply into any rect (integer upscale, smooth downscale),
+## `gun_icon(id)` / `reward_icon(reward)` look up the data tables below. The tiles are
+## already coloured, so they are drawn untinted except for dimming (locked, empty).
 
 const SHEET: Texture2D = preload("res://assets/kenney/1bit_mono.png")
 const FLOOR: Texture2D = preload("res://assets/kenney/floor_tile.png")
@@ -89,6 +96,72 @@ const GUN_TILES := {
     "duality_burst": Vector2i(38, 9),
 }
 
+const ICON_ROOT := "res://assets/icons/"
+## 1-bit tile shown when an icon path is missing.
+const ICON_FALLBACK := Vector2i(45, 16)
+
+## Gun id -> icon (path under ICON_ROOT), chosen by archetype and element: crossbows and
+## slings for the mechanical guns, wands, rods and staves for the elemental ones.
+const GUN_ICONS := {
+    "water_pistol": "item/wand/gem_silver_new.png",
+    "arc_rifle": "item/weapon/ranged/arbalest_2.png",
+    "blowtorch": "item/staff/staff_9.png",
+    "frost_caster": "item/wand/gem_plastic_new.png",
+    "oil_slinger": "item/weapon/ranged/greatsling_2.png",
+    "mist_sprayer": "item/rod/rod_4_new.png",
+    "ember_carbine": "item/weapon/ranged/crossbow_2.png",
+    "hydro_cannon": "item/rod/rod_5_new.png",
+    "glacier_lance": "item/rod/rod_6_old.png",
+    "tar_mortar": "item/weapon/ranged/crossbow_1.png",
+    "storm_pike": "item/weapon/artefact/urand_arc_blade.png",
+    "venom_spitter": "item/rod/rod_2_old.png",
+    "acid_flask": "item/potion/bubbly.png",
+    "blood_lance": "item/staff/staff_3.png",
+    "void_orb": "item/misc/misc_crystal_new.png",
+    "radiant_ray": "item/weapon/artefact/urand_brilliance.png",
+    "gale_blaster": "item/wand/gem_glass_new.png",
+    "stone_sling": "item/weapon/ranged/sling_1.png",
+    "flare_pistol": "item/weapon/artefact/urand_firestarter.png",
+    "slick_wand": "item/wand/gem_wood_new.png",
+    "spark_needler": "item/wand/wand_brass.png",
+    "cinder_flak": "item/weapon/ranged/sling_2.png",
+    "rime_chakram": "item/weapon/ranged/silver_tomahawk.png",
+    "plague_mortar": "item/staff/staff_5.png",
+    "blight_seeker": "item/wand/gem_lead_new.png",
+    "etcher_beam": "item/rod/rod_2_new.png",
+    "corrosion_burst": "item/wand/gem_bronze_new.png",
+    "vein_pistol": "item/weapon/ranged/hand_crossbow_2.png",
+    "clot_orb": "item/misc/misc_orb.png",
+    "rift_seeker": "item/rod/rod_6_new.png",
+    "null_wand": "item/wand/gem_iron_new.png",
+    "sun_cannon": "item/staff/staff_7.png",
+    "prayer_burst": "item/staff/staff_1.png",
+    "zephyr_rang": "item/weapon/artefact/urand_gyre.png",
+    "cyclone_flak": "item/rod/rod_9_new.png",
+    "boulder_mortar": "item/weapon/ranged/arbalest_1.png",
+    "gravel_shotgun": "item/weapon/ranged/greatsling.png",
+    "eclipse_carbine": "item/weapon/ranged/arbalest_3.png",
+    "kettle_gun": "item/wand/gem_brass_old.png",
+    "storm_seeker": "item/rod/rod_1_old.png",
+    "railgun": "item/weapon/artefact/urand_sniper.png",
+    "napalm_lobber": "item/rod/rod_1_new.png",
+    "duality_burst": "item/staff/staff_6.png",
+}
+## Guns whose tile stands upright (a flask, an orb) instead of lying diagonally like a
+## held weapon; the orbiting sprite does not rotate these toward the aim.
+const GUN_ICON_UPRIGHT := ["acid_flask", "void_orb", "clot_orb"]
+## Trophy wall icons for rewards that are neither a gun nor a class: the full reward
+## string is checked first, then its prefix.
+const REWARD_ICONS := {
+    "rarity:epic": "item/book/purple_new.png",
+    "rarity:legendary": "item/book/book_orange.png",
+    "rarity": "item/book/gold.png",
+    "shop": "item/scroll/scroll-yellow.png",
+    "room": "item/scroll/scroll-red.png",
+    "obstacle": "item/scroll/scroll-brown.png",
+}
+const REWARD_ICON_DEFAULT := "item/scroll/scroll_old.png"
+
 ## Palette: dark, desaturated, bone and blood.
 const CLEAR := Color(0.045, 0.040, 0.055)
 const FLOOR_TINT := Color(0.15, 0.13, 0.15)
@@ -104,6 +177,9 @@ const ENEMY_TINT := {
 const SCRAP_TINT := Color(0.85, 0.72, 0.35)
 
 var _cache: Dictionary = {}
+var _icon_cache: Dictionary = {}    # path -> Texture2D
+var _sized_cache: Dictionary = {}   # "texture id:px" -> Texture2D
+var _icon_warned: Dictionary = {}   # full path -> true once warned
 
 ## Body font: the same pixel font, which only reads at 20 px and up, so every piece of
 ## text in the game is drawn at 20 or larger and kept short.
@@ -134,8 +210,120 @@ func sprite(coord: Vector2i, scale: float, tint: Color) -> Sprite2D:
     return s
 
 
+## Legacy 1-bit tile of a gun; only the fallback for a missing gun icon now.
 func gun_tile(id: String) -> Vector2i:
     return GUN_TILES.get(id, Vector2i(37, 9))
+
+
+# --- Icons (Dungeon Crawl tiles) -----------------------------------------------
+
+
+## The icon texture at `path` (under ICON_ROOT, or a full res:// path), loaded once.
+## An empty path gives the 1-bit `fallback` tile; a missing file also warns once in
+## debug builds.
+func icon(path: String, fallback: Vector2i = ICON_FALLBACK) -> Texture2D:
+    if path == "":
+        return tile(fallback)
+    if _icon_cache.has(path):
+        return _icon_cache[path]
+    var full := path if path.begins_with("res://") else ICON_ROOT + path
+    var tex: Texture2D = null
+    if ResourceLoader.exists(full):
+        tex = load(full) as Texture2D
+    if tex == null:
+        if OS.is_debug_build() and not _icon_warned.has(full):
+            _icon_warned[full] = true
+            push_warning("Art.icon: missing %s, using a 1-bit fallback tile" % full)
+        tex = tile(fallback)
+    _icon_cache[path] = tex
+    return tex
+
+
+## True when `path` names an icon file that exists.
+func has_icon(path: String) -> bool:
+    if path == "":
+        return false
+    return ResourceLoader.exists(path if path.begins_with("res://") else ICON_ROOT + path)
+
+
+## `tex` resampled to `px` square (Lanczos, alpha edges fixed first), cached. Shrinks a
+## 32 px tile without nearest-neighbour dropping whole rows of pixels.
+func icon_sized(tex: Texture2D, px: int) -> Texture2D:
+    if tex == null or px <= 0 or (tex.get_width() == px and tex.get_height() == px):
+        return tex
+    var key := "%d:%d" % [tex.get_instance_id(), px]
+    if _sized_cache.has(key):
+        return _sized_cache[key]
+    var out: Texture2D = tex
+    var img: Image = tex.get_image()
+    if img != null and not img.is_empty():
+        img = img.duplicate()
+        if img.is_compressed():
+            img.decompress()
+        img.convert(Image.FORMAT_RGBA8)
+        img.fix_alpha_edges()
+        img.resize(px, px, Image.INTERPOLATE_LANCZOS)
+        out = ImageTexture.create_from_image(img)
+    _sized_cache[key] = out
+    return out
+
+
+## Draws `tex` centred in `rect`, as large as fits while staying crisp: whole-number
+## upscales of the tile, or a smooth resample (in steps of 4 px) when the rect is smaller.
+func draw_icon(ci: CanvasItem, tex: Texture2D, rect: Rect2, modulate: Color = Color.WHITE) -> void:
+    if tex == null:
+        return
+    var side := minf(rect.size.x, rect.size.y)
+    var base := float(maxi(1, tex.get_width()))
+    var t := tex
+    var px := base
+    if side >= base:
+        px = floorf(side / base) * base
+    else:
+        var want := maxi(8, int(side) - int(side) % 4)
+        t = icon_sized(tex, want)
+        px = float(want)
+    var at := (rect.position + (rect.size - Vector2(px, px)) / 2.0).round()
+    ci.draw_texture_rect(t, Rect2(at, Vector2(px, px)), false, modulate)
+
+
+## A ready-to-add Sprite2D showing an icon texture at `scale`, untinted.
+func icon_sprite(tex: Texture2D, scale: float) -> Sprite2D:
+    var s := Sprite2D.new()
+    s.texture = tex
+    s.scale = Vector2(scale, scale)
+    s.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+    return s
+
+
+func gun_icon_path(id: String) -> String:
+    return String(GUN_ICONS.get(id, ""))
+
+
+## A gun's icon; falls back to its old 1-bit tile.
+func gun_icon(id: String) -> Texture2D:
+    return icon(gun_icon_path(id), gun_tile(id))
+
+
+func gun_icon_upright(id: String) -> bool:
+    return GUN_ICON_UPRIGHT.has(id)
+
+
+## Icon path for an achievement reward: "gun:<id>" shows the gun, "class:<id>" the class,
+## anything else a book or scroll from REWARD_ICONS.
+func reward_icon_path(reward: String) -> String:
+    if reward.begins_with("gun:"):
+        return gun_icon_path(reward.substr(4))
+    if reward.begins_with("class:"):
+        return Classes.icon_path(Classes.get_def(reward.substr(6)))
+    if REWARD_ICONS.has(reward):
+        return String(REWARD_ICONS[reward])
+    var prefix := reward.get_slice(":", 0)
+    return String(REWARD_ICONS.get(prefix, REWARD_ICON_DEFAULT))
+
+
+func reward_icon(reward: String) -> Texture2D:
+    return icon(reward_icon_path(reward))
 
 
 ## Particle texture used for a reaction or effect name.
@@ -152,3 +340,98 @@ func particle_for(effect_name: String) -> Texture2D:
         "Shield broken!", "Shield restored!", "Path opened!":
             return PARTICLES["light"]
     return PARTICLES["circle"]
+
+
+# --- Review sheet ------------------------------------------------------------------
+
+
+## Every icon the game shows for an item, gun, level-up option, class, mastery branch,
+## empty slot and trophy, at 2x with its id, in labelled sections, saved as one PNG at
+## `path` (like FigureGen.debug_sheet). A red frame marks a missing file (the 1-bit
+## fallback is drawn instead), an orange frame an item without its own icon (slot icon).
+static func debug_icon_sheet(path: String) -> Error:
+    var sections: Array = []   # [title, entries]; entry: [label, icon path, tint, slot fallback]
+    var slot_rows: Array = []
+    for slot in Items.SLOTS:
+        slot_rows.append([String(slot), String(Items.SLOT_ICONS[slot]), Color.WHITE, false])
+    sections.append(["EMPTY SLOTS", slot_rows])
+    var ids: Array = Items.catalog.keys()
+    ids.sort_custom(func(x, y):
+        var ix := Items.SLOTS.find(Items.get_item(String(x)).get("slot", ""))
+        var iy := Items.SLOTS.find(Items.get_item(String(y)).get("slot", ""))
+        return ix < iy if ix != iy else String(x) < String(y))
+    var item_rows: Array = []
+    for id in ids:
+        var it: Dictionary = Items.get_item(String(id))
+        item_rows.append([String(id), Items.icon_path(it), Items.icon_tint(it), String(it.get("icon", "")) == ""])
+    sections.append(["ITEMS", item_rows])
+    var gun_rows: Array = []
+    for gid in Guns.all_ids():
+        gun_rows.append([String(gid), Art.gun_icon_path(String(gid)), Color.WHITE, false])
+    sections.append(["GUNS", gun_rows])
+    var up_rows: Array = []
+    for opt in LevelUps.CATALOG:
+        var o: Dictionary = opt
+        up_rows.append([String(o["id"]), String(o.get("icon", "")), Color.WHITE, false])
+    sections.append(["LEVEL-UPS", up_rows])
+    var class_rows: Array = []
+    for c in Classes.all():
+        var cd: Dictionary = c
+        class_rows.append([String(cd["id"]), Classes.icon_path(cd), Color.WHITE, false])
+    sections.append(["CLASSES", class_rows])
+    var branch_rows: Array = []
+    for b in Mastery.branches():
+        branch_rows.append([String(b), Mastery.branch_icon_path(String(b)), Color.WHITE, false])
+    sections.append(["MASTERY BRANCHES", branch_rows])
+    var trophy_rows: Array = []
+    for a in Progress.ACHIEVEMENTS:
+        var ad: Dictionary = a
+        trophy_rows.append([String(ad["id"]), Progress.achievement_icon_path(ad), Color.WHITE, false])
+    sections.append(["TROPHIES", trophy_rows])
+
+    var cols := 12
+    var cell_w := 156
+    var cell_h := 108
+    var head_h := 30
+    var height := 16
+    for sec in sections:
+        var rows_n: int = ((sec[1] as Array).size() + cols - 1) / cols
+        height += head_h + rows_n * cell_h + 8
+    var sheet := Image.create_empty(cols * cell_w + 16, height, false, Image.FORMAT_RGBA8)
+    sheet.fill(Color(0.09, 0.08, 0.10))
+    var y := 8
+    for sec in sections:
+        var entries: Array = sec[1]
+        FigureGen._text(sheet, 10, y + 6, "%s  %d" % [String(sec[0]), entries.size()], Color(0.95, 0.85, 0.55), 3)
+        y += head_h
+        for i in entries.size():
+            var e: Array = entries[i]
+            var ox := 8 + (i % cols) * cell_w
+            var oy := y + (i / cols) * cell_h
+            var well := Rect2i(ox + (cell_w - 72) / 2, oy, 72, 72)
+            var icon_path := String(e[1])
+            var missing := not Art.has_icon(icon_path)
+            var frame := Color(0.85, 0.2, 0.2) if missing else (Color(1.0, 0.6, 0.2) if bool(e[3]) else Color(0.3, 0.27, 0.3))
+            sheet.fill_rect(well, frame)
+            sheet.fill_rect(well.grow(-2), Color(0.15, 0.13, 0.15))
+            var tex: Texture2D = Art.icon(icon_path)
+            var src: Image = tex.get_image() if tex != null else null
+            if src != null and not src.is_empty():
+                var big: Image = src.duplicate()
+                if big.is_compressed():
+                    big.decompress()
+                big.convert(Image.FORMAT_RGBA8)
+                big.resize(64, 64, Image.INTERPOLATE_NEAREST)
+                var tint: Color = e[2]
+                if tint != Color.WHITE:
+                    for py in 64:
+                        for px in 64:
+                            big.set_pixel(px, py, big.get_pixel(px, py) * tint)
+                sheet.blend_rect(big, Rect2i(0, 0, 64, 64), well.position + Vector2i(4, 4))
+            var label := String(e[0]).to_upper()
+            var per_line := (cell_w - 8) / 8
+            FigureGen._text(sheet, ox + 4, oy + 78, label.substr(0, per_line), Color(0.85, 0.8, 0.75), 2)
+            if label.length() > per_line:
+                FigureGen._text(sheet, ox + 4, oy + 92, label.substr(per_line, per_line), Color(0.85, 0.8, 0.75), 2)
+        y += ((entries.size() + cols - 1) / cols) * cell_h + 8
+    return sheet.save_png(path)

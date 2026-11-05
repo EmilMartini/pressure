@@ -227,6 +227,17 @@ func can_progress(a: Dictionary) -> bool:
     return have.has(d["a"]) and have.has(d["b"])
 
 
+## Icon of an achievement: its first reward's icon (the gun, the class, else a book or
+## scroll; see Art.reward_icon_path).
+func achievement_icon_path(a: Dictionary) -> String:
+    var rewards: Array = a.get("rewards", [])
+    return Art.reward_icon_path(String(rewards[0]) if not rewards.is_empty() else "")
+
+
+func achievement_icon(a: Dictionary) -> Texture2D:
+    return Art.icon(achievement_icon_path(a))
+
+
 func achievements_count() -> int:
     return achievements_done.size()
 

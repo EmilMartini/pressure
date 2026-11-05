@@ -1,0 +1,4 @@
+Icons: Dungeon Crawl Stone Soup tiles, CC0 (public domain), maintained by Chris Hamons,
+made by many artists (see the original package's FilteredList.txt).
+https://opengameart.org/content/dungeon-crawl-32x32-tiles
+Only the item and GUI folders are included here.

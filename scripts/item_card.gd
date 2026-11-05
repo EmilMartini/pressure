@@ -1,7 +1,7 @@
 class_name ItemCard
 extends RefCounted
 ## One item card for every screen (WoW / Brotato style): a rarity frame and title, the
-## slot and rarity, the icon at 3x, then every effect as its own short line, the set and
+## slot and rarity, the icon at 2x, then every effect as its own short line, the set and
 ## its next bonus, the price, and a comparison against what the player wears now.
 ## Pedestals, the character sheet, the journal and the overlays all draw through here,
 ## so an item reads the same everywhere.
@@ -11,7 +11,8 @@ extends RefCounted
 ##   ItemCard.describe_mods(item)                  every effect line as plain strings
 ##   ItemCard.draw_gun(canvas, rect, data, opts)   the same card for a gun
 ##   ItemCard.gun_height(data, opts)
-##   ItemCard.draw_note(canvas, rect, title, sub, body, icon)   a plain card (empty slots)
+##   ItemCard.draw_note(canvas, rect, title, sub, body, icon)   a plain card (empty slots;
+##                                                              icon is a Texture2D, dimmed)
 ##   ItemCard.draw_frame(canvas, rect, color, highlight)        the frame alone
 ##   ItemCard.rival_for(player, item)              what equipping `item` would replace
 ##
@@ -21,7 +22,7 @@ extends RefCounted
 ## compact (bool: names only for mods).
 
 const PAD := 14.0
-const ICON := 48.0
+const ICON := 64.0   # a 32 px Dungeon Crawl tile at 2x
 const TITLE_SIZE := 26
 const LABEL_SIZE := 22
 const TEXT_SIZE := 20
@@ -150,7 +151,7 @@ static func gun_height(data: GunData, opts: Dictionary = {}) -> float:
 # --- Public: plain card and frame -----------------------------------------------
 
 
-static func draw_note(canvas: CanvasItem, rect: Rect2, title: String, sub: String, body: String, icon: Vector2i, opts: Dictionary = {}) -> void:
+static func draw_note(canvas: CanvasItem, rect: Rect2, title: String, sub: String, body: String, icon: Texture2D, opts: Dictionary = {}) -> void:
     var model := {
         "icon": icon, "icon_tint": Color(0.45, 0.42, 0.45), "title": title, "title_col": TEXT,
         "sub": sub, "sub_col": DIM, "frame": Color(0.4, 0.36, 0.38),
@@ -515,7 +516,7 @@ static func _gun_model(data: GunData, opts: Dictionary) -> Dictionary:
     if tier > 1:
         title += " " + ROMAN[clampi(tier - 1, 0, ROMAN.size() - 1)]
     return {
-        "icon": Art.gun_tile(data.id), "icon_tint": ec, "title": title, "title_col": ec.lightened(0.2),
+        "icon": Art.gun_icon(data.id), "icon_tint": Color.WHITE, "title": title, "title_col": ec.lightened(0.2),
         "sub": "%s %s  tier %s" % [Element.NAMES[data.element], arche, ROMAN[clampi(tier - 1, 0, ROMAN.size() - 1)]],
         "sub_col": DIM, "frame": ec, "rows": rows,
     }
@@ -560,12 +561,12 @@ static func _render(canvas: CanvasItem, rect: Rect2, model: Dictionary, opts: Di
     var frame: Color = model.get("frame", TEXT)
     draw_frame(canvas, r, frame, bool(opts.get("highlight", false)))
 
-    # Header: the icon at 3x, the title (wrapped), slot and rarity.
+    # Header: the icon at 2x, the title (wrapped), slot and rarity.
     var ib := Rect2(r.position + Vector2(PAD, PAD), Vector2(ICON + 8.0, ICON + 8.0))
     canvas.draw_rect(ib, Color(0, 0, 0, 0.55))
     canvas.draw_rect(ib, Color(frame, 0.6), false, 2.0)
     if model.has("icon"):
-        canvas.draw_texture_rect(Art.tile(model["icon"]), Rect2(ib.position + Vector2(4, 4), Vector2(ICON, ICON)), false, model.get("icon_tint", TEXT))
+        Art.draw_icon(canvas, model["icon"], Rect2(ib.position + Vector2(4, 4), Vector2(ICON, ICON)), model.get("icon_tint", Color.WHITE))
     var tx := ib.end.x + 10.0
     var tw := r.end.x - PAD - tx
     var y := r.position.y + PAD
