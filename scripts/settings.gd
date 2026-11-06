@@ -26,6 +26,8 @@ const DEFAULTS := {
     "pixel_size": 3,                  # world pixel grid in screen pixels, 2..4
     "palette": true,                  # quantize the world to the palette, with dither
     "fx_rev": 2,                      # post-fx defaults revision (FX_REV; migrations, see load)
+    "aim_mode": "assisted",           # "assisted", "manual" or "auto" (Player.AIM_MODES)
+    "manual_fire": "hold",            # manual aim: "hold" fire, or "toggle" constant fire
     "controls_hint": false,
     "pause_on_disconnect": true,
     "vibration": 0.6,                 # controller rumble strength, 0 = off (Rumble)

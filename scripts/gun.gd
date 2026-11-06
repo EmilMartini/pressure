@@ -93,12 +93,11 @@ func _process(delta: float) -> void:
         if _burst_timer <= 0.0:
             _burst_left -= 1
             _burst_timer = data.burst_gap
-            # Each burst shot re-aims at whatever is nearest now.
-            var tgt: Node2D = null
+            # Each burst shot re-aims: where you aim now, else whatever is nearest.
             if is_instance_valid(player):
-                tgt = player.nearest_enemy(effective_range())
-            if tgt != null:
-                _aim = (tgt.global_position - global_position).normalized()
+                var bd := player.gun_dir(self)
+                if bd != Vector2.ZERO:
+                    _aim = bd
             _shoot(_aim)
     _sprite.position = -_aim * _recoil
     var left := _aim.x < 0.0
@@ -268,8 +267,8 @@ func fire(dir: Vector2) -> void:
         "mine":
             _fire_mine(dir)
         "turret":
-            if player.alive and player.input.fire_held():
-                _shoot(dir)   # RT: the gun fires too (doors, props), the turret keeps to enemies
+            if player.alive and player._aim_firing:
+                _shoot(dir)   # aimed: the gun fires too (doors, props), the turret keeps to enemies
             if not _fire_turret(dir):
                 cooldown = 0.25   # a turret is already up: nothing to do
                 return
@@ -574,20 +573,13 @@ func _charge_needed() -> float:
 
 func _tick_charge(delta: float) -> void:
     _charge += delta
-    var manual := player.alive and player.input.fire_held()
-    var target: Node2D = null
-    if manual:
-        var aim := player.input.aim_vector(player.global_position, get_viewport())
-        if aim != Vector2.ZERO:
-            _aim = aim
-    else:
-        target = player.nearest_enemy(effective_range())
-        if target != null:
-            _aim = (target.global_position - global_position).normalized()
+    var d := player.gun_dir(self)
+    if d != Vector2.ZERO:
+        _aim = d
     if _charge < _charge_needed():
         return
-    if not manual and target == null:
-        return   # fully charged: held until something comes in reach
+    if d == Vector2.ZERO:
+        return   # fully charged: held until something comes in reach, or you aim
     _charging = false
     _rail(_aim)
     cooldown = 1.0 / fire_rate()

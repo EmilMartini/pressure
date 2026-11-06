@@ -328,9 +328,13 @@ func _finish_run(won: bool, abandoned: bool, award: Dictionary = {}) -> void:
             _floor_end(main)
         _update_party(main)
     var level := 0
+    var aim_secs := 0.0
+    var auto_secs := 0.0
     if main != null:
         for p in main.get("players"):
             level = maxi(level, int(p.level))
+            aim_secs += float(p.aim_secs)
+            auto_secs += float(p.auto_secs)
     event("run_end", {
         "won": won, "abandoned": abandoned, "floor": _floor, "route": (main.get("route") as Array).duplicate() if main != null else [], "secs": snappedf(_clock, 0.1),
         "kills": _run_kills, "kills_by_kind": _kills_by_kind_run.duplicate(), "level": level,
@@ -343,6 +347,9 @@ func _finish_run(won: bool, abandoned: bool, award: Dictionary = {}) -> void:
         "tier_damage": [snappedf(_tier_dmg_run[0], 1.0), snappedf(_tier_dmg_run[1], 1.0), snappedf(_tier_dmg_run[2], 1.0), snappedf(_tier_dmg_run[3], 1.0), snappedf(_tier_dmg_run[4], 1.0)],
         "fusion_damage": _rounded(_fusion_dmg_run),
         "fusion_discoveries": Progress.run_fusion_discoveries.duplicate(),
+        # How often players aim themselves (design doc section 7): seconds firing where
+        # aimed, and seconds auto-firing with an enemy in reach.
+        "aim_mode": Player.aim_mode(), "aim_secs": snappedf(aim_secs, 0.1), "auto_secs": snappedf(auto_secs, 0.1),
     })
     _run["partial"] = false
     var id := String(_run["run_id"])

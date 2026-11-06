@@ -1085,6 +1085,11 @@ func _setup_autotest() -> void:
     BossBody.log_enabled = true
     _bot_idle_fights = OS.get_cmdline_user_args().has("--idle")
     _bot_kite = OS.get_cmdline_user_args().has("--kite")
+    for a in OS.get_cmdline_user_args():
+        if a.begins_with("--aim="):
+            Player.aim_mode_override = a.substr(6)
+    # The bot aims itself in fights (holds fire at its pick): needed in manual mode.
+    _bot_aim = OS.get_cmdline_user_args().has("--bot-aim") or Player.aim_mode_override == "manual"
     if OS.get_cmdline_user_args().has("--dps-probe"):
         _probe = BalanceProbe.new(self)
         add_child(_probe)
@@ -1207,6 +1212,8 @@ func _autotest_tick(delta: float) -> void:
         var inner := current.rect.grow(-120.0)
         if not inner.has_point(p.global_position) and not _bot_kite:
             p.input.force_move = (inner.get_center() - p.global_position).normalized()
+        if _bot_aim:
+            _bot_aim_at(p, t)
         _bot_idle = 0.0
     else:
         _bot_idle += delta
@@ -1255,8 +1262,29 @@ func _autotest_tick(delta: float) -> void:
 ## that push the way a player circles a crowd, and the room's edge pulls it back in
 ## gradually, so it is not steered into the pack it is fleeing.
 var _bot_kite := false
+var _bot_aim := false   # --bot-aim (and --aim=manual): the bot holds fire at its own pick
 var _bot_kite_side := 1.0
 var _bot_kite_flip := 0.0
+
+
+## --bot-aim: hold fire toward the nearest enemy, or on a boss with parts toward the part its
+## chain needs next: intact armour first (to tear it), else the visible part that takes the
+## most (the bare core), as a player who knows the fight would.
+func _bot_aim_at(p: Player, t: Node2D) -> void:
+    var at := t.global_position
+    var body: BossBody = t.get("body")
+    if body != null and body.has_parts():
+        var best := -1.0
+        for i in body.parts.size():
+            if not body.visible(i):
+                continue
+            var score := float(body.parts[i].get("taken", 1.0)) + (10.0 if body.parts[i].get("armour", false) else 0.0)
+            if score > best:
+                best = score
+                at = body.part_world(i)
+    var to := at - p.global_position
+    p.input.force_fire = true
+    p.input.force_aim = to.normalized() if to.length() > 1.0 else Vector2.RIGHT
 
 
 func _bot_kite_dir(p: Player) -> Vector2:

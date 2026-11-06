@@ -22,6 +22,12 @@ var _edges: Dictionary = {}
 var last_kind := "kb"
 var lock_kind := false   # tests pin the kind so a stray mouse move cannot flip it
 var _last_mouse_screen := Vector2i(-1, -1)
+## Seconds since the last aim input (right stick pushed, mouse moved; the bot aims by holding
+## fire with force_aim instead, so its door shots never linger as aim), and
+## that aim's direction while it came from the stick (the mouse is read live).
+var aim_idle := 99.0
+var last_aim := Vector2.ZERO
+var _aim_mouse := Vector2i(-1, -1)
 
 const PROMPTS := {
     "interact": ["A", "E"],
@@ -84,6 +90,7 @@ func _update_kind() -> void:
 ## Call once per physics frame before reading anything else.
 func poll() -> void:
     _update_kind()
+    _update_aim_idle()
     _prev = _cur.duplicate()
     _cur = {
         "vent": _button(JOY_BUTTON_LEFT_SHOULDER, KEY_SPACE),
@@ -95,6 +102,22 @@ func poll() -> void:
     for action in _cur.keys():
         if _cur[action] and not _prev.get(action, false):
             _edges[action] = true
+
+
+func _update_aim_idle() -> void:
+    aim_idle += 1.0 / float(Engine.physics_ticks_per_second)
+    if device >= 0:
+        var r := Vector2(Input.get_joy_axis(device, JOY_AXIS_RIGHT_X), Input.get_joy_axis(device, JOY_AXIS_RIGHT_Y))
+        if r.length() > STICK_DEADZONE:
+            aim_idle = 0.0
+            last_aim = r.normalized()
+            return
+    if use_keyboard and DisplayServer.get_name() != "headless":
+        var m := DisplayServer.mouse_get_position()
+        if _aim_mouse.x >= 0 and m.distance_to(_aim_mouse) > 3.0:
+            aim_idle = 0.0
+            last_aim = Vector2.ZERO   # the cursor is read live in aim_vector
+        _aim_mouse = m
 
 
 ## True on the physics frame the named button went down.

@@ -38,6 +38,20 @@ var alive := true
 var invuln := 0.0
 var _manual_dir := Vector2.RIGHT   # last movement direction, for manual fire with no aim input
 
+## Aim modes (design doc section 7): "assisted" (default) fires where you aim with a soft lock,
+## falling back to auto-fire after AIM_HOLD s without aim input; "manual" fires only while you
+## hold (or toggle) fire; "auto" is the old behaviour, nearest enemy with RT to override.
+const AIM_MODES := ["assisted", "manual", "auto"]
+const AIM_HOLD := 1.2            # s after the last aim input before assisted falls back to auto
+const SOFT_LOCK_DEG := 12.0      # half-angle of the soft-lock cone
+static var aim_mode_override := ""   # bots: --aim=MODE (never saved)
+var _aim_now := Vector2.ZERO     # this frame's aimed direction, ZERO = auto / no fire
+var _aim_firing := false         # this frame the guns fire where aimed (else auto or none)
+var _fire_toggled := false       # manual mode with toggle fire: constant fire is on
+var _fire_was_held := false
+var aim_secs := 0.0              # telemetry: seconds firing where aimed
+var auto_secs := 0.0             # and seconds auto-firing with something in reach
+
 var weight_capacity_base := 10
 var weight_capacity := 10
 var guns: Array[Gun] = []
@@ -725,8 +739,11 @@ func _physics_process(delta: float) -> void:
     if _message_time <= 0.0:
         last_message = ""
 
+    _update_aim(delta)
     var nearest := nearest_enemy(900.0)
-    if nearest != null:
+    if _aim_firing and _aim_now != Vector2.ZERO:
+        aim_dir = _aim_now
+    elif nearest != null:
         aim_dir = (nearest.global_position - global_position).normalized()
     elif mv != Vector2.ZERO:
         aim_dir = mv.normalized()
@@ -815,27 +832,107 @@ func _animate(delta: float, mv: Vector2) -> void:
     _sprite.rotation = sin(_anim_t) * 0.08 if moving else 0.0
 
 
-## Every gun picks its own nearest target in range and fires.
+static func aim_mode() -> String:
+    if aim_mode_override != "":
+        return aim_mode_override
+    var m := String(Settings.get_value("aim_mode"))
+    return m if AIM_MODES.has(m) else "assisted"
+
+
+## Decides once per frame whether the guns fire where aimed (_aim_firing, _aim_now) or
+## auto-fire (assisted fallback, auto mode), or hold fire (manual, nothing pressed).
+func _update_aim(delta: float) -> void:
+    var mode := aim_mode()
+    var held := alive and input.fire_held()
+    if mode == "manual" and String(Settings.get_value("manual_fire")) == "toggle" and not input.force_fire:
+        if held and not _fire_was_held:
+            _fire_toggled = not _fire_toggled
+        _fire_was_held = held
+        held = alive and _fire_toggled
+    var aim := input.aim_vector(global_position, get_viewport())
+    _aim_firing = false
+    _aim_now = Vector2.ZERO
+    if not alive:
+        return
+    match mode:
+        "auto", "manual":
+            # Auto: RT overrides. Manual: fire only while held, never on its own.
+            if held:
+                _aim_firing = true
+                _aim_now = aim if aim != Vector2.ZERO else _manual_dir
+        _:
+            # Assisted: any aim input (stick, mouse moved, RT) fires there, with a soft lock.
+            if held or input.aim_idle < AIM_HOLD:
+                var d := aim if aim != Vector2.ZERO else input.last_aim
+                if d == Vector2.ZERO:
+                    d = _manual_dir
+                _aim_firing = true
+                _aim_now = d
+    if _aim_firing:
+        aim_secs += delta
+    elif mode != "manual" and nearest_enemy(400.0) != null:
+        auto_secs += delta
+
+
+## Where gun `g` fires this frame, or ZERO for "not now". Assisted mode bends an aimed shot
+## onto the enemy or boss part inside a narrow cone; manual never bends; auto picks the nearest.
+func gun_dir(g: Gun) -> Vector2:
+    if _aim_firing:
+        if aim_mode() == "assisted":
+            return soft_lock(g.global_position, _aim_now, g.effective_range())
+        return _aim_now
+    if aim_mode() == "manual":
+        return Vector2.ZERO
+    var target := nearest_enemy(g.effective_range())
+    if target == null:
+        return Vector2.ZERO
+    return (target.global_position - g.global_position).normalized()
+
+
+## `dir` snapped to the enemy, or the visible boss part, whose bearing from `from` is closest
+## to it inside SOFT_LOCK_DEG (wider for big, close targets). Unchanged if nothing is there.
+func soft_lock(from: Vector2, dir: Vector2, max_range: float) -> Vector2:
+    var best := dir
+    var best_a := INF
+    var cone := deg_to_rad(SOFT_LOCK_DEG)
+    var r2 := max_range * max_range
+    for e in EnemyGrid.nodes(get_tree(), &"enemies"):
+        if not is_instance_valid(e) or e.is_queued_for_deletion() or e.emerge > 0.0:
+            continue
+        if e.global_position.distance_squared_to(from) > r2 * 1.2:
+            continue
+        var points: Array = []
+        var body: BossBody = e.get("body")
+        if body != null and body.has_parts():
+            for i in body.parts.size():
+                if body.visible(i):
+                    points.append([body.part_world(i), float(body.parts[i]["r"]) * e.radius])
+        else:
+            points.append([e.global_position, float(e.radius)])
+        for pt in points:
+            var to: Vector2 = pt[0] - from
+            var d := to.length()
+            if d < 1.0 or d > max_range:
+                continue
+            # A big target close by may be wider than the cone: its own half-width counts.
+            var a := absf(dir.angle_to(to))
+            var allow := maxf(cone, minf(cone * 2.0, atan(float(pt[1]) * 0.6 / d)))
+            if a < allow and a < best_a:
+                best_a = a
+                best = to / d
+    return best
+
+
+## Every gun fires where gun_dir says: aimed (with or without the soft lock) or at its own
+## nearest target. Auto-fire never targets obstacles, props, secret walls or puzzle pieces:
+## those you find and shoot yourself.
 func _fire() -> void:
-    # Holding RT (or the left mouse button) fires every gun where you aim: right stick,
-    # mouse cursor, or the way you face. Otherwise guns auto-fire at enemies only, never
-    # at obstacles, props, secret walls or puzzle pieces: those you find and shoot yourself.
-    var manual := alive and input.fire_held()
-    var aim := Vector2.ZERO
-    if manual:
-        aim = input.aim_vector(global_position, get_viewport())
-        if aim == Vector2.ZERO:
-            aim = _manual_dir
     for g in guns:
         if not g.can_fire():
             continue
-        if manual:
-            g.fire(aim)
-            continue
-        var target := nearest_enemy(g.effective_range())
-        if target == null:
-            continue
-        g.fire((target.global_position - g.global_position).normalized())
+        var d := gun_dir(g)
+        if d != Vector2.ZERO:
+            g.fire(d)
 
 
 func nearest_obstacle(max_range: float) -> Node2D:

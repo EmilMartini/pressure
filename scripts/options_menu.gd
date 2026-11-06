@@ -22,6 +22,10 @@ const ROWS := [
     { "key": "crt", "label": "CRT effect", "type": "bool" },
     { "key": "crt_intensity", "label": "CRT intensity", "type": "slider" },
     { "key": "bloom", "label": "Bloom", "type": "bool" },
+    { "key": "aim_mode", "label": "Aiming", "type": "pick", "options": ["assisted", "manual", "auto"],
+        "names": ["ASSISTED", "MANUAL", "AUTO"] },
+    { "key": "manual_fire", "label": "Manual fire", "type": "pick", "options": ["hold", "toggle"],
+        "names": ["HOLD", "TOGGLE"] },
     { "key": "controls_hint", "label": "Controls strip in runs", "type": "bool" },
     { "key": "pause_on_disconnect", "label": "Pause when a pad drops", "type": "bool" },
     { "key": "vibration", "label": "Controller vibration", "type": "slider" },
@@ -216,6 +220,11 @@ func _step(i: int, dir: int, wrap: bool) -> void:
         Settings.set_value(key, "off" if Telemetry.consent() == "on" else "on")
     elif spec["type"] == "bool":
         Settings.set_value(key, not Settings.flag(key))
+    elif spec["type"] == "pick":
+        var opts: Array = spec["options"]
+        var at := maxi(0, opts.find(String(Settings.get_value(key))))
+        at = (at + dir + opts.size()) % opts.size() if wrap else clampi(at + dir, 0, opts.size() - 1)
+        Settings.set_value(key, opts[at])
     elif spec["type"] == "choice":
         var opts: Array = spec["options"]
         var at := opts.find(roundi(Settings.number(key)))
@@ -270,6 +279,11 @@ func _draw_value(val: Control, i: int) -> void:
         var shared: bool = Telemetry.consent() == "on"
         val.draw_string(font, Vector2(0, h * 0.5 + 8.0), "ON" if shared else "OFF", HORIZONTAL_ALIGNMENT_RIGHT, val.size.x, 24, Color(0.55, 1.0, 0.7) if shared else UiTheme.DIM)
         return
+    if spec["type"] == "pick":
+        var opts: Array = spec["options"]
+        var at := maxi(0, opts.find(String(Settings.get_value(key))))
+        val.draw_string(font, Vector2(0, h * 0.5 + 8.0), "<  %s  >" % String(spec["names"][at]), HORIZONTAL_ALIGNMENT_RIGHT, val.size.x, 24, UiTheme.FOCUS)
+        return
     if spec["type"] == "choice":
         var cur := roundi(Settings.number(key))
         var opts: Array = spec["options"]
@@ -297,7 +311,7 @@ func _refresh() -> void:
     for i in _values.size():
         _values[i].queue_redraw()
         var key := String(ROWS[i]["key"])
-        var dim: bool = (key == "crt_intensity" and not Settings.flag("crt")) or ((key == "pixel_size" or key == "palette") and not Settings.flag("post_fx"))
+        var dim: bool = (key == "crt_intensity" and not Settings.flag("crt")) or (key == "manual_fire" and String(Settings.get_value("aim_mode")) != "manual") or ((key == "pixel_size" or key == "palette") and not Settings.flag("post_fx"))
         _rows[i].modulate = Color(1, 1, 1, 0.5) if dim else Color.WHITE
 
 
