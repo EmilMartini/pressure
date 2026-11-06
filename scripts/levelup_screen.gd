@@ -1,17 +1,28 @@
 class_name LevelUpScreen
 extends CanvasLayer
-## Level-up overlay: pauses the run and offers one player three upgrade cards. Several
+## Level-up overlay: pauses the run and offers one player three boon cards. Several
 ## level-ups (one player gaining two levels, or two players at once) queue up and are
 ## shown one after another. Keeps processing while the tree is paused.
 ## Shrine talents: Wider Choice adds a fourth card (every other level-up at rank 1, every
 ## level-up at rank 2); Second Thoughts gives rerolls of the offer (button, X, or R).
+##
+## A card reads top to bottom, sized for a TV at the 1280x720 base (x1.5 at 1080p):
+## category word and rarity word, the icon, the name (rarity colour), the effect as a big
+## headline ("+16% damage"), your value now > after, a second stat or a cost, and in plain
+## words what it changes. Rarity owns the frame and name colour (WoW palette, plus the word);
+## an element boon carries the neutral element badge. The focused card is lifted, lit and
+## carries the Choose prompt; the others dim.
 
-const CARD_SIZE := Vector2(300, 340)
-const CARD_SIZE_FOUR := Vector2(250, 340)
-const CARD_GAP := 28
+const CARD_SIZE := Vector2(352, 392)
+const CARD_SIZE_FOUR := Vector2(292, 392)
+const CARD_GAP := 22
 const MAX_CARDS := 4
-const ICON_BOX := 120          # height of the icon area at the top of a card
+const ICON_BOX := 96           # icon well at the top of a card (the 32 px tile at 2x)
+const ICON_TOP := 46.0
+const LIFT := 10.0             # the focused card rises this much
 const GRACE := 0.35            # seconds before a pick is accepted, so mashing does not choose
+const COST_COL := Color(1.0, 0.45, 0.40)
+const HEAD_COL := Color(1.0, 1.0, 1.0)
 
 var main
 var _queue: Array = []         # players waiting for their level-up
@@ -19,15 +30,14 @@ var _player = null             # player choosing right now
 var _options: Array = []
 var _cards: Array[Button] = []
 var _names: Array[Label] = []
-var _rarities: Array[Label] = []
-var _effects: Array[Label] = []
-var _descs: Array[Label] = []
+var _heads: Array[Label] = []
+var _deltas: Array[Label] = []
+var _extras: Array[Label] = []
+var _affects: Array[Label] = []
 var _card_icons: Array = []    # icon Texture2D per card
-var _card_tints: Array = []    # icon modulate per card (white: the tiles are coloured)
 var _card_cols: Array = []     # rarity colour per card (the frame)
 var _title: Label
 var _hint: Label
-var _prompt: Control
 var _reroll: Button
 var _pad := MenuPad.new()
 var _armed_in := 0.0
@@ -47,28 +57,26 @@ func _ready() -> void:
     root.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
     add_child(root)
     var dim := ColorRect.new()
-    dim.color = Color(0, 0, 0, 0.65)
+    dim.color = Color(0, 0, 0, 0.72)
     dim.set_anchors_preset(Control.PRESET_FULL_RECT)
     root.add_child(dim)
     var center := CenterContainer.new()
     center.set_anchors_preset(Control.PRESET_FULL_RECT)
     root.add_child(center)
     var v := VBoxContainer.new()
-    v.add_theme_constant_override("separation", 14)
+    v.add_theme_constant_override("separation", 12)
     center.add_child(v)
-    _title = UiTheme.label("", 48)
+    _title = UiTheme.label("", 44)
     v.add_child(_title)
-    _hint = UiTheme.label("", 18, UiTheme.DIM)
-    _hint.add_theme_font_override("font", Art.FONT)
-    _hint.add_theme_font_size_override("font_size", 20)
+    _hint = UiTheme.label("", 24, UiTheme.DIM)
     v.add_child(_hint)
     var row := HBoxContainer.new()
     row.alignment = BoxContainer.ALIGNMENT_CENTER
     row.add_theme_constant_override("separation", CARD_GAP)
+    row.custom_minimum_size = Vector2(0, CARD_SIZE.y + LIFT + 44.0)
     v.add_child(row)
     for i in MAX_CARDS:
         _card_icons.append(Art.icon("", Vector2i(45, 16)))
-        _card_tints.append(Color.WHITE)
         _card_cols.append(Items.RARITY_COLORS[0])
         var card := _make_card(i)
         row.add_child(card)
@@ -76,24 +84,22 @@ func _ready() -> void:
     var reroll_row := CenterContainer.new()
     v.add_child(reroll_row)
     _reroll = UiTheme.button("Reroll", _on_reroll)
-    _reroll.custom_minimum_size = Vector2(300, 48)
+    _reroll.custom_minimum_size = Vector2(320, 48)
     _reroll.visible = false
     reroll_row.add_child(_reroll)
     _link_cards(3)
-    _prompt = Control.new()
-    _prompt.custom_minimum_size = Vector2(0, 40)
-    _prompt.draw.connect(_draw_prompt)
-    v.add_child(_prompt)
     MenuPad.strip_joypad_from_ui_actions()
     _pad.on_tab = _step
     visible = false
 
 
+## A card is a Button drawn by hand (frame, icon well, badge, prompt) with its labels on
+## top in a column. The column sits inside a holder that the focused card lifts.
 func _make_card(i: int) -> Button:
     var b := Button.new()
     b.custom_minimum_size = CARD_SIZE
+    b.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
     b.focus_mode = Control.FOCUS_ALL
-    # The card is drawn like every ItemCard: rarity frame, icon, then the labels on top.
     for state in ["normal", "hover", "focus", "pressed", "disabled"]:
         b.add_theme_stylebox_override(state, StyleBoxEmpty.new())
     b.draw.connect(_draw_card.bind(i))
@@ -103,56 +109,86 @@ func _make_card(i: int) -> Button:
             b.grab_focus())
     var box := VBoxContainer.new()
     box.set_anchors_preset(Control.PRESET_FULL_RECT)
-    box.offset_top = ICON_BOX + 28
-    box.offset_left = 16
-    box.offset_right = -16
-    box.offset_bottom = -14
-    box.add_theme_constant_override("separation", 6)
+    box.offset_top = ICON_TOP + ICON_BOX + 8.0
+    box.offset_left = 14
+    box.offset_right = -14
+    box.offset_bottom = -12
+    box.add_theme_constant_override("separation", 4)
     box.mouse_filter = Control.MOUSE_FILTER_IGNORE
     b.add_child(box)
-    var rarity_label := UiTheme.label("", 20, UiTheme.DIM)
-    rarity_label.add_theme_font_override("font", Art.FONT)
-    rarity_label.add_theme_font_size_override("font_size", 20)
-    rarity_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-    box.add_child(rarity_label)
-    _rarities.append(rarity_label)
-    var name_label := UiTheme.label("", 34)
-    name_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    var name_label := _lab(30, UiTheme.BONE)
     box.add_child(name_label)
     _names.append(name_label)
-    var effect := UiTheme.label("", 30, Color.WHITE)
-    effect.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-    effect.custom_minimum_size = Vector2(CARD_SIZE.x - 32, 0)
-    effect.mouse_filter = Control.MOUSE_FILTER_IGNORE
-    box.add_child(effect)
-    _effects.append(effect)
-    var desc := UiTheme.label("", 16, UiTheme.BONE)
-    desc.add_theme_font_override("font", Art.FONT)
-    desc.add_theme_font_size_override("font_size", 20)
-    desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-    desc.custom_minimum_size = Vector2(CARD_SIZE.x - 32, 0)
-    desc.mouse_filter = Control.MOUSE_FILTER_IGNORE
-    box.add_child(desc)
-    _descs.append(desc)
+    var head := _lab(44, HEAD_COL)
+    head.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+    box.add_child(head)
+    _heads.append(head)
+    var delta := _lab(30, UiTheme.BONE)
+    box.add_child(delta)
+    _deltas.append(delta)
+    var extra := _lab(26, UiTheme.BONE)
+    extra.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+    box.add_child(extra)
+    _extras.append(extra)
+    var spacer := Control.new()
+    spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
+    spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    box.add_child(spacer)
+    var aff := _lab(24, UiTheme.DIM.lightened(0.3))
+    aff.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+    box.add_child(aff)
+    _affects.append(aff)
     return b
 
 
-## Frame and icon of card `i`, drawn before its labels (they are children).
+func _lab(size: int, col: Color) -> Label:
+    var l := UiTheme.label("", size, col)
+    l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    return l
+
+
+## Frame, top row (category, rarity), icon well and element badge of card `i`, drawn
+## before its labels (they are children). The focused card gets the lit frame and the
+## Choose prompt under it.
 func _draw_card(i: int) -> void:
-    if i >= _cards.size():
+    if i >= _cards.size() or i >= _options.size():
         return
     var b: Button = _cards[i]
+    var opt: Dictionary = _options[i]
     var r := Rect2(Vector2.ZERO, b.size)
     var col: Color = _card_cols[i]
     var focused := b.has_focus()
+    var rarity: int = clampi(int(opt.get("rarity", 0)), 0, Items.RARITY_COLORS.size() - 1)
+    b.draw_rect(r, Color(0.035, 0.03, 0.045))   # opaque: nothing of the room shows through
     ItemCard.draw_frame(b, r, col, focused)
-    # Icon well at the top, the 32 px tile at 3x.
-    var well := Rect2(Vector2((r.size.x - ICON_BOX) / 2.0, 20.0), Vector2(ICON_BOX, ICON_BOX))
-    b.draw_texture_rect(Art.PARTICLES["light"], well.grow(30.0), false, Color(col, 0.22 if focused else 0.12))
-    b.draw_rect(well, Color(0, 0, 0, 0.45))
-    b.draw_rect(well, Color(col, 0.5), false, 2.0)
-    Art.draw_icon(b, _card_icons[i], well.grow(-12.0), _card_tints[i])
-    b.draw_line(Vector2(20, well.end.y + 6.0), Vector2(r.size.x - 20.0, well.end.y + 6.0), Color(col, 0.4), 2.0)
+    var font: Font = Art.FONT
+    # Top row: category word (neutral) left, rarity word (rarity colour) and pips right.
+    b.draw_string(font, Vector2(16, 34), String(opt.get("cat", "")), HORIZONTAL_ALIGNMENT_LEFT, -1, 20, UiTheme.DIM.lightened(0.2))
+    var rname := String(Items.RARITY_NAMES[rarity]).to_upper()
+    var rw := font.get_string_size(rname, HORIZONTAL_ALIGNMENT_LEFT, -1, 20).x
+    b.draw_string(font, Vector2(r.size.x - 16.0 - rw, 34), rname, HORIZONTAL_ALIGNMENT_LEFT, -1, 20, Items.RARITY_TEXT_COLORS[rarity])
+    ItemCard.draw_pips(b, Vector2(r.size.x - 16.0 - rw - 8.0 - float(rarity + 1) * 8.0, 22), rarity + 1, col, 6.0)
+    # Icon well, the 32 px tile at 2x.
+    var well := Rect2(Vector2((r.size.x - ICON_BOX) / 2.0, ICON_TOP), Vector2(ICON_BOX, ICON_BOX))
+    b.draw_texture_rect(Art.PARTICLES["light"], well.grow(34.0), false, Color(col, 0.20 if focused else 0.08))
+    b.draw_rect(well, Color(0, 0, 0, 0.5))
+    b.draw_rect(well, Color(col, 0.6), false, 2.0)
+    Art.draw_icon(b, _card_icons[i], well.grow(-16.0), Color.WHITE)
+    var el := LevelUps.element_of(opt)
+    if el != Element.Kind.NONE:
+        var bs := ItemCard.element_badge_size(el, 20)
+        ItemCard.draw_element_badge(b, Vector2(well.end.x - bs.x * 0.5, well.end.y - bs.y + 4.0), el, 20)
+    if focused and _player != null and is_instance_valid(_player):
+        # The Choose prompt hangs under the focused card.
+        var label: String = _player.input.prompt("interact")
+        var kind: String = _player.input.last_kind
+        var text := "Choose"
+        var tw := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 26).x
+        var total := 32.0 + 10.0 + tw
+        var x := (r.size.x - total) / 2.0
+        var cy := r.size.y + 26.0
+        Prompts.draw(b, Vector2(x + 16.0, cy), label, kind, 26.0)
+        b.draw_string(font, Vector2(x + 42.0, cy + 9.0), text, HORIZONTAL_ALIGNMENT_LEFT, -1, 26, Color.WHITE)
 
 
 ## Queue a level-up for `player`; shows at once when nothing else is showing.
@@ -164,6 +200,21 @@ func open(player) -> void:
 
 func is_open() -> bool:
     return visible
+
+
+## Captures (PayoutShot): show these exact options for `player`.
+func open_with(player, opts: Array) -> void:
+    _player = player
+    _options = opts
+    _fill_cards()
+    _armed_in = GRACE
+    visible = true
+    get_tree().paused = true
+    _cards[mini(1, _options.size() - 1)].grab_focus()
+
+
+func close_for_test() -> void:
+    _close()
 
 
 func _show_next() -> void:
@@ -189,7 +240,6 @@ func _show_next() -> void:
     var mid: int = mini(1, _options.size() - 1)
     if mid >= 0:
         _cards[mid].grab_focus()
-    _prompt.queue_redraw()
 
 
 ## Three cards, or four with the Shrine's Wider Choice (rank 1: every other level-up).
@@ -202,12 +252,12 @@ func _card_count(p) -> int:
 
 ## Fill the card widgets from `_options` and wire focus between the visible ones.
 func _fill_cards() -> void:
-    var col: Color = _player.color
     _title.text = "%s  LEVEL %d" % [_player.display_name().to_upper(), _player.level]
-    _title.add_theme_color_override("font_color", col)
-    _hint.text = "Choose one upgrade"
+    _title.add_theme_color_override("font_color", UiTheme.BONE)
+    _hint.text = "Choose one boon"
     if not _queue.is_empty():
         _hint.text += "   (%d more to pick)" % _queue.size()
+    var card_size := CARD_SIZE_FOUR if _options.size() > 3 else CARD_SIZE
     for i in _cards.size():
         var card := _cards[i]
         if i >= _options.size():
@@ -215,23 +265,29 @@ func _fill_cards() -> void:
             continue
         var opt: Dictionary = _options[i]
         var rarity: int = clampi(int(opt.get("rarity", 0)), 0, Items.RARITY_COLORS.size() - 1)
-        var rarity_col: Color = Items.RARITY_COLORS[rarity]
         card.visible = true
+        card.custom_minimum_size = card_size
         _card_icons[i] = LevelUps.icon(opt)
-        _card_tints[i] = Color.WHITE
-        _card_cols[i] = rarity_col
+        _card_cols[i] = Items.RARITY_COLORS[rarity]
+        _names[i].text = String(opt["name"])
+        _names[i].add_theme_color_override("font_color", Items.RARITY_TEXT_COLORS[rarity])
+        var head := LevelUps.describe(opt)
+        _heads[i].text = head
+        # Long headlines (an element name) step down so they stay on one or two lines.
+        _heads[i].add_theme_font_size_override("font_size", 44 if head.length() <= 14 else 36)
+        _deltas[i].text = LevelUps.before_after(opt, _player)
+        var lines: Array = []
+        var cost := false
+        for ln in LevelUps.extra_lines(opt):
+            lines.append(String(ln[0]))
+            cost = cost or bool(ln[1])
+        _extras[i].text = "\n".join(lines)
+        _extras[i].visible = not lines.is_empty()
+        _extras[i].add_theme_color_override("font_color", COST_COL if cost else UiTheme.BONE)
+        _affects[i].text = String(opt.get("affects", ""))
+        for l in [_names[i], _heads[i], _deltas[i], _extras[i], _affects[i]]:
+            l.custom_minimum_size = Vector2(card_size.x - 28.0, 0)
         card.queue_redraw()
-        _names[i].text = opt["name"]
-        _names[i].add_theme_color_override("font_color", rarity_col)
-        _rarities[i].text = String(Items.RARITY_NAMES[rarity]).to_upper()
-        _rarities[i].add_theme_color_override("font_color", rarity_col)
-        _effects[i].text = LevelUps.describe(opt)
-        _descs[i].text = opt["desc"]
-    var card_size := CARD_SIZE_FOUR if _options.size() > 3 else CARD_SIZE
-    for i in _cards.size():
-        _cards[i].custom_minimum_size = card_size
-        _effects[i].custom_minimum_size = Vector2(card_size.x - 32, 0)
-        _descs[i].custom_minimum_size = Vector2(card_size.x - 32, 0)
     var left := int(_player.levelup_rerolls)
     _reroll.visible = left > 0
     _reroll.text = "Reroll   %d left   (X / R)" % left
@@ -319,10 +375,14 @@ func _process(delta: float) -> void:
     # Something else (the pause menu closing) may unpause underneath us.
     if not get_tree().paused:
         get_tree().paused = true
-    _prompt.queue_redraw()
-    for c in _cards:
-        c.queue_redraw()
     var focus := get_viewport().gui_get_focus_owner()
+    # The focused card rises and stays bright; the others dim, so the choice reads at a glance.
+    for i in _cards.size():
+        var c := _cards[i]
+        var on := c == focus
+        c.modulate = Color.WHITE if on or _cards.find(focus) < 0 else Color(0.62, 0.62, 0.66)
+        c.position.y = 0.0 if on else LIFT
+        c.queue_redraw()
     if focus != null and _cards.find(focus) < 0 and focus != _reroll:
         return   # another overlay (the pause menu) owns focus; leave the input to it
     if focus == null:
@@ -359,18 +419,3 @@ func _input(event: InputEvent) -> void:
     if at >= 0:
         get_viewport().set_input_as_handled()
         _choose(at)
-
-
-func _draw_prompt() -> void:
-    if _player == null or not is_instance_valid(_player):
-        return
-    var label: String = _player.input.prompt("interact")
-    var kind: String = _player.input.last_kind
-    var font: Font = Art.FONT
-    var text := "Choose"
-    var text_w := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 20).x
-    var total := 32.0 + 10.0 + text_w
-    var x := (_prompt.size.x - total) / 2.0
-    var cy := _prompt.size.y / 2.0
-    Prompts.draw(_prompt, Vector2(x + 16.0, cy), label, kind, 24.0)
-    _prompt.draw_string(font, Vector2(x + 42.0, cy + 7.0), text, HORIZONTAL_ALIGNMENT_LEFT, -1, 20, UiTheme.BONE)

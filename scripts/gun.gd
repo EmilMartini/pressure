@@ -3,11 +3,27 @@ extends Node2D
 ## One carried gun, drawn orbiting the player and pointing at whatever it last shot.
 ## Tiers I to IV raise its numbers (merge a duplicate or visit the gunsmith), and a gun
 ## holds as many mods as its tier; mod effects stack, which is the point.
+##
+## How a trigger pull works depends on the archetype's mechanic (GunData.ARCHETYPES):
+##   shot    projectiles (Projectile), flying by data.behaviour
+##   beam    a continuous ray (Beam) that ticks fire_rate times a second and sweeps to the aim
+##   cone    a short spray (Spray) that hits everything in its cone each tick
+##   chain   an instant arc to the target that jumps to the nearest enemies after it
+##   nova    a ring around the player
+##   melee   a sweep in front of the gun
+##   charge  winds up for charge_time (aim tracked), then a rail through the whole line
+##   mine    tosses a Mine a short way toward the target
+##   turret  deploys a Turret that fires this gun's shots on its own
+## Every hit goes through Strike (one hit path, attributed to this gun in Telemetry).
+## Auto-fire (Player._fire) only ever passes an enemy direction; RT passes the aim.
 
 const MAX_TIER := 4
 const TIER_NAMES := ["", " II", " III", " IV"]
 ## On-screen size of the orbiting gun icon at tier I (a 32 px tile resampled down).
 const ICON_PX := 22
+const CHAIN_JUMP_RANGE := 150.0
+const MINE_CAP := 6          # live mines per gun; the oldest pops when a seventh lands
+const TURRET_CAP := 1        # live turrets per gun (+1 per extra projectile)
 
 var data: GunData
 var player: Player
@@ -22,6 +38,15 @@ var _burst_left := 0      # burst shots still queued from the last trigger
 var _burst_timer := 0.0
 var _alt_flip := false    # alternating-element guns flip this per projectile
 var _upright := false     # flask and orb icons stand upright instead of pointing
+var _spin := 0.0          # repeater: seconds of continuous fire
+var _since_fire := 99.0   # seconds since the last trigger
+var _charging := false    # charge: winding up
+var _charge := 0.0        # charge: seconds wound
+var _beams: Array = []    # beam: one Beam per ray
+var _spray: Spray = null
+var _mines: Array = []
+var _turrets: Array = []
+var _target_k := 0        # homing: rotates which enemy each volley's first seeker takes
 
 
 func _init(p_data: GunData, p_player: Player) -> void:
@@ -37,9 +62,32 @@ func _ready() -> void:
     add_child(_sprite)
 
 
+func _exit_tree() -> void:
+    for b in _beams:
+        if is_instance_valid(b):
+            b.queue_free()
+    _beams.clear()
+    if _spray != null and is_instance_valid(_spray):
+        _spray.queue_free()
+    _spray = null
+    for t in _turrets:
+        if is_instance_valid(t):
+            t.queue_free()
+    _turrets.clear()
+
+
 func _process(delta: float) -> void:
     cooldown = maxf(0.0, cooldown - delta)
     _recoil = move_toward(_recoil, 0.0, 45.0 * delta)
+    _since_fire += delta
+    if data.spin_up > 0.0:
+        # Spinning up while the trigger keeps coming, winding down twice as fast after.
+        if _since_fire < 0.35 + 1.0 / maxf(0.1, data.fire_rate):
+            _spin = minf(data.spin_up, _spin + delta)
+        else:
+            _spin = maxf(0.0, _spin - 2.0 * delta)
+    if _charging:
+        _tick_charge(delta)
     if _burst_left > 0:
         _burst_timer -= delta
         if _burst_timer <= 0.0:
@@ -62,6 +110,23 @@ func _process(delta: float) -> void:
         # mirrored for a left aim it points up-left (-135 degrees). Turn that end to the aim.
         _sprite.rotation = _aim.angle() + (PI * 0.75 if left else PI * 0.25)
     _sprite.scale = Vector2.ONE * (1.0 + 0.08 * float(tier - 1))
+    if _charging or data.spin_up > 0.0:
+        queue_redraw()
+
+
+func _draw() -> void:
+    # Charge: a glow gathering at the muzzle. Repeater: a ring that fills as it spins up.
+    if _charging and data.charge_time > 0.0:
+        var f := clampf(_charge / _charge_needed(), 0.0, 1.0)
+        var c := data.color()
+        var tip := _aim * 12.0
+        draw_circle(tip, 2.0 + 6.0 * f, Color(c, 0.25 + 0.35 * f))
+        draw_circle(tip, 1.0 + 2.5 * f, Color(1, 1, 1, 0.5 + 0.5 * f))
+        if f >= 1.0:
+            draw_arc(tip, 10.0, 0.0, TAU, 16, Color(c, 0.8), 1.5)
+    elif data.spin_up > 0.0 and _spin > 0.05:
+        var s := clampf(_spin / data.spin_up, 0.0, 1.0)
+        draw_arc(Vector2.ZERO, 13.0, -PI * 0.5, -PI * 0.5 + TAU * s, 18, Color(data.color(), 0.55), 1.5)
 
 
 func display_name() -> String:
@@ -69,7 +134,7 @@ func display_name() -> String:
 
 
 func can_fire() -> bool:
-    return cooldown <= 0.0
+    return cooldown <= 0.0 and not _charging
 
 
 ## Summed mod value across every mod fitted to this gun.
@@ -106,37 +171,132 @@ func effective_range() -> float:
 
 func fire_rate() -> float:
     var ek := element_key()
-    return data.fire_rate * (1.0 + 0.12 * float(tier - 1)) * maxf(0.2, 1.0 + player.stat("fire_rate") + player.stat("fire_rate_" + ek) + _gm("g_fire_rate"))
+    var spin := 1.0
+    if data.spin_up > 0.0:
+        spin = lerpf(GunData.SPIN_FLOOR, 1.0, clampf(_spin / data.spin_up, 0.0, 1.0))
+    return data.fire_rate * spin * (1.0 + 0.12 * float(tier - 1)) * maxf(0.2, 1.0 + player.stat("fire_rate") + player.stat("fire_rate_" + ek) + _gm("g_fire_rate"))
 
 
-## One trigger pull: the first shot leaves now, the rest of a burst follows in _process.
-## The cooldown covers the whole burst, so fire_rate stays triggers per second.
+## Rate at full spin (what the cards show for repeaters).
+func top_fire_rate() -> float:
+    var keep := _spin
+    _spin = data.spin_up
+    var r := fire_rate()
+    _spin = keep
+    return r
+
+
+## Shots, beams, arcs, rings, sweeps, rails, mines or flasks per trigger: projectile_count
+## plus the projectile stat and mods.
+func shot_count() -> int:
+    return maxi(1, data.projectile_count + int(player.stat("proj_count")) + int(_gm("g_count")))
+
+
+func shot_pierce() -> int:
+    var ek := element_key()
+    return data.pierce + int(player.stat("pierce")) + int(player.stat("pierce_" + ek)) + int(_gm("g_pierce")) + (1 if tier >= 3 else 0)
+
+
+func speed_mult() -> float:
+    return maxf(0.3, 1.0 + player.stat("proj_speed") + player.stat("shot_speed") + _gm("g_speed"))
+
+
+## Bigger with tier and the shot-size gear.
+func size_mult() -> float:
+    return maxf(0.3, 1.0 + player.stat("shot_size")) * (1.0 + 0.1 * float(tier - 1))
+
+
+## The numbers one trigger pull hits with: tier, gear and mods applied, crit rolled.
+## `el` overrides the element (alternating guns).
+func strike(el: int = -1) -> Strike:
+    var ek := element_key()
+    var s := Strike.new()
+    s.element = data.element if el < 0 else el
+    s.damage = data.damage * tier_mult() * maxf(0.1, 1.0 + player.stat("dmg") + player.stat("dmg_" + ek) + _gm("g_dmg"))
+    s.potency = s.damage * data.reaction_mult * (1.0 + player.stat("potency") + player.stat("potency_" + ek))
+    s.crit = randf() < player.stat("crit")
+    if s.crit:
+        var crit_mult := 2.0 + player.stat("crit_dmg")
+        s.damage *= crit_mult
+        s.potency *= 1.0 + (crit_mult - 1.0) * 0.5
+    s.damage *= 1.0 + 0.5 * (maxf(0.3, 1.0 + player.stat("shot_size")) - 1.0)
+    s.extras = extra_elements()
+    s.color = Element.COLORS[s.element]
+    s.shooter = player
+    s.gun_id = data.id
+    return s
+
+
+## The element of the next projectile, flipping alternating guns.
+func _next_element() -> int:
+    if data.alt_element == Element.Kind.NONE:
+        return data.element
+    _alt_flip = not _alt_flip
+    return data.alt_element if _alt_flip else data.element
+
+
+## One trigger pull toward `dir`. Mechanics that hit at once do it here; projectile guns
+## spawn their volley (the rest of a burst follows in _process). The cooldown covers a
+## whole burst, so fire_rate stays triggers per second.
 func fire(dir: Vector2) -> void:
     _aim = dir
-    _recoil = 5.0 + float(data.weight)
-    var burst := maxi(1, data.burst_count)
-    cooldown = maxf(1.0 / fire_rate(), data.burst_gap * float(burst - 1) + 0.05)
-    _burst_left = burst - 1
-    _burst_timer = data.burst_gap
-    _shoot(dir)
+    _since_fire = 0.0
+    var rate := fire_rate()
+    cooldown = 1.0 / rate
+    var kick := 1.0 + float(data.weight) * 0.5
+    match data.mechanic:
+        "beam":
+            _fire_beam(dir)
+            kick = 0.25
+        "cone":
+            _fire_cone(dir)
+            kick = 0.3
+        "chain":
+            _fire_chain(dir)
+        "nova":
+            _fire_nova()
+            kick = 0.0
+        "melee":
+            _fire_melee(dir)
+            kick = -2.0   # a lunge into the swing
+        "charge":
+            # Wind up now; the rail leaves from _tick_charge.
+            _charging = true
+            _charge = 0.0
+            Sfx.play_at("shoot_" + Items.ELEMENT_KEYS.get(data.element, "stone"), global_position, -10.0)
+            return
+        "mine":
+            _fire_mine(dir)
+        "turret":
+            if player.alive and player.input.fire_held():
+                _shoot(dir)   # RT: the gun fires too (doors, props), the turret keeps to enemies
+            if not _fire_turret(dir):
+                cooldown = 0.25   # a turret is already up: nothing to do
+                return
+        _:
+            var burst := maxi(1, data.burst_count)
+            cooldown = maxf(1.0 / rate, data.burst_gap * float(burst - 1) + 0.05)
+            _burst_left = burst - 1
+            _burst_timer = data.burst_gap
+            _shoot(dir)
+    _recoil = 5.0 + float(data.weight) if kick > 0.5 else 2.0
     player.add_pressure(data.pressure_per_shot * (1.0 + _gm("g_pressure")))
-    player.kick(dir, 1.0 + float(data.weight) * 0.5)
+    if kick != 0.0:
+        player.kick(dir, kick)
 
 
-## Spawns one volley (projectile_count projectiles) toward `dir`.
+## Spawns one volley (shot_count projectiles) toward `dir` from the gun.
 func _shoot(dir: Vector2) -> void:
-    var ek := element_key()
+    shoot_from(global_position + dir * 14.0, dir)
+
+
+## Spawns one volley from `muzzle` (the gun, or a Turret this gun deployed).
+func shoot_from(muzzle: Vector2, dir: Vector2) -> void:
     var world := get_tree().current_scene
-    var damage := data.damage * tier_mult() * maxf(0.1, 1.0 + player.stat("dmg") + player.stat("dmg_" + ek) + _gm("g_dmg"))
-    var potency := damage * data.reaction_mult * (1.0 + player.stat("potency") + player.stat("potency_" + ek))
-    var crit := randf() < player.stat("crit")
-    if crit:
-        var crit_mult := 2.0 + player.stat("crit_dmg")
-        damage *= crit_mult
-        potency *= 1.0 + (crit_mult - 1.0) * 0.5
-    var count := data.projectile_count + int(player.stat("proj_count")) + int(_gm("g_count"))
-    var pierce := data.pierce + int(player.stat("pierce")) + int(player.stat("pierce_" + ek)) + int(_gm("g_pierce")) + (1 if tier >= 3 else 0)
-    var speed := data.projectile_speed * maxf(0.3, 1.0 + player.stat("proj_speed") + player.stat("shot_speed") + _gm("g_speed"))
+    var base := strike()
+    var count := shot_count()
+    var pierce := shot_pierce()
+    var speed := data.projectile_speed * speed_mult()
     # Transformative gear (Isaac's tear modifiers), summed onto every shot.
     var homing := player.stat("homing")
     var splash := player.stat("splash")
@@ -145,7 +305,6 @@ func _shoot(dir: Vector2) -> void:
     var spectral := player.stat("spectral") > 0.0
     var boomerang := player.stat("boomerang") > 0.0
     var bounces := int(player.stat("bounce"))
-    damage *= 1.0 + 0.5 * (size_mult - 1.0)
     # Straight guns take on the shape the gear asks for; other behaviours keep theirs.
     var shape := data.behaviour
     if shape == "straight":
@@ -156,50 +315,63 @@ func _shoot(dir: Vector2) -> void:
         elif shards > 0 and pierce == 0 and bounces == 0:
             shape = "flak"
     var lifetime := data.lifetime * (1.0 + player.stat("range") + _gm("g_range"))
-    var extras := extra_elements()
-    var muzzle := global_position + dir * 14.0
+    var lobbed := shape == "lob" or shape == "pool"
     # Lobbed shells land on the nearest enemy (or most of the way out when there is none).
     var lob_dist := 0.0
-    if data.behaviour == "lob":
+    if lobbed:
         var rng := effective_range()
         lob_dist = rng * 0.6
-        var tgt := player.nearest_enemy(rng)
-        if tgt != null:
-            lob_dist = clampf(muzzle.distance_to(tgt.global_position), 60.0, rng)
+        var tgt := Strike.nearest(get_tree(), muzzle, rng, {})
+        if tgt != null and absf((tgt.global_position - muzzle).normalized().angle_to(dir)) < 0.6:
+            lob_dist = clampf(muzzle.distance_to(tgt.global_position), 50.0, rng)
+    # Homing: each seeker of a volley takes a different enemy, nearest first, rotating.
+    var targets: Array = []
+    if shape == "homing":
+        targets = _targets_by_distance(muzzle, effective_range() * 1.2, maxi(count, 4))
+        _target_k += 1
     var shot_element: int = data.element
     for i in count:
         var angle := 0.0
         if count > 1:
             angle = lerpf(-data.spread_deg, data.spread_deg, float(i) / float(count - 1)) * 0.5
         angle += randf_range(-data.spread_deg, data.spread_deg) * 0.15
-        var el: int = data.element
-        if data.alt_element != Element.Kind.NONE:
-            _alt_flip = not _alt_flip
-            if _alt_flip:
-                el = data.alt_element
+        var el := _next_element()
+        if shape == "helix":
+            # A helix pair is one element each, whatever the alternation did.
+            el = data.element if i % 2 == 0 else (data.alt_element if data.alt_element != Element.Kind.NONE else data.element)
+            angle = randf_range(-data.spread_deg, data.spread_deg) * 0.15 if i < 2 else angle
         shot_element = el
         var p := Projectile.new()
         p.velocity = dir.rotated(deg_to_rad(angle)) * speed
-        p.damage = damage
+        p.damage = base.damage
         p.element = el
-        p.extra_elements = extras
-        p.potency = potency
+        p.extra_elements = base.extras
+        p.potency = base.potency
         p.lifetime = lifetime
         p.pierce = pierce
-        p.bounces = bounces
-        p.radius = data.projectile_radius * (1.4 if crit else 1.0) * (1.0 + 0.1 * float(tier - 1)) * size_mult
+        p.bounces = bounces + data.ricochets
+        p.radius = data.projectile_radius * (1.4 if base.crit else 1.0) * (1.0 + 0.1 * float(tier - 1)) * size_mult
         p.color = Element.COLORS[el]
-        p.crit = crit
+        p.crit = base.crit
         p.shooter = player
         p.gun_id = data.id
         p.behaviour = shape
         p.splash_radius = data.splash_radius * (1.0 + 0.1 * float(tier - 1)) + splash
         p.shard_count = data.shard_count + shards
         p.homing_turn = data.homing_turn + homing
-        if spectral and shape != "lob":
+        p.knockback = data.knockback
+        p.aura_radius = data.aura_radius * size_mult * (1.0 + 0.1 * float(tier - 1))
+        p.linger = data.linger
+        p.fork_count = data.fork_count
+        p.ricochet_walls = data.ricochets > 0
+        if shape == "helix":
+            p.helix_sign = 1.0 if i % 2 == 0 else -1.0
+        if shape == "homing" and not targets.is_empty():
+            p.home_target = targets[(i + _target_k) % targets.size()]
+        if spectral and not lobbed:
             # Spectral: the obstacle grace never runs out, so walls of rock and crates are ignored.
             p.spectral = true
-        if data.behaviour == "lob":
+        if lobbed:
             p.lifetime = maxf(0.15, lob_dist * randf_range(0.9, 1.1) / maxf(1.0, speed))
             p.bounces = 0
         p.global_position = muzzle
@@ -207,3 +379,284 @@ func _shoot(dir: Vector2) -> void:
     Sfx.shoot(shot_element, muzzle)
     if "fx" in world and world.fx != null:
         world.fx.puff(Art.PARTICLES["light"], muzzle, Color(Element.COLORS[shot_element], 0.9), 22.0 + float(data.weight) * 4.0, 0.08, true)
+
+
+## Up to `n` live enemies within `r` of `pos`, nearest first.
+func _targets_by_distance(pos: Vector2, r: float, n: int) -> Array:
+    var pairs: Array = []
+    for e in EnemyGrid.nodes(get_tree(), &"enemies"):
+        if not is_instance_valid(e) or e.is_queued_for_deletion() or not e is Enemy or e.emerge > 0.0:
+            continue
+        var d: float = e.global_position.distance_squared_to(pos)
+        if d <= r * r:
+            pairs.append([d, e])
+    pairs.sort_custom(func(a, b): return a[0] < b[0])
+    var out: Array = []
+    for k in mini(n, pairs.size()):
+        out.append(pairs[k][1])
+    return out
+
+
+# --- Beam ---------------------------------------------------------------------
+
+
+func _fire_beam(dir: Vector2) -> void:
+    var n := shot_count()
+    _beams = _beams.filter(func(x): return is_instance_valid(x) and not x.is_queued_for_deletion())
+    while _beams.size() < n:
+        var b := Beam.new(self)
+        Strike.world_parent(self).add_child(b)
+        _beams.append(b)
+    while _beams.size() > n:
+        var old = _beams.pop_back()
+        if is_instance_valid(old):
+            old.queue_free()
+    var s := strike()
+    var reach := effective_range()
+    var pierce := shot_pierce()
+    var width := maxf(2.0, data.projectile_radius) * size_mult()
+    for i in n:
+        var b = _beams[i]
+        if not is_instance_valid(b) or b.is_queued_for_deletion():
+            b = Beam.new(self)
+            Strike.world_parent(self).add_child(b)
+            _beams[i] = b
+        var off := 0.0 if n == 1 else lerpf(-1.0, 1.0, float(i) / float(n - 1)) * deg_to_rad(6.0 * float(n - 1))
+        b.tick(dir.rotated(off), s, reach, pierce, width)
+
+
+## Radians per second a beam turns toward its aim (shot speed mods turn it faster).
+func beam_sweep() -> float:
+    return 4.5 * speed_mult()
+
+
+# --- Spray --------------------------------------------------------------------
+
+
+func _fire_cone(dir: Vector2) -> void:
+    if _spray == null or not is_instance_valid(_spray) or _spray.is_queued_for_deletion():
+        _spray = Spray.new(self)
+        Strike.world_parent(self).add_child(_spray)
+    var s := strike(_next_element())
+    var extra := shot_count() - 1
+    # Extra projectiles widen the cone and hit harder; pierce reaches further.
+    s.damage *= 1.0 + 0.25 * float(extra)
+    s.potency *= 1.0 + 0.25 * float(extra)
+    var half := deg_to_rad(data.arc_deg * 0.5 + 6.0 * float(extra))
+    var reach := effective_range() * (1.0 + 0.1 * float(shot_pierce()))
+    _spray.tick(dir, s, reach, half, data.knockback)
+
+
+# --- Chain --------------------------------------------------------------------
+
+
+func _fire_chain(dir: Vector2) -> void:
+    var reach := effective_range()
+    var jumps := data.chain_jumps + int(player.stat("chain_jumps")) + int(player.stat("bounce")) + shot_pierce()
+    var hit: Dictionary = {}
+    var arcs := 0
+    for i in shot_count():
+        var first := _chain_first(dir, reach, hit)
+        if first == null:
+            break
+        arcs += 1
+        var s := strike(_next_element())
+        var from := global_position + dir * 10.0
+        var cur: Enemy = first
+        var mult := 1.0
+        for j in jumps + 1:
+            hit[cur] = true
+            _arc_fx(from, cur.global_position, s.color, s.element)
+            s.hit(cur, mult, cur.global_position, (cur.global_position - from).normalized() * data.knockback)
+            from = cur.global_position
+            mult *= GunData.CHAIN_FALLOFF
+            var nxt := Strike.nearest(get_tree(), from, CHAIN_JUMP_RANGE * (1.0 + player.stat("range")), hit)
+            if nxt == null:
+                break
+            cur = nxt
+    if arcs == 0:
+        # Nothing to arc to (RT into empty space, or at a door): a plain bolt instead, so
+        # obstacles and props still take the element.
+        shoot_from(global_position + dir * 14.0, dir)
+        return
+    Sfx.shoot(data.element, global_position)
+
+
+## The first enemy an arc takes: the nearest one within reach and roughly ahead.
+func _chain_first(dir: Vector2, reach: float, skip: Dictionary) -> Enemy:
+    var best: Enemy = null
+    var best_d := INF
+    for e in Strike.enemies_in(get_tree(), global_position, reach):
+        if skip.has(e):
+            continue
+        var to: Vector2 = e.global_position - global_position
+        if to.length() > 30.0 and absf(dir.angle_to(to)) > 0.6:
+            continue
+        var d := to.length()
+        if d < best_d:
+            best_d = d
+            best = e
+    return best
+
+
+func _arc_fx(a: Vector2, b: Vector2, col: Color, el: int) -> void:
+    if el == Element.Kind.SHOCK:
+        Elements.lightning_arc.emit(a, b)
+    else:
+        GunFx.rail(Strike.world_parent(self), a, b, 1.5, col)
+        var fx := Strike.fx_of(self)
+        if fx != null:
+            fx.pixels(el, b, 4, 70.0, 4.0)
+
+
+# --- Nova ---------------------------------------------------------------------
+
+
+func _fire_nova() -> void:
+    var r := effective_range()
+    var echoes := shot_count()
+    _nova_ring(r)
+    for k in range(1, echoes):
+        get_tree().create_timer(0.18 * float(k), false).timeout.connect(func():
+            if is_instance_valid(self) and is_inside_tree():
+                _nova_ring(r))
+
+
+func _nova_ring(r: float) -> void:
+    var s := strike(_next_element())
+    var c := player.global_position
+    for e in Strike.enemies_in(get_tree(), c, r):
+        var away: Vector2 = (e.global_position - c).normalized()
+        s.hit(e, 1.0, e.global_position, away * data.knockback)
+    s.touch_world(get_tree(), c, r, Vector2.ZERO)
+    s.touch_clouds(get_tree(), c, r, {})
+    s.stamp(self, c, minf(r * 0.5, 50.0), false)
+    var fx := Strike.fx_of(self)
+    if fx != null:
+        fx.ring(c, r, s.color, 0.3)
+        fx.pixels(s.element, c, 10, r * 1.6, r * 0.2)
+    Sfx.play_at("burst_small", c, -4.0)
+
+
+# --- Sweep --------------------------------------------------------------------
+
+
+func _fire_melee(dir: Vector2) -> void:
+    var swings := shot_count()
+    _swing(dir, false)
+    for k in range(1, swings):
+        get_tree().create_timer(0.14 * float(k), false).timeout.connect(func():
+            if is_instance_valid(self) and is_inside_tree():
+                _swing(_aim, k % 2 == 1))
+
+
+func _swing(dir: Vector2, back: bool) -> void:
+    var s := strike(_next_element())
+    var c := player.global_position
+    var reach := effective_range() * (1.0 + 0.1 * float(shot_pierce()))
+    var half := deg_to_rad(data.arc_deg * 0.5)
+    for e in Strike.enemies_in_cone(get_tree(), c, dir, reach, half):
+        s.hit(e, 1.0, e.global_position, (e.global_position - c).normalized() * data.knockback)
+    s.touch_world(get_tree(), c + dir * reach * 0.6, reach * 0.45, dir)
+    s.touch_clouds(get_tree(), c + dir * reach * 0.6, reach * 0.45, {})
+    GunFx.sweep(Strike.world_parent(self), c, dir, reach, half, s.color, back)
+    Sfx.shoot(s.element, c)
+    Sfx.play_at("hit_wall", c + dir * reach * 0.6, -8.0)
+
+
+# --- Charge -------------------------------------------------------------------
+
+
+func _charge_needed() -> float:
+    # Fire rate gear and tiers wind it faster.
+    return data.charge_time * data.fire_rate / maxf(0.05, fire_rate())
+
+
+func _tick_charge(delta: float) -> void:
+    _charge += delta
+    var manual := player.alive and player.input.fire_held()
+    var target: Node2D = null
+    if manual:
+        var aim := player.input.aim_vector(player.global_position, get_viewport())
+        if aim != Vector2.ZERO:
+            _aim = aim
+    else:
+        target = player.nearest_enemy(effective_range())
+        if target != null:
+            _aim = (target.global_position - global_position).normalized()
+    if _charge < _charge_needed():
+        return
+    if not manual and target == null:
+        return   # fully charged: held until something comes in reach
+    _charging = false
+    _rail(_aim)
+    cooldown = 1.0 / fire_rate()
+    _recoil = 6.0 + float(data.weight)
+    player.add_pressure(data.pressure_per_shot * (1.0 + _gm("g_pressure")))
+    player.kick(_aim, 2.0 + float(data.weight))
+
+
+func _rail(dir: Vector2) -> void:
+    var n := shot_count()
+    for i in n:
+        var off := 0.0 if n == 1 else lerpf(-1.0, 1.0, float(i) / float(n - 1)) * deg_to_rad(5.0 * float(n - 1))
+        var d := dir.rotated(off)
+        var s := strike(_next_element())
+        # A rail already goes through everything: pierce makes it hit harder instead.
+        s.damage *= 1.0 + 0.15 * float(shot_pierce())
+        var a := global_position + d * 12.0
+        var tr: Array = Strike.trace(get_tree(), a, d, effective_range())
+        var b: Vector2 = tr[0]
+        var width := data.projectile_radius * size_mult()
+        for e in Strike.enemies_on_line(get_tree(), a, b, width):
+            s.hit(e, 1.0, e.global_position, d * data.knockback)
+        if tr[1] != null:
+            s.touch_world(get_tree(), b, 6.0, d)
+        var seen := {}
+        var steps := int(a.distance_to(b) / 60.0)
+        for k in steps + 1:
+            s.touch_clouds(get_tree(), a.lerp(b, float(k) / float(maxi(1, steps))), 10.0, seen)
+        GunFx.rail(Strike.world_parent(self), a, b, width, s.color)
+        var fx := Strike.fx_of(self)
+        if fx != null:
+            fx.pixels(s.element, b, 8, 120.0, 4.0)
+        Sfx.shoot(s.element, a)
+        Sfx.play_at("burst_small", b, -6.0)
+
+
+# --- Mines and turrets -----------------------------------------------------------
+
+
+func _fire_mine(dir: Vector2) -> void:
+    var n := shot_count()
+    var tgt := Strike.nearest(get_tree(), global_position, effective_range(), {})
+    var dist := 80.0
+    if tgt != null:
+        dist = clampf(global_position.distance_to(tgt.global_position) * 0.7, 30.0, 130.0)
+    for i in n:
+        var off := 0.0 if n == 1 else lerpf(-0.5, 0.5, float(i) / float(n - 1))
+        var s := strike(_next_element())
+        var m := Mine.new(s, data.aura_radius * size_mult() * (1.0 + 0.1 * float(shot_pierce())), data.linger)
+        var land := global_position + dir.rotated(off) * dist * randf_range(0.85, 1.15)
+        Strike.world_parent(self).add_child(m)
+        m.toss(global_position, land)
+        _mines.append(m)
+    _mines = _mines.filter(func(x): return is_instance_valid(x) and not x.is_queued_for_deletion())
+    while _mines.size() > MINE_CAP * n:
+        var old: Mine = _mines.pop_front()
+        old.detonate()
+    Sfx.play_at("shoot_" + Items.ELEMENT_KEYS.get(data.element, "stone"), global_position, -6.0)
+
+
+## Deploys a turret when fewer than the cap are up. Returns false when none was placed.
+func _fire_turret(dir: Vector2) -> bool:
+    _turrets = _turrets.filter(func(x): return is_instance_valid(x) and not x.is_queued_for_deletion())
+    if _turrets.size() >= TURRET_CAP + maxi(0, shot_count() - data.projectile_count):
+        return false
+    var t := Turret.new(self, data.linger * (1.0 + 0.1 * float(tier - 1)))
+    Strike.world_parent(self).add_child(t)
+    t.global_position = player.global_position + dir * 22.0
+    _turrets.append(t)
+    Sfx.play_at("hit_wall", t.global_position, -4.0)
+    cooldown = 0.8
+    return true

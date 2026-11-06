@@ -76,7 +76,14 @@ func _ready() -> void:
         var th := FigureGen.element_theme(int(cdef["element"]))
         if th == "":
             th = "vagrant"
-        _figs.append(FigureGen.generate_from({ th: FigureGen.CLASS_WEIGHT }, Color(0, 0, 0, 0)))
+        # Wearing its starting item when that is a drawn piece (the Tarsmith's coat), like
+        # in game.
+        var worn: Dictionary = {}
+        var start_item := String(cdef.get("start_item", ""))
+        var start_slot := String(Items.get_item(start_item).get("slot", ""))
+        if WornGear.SLOTS.has(start_slot):
+            worn[start_slot] = start_item
+        _figs.append(FigureGen.generate_from({ th: FigureGen.CLASS_WEIGHT }, Color(0, 0, 0, 0), worn))
         var gun_id := String(cdef["start_gun"])
         if gun_id != "" and not _gun_names.has(gun_id):
             var gd: GunData = Guns.make(gun_id)
@@ -378,8 +385,9 @@ func _draw_info(i: int, cx: float, y: float) -> void:
     var c: Dictionary = _classes[i]
     var open := Classes.is_unlocked(String(c["id"]))
     var a := clampf(_info_a, 0.0, 1.0)
-    var tint := _tint(c)
-    _text_c(String(c["name"]).to_upper(), cx, y, 44, Color(tint if open else LOCKED_COLOR, a))
+    # Names stay neutral: an element never colours a name (GDD 6, "Rarity owns colour");
+    # it shows as the spell icon, a swatch and its name below, and in the glow behind.
+    _text_c(String(c["name"]).to_upper(), cx, y, 44, Color(UiTheme.BONE if open else LOCKED_COLOR, a))
     var row_y := y + NAME_H
     var flavour := String(c["desc"]).get_slice("\n", 0)
     if not open:
@@ -396,7 +404,7 @@ func _draw_info(i: int, cx: float, y: float) -> void:
         return
     # Element: the class's spell icon and the element name.
     var elem := "NO ELEMENT" if c["element"] == Element.Kind.NONE else String(Element.NAMES[c["element"]]).to_upper()
-    _icon_row([[Classes.icon(c), elem, tint, Color.WHITE]], cx, row_y, a)
+    _icon_row([[Classes.icon(c), elem, UiTheme.BONE, Color.WHITE, c["element"]]], cx, row_y, a)
     # Starting gun and gear side by side.
     var gun_id := String(c["start_gun"])
     var gear: Array = []
@@ -409,16 +417,20 @@ func _draw_info(i: int, cx: float, y: float) -> void:
         gear.append([null, "No gear", UiTheme.DIM, Color.WHITE])
     else:
         var it: Dictionary = Items.get_item(item_id)
-        gear.append([Items.icon(it), String(it.get("name", item_id)), UiTheme.BONE, Items.icon_tint(it)])
+        var gear_name := String(it.get("name", item_id))
+        if int(it.get("rarity", 0)) > 0:
+            gear_name += " (%s)" % Items.rarity_name(it)
+        gear.append([Items.icon(it), gear_name, Items.rarity_text_color(it), Items.ui_icon_tint(it)])
     _icon_row(gear, cx, row_y + 38.0, a)
-    var aff_col: Color = tint.lerp(UiTheme.BONE, 0.35) if c["element"] != Element.Kind.NONE else UiTheme.DIM
+    var aff_col: Color = UiTheme.BONE if c["element"] != Element.Kind.NONE else UiTheme.DIM
     _text_c(Classes.affinity_text(c), cx, row_y + 82.0, 22, Color(aff_col, a))
     var quirk := Classes.quirk_text(c)
     _text_c(quirk if quirk != "" else "No quirk", cx, row_y + 110.0, 22, Color(UiTheme.BONE, a))
     _text_c(flavour, cx, row_y + 140.0, 20, Color(UiTheme.DIM, a))
 
 
-## A centred row of [icon (or null), text, text colour, icon modulate] entries, 32 px icons.
+## A centred row of [icon (or null), text, text colour, icon modulate, element swatch
+## (optional Element.Kind; a small square of its colour after the icon)] entries, 32 px icons.
 func _icon_row(entries: Array, cx: float, y: float, a: float) -> void:
     var fs := 24
     var icon_px := 32.0
@@ -427,7 +439,7 @@ func _icon_row(entries: Array, cx: float, y: float, a: float) -> void:
     var widths: Array = []
     for e in entries:
         var ent: Array = e
-        var w := _tw(String(ent[1]), fs) + (icon_px + 8.0 if ent[0] != null else 0.0)
+        var w := _tw(String(ent[1]), fs) + (icon_px + 8.0 if ent[0] != null else 0.0) + (SWATCH + 8.0 if _swatch_of(ent) != Element.Kind.NONE else 0.0)
         widths.append(w)
         total += w
     total += sep * float(maxi(0, entries.size() - 1))
@@ -438,6 +450,12 @@ func _icon_row(entries: Array, cx: float, y: float, a: float) -> void:
             var im: Color = ent[3]
             Art.draw_icon(self, ent[0] as Texture2D, Rect2(Vector2(x, y), Vector2(icon_px, icon_px)), Color(im, a))
             x += icon_px + 8.0
+        var sk := _swatch_of(ent)
+        if sk != Element.Kind.NONE:
+            var sq := Rect2(Vector2(x, roundf(y + (icon_px - SWATCH) * 0.5)), Vector2(SWATCH, SWATCH))
+            draw_rect(sq.grow(1.0), Color(0, 0, 0, 0.9 * a))
+            draw_rect(sq, Color(Element.COLORS[sk], a))
+            x += SWATCH + 8.0
         var tc: Color = ent[2]
         _text(String(ent[1]), x, y + (icon_px - float(fs)) * 0.5, fs, Color(tc, a))
         x += _tw(String(ent[1]), fs) + sep
@@ -482,6 +500,13 @@ func _key_w(label: String, ks: float) -> float:
             return ks
         return ks * 0.55 * float(label.length()) + ks * 0.6
     return maxf(ks, ks * 0.5 * float(label.length()) + ks * 0.5)
+
+
+const SWATCH := 12.0
+
+
+func _swatch_of(ent: Array) -> int:
+    return int(ent[4]) if ent.size() > 4 else Element.Kind.NONE
 
 
 func _tint(c: Dictionary) -> Color:

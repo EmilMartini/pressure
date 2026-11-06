@@ -363,6 +363,24 @@ func pixels(kind: int, pos: Vector2, count: int, speed := 80.0, spread := 6.0, p
         _element_px(kind, pos + off, Vector2.RIGHT.rotated(randf() * TAU) * speed * randf_range(0.4, 1.0), pal)
 
 
+## Gun emitters (Gun, Beam, Spray, Mine, Pool, Turret): element pixels flying along `vel`
+## (a spray or a stream), within `jitter` radians of it, each moving as its element does.
+func stream(kind: int, pos: Vector2, vel: Vector2, count: int, jitter := 0.25, spread := 3.0) -> void:
+    for n in _count(count):
+        var off := Vector2(randf_range(-spread, spread), randf_range(-spread, spread))
+        _element_px(kind, pos + off, vel.rotated(randf_range(-jitter, jitter)) * randf_range(0.55, 1.0))
+
+
+## A thin ring in a colour's palette (a nova, an orb pulse, a mine going off).
+func ring(pos: Vector2, r: float, color: Color, life := 0.3) -> void:
+    outline(pos, r, _pal_of(color), life, 2.0, 0.45)
+
+
+## A thin line growing from a to b and fading (an arc of a non-shock chain).
+func ray(a: Vector2, b: Vector2, color: Color, life := 0.2, w := 1.0) -> void:
+    _ray(a, b, color, life, w)
+
+
 ## A rising ember, shed by burning enemies.
 func ember(pos: Vector2) -> void:
     _px(pos, Vector2(randf_range(-10.0, 10.0), randf_range(-55.0, -30.0)), randf_range(0.5, 0.9), randf_range(2.0, 3.0), randf_range(0.45, 0.65), B.EMBER, Element.Kind.FIRE, true)

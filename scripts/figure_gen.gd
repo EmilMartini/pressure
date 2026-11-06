@@ -12,7 +12,15 @@ extends RefCounted
 ## Parts are small string grids: "." empty, "#" main, "d" dark, "l" light, "a" accent,
 ## "o" outline black, "b" bone. Layers go cape, legs, torso, arms, head, head overlay,
 ## accents, then a 1 px dark outline around the silhouette (like the Kenney figures).
-## Results are cached by the profile rounded to 0.5 steps plus the player colour.
+## Results are cached by the profile rounded to 0.5 steps plus the player colour and the
+## worn items.
+##
+## Worn gear (WornGear): every head, chest, hands and feet item is drawn as its own piece
+## (a wizard hat, a hood, plate, a cloak, gauntlets, boots...) in its icon's colours, on
+## top of the blended body: a worn head replaces the theme head, a chest piece goes over
+## the theme torso (open vests and straps let it show), hands and feet over the arms and
+## legs. Pieces sit on their own layer, so theme accents never paint over them; accents
+## that would fight a piece (flame tips on a hat, a gem on plate) are left out.
 
 const CLASS_WEIGHT := 3.0
 const GUN_WEIGHT := 0.5
@@ -34,6 +42,7 @@ const L_TORSO := 3
 const L_ARMS := 4
 const L_HEAD := 5
 const L_FX := 6
+const L_WORN := 7                # worn gear pieces (WornGear)
 const L_OUT := 9
 
 const ORDER := ["fire", "wet", "shock", "ice", "oil", "poison", "acid", "blood", "void", "holy",
@@ -166,6 +175,12 @@ const CAPES := {
     "tattered": ["..dddddddddd..", "..dddddddddd..", "..dddddddddd..", "..dddddddddd..",
         ".dddddddddddd.", ".dddddddddddd.", ".dddddddddddd.", "dd..dd..dd..dd"],
 }
+
+## Theme accents left out under a worn piece: on the head, on a covering chest piece, and
+## on any chest piece (they would draw over its sides).
+const HEAD_FX := ["flame_tips"]
+const COVERED_TORSO_FX := ["bolt", "stains", "gem", "blood_stains", "wave_hem"]
+const CHEST_FX := ["flask_belt", "scarf", "bandolier"]
 
 const DEBUG_BLENDS := [["fire", "acid"], ["ice", "plate"], ["void", "holy"], ["shock", "scout"],
     ["blood", "fire"], ["stone", "gale"], ["poison", "merchant"], ["holy", "plate"]]
@@ -446,15 +461,17 @@ static func _pal(pal: Array[Color], accent: Color) -> Dictionary:
 
 ## The figure for `player`: { frames: [idle, step] (ImageTexture), images, id, name,
 ## color (main), aura (top theme colour), parts, profile }. Cached; only regenerates when
-## the profile changes by a 0.5 step or the player colour changes.
+## the profile changes by a 0.5 step, the player colour changes or a worn piece changes.
 static func generate(player: Player) -> Dictionary:
     var pc := Color(0, 0, 0, 0)
     if player != null and is_instance_valid(player):
         pc = player.color
-    return generate_from(profile(player), pc)
+    return generate_from(profile(player), pc, WornGear.worn_of(player))
 
 
-static func generate_from(prof: Dictionary, player_color: Color) -> Dictionary:
+## `worn`: { slot: item id } for the head, chest, hands and feet pieces drawn on the figure
+## (WornGear.worn_of); empty draws the themes alone.
+static func generate_from(prof: Dictionary, player_color: Color, worn: Dictionary = {}) -> Dictionary:
     var rounded: Dictionary = {}
     for k in prof.keys():
         var w := snappedf(float(prof[k]), 0.5)
@@ -462,10 +479,11 @@ static func generate_from(prof: Dictionary, player_color: Color) -> Dictionary:
             rounded[String(k)] = w
     if rounded.is_empty():
         rounded["vagrant"] = CLASS_WEIGHT
-    var key := _key(rounded, player_color)
+    var key := _key(rounded, player_color, worn)
     if _cache.has(key):
         return _cache[key]
     var p := parts(rounded)
+    p["worn"] = WornGear.resolve(worn)
     var pal := palette(rounded, player_color)
     var idle := _render(p, pal, false)
     var step := _render(p, pal, true)
@@ -534,13 +552,15 @@ static func rim_image(src: Image) -> Image:
     return out
 
 
-static func _key(rounded: Dictionary, player_color: Color) -> int:
+static func _key(rounded: Dictionary, player_color: Color, worn: Dictionary = {}) -> int:
     var arr: Array = []
     for th in ORDER:
         if rounded.has(th):
             arr.append(th)
             arr.append(rounded[th])
     arr.append(player_color)
+    for slot in WornGear.SLOTS:
+        arr.append(String(worn.get(slot, "")))
     return hash(arr)
 
 
@@ -554,13 +574,21 @@ static func _render(p: Dictionary, pal: Array[Color], step: bool) -> Image:
     var tw := 8 + trim
     var main_pal := _pal(pal, pal[3])
     var side_pal := _pal(pal, theme_accent(String(p["side_theme"])))
+    var worn: Dictionary = p.get("worn", {})
+    var wp := {}   # slot -> piece palette
+    for slot in worn.keys():
+        wp[slot] = WornGear.pal(worn[slot]["colors"], pal)
+    var chest_kind := String(worn["chest"]["kind"]) if worn.has("chest") else ""
 
-    # Cape (behind everything; the step frame flutters its lower rows).
-    var cape: Array = CAPES.get(String(p["cape"]), [])
-    for r in cape.size():
-        var cy := 7 + r
-        var shift := 1 if step and cy >= 12 else 0
-        buf.row(String(cape[r]), 1 + shift, cy, side_pal, L_CAPE)
+    # Cape (behind everything; the step frame flutters its lower rows). A cloak replaces it.
+    if chest_kind != "" and WornGear.chest_cape(chest_kind) != "":
+        WornGear.draw_cape(buf, chest_kind, wp["chest"], step)
+    else:
+        var cape: Array = CAPES.get(String(p["cape"]), [])
+        for r in cape.size():
+            var cy := 7 + r
+            var shift := 1 if step and cy >= 12 else 0
+            buf.row(String(cape[r]), 1 + shift, cy, side_pal, L_CAPE)
     # Legs (the step frame lifts the first leg by a pixel).
     var legs: Array = b["legs"]
     for li in legs.size():
@@ -581,11 +609,24 @@ static func _render(p: Dictionary, pal: Array[Color], step: bool) -> Image:
         var arow := String(arm[r])
         buf.row(arow, ax, 7 + r, side_pal, L_ARMS)
         buf.row(_mirror(arow), ar, 7 + r, side_pal, L_ARMS)
-    # Head, then theme 2's head as a detail when the two are close.
-    var head: Array = HEADS[p["head"]]
-    for r in head.size():
-        buf.row(String(head[r]), 4, r, main_pal, L_HEAD)
+    # Worn pieces over the body: the chest piece (with its sleeves or pauldrons), boots,
+    # then gloves.
+    if chest_kind != "":
+        WornGear.draw_chest(buf, chest_kind, wp["chest"], tx, trim, ax, ar)
+    if worn.has("feet"):
+        WornGear.draw_feet(buf, String(worn["feet"]["kind"]), wp["feet"], legs, step)
+    if worn.has("hands"):
+        WornGear.draw_hands(buf, String(worn["hands"]["kind"]), wp["hands"], ax, ar)
+    # Head: the worn one, or the theme's with theme 2's head as a detail when the two are
+    # close.
     var ov_id := String(p["overlay"])
+    if worn.has("head"):
+        WornGear.draw_head(buf, String(worn["head"]["kind"]), wp["head"])
+        ov_id = ""
+    else:
+        var head: Array = HEADS[p["head"]]
+        for r in head.size():
+            buf.row(String(head[r]), 4, r, main_pal, L_HEAD)
     if ov_id != "":
         var ov: Dictionary = HEAD_OVERLAYS[ov_id]
         var ov_pal := _pal(pal, theme_accent(String(p["overlay_theme"])))
@@ -596,7 +637,12 @@ static func _render(p: Dictionary, pal: Array[Color], step: bool) -> Image:
     var lay := { "ax": ax, "ar": ar, "t0": tx + 1, "t1": tx + tw - 2 }
     for acc in p["accents"]:
         var ad: Dictionary = acc
-        _fx(buf, String(ad["fx"]), lay, _pal(pal, theme_accent(String(ad["theme"]))), step)
+        var fx := String(ad["fx"])
+        if worn.has("head") and HEAD_FX.has(fx):
+            continue
+        if chest_kind != "" and (CHEST_FX.has(fx) or (WornGear.chest_covers(chest_kind) and COVERED_TORSO_FX.has(fx))):
+            continue
+        _fx(buf, fx, lay, _pal(pal, theme_accent(String(ad["theme"]))), step)
     buf.outline(OUTLINE)
     return buf.to_image()
 
@@ -686,9 +732,12 @@ static func _fx(buf: Buf, fx: String, lay: Dictionary, pal: Dictionary, step: bo
         "halo":
             var htop := 16
             for x in range(4, 12):
-                var ht := buf.top_of(x, L_HEAD)
-                if ht >= 0 and ht < htop:
-                    htop = ht
+                for hl in [L_HEAD, L_WORN]:
+                    var ht := buf.top_of(x, int(hl))
+                    if ht >= 0 and ht < htop:
+                        htop = ht
+            if htop < 1:
+                return   # a tall worn hat leaves no room above it
             # An arc over the head: a bar above it with ends dropping past its sides.
             var hy := maxi(0, htop - 1)
             for x in range(5, 11):
@@ -885,6 +934,55 @@ static func debug_sheet(path: String, player_color: Color = Color(0, 0, 0, 0)) -
         var fc: Color = fig["color"]
         _text(sheet, ox + 4, oy + fs + 8, String(fig["name"]), fc.lightened(0.3), 2)
         _text(sheet, ox + 4, oy + fs + 24, String(e[0]), Color(0.6, 0.56, 0.6), 2)
+    return sheet.save_png(path)
+
+
+## Every item of `slot` (head, chest, hands, feet) worn on each profile in `profiles`: the
+## item's icon at 2x, then the idle figures at 5x and the step frame of the last, with
+## the item id and the kind it is drawn as. Saved as one PNG at `path`.
+static func gear_sheet(path: String, slot: String, profiles: Array = [], player_color: Color = Color(0, 0, 0, 0)) -> Error:
+    if profiles.is_empty():
+        profiles = [{ "vagrant": CLASS_WEIGHT }, { "fire": CLASS_WEIGHT }, { "plate": 3.0, "ice": 2.5 }]
+    var ids: Array = []
+    for id in Items.catalog.keys():
+        if String(Items.get_item(String(id)).get("slot", "")) == slot:
+            ids.append(String(id))
+    var scale := 5
+    var fs := 16 * scale
+    var cols := 3
+    var cell_w := 64 + 12 + (fs + 6) * (profiles.size() + 1) + 16
+    var cell_h := fs + 44
+    var rows := (ids.size() + cols - 1) / cols
+    var sheet := Image.create_empty(cols * cell_w + 16, rows * cell_h + 16, false, Image.FORMAT_RGBA8)
+    sheet.fill(Color(0.09, 0.08, 0.10))
+    for i in ids.size():
+        var id: String = ids[i]
+        var it: Dictionary = Items.get_item(id)
+        var ox := 8 + (i % cols) * cell_w
+        var oy := 8 + (i / cols) * cell_h
+        var tex: Texture2D = Items.icon(it)
+        var src: Image = tex.get_image() if tex != null else null
+        sheet.fill_rect(Rect2i(ox, oy + (fs - 64) / 2, 64, 64), Color(0.15, 0.13, 0.15))
+        if src != null and not src.is_empty():
+            var big: Image = src.duplicate()
+            if big.is_compressed():
+                big.decompress()
+            big.convert(Image.FORMAT_RGBA8)
+            big.resize(64, 64, Image.INTERPOLATE_NEAREST)
+            sheet.blend_rect(big, Rect2i(0, 0, 64, 64), Vector2i(ox, oy + (fs - 64) / 2))
+        var fx := ox + 64 + 12
+        for pi in profiles.size() + 1:
+            var prof: Dictionary = profiles[mini(pi, profiles.size() - 1)]
+            var fig := generate_from(prof, player_color, { slot: id })
+            var img: Image = (fig["images"] as Array)[1 if pi == profiles.size() else 0]
+            sheet.fill_rect(Rect2i(fx, oy, fs, fs), Color(0.15, 0.13, 0.15))
+            var fb: Image = img.duplicate()
+            fb.resize(fs, fs, Image.INTERPOLATE_NEAREST)
+            sheet.blend_rect(fb, Rect2i(0, 0, fs, fs), Vector2i(fx, oy))
+            fx += fs + 6
+        var kind := WornGear.kind_of(id, it)
+        _text(sheet, ox, oy + fs + 8, id, Color(0.85, 0.8, 0.75), 2)
+        _text(sheet, ox, oy + fs + 22, kind, Color(0.95, 0.75, 0.4), 2)
     return sheet.save_png(path)
 
 

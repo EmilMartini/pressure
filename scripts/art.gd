@@ -100,56 +100,60 @@ const ICON_ROOT := "res://assets/icons/"
 ## 1-bit tile shown when an icon path is missing.
 const ICON_FALLBACK := Vector2i(45, 16)
 
-## Gun id -> icon (path under ICON_ROOT), chosen by archetype and element: crossbows and
-## slings for the mechanical guns, wands, rods and staves for the elemental ones.
+## Gun id -> icon (path under ICON_ROOT), one family per archetype so the shape says how it
+## fires: hand crossbows (pistols), crossbows (bursts, flak), blowguns (repeaters), flasks
+## (throwers), discs (mines), lamps (cannons, turret), wands (forking wands), rods
+## (homing), bows (chain), spears (charge), a halberd (melee), a fan, a phial and a
+## lantern (sprayers), orbs and crystals (orbs), a rune (nova).
 const GUN_ICONS := {
-    "water_pistol": "item/wand/gem_silver_new.png",
-    "arc_rifle": "item/weapon/ranged/arbalest_2.png",
-    "blowtorch": "item/staff/staff_9.png",
-    "frost_caster": "item/wand/gem_plastic_new.png",
-    "oil_slinger": "item/weapon/ranged/greatsling_2.png",
-    "mist_sprayer": "item/rod/rod_4_new.png",
+    "water_pistol": "item/weapon/ranged/hand_crossbow.png",
+    "arc_rifle": "item/weapon/artefact/urand_storm_bow.png",
+    "blowtorch": "item/misc/misc_lantern.png",
+    "frost_caster": "item/misc/misc_rune.png",
+    "oil_slinger": "item/potion/black_new.png",
+    "mist_sprayer": "item/misc/misc_phial.png",
     "ember_carbine": "item/weapon/ranged/crossbow_2.png",
-    "hydro_cannon": "item/rod/rod_5_new.png",
-    "glacier_lance": "item/rod/rod_6_old.png",
-    "tar_mortar": "item/weapon/ranged/crossbow_1.png",
-    "storm_pike": "item/weapon/artefact/urand_arc_blade.png",
-    "venom_spitter": "item/rod/rod_2_old.png",
+    "hydro_cannon": "item/misc/misc_horn.png",
+    "glacier_lance": "item/weapon/artefact/urand_crystal_spear_new.png",
+    "tar_mortar": "item/misc/misc_disc_new.png",
+    "storm_pike": "item/weapon/halberd_2.png",
+    "venom_spitter": "item/weapon/ranged/blowgun_1.png",
     "acid_flask": "item/potion/bubbly.png",
-    "blood_lance": "item/staff/staff_3.png",
+    "blood_lance": "item/weapon/artefact/urand_bloodbane_new.png",
     "void_orb": "item/misc/misc_crystal_new.png",
     "radiant_ray": "item/weapon/artefact/urand_brilliance.png",
-    "gale_blaster": "item/wand/gem_glass_new.png",
+    "gale_blaster": "item/misc/misc_fan_new.png",
     "stone_sling": "item/weapon/ranged/sling_1.png",
     "flare_pistol": "item/weapon/artefact/urand_firestarter.png",
     "slick_wand": "item/wand/gem_wood_new.png",
-    "spark_needler": "item/wand/wand_brass.png",
-    "cinder_flak": "item/weapon/ranged/sling_2.png",
+    "spark_needler": "item/weapon/ranged/blowgun_2.png",
+    "cinder_flak": "item/weapon/ranged/crossbow_1.png",
     "rime_chakram": "item/weapon/ranged/silver_tomahawk.png",
-    "plague_mortar": "item/staff/staff_5.png",
+    "plague_mortar": "item/potion/murky.png",
     "blight_seeker": "item/wand/gem_lead_new.png",
     "etcher_beam": "item/rod/rod_2_new.png",
-    "corrosion_burst": "item/wand/gem_bronze_new.png",
+    "corrosion_burst": "item/misc/misc_disc_old.png",
     "vein_pistol": "item/weapon/ranged/hand_crossbow_2.png",
     "clot_orb": "item/misc/misc_orb.png",
     "rift_seeker": "item/rod/rod_6_new.png",
     "null_wand": "item/wand/gem_iron_new.png",
-    "sun_cannon": "item/staff/staff_7.png",
-    "prayer_burst": "item/staff/staff_1.png",
+    "sun_cannon": "item/misc/misc_lamp_new.png",
+    "prayer_burst": "item/weapon/holy_scourge.png",
     "zephyr_rang": "item/weapon/artefact/urand_gyre.png",
     "cyclone_flak": "item/rod/rod_9_new.png",
     "boulder_mortar": "item/weapon/ranged/arbalest_1.png",
-    "gravel_shotgun": "item/weapon/ranged/greatsling.png",
+    "gravel_shotgun": "item/weapon/ranged/rock_old.png",
     "eclipse_carbine": "item/weapon/ranged/arbalest_3.png",
-    "kettle_gun": "item/wand/gem_brass_old.png",
+    "kettle_gun": "item/misc/magic_lamp.png",
     "storm_seeker": "item/rod/rod_1_old.png",
     "railgun": "item/weapon/artefact/urand_sniper.png",
-    "napalm_lobber": "item/rod/rod_1_new.png",
-    "duality_burst": "item/staff/staff_6.png",
+    "napalm_lobber": "item/weapon/artefact/urand_hellfire.png",
+    "duality_burst": "item/weapon/artefact/urand_elemental.png",
 }
 ## Guns whose tile stands upright (a flask, an orb) instead of lying diagonally like a
 ## held weapon; the orbiting sprite does not rotate these toward the aim.
-const GUN_ICON_UPRIGHT := ["acid_flask", "void_orb", "clot_orb"]
+const GUN_ICON_UPRIGHT := ["acid_flask", "void_orb", "clot_orb", "oil_slinger", "plague_mortar", "frost_caster",
+    "tar_mortar", "corrosion_burst", "kettle_gun", "sun_cannon", "blowtorch", "gravel_shotgun"]
 ## Trophy wall icons for rewards that are neither a gun nor a class: the full reward
 ## string is checked first, then its prefix.
 const REWARD_ICONS := {
@@ -487,7 +491,7 @@ static func debug_icon_sheet(path: String) -> Error:
         gun_rows.append([String(gid), Art.gun_icon_path(String(gid)), Color.WHITE, false])
     sections.append(["GUNS", gun_rows])
     var up_rows: Array = []
-    for opt in LevelUps.CATALOG:
+    for opt in LevelUps.options().filter(func(o): return int(o["rarity"]) == int(LevelUps.options().filter(func(q): return q["base"] == o["base"])[0]["rarity"])):
         var o: Dictionary = opt
         up_rows.append([String(o["id"]), String(o.get("icon", "")), Color.WHITE, false])
     sections.append(["LEVEL-UPS", up_rows])

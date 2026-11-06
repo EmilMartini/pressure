@@ -4,8 +4,13 @@ extends Node2D
 ## through a cloud of another element reacts with the whole cloud. Bounces redirect it
 ## to the next enemy. Drawn per element: droplets, bolts, embers, shards, tar...
 ## `behaviour` (from GunData) changes the flight: "straight", "lob" (arcs over everything
-## and splashes on landing), "homing", "boomerang" (returns to the shooter and can hit the
-## same enemies again on the way back) and "flak" (bursts into shards on hit or at range).
+## and splashes on landing), "homing" (steers to its own target), "boomerang" (returns to
+## the shooter and can hit the same enemies again on the way back), "flak" (bursts into
+## shards when it comes near an enemy, or at range), "orb" (slow, never stops on a body,
+## pulses damage around it), "pool" (lobbed, leaves a Pool where it lands), "fork" (splits
+## into fork_count bolts on the first hit), "ricochet" (caroms off walls; enemy rebounds
+## are `bounces`) and "helix" (weaves around its line, a pair of them crossing).
+## Hits go through Strike.deal, the hit path every gun mechanic shares.
 ## Not a physics body: each tick it asks EnemyGrid which enemy bodies its circle touches and
 ## takes a hit from each one it newly touches (the Area2D body_entered rule), and tests
 ## obstacles, walls and clouds directly.
@@ -32,6 +37,13 @@ var behaviour := "straight"
 var splash_radius := 0.0
 var shard_count := 0
 var homing_turn := 0.0
+var knockback := 0.0        # shove per enemy hit, px/s along the flight
+var aura_radius := 0.0      # orb: pulse radius; pool: pool radius
+var linger := 0.0           # pool: seconds the pool lasts
+var fork_count := 0         # fork: bolts on the first hit
+var ricochet_walls := false # ricochet: walls reflect while bounces last
+var helix_sign := 0.0       # helix: which side of the line it weaves to first
+var home_target: Node2D = null   # homing: the enemy this seeker was sent after
 
 var _hit: Dictionary = {}
 var _clouds_hit: Dictionary = {}
@@ -45,6 +57,9 @@ var spectral := false   # passes through obstacles (Wisp Lantern and friends)
 var _home_target: Node2D = null
 var _landed := false
 var _inside: Dictionary = {}   # enemies the circle touched at the last check
+var _pulse := 0.0              # orb: seconds to the next pulse
+var _base := Vector2.ZERO      # helix: the point on the line it weaves around
+var _age := 0.0
 static var live := 0   # shots in the tree (the bot's --perf probe prints it)
 
 
@@ -54,7 +69,10 @@ func _ready() -> void:
     z_index = 5
     _life0 = maxf(0.01, lifetime)
     _pierce0 = pierce
-    if behaviour == "lob":
+    _base = global_position
+    if home_target != null:
+        _home_target = home_target
+    if behaviour == "lob" or behaviour == "pool":
         # In the air: no contact with anything until it lands (see _physics_process).
         z_index = 6
     if element != Element.Kind.OIL:
@@ -67,8 +85,20 @@ func _ready() -> void:
 func _physics_process(delta: float) -> void:
     if _landed:
         return
-    if behaviour != "lob":
+    _age += delta
+    var lobbed := behaviour == "lob" or behaviour == "pool"
+    if behaviour == "orb":
+        _tick_orb(delta)
+    elif not lobbed:
         _touch_enemies()
+        if is_queued_for_deletion():
+            return
+        if behaviour == "flak" and _age > 0.05:
+            # Proximity fuse: bursts beside the first enemy it comes near.
+            for e in EnemyGrid.overlapping(get_tree(), global_position, radius + 26.0):
+                if not _hit.has(e) and e.emerge <= 0.0:
+                    body_entered.emit(e)
+                    return
     _trail.push_front(global_position)
     if _trail.size() > 6:
         _trail.pop_back()
@@ -79,18 +109,38 @@ func _physics_process(delta: float) -> void:
         "boomerang":
             if not _returning and lifetime <= _life0 * 0.5:
                 _turn_back()
-            if _returning and shooter != null and is_instance_valid(shooter):
-                var to_home := shooter.global_position - global_position
-                if to_home.length() < 18.0:
+            if _returning:
+                # Back along the throw line to where it left the hand (so it crosses what it
+                # cut on the way out), caught early if the shooter is in its path.
+                var to_home := _base - global_position
+                if to_home.length() < 18.0 or (shooter != null and is_instance_valid(shooter) and shooter.global_position.distance_to(global_position) < 18.0):
                     queue_free()
                     return
                 velocity = to_home.normalized() * velocity.length()
-    position += velocity * delta
+    if behaviour == "helix":
+        _base += velocity * delta
+        var side := velocity.normalized().orthogonal()
+        global_position = _base + side * sin(_age * 16.0) * 9.0 * helix_sign
+    else:
+        position += velocity * delta
     lifetime -= delta
-    if behaviour == "lob":
+    if lobbed:
         if lifetime <= 0.0:
             _land()
             return
+        queue_redraw()
+        return
+    if behaviour == "orb":
+        # Orbs pass props and door blockers (their pulses reach them) and stop at walls.
+        var rmo := Room.here
+        if rmo != null and rmo.has_walls and rmo.blocks_shot(global_position + velocity.normalized() * radius):
+            velocity = Vector2.ZERO
+        if lifetime <= 0.0:
+            _orb_pulse()
+            queue_free()
+        queue_redraw()
+        return
+    if ricochet_walls and bounces > 0 and _ricochet():
         queue_redraw()
         return
     if _ob_grace <= 0.0 and not spectral:
@@ -174,6 +224,12 @@ func _turn_back() -> void:
 ## Lob: the shell comes down and splashes everything within splash_radius at full damage.
 func _land() -> void:
     _landed = true
+    if behaviour == "pool":
+        var pool := Pool.new(_strike(), aura_radius, linger)
+        pool.position = global_position
+        Strike.world_parent(self).add_child(pool)
+        queue_free()
+        return
     var r := maxf(splash_radius, radius * 2.0)
     for e in get_tree().get_nodes_in_group("enemies"):
         if not is_instance_valid(e) or e.is_queued_for_deletion() or not e is Enemy:
@@ -268,7 +324,13 @@ func _fx() -> Fx:
 func _draw() -> void:
     var dir := velocity.normalized() if velocity != Vector2.ZERO else Vector2.RIGHT
     var side := dir.orthogonal()
-    if behaviour == "lob":
+    var lobbed := behaviour == "lob" or behaviour == "pool"
+    if behaviour == "orb":
+        # The aura it pulses through, breathing with the pulse.
+        var k := clampf(_pulse / GunData.PULSE, 0.0, 1.0)
+        draw_circle(Vector2.ZERO, aura_radius, Color(color, 0.07 + 0.06 * k))
+        draw_arc(Vector2.ZERO, aura_radius * (1.0 - 0.15 * k), 0.0, TAU, 32, Color(color, 0.35), 1.5)
+    if lobbed:
         # Shadow on the ground, the shell drawn up in the air along a sine arc.
         var t := clampf(1.0 - lifetime / _life0, 0.0, 1.0)
         var arc := clampf(_life0 * velocity.length() * 0.35, 30.0, 140.0)
@@ -359,12 +421,12 @@ func _draw() -> void:
         draw_texture_rect(glow, Rect2(Vector2(-gs, -gs) / 2.0, Vector2(gs, gs)), false, Color(color, 0.35))
     if behaviour == "boomerang":
         draw_arc(Vector2.ZERO, radius * 1.5, lifetime * 14.0, lifetime * 14.0 + PI, 10, Color(color, 0.8), 2.0)
-    if behaviour == "lob":
+    if lobbed:
         draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
 func _on_body_entered(body: Node) -> void:
-    if _landed or behaviour == "lob":
+    if _landed or behaviour == "lob" or behaviour == "pool" or behaviour == "orb":
         return
     if body is Obstacle or (body.is_in_group("obstacles") and body.has_method("apply_element")):
         if _ob_grace > 0.0 or spectral or _hit.has(body):
@@ -393,6 +455,10 @@ func _on_body_entered(body: Node) -> void:
     var enemy := body as Enemy
     _hit[enemy] = true
     _deal_hit(enemy, damage, potency)
+    if knockback > 0.0 and is_instance_valid(enemy) and velocity != Vector2.ZERO:
+        enemy.shove(velocity.normalized() * knockback)
+    if behaviour == "fork" and fork_count > 0:
+        _fork(enemy)
     if behaviour == "flak":
         _burst_shards(enemy)
         _splash(enemy)
@@ -429,45 +495,119 @@ func _hit_prop(prop: Prop) -> void:
         prop.take_damage(damage)
 
 
-## The shared hit path: raw damage (with element-vs-state multipliers), then the element.
+## The shared hit path (Strike.deal): raw damage with the element-vs-state multipliers,
+## then the element and coatings, attributed to the gun.
 func _deal_hit(enemy: Enemy, dmg: float, pot: float) -> void:
-    var raw := dmg
-    if enemy.immune_to == element and element != Element.Kind.NONE:
-        raw = 0.0
-    # How the element meets what the target already carries, before any gear bonuses:
-    # water conducts, damp things burn badly, oil feeds fire, frozen things shatter.
-    if raw > 0.0:
-        if element == Element.Kind.SHOCK and enemy.has_state(Element.Kind.WET):
-            raw *= 1.5
-        if element == Element.Kind.FIRE and enemy.has_state(Element.Kind.WET):
-            raw *= 0.5
-        if element == Element.Kind.FIRE and enemy.has_state(Element.Kind.OIL):
-            raw *= 1.25
-        if element == Element.Kind.STONE and enemy.frozen_time > 0.0:
-            raw *= 1.5
-        if element == Element.Kind.HOLY and (enemy.poison_time > 0.0 or enemy.has_state(Element.Kind.VOID)):
-            raw *= 1.25
-    if shooter != null and raw > 0.0:
-        if enemy.has_state(Element.Kind.WET):
-            raw *= 1.0 + shooter.stat("vs_wet")
-        if enemy.burn_time > 0.0:
-            raw *= 1.0 + shooter.stat("vs_burning")
-        if enemy.frozen_time > 0.0:
-            raw *= 1.0 + shooter.stat("vs_frozen")
-        if enemy.has_state(Element.Kind.SHOCK):
-            raw *= 1.0 + shooter.stat("vs_shocked")
-        if enemy.has_state(Element.Kind.OIL):
-            raw *= 1.0 + shooter.stat("vs_oiled")
-    Telemetry.begin_shot(gun_id, element)
-    enemy.take_damage(raw, color, true, shooter, crit)
-    if is_instance_valid(enemy) and not enemy.is_queued_for_deletion():
-        enemy.apply_element(element, pot, shooter)
-    for extra in extra_elements:
-        if is_instance_valid(enemy) and not enemy.is_queued_for_deletion():
-            enemy.apply_element(extra, pot * 0.8, shooter)
-    Telemetry.end_shot()
-    if shooter != null:
-        Items.fire(shooter, "hit", { "target": enemy, "pos": global_position, "element": element })
+    Strike.deal(enemy, dmg, pot, element, extra_elements, color, crit, shooter, gun_id, global_position)
+
+
+## This shot's numbers as a Strike (for the pools, pulses and splits it makes).
+func _strike() -> Strike:
+    var st := Strike.new()
+    st.damage = damage
+    st.potency = potency
+    st.element = element
+    st.extras = extra_elements
+    st.color = color
+    st.crit = crit
+    st.shooter = shooter
+    st.gun_id = gun_id
+    return st
+
+
+## Orb: every GunData.PULSE seconds, everything within aura_radius takes a hit; a negative
+## knockback pulls them toward the orb.
+func _tick_orb(delta: float) -> void:
+    _pulse -= delta
+    if _pulse <= 0.0:
+        _pulse = GunData.PULSE
+        _orb_pulse()
+
+
+func _orb_pulse() -> void:
+    var st := _strike()
+    for e in Strike.enemies_in(get_tree(), global_position, aura_radius):
+        var to: Vector2 = e.global_position - global_position
+        var kn := to.normalized() * knockback if to.length() > 8.0 else Vector2.ZERO
+        st.hit(e, 1.0, e.global_position, kn)
+    st.touch_world(get_tree(), global_position, aura_radius * 0.6, velocity.normalized())
+    st.touch_clouds(get_tree(), global_position, aura_radius, _clouds_hit)
+    var fx := _fx()
+    if fx != null:
+        fx.ring(global_position, aura_radius, color, 0.22)
+
+
+## Fork: fork_count bolts at 60% leave the hit enemy toward the next nearest ones (or
+## fanned out ahead when there are none). They do not fork again.
+func _fork(from_enemy: Node) -> void:
+    var parent := get_parent()
+    if parent == null:
+        return
+    var n := fork_count
+    fork_count = 0
+    var skip: Dictionary = _hit.duplicate()
+    var dir0 := velocity.normalized() if velocity != Vector2.ZERO else Vector2.RIGHT
+    for i in n:
+        var nxt := Strike.nearest(get_tree(), global_position, 260.0, skip)
+        var d := dir0.rotated(lerpf(-0.6, 0.6, float(i) / float(maxi(1, n - 1))))
+        if nxt != null:
+            skip[nxt] = true
+            d = (nxt.global_position - global_position).normalized()
+        var b := Projectile.new()
+        b.velocity = d * velocity.length() * 0.9
+        b.damage = damage * 0.6
+        b.potency = potency * 0.6
+        b.element = element
+        b.extra_elements = extra_elements
+        b.lifetime = 0.45
+        b.radius = maxf(2.0, radius * 0.7)
+        b.color = color
+        b.crit = crit
+        b.shooter = shooter
+        b.gun_id = gun_id
+        b.position = position
+        b._hit[from_enemy] = true
+        if nxt != null:
+            b.home_target = nxt
+            b.homing_turn = 6.0
+        parent.add_child.call_deferred(b)
+    var fx := _fx()
+    if fx != null:
+        fx.pixels(element, global_position, 5, 90.0, 3.0)
+
+
+## Ricochet: off the room's edge or an interior wall, reflecting the blocked axis.
+## Returns true when it bounced this tick.
+func _ricochet() -> bool:
+    var rm := Room.here
+    if rm == null or not is_instance_valid(rm):
+        return false
+    var r := Rect2(rm.global_position + rm.rect.position, rm.rect.size).grow(-radius)
+    var p := global_position
+    var flipped := false
+    if p.x < r.position.x or p.x > r.end.x:
+        velocity.x = -velocity.x
+        flipped = true
+    if p.y < r.position.y or p.y > r.end.y:
+        velocity.y = -velocity.y
+        flipped = true
+    if not flipped and rm.has_walls and rm.blocks_shot(p):
+        var back := p - velocity * get_physics_process_delta_time()
+        if rm.blocks_shot(Vector2(p.x, back.y)):
+            velocity.x = -velocity.x
+        else:
+            velocity.y = -velocity.y
+        flipped = true
+    if not flipped:
+        return false
+    bounces -= 1
+    global_position = Vector2(clampf(p.x, r.position.x, r.end.x), clampf(p.y, r.position.y, r.end.y))
+    global_position += velocity * get_physics_process_delta_time()
+    _hit.clear()
+    _inside.clear()
+    lifetime = maxf(lifetime, 0.35)
+    Sfx.play_at("hit_wall", global_position, -8.0)
+    return true
 
 
 func _next_target() -> Node2D:

@@ -20,6 +20,7 @@ hit obstacles, props, secret walls and puzzle pieces, which auto-fire never targ
 |---|---|---|
 | Move | WASD | Left stick |
 | Interact (pedestals, stairs, sigil) | E | A |
+| Swap which ring / trinket a pedestal replaces | Q | Y |
 | Vent pressure | Space | LB |
 | Use active item | F | X |
 | Fire manually (aim with right stick / mouse, else facing) | Left mouse | RT |
@@ -46,6 +47,15 @@ set bonuses. Press a gun in the row to drop it on the floor of the current room,
 sits on a plinth and can be picked up again. Shoulders cycle players in co-op.
 
 ## Rooms and loot
+
+**Spoils.** Elites no longer drop pedestals in the middle of a wave: their loot is banked
+("SPOILS +1" over the body) and the wave's end lays out one choice, a free gun and a free
+item plus a card per banked drop, up to four. Take one; the rest are salvaged for scrap
+(30% of their shop price) and the game says so, as it does if you walk out without
+choosing. When a wave ends every scrap piece on the floor flies to you, and pieces left
+lying during a wave reach further the longer they lie. A gun you already carry reads
+"Merge: X tier N" on its plinth. With both rings (or trinkets) worn, a ring pedestal shows
+which one it replaces (the weaker by default) and which one stays; Y / Q swaps them.
 
 Each special room is dressed to be recognised: a counter and keeper in the shop, a chest
 on a dais with scattered gold in treasure rooms, weapon racks in challenge rooms, bones in
@@ -87,9 +97,21 @@ controller joins as a new player by pressing Start.
 
 ## Levels, the Shrine and reactions that chain
 
-Kills give XP. Each level, once the room is clear, you pick one of three upgrades
-(damage, attack speed, crit, bounces, pierce, health, armour, speed, scrap, pressure and
-so on; the catalog is `scripts/levelup.gd`).
+Kills give XP, and a level comes about once per arena wave (the curve is fitted to the XP
+a run earns per wave, so the first room no longer gives three levels and floor 5 no
+longer waits two minutes for one). Each level, once the room is clear, you pick one of
+three **boons** (`scripts/levelup.gd`): fewer, bigger picks than before (+10 to 35%
+damage instead of +4 to 16%), and every one feeds what deals the damage. Damage reaches
+guns, reactions, fusions and burns (a shot's damage seeds the potency of everything it
+causes); Catalyst, Smoulder (burn, poison, bleed), Alchemist (fusions), Apocalypse
+(cataclysms), Residue (compounds wait longer) and Standing Fields (fields last longer)
+push one tier of the ladder; each element you carry has an Attunement (+damage for its
+guns) and an Echo (your reactions with it spread a partner element nearby: Shock spreads
+Wet, Fire spreads Oil...); Glass Cannon, Overclock, Heavy Plate and Split Barrel trade one
+stat for another. A card shows the effect big ("+16% damage"), your value now and after,
+what it changes in plain words, the rarity as frame colour and word, and the element as
+a badge. XP gain, luck, scrap, range, projectile speed and element duration are no longer
+level-ups (measured: they barely moved damage, and element duration lowered it).
 
 Runs also pay **Embers**, for how well you played rather than only how deep you got:
 1 per room cleared, 2 per elite, 3 per reaction you fire for the first time ever, 3 per
@@ -156,6 +178,14 @@ scrap and kills top-right, the gun hotbar bottom-centre (tier pips and mod dots 
 gun, weight beside it), gear slots bottom-left, the vent gauge bottom-right with its
 prompt. Everything is set in the Kenney Pixel font at 20 px or more.
 
+**Rarity owns colour.** In menus, cards and the HUD, colour means rarity, in the World of
+Warcraft palette: Common white, Uncommon green, Rare blue, Epic purple, Legendary orange
+(gun tiers I to IV use the first four), always with the rarity word or pips beside it.
+Elements never colour a frame or a name; they show as a small grey chip with a swatch
+and the element's name. In the world, elements keep their colours. See GDD 6, "UI colour
+rule". `-- --ui-shot --instance=N` (with `res://scenes/main.tscn`) saves review captures
+of every rarity and element to `autotest/ui_*.png`.
+
 ## Balance model
 
 Borrowed from Brotato and tuned by the bot:
@@ -200,9 +230,24 @@ Borrowed from Brotato and tuned by the bot:
 
 ## Guns
 
-Forty-three guns, at least three per element plus six exotics, across archetypes (pistol,
-rifle, shotgun, SMG, sniper, mortar, beam, orb, boomerang, homing, burst, flak, wand,
-cannon) with a DPS budget per weight written next to each in `scripts/gun_library.gd`.
+Forty-three guns in 22 archetypes, and each archetype fires its own way, so two guns of
+different archetypes never play the same (at most three guns share one, and no element has
+two of one): pistols (plain aimed shots), bursts, repeaters (spin up from 40% to full rate
+while firing), a shotgun (pellets, knockback), a sling (caroms off walls and enemies), a
+helix (an ice and a fire bolt twisted together, every hit melts), wands (split into bolts
+on the first hit), cannons (a huge slow ball through everything, shoving it), flak
+(proximity burst into shards), homing (seekers that spread over different enemies),
+boomerangs, orbs (slow, pulse damage around them; the void one pulls), mortars, throwers
+(a flask that leaves a pool), beams (a continuous ray that ticks and sweeps toward the
+aim), sprayers (a short cone that hits everything in it and paints its floor: fire, water,
+wind), chains (an arc that jumps between enemies), a nova (a ring around you), a melee
+sweep, charge guns (wind up, then a rail through the whole line), mines (burst when an
+enemy steps near) and a turret (sets down a kettle that fires steam on its own). The gun
+card and the Journal say how each one fires in one line; icons come in one family per
+archetype. Balance is measured, not budgeted: `--gun-probe` fires every gun alone at
+dummies and the numbers sit in `scripts/gun_library.gd` and GDD.md ("Gun archetypes").
+Gun ids never changed; Prayer Burst is now called Prayer Chain and Duality Burst Duality
+Helix.
 Tiers I to IV: a duplicate merges into the gun you carry one tier up, and the shop's
 Gunsmith raises your lowest-tier gun. A gun holds one mod per tier and mod effects stack.
 When more than one gun has a free slot, picking up a mod opens a picker (one card per
@@ -385,11 +430,33 @@ the flame hood and gains goggles and a flask belt, and is named "Pyromancer-Alch
 Each pickup nudges a part or the colour instead of swapping the figure.
 `FigureGen.debug_sheet(path)` renders every class and eight blends to one PNG.
 
+What you wear is drawn on it (`scripts/worn_gear.gd`): every head, chest, hands and feet
+item is its own hand-authored pixel piece of its kind, layered on the blended body. Hats:
+pointed wizard hat (tall or bent), wide-brim hat, hood, open helm, visored helm, flat-top
+great helm, horned helm, winged helm, crown, circlet, cap, skullcap, feathered cap, miner's
+lamp, gas mask, goggles, monocle. Chest: vest, quilted jerkin, hide, apron, coat, robe,
+shroud, plate (with pauldrons), spiked plate, thorned leather, mail, cloak (a cape in the
+item's colours), bandolier, harness. Hands: gloves, gauntlets, spiked gauntlets, mitts,
+wraps, fingerless gloves, bracers, a held sword. Feet: boots, tall boots, greaves,
+sandals, wraps, shoes, winged boots. Each item maps to a kind by an explicit table
+(`KIND_OVERRIDES`) with keyword rules on its name and icon as the fallback, and is
+coloured from its own Dungeon Crawl icon (dominant hue with its shading, plus the most
+common other hue as the trim or gem colour), so the hat on your head matches the hat you
+saw on the pedestal; spell-icon items use their look tint, element or material. A worn
+head replaces the theme head, a chest piece goes over the theme torso (open vests and
+straps let the body show), so the class and gear themes still blend underneath. Rings and
+trinkets stay small accents (sparkles, auras). Pieces are kept under the bloom threshold
+so the glow does not wash them out. Figures are built once per gear change (about 1.5 ms)
+and cached. `FigureGen.gear_sheet(path, slot)` renders every item of a slot on three
+bodies next to its icon.
+
 ## Guns: six slots, duplicates, combining
 
-Brotato's shape: six gun slots (a few items add one), duplicates allowed so three oil
-slingers and a fire gun is a build, and two copies of the same gun at the same tier
-combine into one a tier higher from the character sheet (Combine prompt). Drops are
+Brotato's shape: six gun slots (a few items add one). Picking up a copy of a gun you
+already carry merges it automatically: your lowest-tier copy rises one tier, with no slot
+or extra weight needed, so a duplicate can always be taken even with six guns. Only when
+every copy is at max tier does it take a new slot. Two carried copies at the same tier can
+still be combined from the character sheet (Combine prompt). Drops are
 weighted toward your build: the element you carry most, its best reaction partners, and
 items that feed it are two to three times as likely; a quarter of every roll stays
 off-build so you can pivot.
@@ -475,9 +542,26 @@ tier 0 to 4, the top names by count and by share of fusion damage, a `[FUSION-JS
 for scripts) and a `[FUSION-CHECK] PASS/FAIL` line: the termination proof (no context
 above tier 4, no product made at or below its own tier, at most the room budget of fusions
 in one frame). For parallel silent runs add `--audio-driver Dummy` before the scene and
-`--instance=N` after `--`; each instance gets its own save, Shrine and telemetry file. `godot --path . -- --menu-shot`
+`--instance=N` after `--`; each instance gets its own save, Shrine and telemetry file.
+`--dps-probe` (with `--build=storm --start-floor=N`) stands the player among eight harmless
+dummies that never die and prints `[DPS]`: damage per second over `--probe-secs=N` (default
+40) and its share by tier; `--probe-picks=id,id` adds level-up options, `--no-picks` drops
+the profile's own. Add `--fixed-fps 60` before the scene to run it faster than real time.
+`--payout-shot` saves the level-up cards, the wave-end spoils, the ring swap card and a
+merge pedestal to `autotest/` (real window). Bots print `[LEVEL]` (level, floor, rooms,
+XP so far), `[WAVE]` (what lay on the floor when a wave ended, lowest health),
+`[DWELL]` (seconds spent in a cleared arena) and `[SALVAGE]` lines. `godot --path . -- --menu-shot`
 screenshots the menu and codex. `godot --headless --path . res://scenes/main.tscn -- --obstacle-test`
-checks projectiles hit obstacles. `godot --path . res://scenes/main.tscn -- --themes-shot` saves
+checks projectiles hit obstacles. `godot --headless --fixed-fps 60 --path . res://scenes/main.tscn -- --autotest
+--gun-probe[=a,b,...]` fires each gun (or the ones named) alone at tier I against pinned
+dummies and prints `[GUN-PROBE] id archetype mechanic element weight single=.. pack=..
+budget=..` (damage per second on one dummy 75 px away and on a pack of eight 95 px away;
+`--probe-secs=N`, default 6); with `--gun-shots` in a real window it instead saves
+`autotest/gun_<id>.png`, each gun's mechanic mid-volley. `godot --path . --audio-driver Dummy res://scenes/main.tscn -- --autotest
+--secs=30 --gear-shot[=id,id,...]` dresses the bot (a wizard by default), saves the worn-gear
+sheets `autotest/gear_<slot>.png` and, at pixel size 3 (`--pixel-size=N`, `--set=bloom:0`
+and the like for other options, nothing saved), a calm shot and fight shots with 4x
+close-ups of the player (`gear_fight_<n>.png`, `gear_zoom_<n>.png`). `godot --path . res://scenes/main.tscn -- --themes-shot` saves
 one arena per floor theme (crypt, ruins, frozen, forge, void, ambience running 2 s) and the
 hub's sanctum as `autotest/theme_<name>.png`.
 A bot plays by itself for up to five minutes: explores rooms, buys from pedestals,
@@ -488,6 +572,10 @@ works after a change.
 ## Art and fonts
 
 All art is from Kenney (kenney.nl), CC0, no generative art:
+
+- **Worn gear on the figure** (`scripts/worn_gear.gd`): hand-authored pixel grids, coloured
+  at run time from the Dungeon Crawl Stone Soup item icons already in `assets/icons` (CC0,
+  see its CREDITS.txt). No new image files.
 
 - **1-Bit Pack** (`assets/kenney/1bit_mono.png`): every sprite in the game, tinted per
   thing through the `Art` autoload. Characters, monsters, items, bricks, floor, decals.

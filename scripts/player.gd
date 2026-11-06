@@ -48,6 +48,9 @@ var _stats: Dictionary = {}
 var xp := 0.0
 var level := 1
 var bonus_stats: Dictionary = {}
+var jewel_target := { "ring": "", "trinket": "" }   # swap pick at a pedestal (ring1 / ring2...)
+var xp_total := 0.0               # all XP earned this run (bot pacing logs)
+var boon_triggers: Array = []    # level-up boons that work like gear triggers (Items.fire)
 
 var aim_dir := Vector2.RIGHT      # where the figure faces: the nearest enemy, else movement
 var pressure := 0.0               # -limit cold .. +limit hot: vent charge, nothing more
@@ -141,7 +144,19 @@ func gun_slots() -> int:
 
 
 func can_carry(data: GunData) -> bool:
+    if merge_target(data.id) != null:
+        return true   # a copy merges into the gun already carried: no slot, no extra weight
     return guns.size() < gun_slots() and total_weight() + data.weight <= weight_capacity
+
+
+## The carried copy of this gun that a picked-up duplicate merges into: the lowest tier
+## one that can still rise. Null when the gun is not carried or every copy is at max tier.
+func merge_target(id: String) -> Gun:
+    var best: Gun = null
+    for g in guns:
+        if g.data.id == id and g.tier < Gun.MAX_TIER and (best == null or g.tier < best.tier):
+            best = g
+    return best
 
 
 ## Merge two copies of the same gun at the same tier into one a tier higher (Brotato's
@@ -173,10 +188,20 @@ func combinable_pairs() -> Array:
     return out
 
 
-## Pick up a gun. Duplicates are allowed (three oil slingers is a build); combining two
-## of the same into a higher tier is a deliberate action in the character sheet.
-func add_gun(id: String) -> bool:
+## Pick up a gun. A copy of a gun already carried merges into it: that gun rises one tier
+## (no slot or weight needed). Only when every copy is at max tier does it take a new slot.
+## `allow_merge` false is for bot build replays that set tiers themselves.
+func add_gun(id: String, allow_merge := true) -> bool:
     var data := Guns.make(id)
+    var into := merge_target(id) if allow_merge else null
+    if into != null:
+        into.tier += 1
+        _layout_guns()
+        recalc_stats()
+        Telemetry.combine(into.data.id, into.tier)
+        say("Merged: %s" % into.display_name())
+        Sfx.play("unlock")
+        return true
     if guns.size() >= gun_slots():
         say("All %d gun slots full: drop or combine" % gun_slots())
         return false
@@ -263,7 +288,42 @@ func mod_candidates() -> Array:
 
 
 ## Equip an item. Returns the id it replaced, or "".
-func equip(id: String) -> String:
+## Which ring or trinket slot a new piece of `slot` ("ring" / "trinket") replaces when both
+## are full: the one the player picked at the pedestal (swap button), else the weaker piece
+## (lower rarity, then the cheaper one). Empty when a slot of the pair is free.
+func jewel_key(slot: String) -> String:
+    if not (slot in ["ring", "trinket"]) or not equipment.has(slot + "1") or not equipment.has(slot + "2"):
+        return ""
+    var chosen := String(jewel_target.get(slot, ""))
+    if chosen != "":
+        return chosen
+    var a := Items.get_item(String(equipment[slot + "1"]))
+    var b := Items.get_item(String(equipment[slot + "2"]))
+    var ra := int(a.get("rarity", 0))
+    var rb := int(b.get("rarity", 0))
+    if rb < ra or (rb == ra and Items.price(b, 0) < Items.price(a, 0)):
+        return slot + "2"
+    return slot + "1"
+
+
+## The other piece of a full pair (the one that stays), or "".
+func jewel_kept(slot: String) -> String:
+    var k := jewel_key(slot)
+    if k == "":
+        return ""
+    return slot + ("2" if k.ends_with("1") else "1")
+
+
+## Swap button at a pedestal: replace the other ring / trinket instead.
+func cycle_jewel(slot: String) -> void:
+    var k := jewel_kept(slot)
+    if k != "":
+        jewel_target[slot] = k
+
+
+## Equip an item. `key` picks the slot for rings and trinkets ("ring2"); empty means a free
+## one, else jewel_key (the player's pick at the pedestal, or the weaker piece).
+func equip(id: String, key_hint: String = "") -> String:
     var item := Items.get_item(id)
     if item.is_empty():
         return ""
@@ -279,12 +339,15 @@ func equip(id: String) -> String:
     else:
         var key := slot
         if slot in ["ring", "trinket"]:
-            if not equipment.has(slot + "1"):
+            if key_hint.begins_with(slot) and key_hint in [slot + "1", slot + "2"]:
+                key = key_hint
+            elif not equipment.has(slot + "1"):
                 key = slot + "1"
             elif not equipment.has(slot + "2"):
                 key = slot + "2"
             else:
-                key = slot + "1"
+                key = jewel_key(slot)
+            jewel_target[slot] = ""   # the next pedestal starts from the default again
         old = equipment.get(key, "")
         equipment[key] = id
         Telemetry.equip(id, key, old)
@@ -344,13 +407,24 @@ func stat(key: String) -> float:
 ## few levels, not a dozen.
 func xp_to_next() -> float:
     var n := float(level - 1)
-    return 20.0 + 15.0 * n + 3.0 * n * n
+    return XP_BASE * (pow(n + 1.0, XP_EXP) - pow(n, XP_EXP))
+
+
+## Total XP to reach level `lv` from level 1 is XP_BASE * (lv - 1) ^ XP_EXP. Fitted to the
+## XP a run actually earns per arena wave (human run 4487a37a46b6c384 and bots: about 80 in
+## the first wave, 1,700 to 2,200 by the end of floor 1, 11k to 14k by arena 12, 43k by
+## arena 20, kills grow with the floor), so a level comes about once a wave from the first
+## room to the last. The old curve (20 + 15n + 3n^2 per level) gave 2 to 5 levels in the
+## first wave and then one every 60 to 130 s on floor 5.
+const XP_BASE := 55.0
+const XP_EXP := 2.25
 
 
 func gain_xp(amount: float) -> void:
     if not alive:
         return
     xp += amount * (1.0 + stat("xp_gain"))
+    xp_total += amount * (1.0 + stat("xp_gain"))
     while xp >= xp_to_next():
         xp -= xp_to_next()
         level += 1
@@ -361,8 +435,12 @@ func gain_xp(amount: float) -> void:
 
 ## Called by the level-up screen with an option from LevelUps.
 func apply_upgrade(opt: Dictionary) -> void:
-    var key: String = opt["key"]
-    bonus_stats[key] = float(bonus_stats.get(key, 0.0)) + float(opt["amount"])
+    # Main stat, a second stat ("also") and a drawback ("cost"), all into bonus_stats.
+    var ch: Dictionary = LevelUps.changes(opt)
+    for key in ch.keys():
+        bonus_stats[key] = float(bonus_stats.get(key, 0.0)) + float(ch[key])
+    if opt.has("echo"):
+        boon_triggers.append(LevelUps.echo_trigger(opt))
     recalc_stats()
     say(opt.get("name", "Upgrade"))
 
@@ -670,6 +748,15 @@ func _draw() -> void:
     if frames.size() > 1 and velocity.length() > 20.0:
         fi = int(floorf(_anim_t / PI)) % 2
     _sprite.texture = frames[fi]
+    # One figure pixel per PostFx cell, like the room tiles (Themes.texel): at 2 world px a
+    # 16 px figure covered about 14 cells and the pixel grid dropped rows of it (worn hats
+    # and boots included). Used by the squash in _process. Stays 2 with post-processing
+    # off, when cells are smaller (pixel size 2: nothing is dropped, the figure never
+    # shrinks) or much larger (the hub's zoom, pixel size 4: it never grows by over a
+    # quarter).
+    var cam := get_viewport().get_camera_2d()
+    var cell := Themes.texel(cam.zoom.x) if cam != null and Settings.flag("post_fx") else 2.0
+    _squash_scale = cell if cell >= 2.0 and cell <= 2.5 else 2.0
     # A touch brighter than white: the player outshines the enemies' tinted sprites.
     var body := Color(1.1, 1.1, 1.1)
     var glow: Color = form["color"]
@@ -708,12 +795,14 @@ func _draw() -> void:
     # Back layer (form and item auras, ring sparkles, the active item) under the body.
     Items.draw_costume(self, self, _sprite.position, 2.0, _facing(), false)
     # A 1 px rim in the player's colour just outside the figure's dark outline
-    # (FigureGen.rim), drawn under the body sprite with its exact transform.
+    # (FigureGen.rim), drawn under the body sprite with its exact transform. A deeper shade
+    # of the colour: at full brightness the PostFx bloom flooded the small figure with it
+    # and washed out the worn gear.
     var rim := FigureGen.rim(frames[fi])
     if rim != null:
         var sx := _sprite.scale.x * (-1.0 if _sprite.flip_h else 1.0)
         draw_set_transform(_sprite.position, _sprite.rotation, Vector2(sx, _sprite.scale.y))
-        draw_texture(rim, -rim.get_size() / 2.0, Color(color.lightened(0.15), 0.92 * body.a))
+        draw_texture(rim, -rim.get_size() / 2.0, Color(color.darkened(0.3), 0.92 * body.a))
         draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 

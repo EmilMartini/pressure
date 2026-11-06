@@ -657,6 +657,43 @@ func mod_fitted(o: Dictionary, room: Node) -> void:
     offer_used(snap, room)
 
 
+## An arena wave just ended: what was lying on the floor (item pedestals, scrap pieces)
+## before the payout and the vacuum. Measures clutter; before the spoils change elites
+## left 1 to 5 pedestals and 50 to 900 scrap pieces per late wave.
+func wave_end(room: Node, pedestals: int, scrap_pieces: int) -> void:
+    var main := _main()
+    if main != null and main.get("autotest"):
+        var p0 = main.players[0] if not main.players.is_empty() else null
+        print("[WAVE] end floor=%d t=%.0f peds=%d scrap_pieces=%d banked=%d level=%d low=%.2f xp_total=%.0f" % [
+            _floor, float(main.get("_clock")), pedestals, scrap_pieces, (room.get("banked") as Array).size(),
+            int(p0.level) if p0 != null else 0, float(room.get("low_hp")), float(p0.get("xp_total")) if p0 != null else 0.0])
+    if _run.is_empty():
+        return
+    event("wave_end", { "floor": _floor, "pedestals": pedestals, "scrap_pieces": scrap_pieces,
+        "banked": (room.get("banked") as Array).size() })
+
+
+## The wave-end spoils: what the one choice offered (kind:id) and how many elites banked loot.
+func spoils_offer(_room: Node, offers: Array, banked: int) -> void:
+    if _run.is_empty():
+        return
+    var ids: Array = []
+    for o in offers:
+        ids.append("%s:%s" % [String(o.get("kind", "")), String(o.get("id", ""))])
+    event("spoils", { "floor": _floor, "offered": ids, "banked": banked })
+
+
+## Spoils not taken were turned into scrap: "picked" (the rest of the row after a pick) or
+## "left" (the party walked out without choosing).
+func salvage(ids: Array, scrap: int, reason: String) -> void:
+    var main := _main()
+    if main != null and main.get("autotest"):
+        print("[SALVAGE] floor=%d %s n=%d scrap=%d" % [_floor, reason, ids.size(), scrap])
+    if _run.is_empty():
+        return
+    event("salvage", { "floor": _floor, "ids": ids, "scrap": scrap, "reason": reason })
+
+
 func levelup(options: Array, picked: int, level: int) -> void:
     if _run.is_empty():
         return
@@ -838,6 +875,13 @@ func _new_record(kind: String) -> Dictionary:
         "start_time": Time.get_datetime_string_from_system(true), "bot": false, "partial": true,
         "uploaded": false, "events": [],
     }
+
+
+## Switch to another records file (bot runs) and reload from it, so the records already
+## loaded from the player's own file are never written into the bot's file.
+func use_file(path: String) -> void:
+    FILE = path
+    _load()
 
 
 func _load() -> void:

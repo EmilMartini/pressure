@@ -45,7 +45,9 @@ var _font: Font
 var _toasts: Array = []   # { text, t }
 var _time := 0.0
 ## Last thing picked up, shown in one line over the gear row for PICK_TIME seconds:
-## { name, effect, col, icon, icon_tint, who, t }.
+## { name, effect, col (rarity text colour), frame (rarity colour), tag (rarity word),
+## icon, icon_tint, who, t }. Rarity owns the colour; a gun's tier maps through
+## Items.tier_rarity. Elements never colour HUD frames (GDD 6, "Rarity owns colour").
 var _pick: Dictionary = {}
 var _seen_items: Dictionary = {}   # player instance id -> item ids worn last frame
 var _seen_guns: Dictionary = {}    # player instance id -> gun ids carried last frame
@@ -57,6 +59,211 @@ func _ready() -> void:
     set_anchors_preset(Control.PRESET_FULL_RECT)
     mouse_filter = Control.MOUSE_FILTER_IGNORE
     _font = Art.FONT
+    if OS.get_cmdline_user_args().has("--ui-shot"):
+        _ui_shot_begin()
+
+
+# --- Review capture: rarity and element colours across the UI -----------------------
+#
+# `godot --path . -- --ui-shot --instance=N` (fresh throwaway save, telemetry and Shrine
+# files, never the real ones) dresses player 1 in one elemental item per rarity and four
+# guns at tiers 1 to 4 with mods of every rarity, then saves to res://autotest/:
+#   ui_hud.png        gear boxes, gun hotbar, minimap, the pickup line
+#   ui_items.png      item cards Common, Uncommon, Rare (element items: badge row)
+#   ui_items2.png     item cards Epic, Legendary + the palette strip and every badge
+#   ui_guns.png       gun cards tier I..IV (tier colours, element badges, mod rarities)
+#   ui_sheet.png      the character sheet
+#   ui_gunpick.png    the gun-pick overlay
+#   ui_journal.png    journal Gear tab, ui_journal_reactions.png the Reactions tab
+#   ui_shop.png       a shop pedestal card on the Crisp layer
+# then quits.
+
+
+func _ui_shot_begin() -> void:
+    var tag := Main._instance_tag()
+    Progress.save_path = "user://save_uishot%s.json" % tag
+    Progress.reset()
+    Mastery.save_path = "user://mastery_uishot%s.json" % tag
+    Telemetry.FILE = "user://telemetry/runs_uishot%s.jsonl" % tag
+    _ui_shot.call_deferred()
+
+
+func _ui_wait(secs: float) -> void:
+    await get_tree().create_timer(secs, true).timeout
+
+
+func _ui_save(name: String) -> void:
+    await RenderingServer.frame_post_draw
+    var img := get_viewport().get_texture().get_image()
+    if img != null:
+        img.save_png("res://autotest/%s.png" % name)
+        print("[UI SHOT] %s" % name)
+
+
+## One item per rarity (elemental when the catalog has one), each in its own slot.
+func _ui_items(slot_filter: Callable) -> Array:
+    var ids: Array = Items.catalog.keys()
+    ids.sort()
+    var out: Array = []
+    var used: Array = []
+    for r in 5:
+        var pick := ""
+        for pass_i in 2:
+            for id in ids:
+                var it: Dictionary = Items.get_item(String(id))
+                var slot := String(it.get("slot", ""))
+                if int(it.get("rarity", 0)) != r or not slot_filter.call(slot) or used.has(slot):
+                    continue
+                if pass_i == 0 and not it.has("element"):
+                    continue
+                pick = String(id)
+                break
+            if pick != "":
+                break
+        if pick != "":
+            out.append(pick)
+            if slot_filter.call("ring") or slot_filter.call("head"):
+                used.append(String(Items.get_item(pick)["slot"]))
+    return out
+
+
+func _ui_shot() -> void:
+    DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path("res://autotest"))
+    await _ui_wait(1.0)
+    var p: Player = main.players[0]
+    var gear := _ui_items(func(s: String) -> bool: return s != "mod" and s != "active" and s != "")
+    for id in gear:
+        p.equip(String(id))
+    var mods := _ui_items(func(s: String) -> bool: return s == "mod")
+    # Four guns whose elements share hues with rarities (wet, poison, void, fire, holy).
+    p.weight_capacity = 99
+    var want := [Element.Kind.WET, Element.Kind.POISON, Element.Kind.VOID, Element.Kind.FIRE, Element.Kind.HOLY]
+    var gun_ids: Array = []
+    for k in want:
+        for gid in Guns.all_ids():
+            if Guns.make(String(gid)).element == k and not gun_ids.has(gid):
+                gun_ids.append(gid)
+                break
+    for gid in gun_ids.slice(0, 4):
+        p.add_gun(String(gid), false)
+    var t := 1
+    for g in p.guns:
+        g.tier = clampi(t, 1, Gun.MAX_TIER)
+        g.mods.clear()
+        for m in mini(g.tier, mods.size()):
+            g.mods.append(mods[(m + t) % mods.size()])
+        t += 1
+    p.recalc_stats()
+    await _ui_wait(0.6)
+    await _ui_save("ui_hud")
+
+    # Card gallery on its own layer over everything.
+    var layer := CanvasLayer.new()
+    layer.layer = 60
+    layer.process_mode = Node.PROCESS_MODE_ALWAYS
+    main.add_child(layer)
+    var view := Control.new()
+    view.set_anchors_preset(Control.PRESET_FULL_RECT)
+    view.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+    layer.add_child(view)
+    var page := { "n": 0 }
+    view.draw.connect(func(): _ui_gallery(view, int(page["n"]), gear, p))
+    for n in 3:
+        page["n"] = n
+        view.queue_redraw()
+        await _ui_wait(0.2)
+        await _ui_save(["ui_items", "ui_items2", "ui_guns"][n])
+    layer.queue_free()
+
+    main.pause_menu.show_for_test("res://autotest/ui_sheet.png", p)
+    await _ui_wait(2.0)
+    main.pause_menu.visible = false
+    get_tree().paused = false
+
+    if p.guns.size() > 1 and not mods.is_empty():
+        main.gun_pick.pick(p, p.guns, String(mods[0]), func(_g): pass)
+        await _ui_wait(0.6)
+        await _ui_save("ui_gunpick")
+        main.gun_pick._cancel()
+        get_tree().paused = false
+
+    for d in Elements.all_defs().slice(0, 8):
+        Progress.stats["reaction:" + String(d["name"])] = 1
+    var jl := CanvasLayer.new()
+    jl.layer = 60
+    jl.process_mode = Node.PROCESS_MODE_ALWAYS
+    main.add_child(jl)
+    var root := CenterContainer.new()
+    root.set_anchors_preset(Control.PRESET_FULL_RECT)
+    root.theme = UiTheme.make()
+    jl.add_child(root)
+    var journal := Journal.new(func(): pass)
+    root.add_child(journal)
+    await _ui_wait(0.2)
+    journal.set_tab(2)
+    await _ui_wait(0.4)
+    # Focus a rare-or-better entry so its rarity focus frame and card show.
+    var entries: Array = journal._list.get_children()
+    var focus_at := mini(entries.size() - 1, 40)
+    for i in entries.size():
+        var e: Node = entries[i]
+        if e is Button and (e as Button).get_theme_color("font_color") == Items.RARITY_TEXT_COLORS[Items.Rarity.RARE]:
+            focus_at = i
+            break
+    if focus_at >= 0 and entries[focus_at] is Button:
+        (entries[focus_at] as Button).grab_focus()
+    await _ui_wait(0.4)
+    await _ui_save("ui_journal")
+    journal.set_tab(3)
+    await _ui_wait(0.4)
+    await _ui_save("ui_journal_reactions")
+    jl.queue_free()
+
+    for pos in main.rooms.keys():
+        if main.rooms[pos].type == RoomData.Type.SHOP:
+            main.enter_room(pos, Vector2i.ZERO)
+            await _ui_wait(0.5)
+            if main.current != null and not main.current.pedestals.is_empty():
+                p.global_position = main.current.pedestals[0].global_position + Vector2(0, 30)
+            await _ui_wait(0.5)
+            await _ui_save("ui_shop")
+            break
+    get_tree().quit()
+
+
+## Gallery page `n`: 0 items Common..Rare, 1 Epic, Legendary + palette and badges, 2 guns.
+func _ui_gallery(v: Control, n: int, gear: Array, p: Player) -> void:
+    v.draw_rect(Rect2(Vector2.ZERO, v.size), Color(0.045, 0.040, 0.055))
+    var x := 16.0
+    if n == 0 or n == 1:
+        var ids: Array = gear.slice(0, 3) if n == 0 else gear.slice(3, 5)
+        for id in ids:
+            var it := Items.get_item(String(id))
+            var opts := { "width": 340.0, "player": p }
+            if n == 1 and id == ids[-1]:
+                opts["price"] = Items.price(it, 6)
+                opts["highlight"] = true
+            ItemCard.draw(v, Rect2(Vector2(x, 16), Vector2(340, 0)), it, opts)
+            x += 356.0
+        if n == 1:
+            # The palette strip: frame colour, text colour, and the word.
+            var y := 16.0
+            var px := x
+            for r in 5:
+                var box := Rect2(Vector2(px, y), Vector2(40, 28))
+                v.draw_rect(box, Color(0.05, 0.04, 0.06))
+                v.draw_rect(box, Items.RARITY_COLORS[r], false, 3.0)
+                ItemCard.draw_pips(v, box.position + Vector2(5, 5), r + 1, Items.RARITY_COLORS[r])
+                v.draw_string(Art.FONT, Vector2(px + 50.0, y + 21.0), Items.RARITY_NAMES[r], HORIZONTAL_ALIGNMENT_LEFT, -1, 22, Items.RARITY_TEXT_COLORS[r])
+                y += 38.0
+            y += 10.0
+            for k in Element.ALL:
+                ItemCard.draw_element_badge(v, Vector2(px, y), k)
+                y += 30.0
+    else:
+        for g in p.guns.slice(0, 4):
+            ItemCard.draw_gun(v, Rect2(Vector2(x, 16), Vector2(300, 0)), g.data, { "gun": g, "player": p, "width": 300.0 })
+            x += 312.0
 
 
 func toast(text: String) -> void:
@@ -116,17 +323,20 @@ func _announce_item(p: Player, id: String) -> void:
     if lines.size() > 2:
         effect += ", ..."
     _pick = {
-        "name": String(it["name"]), "effect": effect, "col": Items.rarity_color(it),
-        "icon": Items.icon(it), "icon_tint": Items.icon_tint(it), "who": p.display_name(), "t": PICK_TIME,
+        "name": String(it["name"]), "effect": effect, "col": Items.rarity_text_color(it),
+        "frame": Items.rarity_color(it), "tag": Items.rarity_name(it).to_upper(),
+        "icon": Items.icon(it), "icon_tint": Items.ui_icon_tint(it), "who": p.display_name(), "t": PICK_TIME,
     }
 
 
 func _announce_gun(p: Player, g: Gun) -> void:
     var dmg: float = g.data.damage * g.tier_mult()
-    var dps: float = dmg * g.fire_rate() * float(g.data.projectile_count * g.data.burst_count)
+    var dps: float = g.data.dps_at(dmg, g.top_fire_rate())
     _pick = {
         "name": g.display_name(), "effect": "%s, DPS %.0f, weight %d" % [Element.NAMES[g.data.element], dps, g.data.weight],
-        "col": g.data.color(), "icon": Art.gun_icon(g.data.id), "icon_tint": Color.WHITE,
+        "col": Items.tier_text_color(g.tier), "frame": Items.tier_color(g.tier),
+        "tag": String(Items.RARITY_NAMES[Items.tier_rarity(g.tier)]).to_upper(),
+        "icon": Art.gun_icon(g.data.id), "icon_tint": Color.WHITE,
         "who": p.display_name(), "t": PICK_TIME,
     }
 
@@ -412,7 +622,7 @@ func _draw_hotbars(vp: Vector2, bottom: float) -> void:
         x += guns_w + 12.0
 
         var heavy := p.total_weight() >= p.weight_capacity
-        _body_in(Rect2(x, top, weight_w, block_h), weight, 16, UiTheme.FOCUS if heavy else UiTheme.BONE, HORIZONTAL_ALIGNMENT_LEFT)
+        _body_in(Rect2(x, top, weight_w, block_h), weight, 16, ItemCard.BAD if heavy else UiTheme.BONE, HORIZONTAL_ALIGNMENT_LEFT)
         x += weight_w
 
         if i > 0:
@@ -422,15 +632,18 @@ func _draw_hotbars(vp: Vector2, bottom: float) -> void:
 
 
 func _draw_gun_slot(gun: Gun, slot: Rect2) -> void:
-    var ec: Color = gun.data.color()
+    # Frame and tier pips in the tier's rarity colour (Items.tier_color); the element is
+    # only a small swatch, bottom-right, never the frame.
+    var tc: Color = Items.tier_color(gun.tier)
     draw_rect(slot, Color(0.08, 0.06, 0.08, 0.9))
     _icon_tex(Art.gun_icon(gun.data.id), slot.grow(-6.0), Color.WHITE)
-    draw_rect(slot, Color(ec, 0.85), false, 1.5)
+    draw_rect(slot, tc, false, 2.0)
     # Tier pips, bottom-left.
-    for t in gun.tier:
-        var pip := Rect2(slot.position.x + 4.0 + float(t) * 6.0, slot.end.y - 8.0, 4.0, 4.0)
-        draw_rect(pip.grow(1.0), Color(0, 0, 0, 0.7))
-        draw_rect(pip, UiTheme.BONE)
+    ItemCard.draw_pips(self, Vector2(slot.position.x + 4.0, slot.end.y - 8.0), gun.tier, tc)
+    # Element swatch, bottom-right.
+    var sw := Rect2(slot.end.x - 10.0, slot.end.y - 10.0, 6.0, 6.0)
+    draw_rect(sw.grow(1.0), Color(0, 0, 0, 0.85))
+    draw_rect(sw, Element.COLORS[gun.data.element])
     # One rarity dot per fitted mod, top-right, filling leftward.
     var m := 0
     for id in gun.mods:
@@ -468,8 +681,11 @@ func _draw_gear(p: Player, origin: Vector2, s: float) -> void:
         if p.equipment.has(key):
             var it := Items.get_item(p.equipment[key])
             var charged := not is_active or p.active_charges > 0
-            _icon_tex(Items.icon(it), gbox.grow(-2.0), Items.icon_tint(it) if charged else Color(0.4, 0.38, 0.4))
+            _icon_tex(Items.icon(it), gbox.grow(-2.0), Items.ui_icon_tint(it) if charged else Color(0.4, 0.38, 0.4))
             draw_rect(gbox, Items.rarity_color(it), false, 2.0)
+            if s >= GEAR_BIG:
+                # Rarity as a count too (1 Common .. 5 Legendary), not colour alone.
+                ItemCard.draw_pips(self, gbox.position + Vector2(3, 3), int(it.get("rarity", 0)) + 1, Items.rarity_color(it), 3.0)
             if is_active:
                 _draw_charge_pips(gbox, p.active_charges, Items.active_max_charges(p))
         else:
@@ -494,12 +710,20 @@ func _draw_pick(bottom: float) -> void:
     var box := Rect2(MARGIN - 8.0, y, w, 30.0)
     draw_rect(box, Color(0.05, 0.04, 0.06, 0.88 * a))
     var col: Color = _pick["col"]
-    draw_rect(Rect2(box.position, Vector2(4.0, box.size.y)), Color(col, a))
-    draw_rect(box, Color(col, 0.6 * a), false, 1.5)
+    var frame: Color = _pick.get("frame", col)
+    var tag := String(_pick.get("tag", ""))
+    var tag_w := _body_width(tag, 16) + 10.0 if tag != "" else 0.0
+    box.size.x = minf(box.size.x + tag_w, 800.0)
+    draw_rect(Rect2(box.position, Vector2(4.0, box.size.y)), Color(frame, a))
+    draw_rect(box, Color(frame, 0.6 * a), false, 1.5)
     _icon_tex(_pick["icon"], Rect2(box.position + Vector2(10, 4), Vector2(22, 22)), Color(_pick["icon_tint"], a))
     var x := box.position.x + 38.0
     _body_in(Rect2(x, y, name_w, 30.0), name_text, 20, Color(col, a), HORIZONTAL_ALIGNMENT_LEFT)
-    x += name_w + 14.0
+    x += name_w + 10.0
+    if tag != "":
+        _body_in(Rect2(x, y + 2.0, tag_w, 30.0), tag, 16, Color(col, a), HORIZONTAL_ALIGNMENT_LEFT)
+        x += tag_w
+    x += 4.0
     _body_in(Rect2(x, y, box.end.x - x - 8.0, 30.0), effect, 20, Color(UiTheme.BONE, a), HORIZONTAL_ALIGNMENT_LEFT)
 
 

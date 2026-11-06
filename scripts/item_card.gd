@@ -15,6 +15,15 @@ extends RefCounted
 ##                                                              icon is a Texture2D, dimmed)
 ##   ItemCard.draw_frame(canvas, rect, color, highlight)        the frame alone
 ##   ItemCard.rival_for(player, item)              what equipping `item` would replace
+##   ItemCard.draw_element_badge(canvas, pos, element, size)    a neutral element chip
+##   ItemCard.element_badge_size(element, size)                 its size, for layout
+##   ItemCard.draw_pips(canvas, pos, count, color, pip)         tier / rarity pips
+##
+## Colour rule (GDD 6, "Rarity owns colour"): the frame, border, title and pips take the
+## rarity colour (Items.RARITY_COLORS; a gun's tier through Items.tier_rarity) and the
+## rarity word is always printed beside it. An element never colours a frame, border or
+## name: it shows only as a badge, a dark chip with a neutral border, a small swatch of
+## the element colour and the element's name in neutral text.
 ##
 ## opts: player (set counts, carried guns, free weight), compare (item Dictionary it would
 ## replace), price (int), afford (bool), highlight (bool), notes (Array of String, dim),
@@ -30,6 +39,7 @@ const LINE_GAP := 4.0
 const DEFAULT_WIDTH := 340.0
 
 const BG := Color(0.05, 0.04, 0.06, 0.92)
+const PROMPT_COL := Color(0.6, 1.0, 1.0)   # a button hint, like the pedestal's verb
 const TEXT := Color(0.92, 0.89, 0.82)
 const DIM := Color(0.62, 0.59, 0.57)
 const GOOD := Color(0.45, 0.95, 0.45)
@@ -38,8 +48,16 @@ const TRIGGER_COL := Color(0.55, 0.9, 1.0)
 const COND_COL := Color(1.0, 0.72, 0.4)
 const ACTIVE_COL := Color(1.0, 0.9, 0.45)
 const SCRAP_COL := Color(0.85, 0.72, 0.35)
+## Set names (WoW's set yellow): never the set's element colour, never a rarity colour.
+const SET_COL := Color("#FFD100")
 
 const ROMAN := ["I", "II", "III", "IV", "V"]
+
+## Element badge: neutral chip, swatch of the element colour, neutral name.
+const BADGE_SIZE := 18
+const BADGE_FILL := Color(0.10, 0.09, 0.11, 0.95)
+const BADGE_EDGE := Color(0.46, 0.43, 0.42)
+const BADGE_TEXT := Color(0.86, 0.83, 0.77)
 
 const SLOT_TITLES := {
     "head": "Head", "chest": "Chest", "hands": "Hands", "feet": "Feet", "ring": "Ring",
@@ -86,10 +104,6 @@ const CONDS := {
     "low_hp": "below 40% HP", "high_hp": "above 80% HP", "full_hp": "at full HP", "moving": "while moving",
     "still": "standing still", "calm": "while calm",
 }
-const BEHAVIOURS := {
-    "lob": "Lobbed: arcs over cover, splashes", "homing": "Homing shots",
-    "boomerang": "Boomerang: returns and hits again", "flak": "Flak: bursts into shards",
-}
 
 
 # --- Public: items ------------------------------------------------------------
@@ -124,9 +138,11 @@ static func rival_for(player, item: Dictionary) -> Dictionary:
         return {}
     var key := slot
     if slot == "ring" or slot == "trinket":
-        if not player.equipment.has(slot + "1") or not player.equipment.has(slot + "2"):
+        # Both of the pair worn: the one this would replace (the player's swap pick, else
+        # the weaker piece; Player.jewel_key).
+        key = player.jewel_key(slot)
+        if key == "":
             return {}
-        key = slot + "1"
     var rival: Dictionary = Items.get_item(String(player.equipment.get(key, "")))
     if rival.get("id", "") == item.get("id", ""):
         return {}
@@ -178,6 +194,80 @@ static func draw_frame(canvas: CanvasItem, r: Rect2, col: Color, highlight: bool
         var corner: Vector2 = c
         canvas.draw_rect(Rect2(corner - Vector2(4, 4), Vector2(8, 8)), Color(0, 0, 0, 0.9))
         canvas.draw_rect(Rect2(corner - Vector2(3, 3), Vector2(6, 6)), edge)
+
+
+## Element.Kind of an element given as a Kind int or an item element key ("fire").
+## NONE for anything else.
+static func element_kind(element) -> int:
+    if element is String or element is StringName:
+        return int(Items.ELEMENTS.get(String(element), Element.Kind.NONE))
+    if element is int and Element.NAMES.has(element):
+        return element
+    return Element.Kind.NONE
+
+
+## Size of an element badge whose name is drawn at font `size`.
+static func element_badge_size(element, size: int = BADGE_SIZE) -> Vector2:
+    var kind := element_kind(element)
+    var name := String(Element.NAMES.get(kind, "?"))
+    var sw := roundf(float(size) * 0.6)
+    var tw := Art.FONT.get_string_size(name, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
+    return Vector2(roundf(6.0 + sw + 5.0 + tw + 7.0), float(size) + 6.0)
+
+
+## A neutral element chip at `pos` (top-left): dark fill, neutral border, a small swatch
+## of the element colour, then the element's name in neutral text. The only way an
+## element shows in UI (never a frame or name colour). `element` is an Element.Kind or
+## an item element key. Returns the badge size so callers can lay out a row.
+static func draw_element_badge(canvas: CanvasItem, pos: Vector2, element, size: int = BADGE_SIZE) -> Vector2:
+    var kind := element_kind(element)
+    if kind == Element.Kind.NONE:
+        return Vector2.ZERO
+    var bs := element_badge_size(kind, size)
+    var r := Rect2(pos.floor(), bs)
+    canvas.draw_rect(r, BADGE_FILL)
+    canvas.draw_rect(r, BADGE_EDGE, false, 1.0)
+    var sw := roundf(float(size) * 0.6)
+    var sq := Rect2(r.position + Vector2(6.0, roundf((bs.y - sw) * 0.5)), Vector2(sw, sw))
+    canvas.draw_rect(sq.grow(1.0), Color(0, 0, 0, 0.9))
+    canvas.draw_rect(sq, Element.COLORS[kind])
+    _text(canvas, Vector2(sq.end.x + 5.0, r.position.y + 3.0), String(Element.NAMES[kind]), size, BADGE_TEXT)
+    return bs
+
+
+static var _swatch_cache: Dictionary = {}
+
+
+## A small square texture of element swatches (Colors or Element.Kinds), side by side in
+## vertical bands with a dark rim: the element mark for Button icons and lists, where a
+## drawn badge does not fit. Cached.
+static func swatch_texture(colors: Array, px: int = 18) -> Texture2D:
+    var cols: Array = []
+    for c in colors:
+        cols.append(c if c is Color else Element.COLORS.get(element_kind(c), Color.WHITE))
+    var key := "%d:%s" % [px, str(cols)]
+    if _swatch_cache.has(key):
+        return _swatch_cache[key]
+    var img := Image.create_empty(px, px, false, Image.FORMAT_RGBA8)
+    img.fill(Color(0, 0, 0, 0.9))
+    var inner := px - 4
+    var n := maxi(1, cols.size())
+    for x in inner:
+        var col: Color = cols[mini(n - 1, x * n / inner)] if not cols.is_empty() else Color.WHITE
+        for y in inner:
+            img.set_pixel(2 + x, 2 + y, Color(col, 1.0))
+    var tex := ImageTexture.create_from_image(img)
+    _swatch_cache[key] = tex
+    return tex
+
+
+## A row of `count` square pips from `pos` (top-left) rightward, each with a dark rim:
+## a gun's tier or an item's rarity (count = rarity + 1) as a cue that is not colour.
+static func draw_pips(canvas: CanvasItem, pos: Vector2, count: int, color: Color, pip: float = 4.0) -> void:
+    for i in count:
+        var r := Rect2(pos + Vector2(float(i) * (pip + 2.0), 0.0), Vector2(pip, pip))
+        canvas.draw_rect(r.grow(1.0), Color(0, 0, 0, 0.8))
+        canvas.draw_rect(r, color)
 
 
 ## One stat line, e.g. "+12% damage", "+2 armour", "Chain Lightning +40% potency".
@@ -283,6 +373,11 @@ static func _sep() -> Dictionary:
     return { "sep": true, "gap": 6.0 }
 
 
+## A row of element badges (Element.Kind ints).
+static func _badges(kinds: Array) -> Dictionary:
+    return { "badges": kinds, "gap": 2.0 }
+
+
 ## Effect rows of an item: mods, conditionals, triggers, the active use.
 static func _effect_rows(item: Dictionary) -> Array:
     var rows: Array = []
@@ -326,7 +421,7 @@ static func _item_model(item: Dictionary, opts: Dictionary) -> Dictionary:
     if sid != "":
         var s: Dictionary = Items.SETS[sid]
         var total: int = (s["items"] as Array).size()
-        var scol: Color = Items.set_color(sid)
+        var scol: Color = SET_COL
         rows.append(_sep())
         var thresholds: Array = s["bonuses"].keys()
         thresholds.sort()
@@ -352,8 +447,13 @@ static func _item_model(item: Dictionary, opts: Dictionary) -> Dictionary:
     var cmp: Dictionary = opts.get("compare", {})
     if not cmp.is_empty() and cmp.get("id", "") != item.get("id", ""):
         rows.append(_sep())
-        rows.append(_row("Replaces %s" % cmp.get("name", "?"), LABEL_SIZE, Items.rarity_color(cmp)))
+        rows.append(_row("> Replaces %s (%s)" % [cmp.get("name", "?"), Items.rarity_name(cmp)], LABEL_SIZE, Items.rarity_text_color(cmp)))
         rows.append_array(_compare_rows(item, cmp))
+        # A full ring / trinket pair: the piece that stays, and the button that swaps them.
+        var keeps: Dictionary = opts.get("keeps", {})
+        if not keeps.is_empty():
+            rows.append(_row("Keeps %s (%s)" % [keeps.get("name", "?"), Items.rarity_name(keeps)], TEXT_SIZE, DIM, 2.0))
+            rows.append(_row("%s: replace %s instead" % [String(opts.get("swap_key", "Y")), keeps.get("name", "?")], TEXT_SIZE, PROMPT_COL, 2.0))
 
     if opts.has("price"):
         rows.append(_sep())
@@ -366,11 +466,19 @@ static func _item_model(item: Dictionary, opts: Dictionary) -> Dictionary:
     for n in opts.get("notes", []):
         rows.append(_row(String(n), TEXT_SIZE, DIM, 2.0))
 
+    var badges: Array = []
+    if item.has("element"):
+        var ek := element_kind(item["element"])
+        if ek != Element.Kind.NONE:
+            badges.append(ek)
+    if not badges.is_empty():
+        rows.push_front(_badges(badges))
+    var tc: Color = Items.RARITY_TEXT_COLORS[rarity]
     return {
-        "icon": Items.icon(item), "icon_tint": Items.icon_tint(item),
-        "title": String(item.get("name", "?")), "title_col": rc,
+        "icon": Items.icon(item), "icon_tint": Items.ui_icon_tint(item),
+        "title": String(item.get("name", "?")), "title_col": tc,
         "sub": "%s %s" % [Items.RARITY_NAMES[rarity], SLOT_TITLES.get(slot, slot.capitalize())],
-        "sub_col": rc.darkened(0.15), "frame": rc, "rows": rows,
+        "sub_col": tc, "frame": rc, "pips": rarity + 1, "rows": rows,
     }
 
 
@@ -418,6 +526,14 @@ static func _compare_rows(item: Dictionary, old: Dictionary) -> Array:
     return rows
 
 
+## "Heats you 3 per shot"; continuous guns (beams, sprays) say it per second.
+static func _pressure_text(verb: String, data: GunData, rate: float) -> String:
+    var v := absf(data.pressure_per_shot)
+    if data.mechanic == "beam" or data.mechanic == "cone":
+        return "%s you %.0f per second" % [verb, v * rate]
+    return "%s you %.0f per shot" % [verb, v]
+
+
 static func _gun_model(data: GunData, opts: Dictionary) -> Dictionary:
     var gun = opts.get("gun", null)
     if gun != null and not is_instance_valid(gun):
@@ -430,32 +546,39 @@ static func _gun_model(data: GunData, opts: Dictionary) -> Dictionary:
     if gun != null:
         tier = int(gun.tier)
         mods = gun.mods
-    var ec: Color = data.color()
     var dmg: float = data.damage * (1.0 + 0.35 * float(tier - 1))
     var rate: float = data.fire_rate * (1.0 + 0.12 * float(tier - 1))
     if gun != null:
         rate = gun.fire_rate()
-    var shots := float(data.projectile_count * data.burst_count)
-    var dps := dmg * rate * shots * (1.0 + 0.5 * float(data.pierce))
+    if gun != null and data.spin_up > 0.0:
+        rate = gun.top_fire_rate()   # repeaters show their full speed
+    var dps := data.dps_at(dmg, rate)
     var rows: Array = []
-    rows.append(_row("%.0f damage x %.1f / s" % [dmg, rate], LABEL_SIZE, TEXT))
-    rows.append(_row("DPS %.0f" % dps, LABEL_SIZE, ec.lightened(0.25)))
-    if data.projectile_count > 1:
+    var badges: Array = [data.element]
+    for extra in [data.alt_element, data.extra_element]:
+        if extra != Element.Kind.NONE and not badges.has(extra):
+            badges.append(extra)
+    rows.append(_badges(badges))
+    if data.mechanic == "charge":
+        rows.append(_row("%.0f damage every %.1f s" % [dmg, data.charge_time + 1.0 / maxf(0.05, rate)], LABEL_SIZE, TEXT))
+    else:
+        rows.append(_row("%.0f damage x %.1f / s" % [dmg, rate], LABEL_SIZE, TEXT))
+    rows.append(_row("DPS %.0f" % dps, LABEL_SIZE, Color.WHITE))
+    # How it fires, in plain words (GunData.how), then counts it does not already say.
+    if data.how() != "":
+        rows.append(_row(data.how(), TEXT_SIZE, TEXT))
+    if data.projectile_count > 1 and data.mechanic == "shot" and not data.archetype in ["shotgun", "homing", "helix"]:
         rows.append(_row("%d projectiles per shot" % data.projectile_count, TEXT_SIZE, TEXT))
-    if data.burst_count > 1:
-        rows.append(_row("Bursts of %d" % data.burst_count, TEXT_SIZE, TEXT))
-    if data.pierce > 0:
+    if data.pierce > 0 and data.pierce < 10 and data.mechanic != "beam":
         rows.append(_row("Pierce %d" % data.pierce, TEXT_SIZE, TEXT))
-    if BEHAVIOURS.has(data.behaviour):
-        rows.append(_row(String(BEHAVIOURS[data.behaviour]), TEXT_SIZE, TEXT))
     if data.alt_element != Element.Kind.NONE:
-        rows.append(_row("Every other shot: %s" % Element.NAMES[data.alt_element], TEXT_SIZE, Element.COLORS[data.alt_element]))
+        rows.append(_row("Every other shot: %s" % Element.NAMES[data.alt_element], TEXT_SIZE, TEXT))
     if data.extra_element != Element.Kind.NONE:
-        rows.append(_row("Every hit also applies %s" % Element.NAMES[data.extra_element], TEXT_SIZE, Element.COLORS[data.extra_element]))
+        rows.append(_row("Every hit also applies %s" % Element.NAMES[data.extra_element], TEXT_SIZE, TEXT))
     if data.pressure_per_shot > 0.0:
-        rows.append(_row("Heats you %.0f per shot" % data.pressure_per_shot, TEXT_SIZE, Color(1.0, 0.6, 0.35)))
+        rows.append(_row(_pressure_text("Heats", data, rate), TEXT_SIZE, TEXT))
     elif data.pressure_per_shot < 0.0:
-        rows.append(_row("Chills you %.0f per shot" % -data.pressure_per_shot, TEXT_SIZE, Color(0.6, 0.85, 1.0)))
+        rows.append(_row(_pressure_text("Chills", data, rate), TEXT_SIZE, TEXT))
     var weight_text := "Weight %d" % data.weight
     var weight_col := TEXT
     if player != null and gun == null:
@@ -473,7 +596,7 @@ static func _gun_model(data: GunData, opts: Dictionary) -> Dictionary:
             var m: Dictionary = Items.get_item(String(mid))
             if m.is_empty():
                 continue
-            rows.append(_row(String(m["name"]), TEXT_SIZE, Items.rarity_color(m), 0.0, 8.0))
+            rows.append(_row("%s (%s)" % [m["name"], Items.rarity_name(m)], TEXT_SIZE, Items.rarity_text_color(m), 0.0, 8.0))
             if not bool(opts.get("compact", false)):
                 for line in describe_mods(m):
                     rows.append(_row(line, TEXT_SIZE, DIM, 0.0, 20.0))
@@ -515,10 +638,12 @@ static func _gun_model(data: GunData, opts: Dictionary) -> Dictionary:
     var title := data.display_name
     if tier > 1:
         title += " " + ROMAN[clampi(tier - 1, 0, ROMAN.size() - 1)]
+    # A tier wears the rarity palette (Items.tier_rarity); the element is the badge row.
+    var tr := Items.tier_rarity(tier)
     return {
-        "icon": Art.gun_icon(data.id), "icon_tint": Color.WHITE, "title": title, "title_col": ec.lightened(0.2),
-        "sub": "%s %s  tier %s" % [Element.NAMES[data.element], arche, ROMAN[clampi(tier - 1, 0, ROMAN.size() - 1)]],
-        "sub_col": DIM, "frame": ec, "rows": rows,
+        "icon": Art.gun_icon(data.id), "icon_tint": Color.WHITE, "title": title, "title_col": Items.RARITY_TEXT_COLORS[tr],
+        "sub": "%s %s  tier %s" % [Items.RARITY_NAMES[tr], arche, ROMAN[clampi(tier - 1, 0, ROMAN.size() - 1)]],
+        "sub_col": Items.RARITY_TEXT_COLORS[tr], "frame": Items.RARITY_COLORS[tr], "pips": clampi(tier, 1, 5), "rows": rows,
     }
 
 
@@ -542,6 +667,8 @@ static func _header_height(model: Dictionary, width: float) -> float:
 static func _row_height(row: Dictionary, width: float) -> float:
     if row.get("sep", false):
         return float(row.get("gap", 6.0)) + 6.0
+    if row.has("badges"):
+        return float(row.get("gap", 0.0)) + float(BADGE_SIZE) + 6.0 + LINE_GAP + 2.0
     var size := int(row["s"])
     var lines := _wrap(String(row["t"]), size, width - PAD * 2.0 - float(row.get("indent", 0.0))).size()
     return float(row.get("gap", 0.0)) + float(lines) * (size + LINE_GAP)
@@ -567,6 +694,8 @@ static func _render(canvas: CanvasItem, rect: Rect2, model: Dictionary, opts: Di
     canvas.draw_rect(ib, Color(frame, 0.6), false, 2.0)
     if model.has("icon"):
         Art.draw_icon(canvas, model["icon"], Rect2(ib.position + Vector2(4, 4), Vector2(ICON, ICON)), model.get("icon_tint", Color.WHITE))
+    if model.has("pips"):
+        draw_pips(canvas, Vector2(ib.position.x + 5.0, ib.end.y - 9.0), int(model["pips"]), frame)
     var tx := ib.end.x + 10.0
     var tw := r.end.x - PAD - tx
     var y := r.position.y + PAD
@@ -582,6 +711,12 @@ static func _render(canvas: CanvasItem, rect: Rect2, model: Dictionary, opts: Di
         if row.get("sep", false):
             var sy := y + float(row.get("gap", 6.0)) * 0.5 + 2.0
             canvas.draw_line(Vector2(r.position.x + PAD + 20.0, sy), Vector2(r.end.x - PAD - 20.0, sy), Color(frame, 0.3), 1.0)
+            y += _row_height(row, w)
+            continue
+        if row.has("badges"):
+            var bx := r.position.x + PAD
+            for k in row["badges"]:
+                bx += draw_element_badge(canvas, Vector2(bx, y + float(row.get("gap", 0.0))), k).x + 6.0
             y += _row_height(row, w)
             continue
         y += float(row.get("gap", 0.0))

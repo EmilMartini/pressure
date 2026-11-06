@@ -136,6 +136,13 @@ func _set_icon(b: Button, tex: Texture2D, dim: bool) -> void:
             b.add_theme_color_override(k, grey)
 
 
+## Element swatches as an entry's icon (Element.Kinds or Colors): the element mark,
+## while the text stays neutral (GDD 6, "Rarity owns colour").
+func _swatch(b: Button, colors: Array) -> void:
+    b.icon = ItemCard.swatch_texture(colors, 20)
+    b.add_theme_constant_override("h_separation", 10)
+
+
 func _header(text: String, color: Color) -> void:
     var l := UiTheme.label(text, 22, color)
     l.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
@@ -159,14 +166,10 @@ func _fill_arsenal() -> void:
         var g := Guns.make(id)
         var unlocked := Progress.has("gun:" + id)
         var el: String = Element.NAMES[g.element]
-        var line := "%s    %s   weight %d   %.0f dmg x %.1f/s" % [g.display_name, el, g.weight, g.damage, g.fire_rate]
-        if g.projectile_count > 1:
-            line += "   x%d shots" % g.projectile_count
-        if g.pierce > 0:
-            line += "   pierce %d" % g.pierce
+        var line := "%s    %s %s   weight %d   DPS %.0f\n      %s" % [g.display_name, el, g.archetype, g.weight, g.dps(), g.how()]
         var b: Button
         if unlocked:
-            b = _entry(line, Element.COLORS[g.element])
+            b = _entry(line, UiTheme.BONE)
         else:
             b = _entry(line + "\n      LOCKED   " + Progress.unlock_source("gun:" + id), Color(0.5, 0.48, 0.5))
         _set_icon(b, Art.gun_icon(id), not unlocked)
@@ -182,8 +185,7 @@ func _fill_reactions() -> void:
     for d in defs:
         var pair := "%s + %s" % [Element.NAMES[d["a"]], Element.NAMES[d["b"]]]
         if Progress.discovered(d["name"]):
-            var col: Color = Element.COLORS[d["b"]].lerp(Element.COLORS[d["a"]], 0.5).lightened(0.2)
-            _entry("%s   %s   x%d\n      %s" % [d["name"], pair, Progress.stat("reaction:" + d["name"]), d["desc"]], col)
+            _swatch(_entry("%s   %s   x%d\n      %s" % [d["name"], pair, Progress.stat("reaction:" + d["name"]), d["desc"]], UiTheme.BONE), [d["a"], d["b"]])
         else:
             _entry("???   %s\n      undiscovered" % pair, Color(0.45, 0.42, 0.45))
 
@@ -205,13 +207,13 @@ func _fill_fusions() -> void:
             if Progress.fusion_discovered(row[k]["name"]):
                 got += 1
         var lives := String(c["where"]).replace("+", " and ").replace("floor", "on the floor").replace("cloud", "in the air").replace("enemy", "on the enemy")
-        _header("%s   (%s + %s, lives %s)   %d / %d" % [c["name"], Element.NAMES[c["a"]], Element.NAMES[c["b"]], lives, got, row.size()], c["color"])
+        _header("%s   (%s + %s, lives %s)   %d / %d" % [c["name"], Element.NAMES[c["a"]], Element.NAMES[c["b"]], lives, got, row.size()], UiTheme.BONE)
         for k in row:
             var e: Dictionary = row[k]
             var recipe := "%s + %s" % [c["name"], Element.NAMES[k]]
             if Progress.fusion_discovered(e["name"]):
                 var extra := "   leaves a field" if e.get("leaves_field", false) else ""
-                _entry("%s   %s   x%.1f%s   fired %d\n      %s" % [e["name"], recipe, float(e["mult"]), extra, Progress.stat("fusion:" + e["name"]), e["desc"]], c["color"].lerp(Element.COLORS[k], 0.35).lightened(0.15))
+                _swatch(_entry("%s   %s   x%.1f%s   fired %d\n      %s" % [e["name"], recipe, float(e["mult"]), extra, Progress.stat("fusion:" + e["name"]), e["desc"]], UiTheme.BONE), [c["color"], k])
             else:
                 _entry("???   %s" % recipe, Color(0.45, 0.42, 0.45))
 
@@ -237,12 +239,12 @@ func _fill_cataclysms() -> void:
             if Progress.fusion_discovered(row[k]["name"]):
                 got += 1
         var title: String = fname if known else "???"
-        _header("%s field   (%s + %s, rains %s)   %d / %d" % [title, c.get("name", "?"), Element.NAMES[info["element"]], Element.NAMES[payload], got, row.size()], Element.COLORS[payload])
+        _header("%s field   (%s + %s, rains %s)   %d / %d" % [title, c.get("name", "?"), Element.NAMES[info["element"]], Element.NAMES[payload], got, row.size()], UiTheme.BONE)
         for k in row:
             var e: Dictionary = row[k]
             var recipe := "%s + %s" % [fname if known else "???", Element.NAMES[k]]
             if Progress.fusion_discovered(e["name"]):
-                _entry("%s   %s   x%.1f   fired %d\n      %s" % [e["name"], recipe, float(e["mult"]), Progress.stat("fusion:" + e["name"]), e["desc"]], Element.COLORS[payload].lerp(Element.COLORS[k], 0.5).lightened(0.2))
+                _swatch(_entry("%s   %s   x%.1f   fired %d\n      %s" % [e["name"], recipe, float(e["mult"]), Progress.stat("fusion:" + e["name"]), e["desc"]], UiTheme.BONE), [payload, k])
             else:
                 _entry("???   %s" % recipe, Color(0.45, 0.42, 0.45))
 
@@ -263,7 +265,9 @@ func _fill_secrets() -> void:
 func _fill_gear() -> void:
     var cap := Items.max_rarity_unlocked()
     for r in 5:
-        var col: Color = Items.RARITY_COLORS[r]
+        # Rarity owns colour here (GDD 6): rarity-coloured names under a header that
+        # prints the rarity word; focus frames the entry in its rarity colour.
+        var col: Color = Items.RARITY_TEXT_COLORS[r]
         var ids: Array = Items._by_rarity[r]
         if r > cap:
             var source := Progress.unlock_source("rarity:" + Items.RARITY_NAMES[r].to_lower())
@@ -276,7 +280,13 @@ func _fill_gear() -> void:
             var it := Items.get_item(id)
             var b := _entry("%s   [%s]" % [it["name"], ItemCard.SLOT_TITLES.get(it["slot"], it["slot"])], col)
             _set_icon(b, Items.icon(it), false)
-            b.add_theme_color_override("icon_normal_color", Items.icon_tint(it))
+            for k in ["icon_normal_color", "icon_focus_color", "icon_hover_color", "icon_pressed_color"]:
+                b.add_theme_color_override(k, Items.ui_icon_tint(it))
+            b.add_theme_color_override("font_focus_color", col)
+            b.add_theme_color_override("font_hover_color", col)
+            var frame := UiTheme._box(Color(0.18, 0.14, 0.16, 0.95), Items.RARITY_COLORS[r], 3)
+            b.add_theme_stylebox_override("focus", frame)
+            b.add_theme_stylebox_override("hover", frame)
             b.focus_entered.connect(_show_card.bind(it))
             b.mouse_entered.connect(_show_card.bind(it))
 

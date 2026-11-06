@@ -29,6 +29,9 @@ var _perf_probe := OS.get_cmdline_user_args().has("--perf")
 var _perf_t := 2.0
 var _perf_frames := 0
 var _bot_idle_fights := false
+var _probe: BalanceProbe = null   # --dps-probe (scripts/balance_probe.gd)
+var _probe_started := false
+var bot_paused := false   # a capture (PayoutShot) drives the player instead of the bot
 var _hitstop_left := 0.0
 var _ticker: Node
 var _flash_rect: ColorRect
@@ -43,6 +46,7 @@ var _message_time := 0.0
 var _joined_devices: Dictionary = {}
 var _transitioning := false
 var _room_entered_ms := 0
+var _room_entered_t := 0.0   # game time of the last room entry (bots: survives --fixed-fps fast-forward)
 
 # Self-test: `godot --path . -- --autotest` plays by itself, saves screenshots to
 # res://autotest/ and prints progress. Used to verify builds without a human.
@@ -96,8 +100,9 @@ func _ready() -> void:
         # Fresh, separate save so the bot never touches the real one. `--veteran` unlocks
         # every gun and class first, to measure a player whose pool is wide open.
         Progress.save_path = "user://save_autotest%s.json" % _instance_tag()
-        if _instance_tag() != "":
-            Telemetry.FILE = "user://telemetry/runs%s.jsonl" % _instance_tag()
+        # Bots never write the player's own records: a separate file per instance (or
+        # runs_bot.jsonl without --instance), loaded fresh so no human runs are copied in.
+        Telemetry.use_file("user://telemetry/runs%s.jsonl" % (_instance_tag() if _instance_tag() != "" else "_bot"))
         Progress.reset()
         # The bot never uses the player's real Shrine: a throwaway file, empty unless
         # --mastery=N or --mastery=full buys ranks on it. Runs still pay Embers into it,
@@ -153,6 +158,8 @@ func _ready() -> void:
         Progress.reset()
     if autotest:
         _setup_autotest()
+        if GunProbe.wanted():
+            add_child(GunProbe.new(self))   # per-gun dps probe (scripts/gun_probe.gd)
 
     Settings.apply()
     if autotest and OS.get_cmdline_user_args().has("--uncapped"):
@@ -509,6 +516,7 @@ func _scout_reveal() -> void:
 func enter_room(pos: Vector2i, moved: Vector2i) -> void:
     _transitioning = false
     _room_entered_ms = Time.get_ticks_msec()
+    _room_entered_t = _clock
     if autotest and rooms.has(pos):
         var vis: Array = []
         for rp in rooms.keys():
@@ -517,6 +525,10 @@ func enter_room(pos: Vector2i, moved: Vector2i) -> void:
         print("[BOT] enter %s (%s) moved=%s visited=%s doors=%s" % [pos, rooms[pos].type_name(), moved, str(vis), str(rooms[pos].doors)])
     Sfx.stop_all()
     if current != null:
+        # Spoils nobody chose are salvaged (and said so), never lost silently.
+        current.salvage_spoils("left")
+        if autotest and current.cleared_at >= 0.0 and current.data.type == RoomData.Type.ARENA:
+            print("[DWELL] floor=%d secs=%.1f peds_left=%d" % [floor_number, _clock - current.cleared_at, current._floor_pedestals()])
         Telemetry.room_exit(current)
         current.collect_all_scrap()
         remove_child(current)
@@ -732,8 +744,13 @@ func _handle_sheet_buttons() -> void:
 
 ## Level-ups wait for a quiet moment: the picker opens once the room is clear.
 func _on_leveled_up(p: Player) -> void:
+    if _probe != null:
+        return   # the dps probe measures a fixed build
     if autotest:
+        print("[LEVEL] %d floor=%d t=%.0f rooms=%d xp_total=%.0f" % [p.level, floor_number, _clock, rooms_cleared, p.xp_total])
         var opts: Array = LevelUps.roll(p, 1)
+        if not opts.is_empty():
+            Telemetry.levelup(opts, 0, int(p.level))
         if not opts.is_empty():
             p.apply_upgrade(opts[0])
         return
@@ -865,7 +882,13 @@ const FUSION_LOADOUTS := [
 ## (Stormcaller, won all five floors): each floor entry is the build at the START of that
 ## floor, i.e. what the player carried when the previous floor ended: guns as id@tier, gear,
 ## mods as item@gun, and the level-up picks made on the previous floor (LevelUps.options()
-## ids, "<stat>_<rarity>"). With --start-floor=N the bot begins on floor N with
+## ids, "<boon>_<rarity>"). The picks are the human's 44 old picks translated to the boon
+## catalog at the new pace (one level a wave: 4, 6, 4 and 5 picks before floors 2 to 5, from
+## the run's XP under Player.xp_to_next), keeping what the human favoured (damage, crit,
+## regen and Leech, health, vent; its element duration picks became Smoulder, the nearest
+## reaction boon) and nothing it never saw (element and fusion boons). XP gain, luck,
+## projectile speed and scrap picks are gone from the catalog. With --start-floor=N the bot
+## begins on floor N with
 ## every earlier floor's picks applied. "mid" is a mediocre build at the same levels: four
 ## tier-one guns of four elements, starter gear, bot-random level-ups and no healing items.
 const BOT_BUILDS := {
@@ -874,26 +897,26 @@ const BOT_BUILDS := {
         2: { "guns": ["blowtorch@2", "blood_lance@1", "frost_caster@1", "spark_needler@2", "venom_spitter@1"],
             "gear": ["charm_shock", "hobnail_boots", "charm_stone", "vampiric_loop"],
             "mods": ["coating_void@frost_caster"],
-            "picks": ["xp_gain_0", "crit_dmg_0", "damage_0", "proj_speed_2", "luck_2", "armor_1", "xp_gain_1", "vent_charge_2", "speed_2", "xp_gain_1"] },
+            "picks": ["damage_0", "crit_0", "armor_1", "vent_charge_1"] },
         3: { "guns": ["blowtorch@2", "blood_lance@2", "frost_caster@1", "spark_needler@2", "venom_spitter@1", "gravel_shotgun@1"],
             "gear": ["vial_fire", "hobnail_boots", "charm_stone", "band_of_lingering", "ring_fire", "overpressure", "gloves_stone", "leech_mail"],
             "mods": ["coating_shock@blowtorch", "coating_stone@blood_lance", "coating_void@frost_caster", "oiled_bolt@venom_spitter"],
-            "picks": ["regen_2", "crit_dmg_2", "regen_2", "attack_speed_1", "thorns_0", "lifesteal_3", "damage_2", "proj_speed_3", "proj_speed_0", "state_duration_1"] },
+            "picks": ["regen_1", "lifesteal_2", "attack_speed_1", "damage_1", "dot_1", "crit_1"] },
         4: { "guns": ["blowtorch@2", "blood_lance@2", "frost_caster@1", "spark_needler@2", "venom_spitter@1", "gravel_shotgun@1"],
             "gear": ["vial_fire", "hobnail_boots", "charm_stone", "signet_of_overload", "ring_fire", "overpressure", "gloves_stone", "leech_mail"],
             "mods": ["coating_shock@blowtorch", "coating_stone@blood_lance", "coating_ice@blood_lance", "coating_void@frost_caster", "oiled_bolt@venom_spitter"],
-            "picks": ["damage_2", "max_hp_2", "state_duration_0", "xp_gain_2", "state_duration_1", "scrap_gain_3"] },
+            "picks": ["damage_2", "max_hp_1", "dot_0", "potency_1"] },
         5: { "guns": ["blowtorch@2", "blood_lance@2", "frost_caster@1", "spark_needler@2", "venom_spitter@1", "gravel_shotgun@1"],
             "gear": ["vial_acid", "hobnail_boots", "charm_stone", "signet_of_overload", "ring_fire", "overpressure", "gloves_stone", "leech_mail", "seer_circlet"],
             "mods": ["coating_shock@blowtorch", "coating_stone@blood_lance", "coating_ice@blood_lance", "coating_void@frost_caster", "oiled_bolt@venom_spitter"],
-            "picks": ["luck_2", "vent_charge_1", "pressure_limit_1", "dodge_0", "pressure_limit_1", "damage_2", "proj_speed_1"] },
+            "picks": ["dodge_0", "vent_1", "damage_1", "max_hp_1", "attack_speed_1"] },
     },
     "mid": {
         "class": "stormcaller",
-        2: { "guns": ["spark_needler@1", "blowtorch@1", "frost_caster@1", "venom_spitter@1"], "gear": ["hobnail_boots"], "mods": [], "random_levels": 10 },
-        3: { "guns": ["spark_needler@1", "blowtorch@1", "frost_caster@1", "venom_spitter@1", "blood_lance@1"], "gear": ["hobnail_boots"], "mods": [], "random_levels": 10 },
-        4: { "guns": ["spark_needler@2", "blowtorch@1", "frost_caster@1", "venom_spitter@1", "blood_lance@1"], "gear": ["hobnail_boots", "ring_fire"], "mods": [], "random_levels": 6 },
-        5: { "guns": ["spark_needler@2", "blowtorch@1", "frost_caster@1", "venom_spitter@1", "blood_lance@1", "gravel_shotgun@1"], "gear": ["hobnail_boots", "ring_fire"], "mods": [], "random_levels": 7 },
+        2: { "guns": ["spark_needler@1", "blowtorch@1", "frost_caster@1", "venom_spitter@1"], "gear": ["hobnail_boots"], "mods": [], "random_levels": 4 },
+        3: { "guns": ["spark_needler@1", "blowtorch@1", "frost_caster@1", "venom_spitter@1", "blood_lance@1"], "gear": ["hobnail_boots"], "mods": [], "random_levels": 6 },
+        4: { "guns": ["spark_needler@2", "blowtorch@1", "frost_caster@1", "venom_spitter@1", "blood_lance@1"], "gear": ["hobnail_boots", "ring_fire"], "mods": [], "random_levels": 4 },
+        5: { "guns": ["spark_needler@2", "blowtorch@1", "frost_caster@1", "venom_spitter@1", "blood_lance@1", "gravel_shotgun@1"], "gear": ["hobnail_boots", "ring_fire"], "mods": [], "random_levels": 5 },
     },
 }
 
@@ -925,7 +948,7 @@ func _apply_bot_build(build: Dictionary, n: int) -> void:
         p.drop_gun(g)
     for spec in entry["guns"]:
         var parts: PackedStringArray = String(spec).split("@")
-        if p.add_gun(parts[0]):
+        if p.add_gun(parts[0], false):
             p.guns[p.guns.size() - 1].tier = int(parts[1]) if parts.size() > 1 else 1
     for slot in p.equipment.keys():
         p.equipment.erase(slot)
@@ -942,11 +965,12 @@ func _apply_bot_build(build: Dictionary, n: int) -> void:
         by_id[opt["id"]] = opt
     for f in range(2, n + 1):
         var e: Dictionary = build.get(f, {})
-        for pick in e.get("picks", []):
+        var no_picks := OS.get_cmdline_user_args().has("--no-picks")
+        for pick in ([] if no_picks else e.get("picks", [])):
             if by_id.has(pick):
                 p.apply_upgrade(by_id[pick])
                 p.level += 1
-        for i in int(e.get("random_levels", 0)):
+        for i in (0 if no_picks else int(e.get("random_levels", 0))):
             var opts: Array = LevelUps.roll(p, 1)
             if not opts.is_empty():
                 p.apply_upgrade(opts[0])
@@ -963,7 +987,14 @@ func _apply_bot_build(build: Dictionary, n: int) -> void:
 
 func _setup_autotest() -> void:
     _bot_idle_fights = OS.get_cmdline_user_args().has("--idle")
+    if OS.get_cmdline_user_args().has("--dps-probe"):
+        _probe = BalanceProbe.new(self)
+        add_child(_probe)
+    if PayoutShot.wanted():
+        add_child(PayoutShot.new(self))   # level-up cards and wave-end spoils (payout_shot.gd)
     _apply_bot_build(_bot_build(), _bot_start_floor())
+    if GearShot.wanted():
+        add_child(GearShot.new(self))   # worn-gear sheets and fight close-ups (gear_shot.gd)
     # Default: a real naked start, so the run measures the progression loop. `--arsenal`
     # hands over every gun to stress every element and effect at once.
     for a in OS.get_cmdline_user_args():
@@ -1025,6 +1056,14 @@ func _autotest_tick(delta: float) -> void:
                 Projectile.live,
                 fx.live_pixels() if fx != null and fx.has_method("live_pixels") else -1])
     if current == null or players.is_empty():
+        return
+    if bot_paused:
+        return
+    if _probe != null:
+        if not _probe_started:
+            _probe_started = true
+            _probe.start()
+        _probe.tick(delta)
         return
     # Watchdog: nothing in a bot run may hold the tree paused. Report what did and go on.
     if get_tree().paused:
@@ -1107,7 +1146,7 @@ func _bot_navigate(p: Player) -> void:
     p.input.force_aim = Vector2.ZERO
     # Just through a door: step into the room first, so kiting or a door's own trigger
     # cannot bounce the bot straight back out.
-    if Time.get_ticks_msec() - _room_entered_ms < 1200:
+    if _clock - _room_entered_t < 1.2:
         p.input.force_move = room.path_dir(p.global_position, Vector2.ZERO) if p.global_position.length() > 80.0 else Vector2.ZERO
         return
     # Pedestals worth using.

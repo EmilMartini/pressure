@@ -84,6 +84,10 @@ func title() -> String:
             return "Reroll wares"
         "gun":
             var g := Guns.make(offer["id"])
+            # A copy of a carried gun merges into it one tier up (Player.add_gun).
+            var into := _merge_into()
+            if into != null:
+                return "Merge: %s  tier %d" % [g.display_name, into.tier + 1]
             return "%s  (weight %d)" % [g.display_name, g.weight]
         "carry":
             return "Carry capacity +%d" % offer["amount"]
@@ -99,7 +103,30 @@ func title() -> String:
 func price_text() -> String:
     if kind() in ["stairs", "sigil"]:
         return ""
+    if offer.get("spoils", false):
+        return "SPOILS: take 1"
     return "FREE" if offer["price"] == 0 else "%d scrap" % offer["price"]
+
+
+## The carried gun a gun offer would merge into for the nearest player, or null.
+func _merge_into() -> Gun:
+    if kind() != "gun" or not is_inside_tree():
+        return null
+    var p := _nearest_player()
+    if p == null:
+        return null
+    return p.merge_target(String(offer["id"]))
+
+
+## Rarity word of an item offer, or the tier's rarity word for a gun ("" otherwise).
+func rarity_word() -> String:
+    match kind():
+        "item":
+            return Items.rarity_name(item())
+        "gun":
+            var into := _merge_into()
+            return String(Items.RARITY_NAMES[Items.tier_rarity(into.tier + 1 if into != null else 1)])
+    return ""
 
 
 func color() -> Color:
@@ -113,7 +140,9 @@ func color() -> Color:
         "reroll":
             return Color(0.95, 0.75, 0.3)
         "gun":
-            return Element.COLORS[Guns.make(offer["id"]).element]
+            # Rarity owns colour: a gun wears its tier's rarity colour, never its element's.
+            var into := _merge_into()
+            return Items.tier_color(into.tier + 1 if into != null else 1)
         "carry":
             return Color(0.9, 0.9, 1.0)
         "repair":
@@ -184,11 +213,31 @@ func _draw_labels(cv: CanvasItem) -> void:
     var y := 44.0
     var title_col := Color(0.92, 0.9, 0.85)
     if kind() == "item":
-        title_col = Items.rarity_color(item())
+        title_col = Items.rarity_text_color(item())
+    elif kind() == "gun":
+        var into := _merge_into()
+        title_col = Items.tier_text_color(into.tier + 1 if into != null else 1)
     var body: Font = Art.FONT_BODY
     cv.draw_string(body, Vector2(-141, y + 1), title(), HORIZONTAL_ALIGNMENT_CENTER, 280, 20, Color(0, 0, 0, 0.8))
     cv.draw_string(body, Vector2(-140, y), title(), HORIZONTAL_ALIGNMENT_CENTER, 280, 20, title_col)
     y += 22.0
+    var rw := rarity_word()
+    if rw != "":
+        # The rarity in words (colour-blind safe), and the element as a neutral badge.
+        var el := Element.Kind.NONE
+        if kind() == "gun":
+            el = Guns.make(offer["id"]).element
+        elif kind() == "item" and item().has("element"):
+            el = ItemCard.element_kind(item()["element"])
+        var tw := body.get_string_size(rw.to_upper(), HORIZONTAL_ALIGNMENT_LEFT, -1, 16).x
+        var bs := ItemCard.element_badge_size(el, 16) if el != Element.Kind.NONE else Vector2.ZERO
+        var total := tw + (bs.x + 8.0 if bs.x > 0.0 else 0.0)
+        var x0 := -total / 2.0
+        cv.draw_string(body, Vector2(x0 + 1, y + 1), rw.to_upper(), HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(0, 0, 0, 0.8))
+        cv.draw_string(body, Vector2(x0, y), rw.to_upper(), HORIZONTAL_ALIGNMENT_LEFT, -1, 16, title_col)
+        if bs.x > 0.0:
+            ItemCard.draw_element_badge(cv, Vector2(x0 + tw + 8.0, y - 15.0), el, 16)
+        y += 22.0
     var pt := price_text()
     if pt != "":
         cv.draw_string(body, Vector2(-141, y + 1), pt, HORIZONTAL_ALIGNMENT_CENTER, 280, 20, Color(0, 0, 0, 0.8))
@@ -235,6 +284,10 @@ func _draw_card(cv: CanvasItem) -> void:
         var rival := ItemCard.rival_for(p, it)
         if not rival.is_empty():
             opts["compare"] = rival
+            var slot := String(it.get("slot", ""))
+            if p != null and p.jewel_kept(slot) != "":
+                opts["keeps"] = Items.get_item(String(p.equipment[p.jewel_kept(slot)]))
+                opts["swap_key"] = p.input.prompt("swap")
         h = ItemCard.height_for(it, opts)
     else:
         if _gun_data == null:

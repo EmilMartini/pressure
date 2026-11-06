@@ -34,6 +34,14 @@ var active := false                 # a fight is running
 var wave_time_left := 0.0
 var wave_duration := 0.0
 var boss: Enemy = null
+var low_hp := 1.0                   # bots: lowest health fraction of player 1 during this fight
+## Spoils (wave-end payout): elites that drop loot during an arena wave bank it here instead
+## of leaving a pedestal mid-fight; the wave's end lays everything out as one pick.
+var banked: Array = []              # item offers banked by elites this wave
+var cleared_at := -1.0              # main._clock when the fight ended (bot dwell logs)
+var spoils_shown := 0               # offers in the wave-end choice (telemetry)
+const SPOILS_MAX := 4               # cards in the wave-end choice; banked loot past it is salvaged
+const SALVAGE_RATE := 0.3           # salvaged loot pays this share of its shop price in scrap
 
 var _elites_alive := 0
 var _spawn_timer := 0.0
@@ -156,6 +164,9 @@ func _process(delta: float) -> void:
     _tick_layout(delta)
     if not active:
         return
+    if main.autotest and not main.players.is_empty():
+        var pl0: Player = main.players[0]
+        low_hp = minf(low_hp, pl0.hp / maxf(1.0, pl0.max_hp))
     match data.type:
         RoomData.Type.ARENA:
             _tick_arena(delta)
@@ -214,26 +225,108 @@ func _tick_arena(delta: float) -> void:
         _spawn_elite(SpawnTable.elite_count(diff))
     if wave_time_left <= 0.0:
         main.note_arena_dps((Enemy.dealt_total - _dealt0) / maxf(1.0, wave_duration))
+        Telemetry.wave_end(self, _floor_pedestals(), _floor_scrap())
         _finish_fight(6)
         _arena_reward()
 
 
-## Every arena pays out: a free gun or a free item, so power grows with the rooms
+## Every arena pays out once, at the wave's end, as one clear choice (Brotato's crates
+## opened between waves, Isaac's pedestals): a free gun and a free item, plus one card for
+## each elite that dropped loot during the wave (banked, never a pedestal mid-fight), up to
+## SPOILS_MAX. Take one; the rest are salvaged for scrap, and so is the whole row if the
+## party walks out without choosing (salvage_spoils). Power still grows with every room
 ## whether or not the shop turns up.
 func _arena_reward() -> void:
     var owned := 0
     for pl in main.players:
         owned += pl.guns.size()
-    # Duplicates are welcome (they combine); only guns maxed out everywhere are skipped.
+    var cards: Array = []
+    # Duplicates are welcome (a copy merges into the carried gun, one tier up); only guns
+    # maxed out everywhere are skipped.
     var gun_id := Drops.roll_gun(main.players, _maxed_gun_ids())
-    # A naked start needs guns first: until the party carries three, the arena pays a gun.
+    if gun_id != "":
+        cards.append(FloorGen.offer("gun", gun_id, 0))
+    # A naked start needs guns first: until the party carries three, both cards are guns.
     var few_guns := owned < 3 * main.players.size()
-    if (few_guns or randf() < 0.5) and gun_id != "":
-        data.stock.append(FloorGen.offer("gun", gun_id, 0))
+    if few_guns:
+        var other := Drops.roll_gun(main.players, _maxed_gun_ids() + [gun_id])
+        if other != "":
+            cards.append(FloorGen.offer("gun", other, 0))
     else:
-        data.stock.append(Items.offer(Drops.roll_item(main.difficulty(), Items.Rarity.COMMON, [], main.party_luck(), "arena", main.players), 0))
+        cards.append(Items.offer(Drops.roll_item(main.difficulty(), Items.Rarity.COMMON, [], main.party_luck(), "arena", main.players), 0))
+    var extra := 0
+    for o in banked:
+        if cards.size() < SPOILS_MAX:
+            cards.append(o)
+        else:
+            extra += _salvage_value(o)
+    var n_banked := banked.size()
+    banked = []
+    for o in cards:
+        o["spoils"] = true
+        o.erase("pos")
+        data.stock.append(o)
+    spoils_shown = cards.size()
+    Telemetry.spoils_offer(self, cards, n_banked)
     _build_pedestals()
-    main.announce("Room cleared: take your reward")
+    if extra > 0:
+        main.add_scrap(extra)
+        main.announce("Spoils: choose 1 of %d   (+%d scrap salvaged)" % [cards.size(), extra])
+    else:
+        main.announce("Spoils: choose 1 of %d" % cards.size())
+
+
+## Scrap a piece of loot is worth when salvaged.
+func _salvage_value(o: Dictionary) -> int:
+    match String(o.get("kind", "")):
+        "item":
+            return maxi(1, int(roundf(float(Items.price(Items.get_item(o["id"]), main.floor_number * 4)) * SALVAGE_RATE)))
+        "gun":
+            return maxi(1, int(roundf(float(FloorGen.gun_price(Guns.make(o["id"]), main.floor_number)) * SALVAGE_RATE)))
+    return 0
+
+
+## Salvage every spoils card still standing (the rest of the row after a pick, or all of
+## it when the party leaves): scrap for each, said out loud, never lost silently.
+func salvage_spoils(reason: String) -> void:
+    var total := 0
+    var ids: Array = []
+    for o in data.stock:
+        if o.get("spoils", false) and not o["taken"]:
+            o["taken"] = true
+            total += _salvage_value(o)
+            ids.append(String(o["id"]))
+    if ids.is_empty():
+        return
+    main.add_scrap(total)
+    Telemetry.salvage(ids, total, reason)
+    var msg := "Salvaged %d spoils: +%d scrap" % [ids.size(), total]
+    if reason == "left":
+        msg = "Left %d spoils behind: salvaged for +%d scrap" % [ids.size(), total]
+    main.announce(msg)
+    for pl in main.players:
+        if pl.alive:
+            pl.say("+%d scrap" % total)
+            break
+    _build_pedestals()
+
+
+## Item pedestals standing on the floor right now (offers not yet taken).
+func _floor_pedestals() -> int:
+    var n := 0
+    for ped in pedestals:
+        if is_instance_valid(ped) and not ped.empty() and ped.kind() in ["gun", "item"]:
+            n += 1
+    return n
+
+
+## Scrap pieces lying on the floor right now.
+func _floor_scrap() -> int:
+    var n := 0
+    for c in pickups.get_children():
+        if c is Scrap:
+            n += 1
+    return n
 
 
 ## Gun ids the party carries only at max tier (no point offering another copy).
@@ -361,6 +454,7 @@ func _on_boss_rallied(b: Enemy) -> void:
 
 func _finish_fight(bonus_scrap: int) -> void:
     active = false
+    cleared_at = main._clock
     Telemetry.room_clear(self)
     Music.set_intensity(0.2)
     data.cleared = true
@@ -369,6 +463,10 @@ func _finish_fight(bonus_scrap: int) -> void:
     for sh in get_tree().get_nodes_in_group("enemy_projectiles"):
         sh.queue_free()
     _drop_scrap(Vector2.ZERO, bonus_scrap, 6)
+    # Everything left on the floor flies to the party: no walking the room for scrap.
+    for c in pickups.get_children():
+        if c is Scrap:
+            c.vacuum = true
     main.on_room_cleared(self)
     Sfx.play("cleared")
     for pl in main.players:
@@ -557,8 +655,8 @@ func _on_enemy_died(e: Enemy) -> void:
         Progress.add("bosses")
         if main.autotest:
             var pl: Player = main.players[0]
-            print("[BOSS] floor=%d kind=%s secs=%.1f phase2=%.1f max_hp=%.0f arena_dps=%.0f player_hp=%.0f/%.0f" % [
-                main.floor_number, e.boss_kind, _boss_secs, _boss_p2, e.max_hp, main.floor_arena_dps(), pl.hp, pl.max_hp])
+            print("[BOSS] floor=%d kind=%s secs=%.1f phase2=%.1f max_hp=%.0f arena_dps=%.0f player_hp=%.0f/%.0f low=%.2f" % [
+                main.floor_number, e.boss_kind, _boss_secs, _boss_p2, e.max_hp, main.floor_arena_dps(), pl.hp, pl.max_hp, low_hp])
         if e.boss_kind != "":
             Progress.add("boss:" + e.boss_kind)   # the Shrine's first-kill bounties
     elif e.is_elite:
@@ -582,8 +680,16 @@ func _on_enemy_died(e: Enemy) -> void:
         data.stock.append(Items.offer(Drops.roll_item(main.difficulty() + 4, Items.Rarity.RARE, [], main.party_luck(), "boss", main.players), 0, Vector2(0, 150)))
         _build_pedestals()
     elif e.is_elite and randf() < 0.55:
-        data.stock.append(Items.offer(Drops.roll_item(main.difficulty(), Items.Rarity.COMMON, [], main.party_luck(), "", main.players), 0, drop_pos))
-        _build_pedestals()
+        var loot := Items.offer(Drops.roll_item(main.difficulty(), Items.Rarity.COMMON, [], main.party_luck(), "", main.players), 0)
+        if data.type == RoomData.Type.ARENA and active:
+            # Banked for the wave's end (one choice there), not a pedestal mid-fight.
+            banked.append(loot)
+            Elements.reaction_fired.emit("SPOILS +1", e.global_position, Color(1.0, 0.85, 0.3))
+            Telemetry.event("spoils_banked", { "floor": main.floor_number, "id": String(loot["id"]) })
+        else:
+            loot["pos"] = drop_pos
+            data.stock.append(loot)
+            _build_pedestals()
 
 
 func _drop_scrap(pos: Vector2, total: int, pieces: int) -> void:
@@ -991,6 +1097,9 @@ func _build_pedestals() -> void:
         var in_row := mini(per_row, n - r * per_row)
         var c := i % per_row
         ped.position = Vector2((float(c) - float(in_row - 1) / 2.0) * 210.0, 90.0 + (float(r) - float(rows - 1) / 2.0) * 220.0)
+        if data.type == RoomData.Type.ARENA:
+            # Arena layouts only keep the centre open; the spoils row steps off any wall.
+            ped.position = nearest_open(ped.position, 34.0)
         add_child(ped)
         pedestals.append(ped)
     for o in offers:
@@ -1047,6 +1156,14 @@ func _handle_interact() -> void:
             ped.prompt_key = near.input.prompt("interact")
             ped.prompt_kind = near.input.last_kind
     for pl in main.players:
+        if pl.alive and pl.input.take_pressed("swap"):
+            # Ring / trinket pedestal with both of the pair worn: replace the other one.
+            var near_ped := _nearest_pedestal(pl)
+            if near_ped != null and near_ped.kind() == "item":
+                var slot := String(near_ped.item().get("slot", ""))
+                if pl.jewel_key(slot) != "":
+                    pl.cycle_jewel(slot)
+                    Sfx.play("ui_move")
         if not pl.alive or not pl.input.take_pressed("interact"):
             continue
         var best: Pedestal = null
@@ -1060,6 +1177,20 @@ func _handle_interact() -> void:
                 best = ped
         if best != null:
             activate(best, pl)
+
+
+## The live pedestal within reach of `pl`, nearest first, or null.
+func _nearest_pedestal(pl: Player) -> Pedestal:
+    var best: Pedestal = null
+    var best_d := Pedestal.RANGE
+    for ped in pedestals:
+        if not is_instance_valid(ped) or ped.empty():
+            continue
+        var d := ped.global_position.distance_to(pl.global_position)
+        if d < best_d:
+            best_d = d
+            best = ped
+    return best
 
 
 ## Finish buying a mod once the gun is known.
@@ -1076,6 +1207,8 @@ func _fit_mod(pl: Player, gun: Gun, o: Dictionary) -> void:
         for other in data.stock:
             if other["kind"] in ["gun", "item", "boon"] and not other.get("secret", false):
                 other["taken"] = true
+    if o.get("spoils", false):
+        salvage_spoils("picked")
     _build_pedestals()
 
 
@@ -1097,6 +1230,8 @@ func activate(ped: Pedestal, pl: Player) -> void:
             pl.add_gun(o["id"])
             Sfx.play("buy")
             o["taken"] = true
+            if o.get("spoils", false):
+                salvage_spoils("picked")
             if o.get("choice", false):
                 # Entrance pick: once everyone is armed, the rest of the choices vanish.
                 var all_armed := true
@@ -1130,10 +1265,12 @@ func activate(ped: Pedestal, pl: Player) -> void:
                     main.gun_pick.pick(pl, candidates, o["id"], func(g): if g != null: _fit_mod(pl, g, o))
                 return
             main.scrap -= o["price"]
-            var replaced := pl.equip(o["id"])
+            var replaced := pl.equip(o["id"], pl.jewel_key(String(item["slot"])))
             Progress.add("items_picked")
             Sfx.play("buy")
             o["taken"] = true
+            if o.get("spoils", false):
+                salvage_spoils("picked")
             if o["price"] == 0 and data.type in [RoomData.Type.TREASURE, RoomData.Type.CHALLENGE] and not o.get("secret", false):
                 for other in data.stock:
                     if other["kind"] in ["gun", "item", "boon"] and not other.get("secret", false):

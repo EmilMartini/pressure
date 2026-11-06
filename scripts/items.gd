@@ -77,12 +77,25 @@ extends Node
 enum Rarity { COMMON, UNCOMMON, RARE, EPIC, LEGENDARY }
 
 const RARITY_NAMES := ["Common", "Uncommon", "Rare", "Epic", "Legendary"]
+## UI colour rule (GDD 6, "Rarity owns colour"): in UI, rarity owns colour (item and gun
+## frames, card borders, name text, gems, pips, HUD gear boxes); an element is only ever
+## a neutral badge (ItemCard.draw_element_badge). The World of Warcraft palette, exact.
+## Print the rarity word too wherever this colour is the only cue.
 const RARITY_COLORS := [
-    Color(0.78, 0.78, 0.78),
-    Color(0.35, 0.90, 0.40),
-    Color(0.35, 0.60, 1.00),
-    Color(0.75, 0.40, 1.00),
-    Color(1.00, 0.55, 0.15),
+    Color("#FFFFFF"),   # Common
+    Color("#1EFF00"),   # Uncommon
+    Color("#0070DD"),   # Rare
+    Color("#A335EE"),   # Epic
+    Color("#FF8000"),   # Legendary
+]
+## The same palette for small text on the dark panels: Rare and Epic lifted (same hue)
+## so 20 px text clears 4.5:1 contrast; frames, gems and pips keep RARITY_COLORS.
+const RARITY_TEXT_COLORS := [
+    Color("#FFFFFF"),
+    Color("#1EFF00"),
+    Color("#3D9BFF"),
+    Color("#B866F5"),
+    Color("#FF8000"),
 ]
 const RARITY_PRICE := [22, 38, 62, 98, 150]
 ## Roll odds per rarity above common: [min difficulty, growth per difficulty, cap].
@@ -449,7 +462,33 @@ func get_item(id: String) -> Dictionary:
 
 
 func rarity_color(item: Dictionary) -> Color:
-    return RARITY_COLORS[int(item.get("rarity", 0))]
+    return RARITY_COLORS[clampi(int(item.get("rarity", 0)), 0, RARITY_COLORS.size() - 1)]
+
+
+## An item's rarity colour for text (Rare and Epic lifted for small text).
+func rarity_text_color(item: Dictionary) -> Color:
+    return RARITY_TEXT_COLORS[clampi(int(item.get("rarity", 0)), 0, RARITY_TEXT_COLORS.size() - 1)]
+
+
+## An item's rarity word ("Rare").
+func rarity_name(item: Dictionary) -> String:
+    return String(RARITY_NAMES[clampi(int(item.get("rarity", 0)), 0, RARITY_NAMES.size() - 1)])
+
+
+## Guns have tiers, not rarities; in UI a tier wears the rarity palette:
+## tier 1 Common, 2 Uncommon, 3 Rare, 4 Epic (Legendary is items only).
+static func tier_rarity(tier: int) -> int:
+    return clampi(tier - 1, Rarity.COMMON, Rarity.EPIC)
+
+
+## Frame / border / gem colour of a gun tier (RARITY_COLORS through tier_rarity).
+static func tier_color(tier: int) -> Color:
+    return RARITY_COLORS[tier_rarity(tier)]
+
+
+## Text colour of a gun tier (RARITY_TEXT_COLORS through tier_rarity).
+static func tier_text_color(tier: int) -> Color:
+    return RARITY_TEXT_COLORS[tier_rarity(tier)]
 
 
 ## Brotato-shaped: base + diff + base * 0.08 * diff. `floor_number` is the difficulty
@@ -478,6 +517,19 @@ func icon(item: Dictionary) -> Texture2D:
 ## element tint for the family items that share one base tile.
 func icon_tint(item: Dictionary) -> Color:
     var amount := float(item.get("icon_tint", 0.0))
+    if amount > 0.0 and item.has("element"):
+        return Color.WHITE.lerp(Element.COLORS[ELEMENTS[item["element"]]], amount)
+    return Color.WHITE
+
+
+## The icon modulate for UI (cards, HUD, sheet, journal): the same family tint, capped
+## at a faint wash so the icon never reads as a rarity colour. Never used on a frame.
+## (The world sprite and the costume keep `icon_tint`.)
+const UI_TINT_MAX := 0.25
+
+
+func ui_icon_tint(item: Dictionary) -> Color:
+    var amount := minf(float(item.get("icon_tint", 0.0)), UI_TINT_MAX)
     if amount > 0.0 and item.has("element"):
         return Color.WHITE.lerp(Element.COLORS[ELEMENTS[item["element"]]], amount)
     return Color.WHITE
@@ -642,6 +694,15 @@ func fire(player: Player, event: String, ctx: Dictionary) -> void:
             if t.has("if") and not condition(t["if"], player, ctx):
                 continue
             _do(t, player, ctx)
+    # Level-up boons that act like gear triggers (LevelUps echo boons).
+    for t in player.boon_triggers:
+        if not _event_matches(t["on"], event, ctx):
+            continue
+        if t.has("chance") and randf() > float(t["chance"]):
+            continue
+        if t.has("if") and not condition(t["if"], player, ctx):
+            continue
+        _do(t, player, ctx)
     _depth -= 1
 
 
@@ -689,6 +750,10 @@ func condition(c: String, player: Player, ctx: Dictionary) -> bool:
             return player.velocity.length() > 20.0
         "still":
             return player.velocity.length() <= 20.0
+    if c.begins_with("el_"):
+        # A reaction event that involves this element (incoming or the state it met).
+        var k: int = ELEMENTS.get(c.substr(3), -1)
+        return k >= 0 and (int(ctx.get("element", -1)) == k or int(ctx.get("other", -1)) == k)
     return false
 
 

@@ -426,7 +426,7 @@ func apply_element(kind: int, potency: float, source: Player = null) -> String:
         Elements.try_react(self, existing, kind, potency)
         if source != null and is_instance_valid(source):
             source.on_reaction(reaction)
-            Items.fire(source, "reaction", { "target": self, "reaction": reaction, "element": kind, "pos": global_position })
+            Items.fire(source, "reaction", { "target": self, "reaction": reaction, "element": kind, "other": existing, "pos": global_position })
         if is_instance_valid(self):
             queue_redraw()
         return reaction

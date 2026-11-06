@@ -5,11 +5,12 @@ extends CanvasLayer
 ## Confirming calls back with the chosen gun; cancelling (B / Esc) calls back with null so
 ## the mod stays on its plinth. Keeps processing while the tree is paused.
 
-const CARD_SIZE := Vector2(196, 268)
+const CARD_SIZE := Vector2(196, 292)
 const CARD_GAP := 14
 const ROW_GAP := 14
 const PAD_TOP := 14            # card content margin above the icon
 const ICON_BOX := 64           # height of the icon area at the top of a card
+const BADGE_ROW := 26          # the element badge under the icon
 const GRACE := 0.3             # seconds before a pick is accepted, so mashing does not choose
 const MAX_PER_ROW := 6         # above this the cards wrap onto two rows
 const MAX_MOD_LINES := 4
@@ -142,7 +143,8 @@ func _make_card(i: int, gun) -> Button:
     var b := Button.new()
     b.custom_minimum_size = CARD_SIZE
     b.focus_mode = Control.FOCUS_ALL
-    # Drawn like every ItemCard: an element-coloured frame and the icon, labels on top.
+    # Drawn like every ItemCard: a frame in the tier's rarity colour (Items.tier_color),
+    # the icon, the element as a neutral badge, labels on top (GDD 6, "Rarity owns colour").
     for state in ["normal", "hover", "focus", "pressed", "disabled"]:
         b.add_theme_stylebox_override(state, StyleBoxEmpty.new())
     b.draw.connect(_draw_card.bind(b, gun))
@@ -152,18 +154,19 @@ func _make_card(i: int, gun) -> Button:
             b.grab_focus())
     var box := VBoxContainer.new()
     box.set_anchors_preset(Control.PRESET_FULL_RECT)
-    box.offset_top = PAD_TOP + ICON_BOX + 8
+    box.offset_top = PAD_TOP + ICON_BOX + 8 + BADGE_ROW
     box.offset_left = 10
     box.offset_right = -10
     box.offset_bottom = -8
     box.add_theme_constant_override("separation", 2)
     box.mouse_filter = Control.MOUSE_FILTER_IGNORE
     b.add_child(box)
-    box.add_child(_card_label(gun.display_name(), 24, gun.data.color().lightened(0.25)))
+    var tr := Items.tier_rarity(int(gun.tier))
+    box.add_child(_card_label(gun.display_name(), 24, Items.RARITY_TEXT_COLORS[tr]))
     var dmg: float = gun.data.damage * gun.tier_mult()
     var rate: float = gun.fire_rate()
-    var dps: float = dmg * rate * float(gun.data.projectile_count * gun.data.burst_count) * (1.0 + 0.5 * float(gun.data.pierce))
-    box.add_child(_card_label("%s   DPS %.0f" % [Element.NAMES[gun.data.element], dps], 20, UiTheme.BONE))
+    var dps: float = gun.data.dps_at(dmg, gun.top_fire_rate() if gun.data.spin_up > 0.0 else rate)
+    box.add_child(_card_label("%s   DPS %.0f" % [Items.RARITY_NAMES[tr], dps], 20, UiTheme.BONE))
     var fitted: int = gun.mods.size()
     var cap: int = gun.tier
     box.add_child(_card_label("mods %d / %d" % [fitted, cap], 20, FULL_COLOR if fitted >= cap else UiTheme.DIM))
@@ -175,8 +178,24 @@ func _make_card(i: int, gun) -> Button:
         var mod_id := String(gun.mods[m])
         var item: Dictionary = Items.get_item(mod_id)
         var text := String(item.get("name", mod_id))
-        var col: Color = Items.rarity_color(item) if not item.is_empty() else UiTheme.DIM
-        box.add_child(_card_label(text, 20, col))
+        if item.is_empty():
+            box.add_child(_card_label(text, 20, UiTheme.DIM))
+            continue
+        # Name in its rarity colour with the rarity word after it (not colour alone).
+        var row := HBoxContainer.new()
+        row.add_theme_constant_override("separation", 6)
+        row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+        var name_l := _card_label(text, 20, Items.rarity_text_color(item))
+        name_l.custom_minimum_size = Vector2.ZERO
+        name_l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+        name_l.clip_text = true
+        row.add_child(name_l)
+        var word := _card_label(Items.rarity_name(item).to_upper(), 16, Items.rarity_text_color(item))
+        word.custom_minimum_size = Vector2.ZERO
+        word.text_overrun_behavior = TextServer.OVERRUN_NO_TRIMMING
+        word.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+        row.add_child(word)
+        box.add_child(row)
     return b
 
 
@@ -193,7 +212,7 @@ func _draw_card(b: Button, gun) -> void:
     if not is_instance_valid(b) or gun == null or not is_instance_valid(gun):
         return
     var r := Rect2(Vector2.ZERO, b.size)
-    var col: Color = gun.data.color()
+    var col: Color = Items.tier_color(int(gun.tier))
     var focused := b.has_focus()
     ItemCard.draw_frame(b, r, col, focused)
     var well := Rect2(Vector2((r.size.x - ICON_BOX) / 2.0, PAD_TOP), Vector2(ICON_BOX, ICON_BOX))
@@ -201,6 +220,9 @@ func _draw_card(b: Button, gun) -> void:
     b.draw_rect(well, Color(0, 0, 0, 0.45))
     b.draw_rect(well, Color(col, 0.5), false, 2.0)
     Art.draw_icon(b, Art.gun_icon(gun.data.id), well)
+    ItemCard.draw_pips(b, Vector2(well.position.x + 5.0, well.end.y - 9.0), int(gun.tier), col)
+    var bs := ItemCard.element_badge_size(gun.data.element)
+    ItemCard.draw_element_badge(b, Vector2(roundf((r.size.x - bs.x) / 2.0), well.end.y + 6.0), gun.data.element)
 
 
 func _close() -> void:

@@ -30,11 +30,12 @@ const PROMPTS := {
     "fire": ["RT", "LMB"],
     "pause": ["Start", "Esc"],
     "sheet": ["Back", "C"],
+    "swap": ["Y", "Q"],   # at a ring / trinket pedestal: replace the other piece
 }
 const PAD_BUTTONS := [JOY_BUTTON_A, JOY_BUTTON_B, JOY_BUTTON_X, JOY_BUTTON_Y, JOY_BUTTON_LEFT_SHOULDER,
     JOY_BUTTON_RIGHT_SHOULDER, JOY_BUTTON_START, JOY_BUTTON_BACK, JOY_BUTTON_DPAD_UP, JOY_BUTTON_DPAD_DOWN,
     JOY_BUTTON_DPAD_LEFT, JOY_BUTTON_DPAD_RIGHT]
-const KB_KEYS := [KEY_W, KEY_A, KEY_S, KEY_D, KEY_E, KEY_SPACE, KEY_C, KEY_ESCAPE]
+const KB_KEYS := [KEY_W, KEY_A, KEY_S, KEY_D, KEY_E, KEY_Q, KEY_SPACE, KEY_C, KEY_ESCAPE]
 
 
 func _init(p_device: int, p_keyboard: bool) -> void:
@@ -89,6 +90,7 @@ func poll() -> void:
         "interact": _button(JOY_BUTTON_A, KEY_E),
         "active": _button(JOY_BUTTON_X, KEY_F),
         "start": _button(JOY_BUTTON_START, KEY_ENTER),
+        "swap": _button(JOY_BUTTON_Y, KEY_Q),
     }
     for action in _cur.keys():
         if _cur[action] and not _prev.get(action, false):

@@ -33,20 +33,42 @@ raids, loot tables).
 ### Firing model
 - Every gun you carry aims and fires on its own at the nearest enemy in range, Brotato
   style. Guns orbit the figure and point where they shoot, so your loadout is visible.
-  With nothing to shoot, a gun in range of an obstacle fires its element at that instead,
-  which is how hidden rooms open.
-- Manual aim, the trigger and focus were cut: play showed they added input without adding
-  decisions. The decisions are what you carry, what you wear, where you stand, and when you vent.
+  Auto-fire targets enemies only, never obstacles, props or puzzle pieces.
+- Holding RT (left mouse) fires every gun where you aim (right stick, mouse, or the way you
+  face): that is how you hit obstacles, props and hidden walls. Beams and sprays hold while
+  the trigger is held; a chain gun with nothing to arc to fires a plain bolt; a turret gun
+  also shoots from the hand so doors and props can be reached.
+- How a gun fires depends on its archetype (see "Gun archetypes" below).
 
 ### Levels
-- Kills give XP. Each level, once the room is clear, pick one of three upgrades from a
-  Brotato-like catalog: damage, attack speed, crit chance and damage, bounces, pierce,
-  projectiles, health, armour, dodge, regen, speed, range, potency, element duration, chain
-  jumps, lifesteal, thorns, scrap, pressure limit and decay, vent size, carry, XP gain.
-- Brotato-shaped curve: the cost of a level rises quadratically (20, 35, 56, 83, 116...)
-  and each upgrade is small (+4% damage, +8 health, +3% crit), so a floor gives three to
-  five levels and no single pick swings a run. Power comes from stacking many of them.
-  XP per kill is 2 + 2 x scrap value, which lands around level 14 on floor 4.
+- Kills give XP (2 + 2 x scrap value). Each level, once the room is clear, pick one of
+  three **boons** (`scripts/levelup.gd`), Brotato's level-up with Hades' build boons:
+  - Offence and defence at bigger steps than before (+10/16/24/35% damage or attack speed
+    by rarity, +15 to 50 health...). Damage is the universal stat: a shot's damage seeds the
+    potency of every reaction, fusion, cataclysm and burn it causes, so it reaches all of it.
+  - The tier ladder: Catalyst (reaction potency), Smoulder (`dot_power`: burn, poison and
+    bleed from reactions), Alchemist (`fusion_power`), Apocalypse (`cataclysm_power`),
+    Residue (`compound_life`: compounds wait longer for a third element), Standing Fields
+    (`field_life`). Fusion boons need three carried elements, cataclysm boons four.
+  - Per carried element: Attunement (+damage for that element's guns, so for the reactions
+    they start) and, at rare and epic, Echo: 25/50% of your reactions involving the element
+    spread a partner element onto enemies within 110 px (Shock spreads Wet for Chain
+    Lightning, Fire spreads Oil for Inferno, Poison spreads Acid...). Echo is a gear-style
+    trigger (`Player.boon_triggers`, run by `Items.fire`, condition `el_<element>`).
+  - Trade-offs: Glass Cannon (+35/50% damage, -20 max health), Overclock (+25/35% attack
+    speed, -8% move speed), Heavy Plate (+5/7 armour, -8% speed), Split Barrel (+1
+    projectile, -10% damage).
+  - Gone from level-ups (still on gear): XP gain, luck, scrap gain, range, projectile speed,
+    thorns, bounce, vent capacity, element duration. Half the human's 44 picks were these;
+    five projectile speed picks measured +5% (noise), two big element duration picks -17%.
+- Cards are built for a TV: category word and rarity word (and pips), the icon, the name in
+  its rarity colour, the effect as a 44 px headline, the stat now > after, a second stat or
+  a cost, and what it changes in plain words; an element boon carries the element badge.
+  The focused card is lifted with the Choose prompt under it, the others dim.
+- XP curve: reaching level L costs 55 x (L - 1)^2.25 XP in all (`Player.xp_to_next`), fitted
+  to what a run earns per arena wave so a level comes about once a wave from the first room
+  to the last (the old 20 + 15n + 3n^2 per level gave 2 to 5 levels in the first wave and
+  then a level every 60 to 130 s on floor 5).
 - Measured loop (bot, naked start, explores every room, spends in shops): floor 2 at
   5 min, floor 3 at 10, floor 4 at 18 with level 19, ten guns and 141 max health, never
   in danger past floor 1; a human who skips rooms is faster and leaner. The arena feeds
@@ -65,9 +87,120 @@ raids, loot tables).
   one card per gun with its tier and the mods it already carries. With one candidate the
   mod goes straight on; with none, the pedestal says so and the mod stays.
 
+### Gun archetypes — BUILT (`scripts/gun_library.gd`, `gun.gd`, `projectile.gd`, `strike.gd`)
+Play showed too many guns that were the same straight bullet in a different colour (32 of
+43 fired one, and the four "shotguns" were the same 5-pellet cone). Now each archetype has
+its own firing mechanic, no archetype holds more than three guns, and no element has two
+guns of one archetype. Ids did not change (saves, unlocks, Mastery, Journal, telemetry);
+two display names did: `prayer_burst` is the Prayer Chain, `duality_burst` the Duality
+Helix. Icons follow the archetype (one family each: hand crossbows, blowguns, flasks,
+discs, lamps, a halberd, a fan...), so the shape says how it fires.
+
+| Archetype | Mechanic | Role | Guns |
+|---|---|---|---|
+| pistol | single aimed shots | long-reach starter | Water Pistol, Flare Pistol, Vein Pistol |
+| burst | three-round bursts | steady single target | Ember Carbine, Eclipse Carbine (holy/void) |
+| repeater | starts at 40% fire rate, full after 1.5 s of firing | sustained single target | Spark Needler, Venom Spitter |
+| shotgun | pellet spread, knockback | point blank | Gravel Shotgun |
+| sling | caroms off walls and enemies 3 times, knockback | rooms with walls | Stone Sling |
+| helix | an ice and a fire bolt twist round one line | reacts with itself (Melt) | Duality Helix |
+| wand | splits into 2-3 bolts on the first hit | spreading a coating | Slick Wand, Null Wand |
+| cannon | huge slow ball through everything, shoves | lanes, crowd control | Hydro Cannon, Sun Cannon |
+| flak | proximity fuse, bursts into shards | packs at range | Cinder Flak, Cyclone Flak |
+| homing | 2-3 seekers a shot, each after a different enemy | spreading states | Blight, Rift, Storm Seeker |
+| boomerang | out and back along the throw line, through everything | lines | Rime Chakram, Zephyr Rang |
+| orb | slow orb pulsing damage around it (void pulls) | zone, pull | Void Orb, Clot Orb |
+| mortar | lobbed over cover, big splash | packs behind cover | Boulder Mortar, Napalm Lobber |
+| thrower | thrown flask, a pool that ticks for 3-5 s | ground denial, floor material | Acid Flask, Oil Slinger, Plague Mortar |
+| beam | continuous ray, 10 ticks/s, sweeps toward the aim, pierces | precise sustained | Radiant Ray, Etcher Beam (etches acid) |
+| sprayer | short cone, hits all in it, paints its floor | close crowds | Blowtorch (burns floor), Mist Sprayer (puddles), Gale Blaster (pushes) |
+| chain | instant arc jumping to 2-4 more enemies | spread hits | Arc Rifle, Prayer Chain |
+| nova | ring around you, pushes out | panic button | Frost Caster |
+| melee | 150 deg sweep, 90 px, knockback | brawler | Storm Pike |
+| charge | winds up (glow at the muzzle), then a rail through the line | burst at range | Glacier Lance, Blood Lance, Railgun |
+| mine | tossed a short way toward the target, bursts on contact | kiting | Tar Mortar, Corrosion Burst |
+| turret | sets down a turret that fires the gun's shots for 8 s | holding ground | Kettle Gun (wet/fire: steam) |
+
+Mods keep working on every mechanic: damage, fire rate, crit, coatings and potency
+everywhere; range is beam, spray, sweep and ring reach; extra projectiles add beams, arcs,
+rails, mines, flasks, a second ring or swing, a second turret, or widen a spray; pierce is
+how many a beam burns through, extra chain jumps, more spray and sweep reach, a bigger mine
+blast, or +15% rail damage (rails already pass through everything); shot speed turns beams
+faster. Every hit of every mechanic goes through one path (`Strike.deal`: element-vs-state
+multipliers, the element and coatings, Telemetry `by_gun`, on-hit items).
+
+**Measured** with `--gun-probe` (each gun alone at tier I, naked Vagrant, against pinned
+dummies: one at 75 px and a pack of eight at 95 px, damage per second including the burns,
+poison, floor and reactions it causes). Range is not in these numbers: it is what the
+close-range guns pay. The rule: no gun is more than 5% better than another of its weight on
+both numbers. Before the rework, guns that react with themselves were 3 to 20 times their
+budget (Eclipse Carbine 156 single / 921 pack at weight 4, Napalm Lobber 111 / 887) and
+snipers did 20 to 26 at weight 5. Before and after, by weight, single-target first
+(2026-11-05; the probe runs at a fixed 60 fps, so machine load does not change it; Storm
+Seeker reacts with itself and varies about 10% run to run, the mean of three is shown):
+
+| Gun | w | Before: archetype | single | pack | After: archetype | element | single | pack |
+|---|---|---|---|---|---|---|---|---|
+| spark_needler | 1 | smg | 14 | 14 | repeater | Shock | 17 | 17 |
+| flare_pistol | 1 | pistol | 16 | 16 | pistol | Fire | 16 | 16 |
+| water_pistol | 1 | pistol | 16 | 16 | pistol | Wet | 16 | 16 |
+| vein_pistol | 1 | pistol | 15 | 15 | pistol | Blood | 16 | 16 |
+| zephyr_rang | 1 | boomerang | 6 | 19 | boomerang | Gale | 14 | 29 |
+| slick_wand | 1 | wand | 14 | 14 | wand | Oil | 14 | 30 |
+| venom_spitter | 2 | smg | 34 | 42 | repeater | Poison | 29 | 32 |
+| blight_seeker | 2 | homing | 36 | 38 | homing | Poison | 24 | 34 |
+| prayer_burst | 2 | burst | 25 | 26 | chain | Holy | 19 | 43 |
+| etcher_beam | 2 | beam | 14 | 36 | beam | Acid | 18 | 46 |
+| null_wand | 2 | wand | 20 | 20 | wand | Void | 17 | 46 |
+| blowtorch | 2 | flamer | 24 | 24 | sprayer | Fire | 16 | 48 |
+| gale_blaster | 2 | smg | 7 | 16 | sprayer | Gale | 15 | 46 |
+| frost_caster | 2 | shotgun | 12 | 17 | nova | Ice | 12 | 60 |
+| mist_sprayer | 2 | smg | 18 | 21 | sprayer | Wet | 12 | 60 |
+| oil_slinger | 2 | shotgun | 12 | 20 | thrower | Oil | 11 | 88 |
+| ember_carbine | 3 | rifle | 30 | 30 | burst | Fire | 31 | 31 |
+| rift_seeker | 3 | homing | 26 | 38 | homing | Void | 28 | 56 |
+| radiant_ray | 3 | beam | 23 | 47 | beam | Holy | 28 | 56 |
+| rime_chakram | 3 | boomerang | 10 | 33 | boomerang | Ice | 27 | 54 |
+| cyclone_flak | 3 | flak | 30 | 62 | flak | Gale | 26 | 61 |
+| gravel_shotgun | 3 | shotgun | 12 | 24 | shotgun | Stone | 25 | 64 |
+| arc_rifle | 3 | rifle | 19 | 38 | chain | Shock | 24 | 73 |
+| duality_burst | 3 | burst | 89 | 513 | helix | Ice | 21 | 75 |
+| plague_mortar | 3 | mortar | 48 | 266 | thrower | Poison | 21 | 108 |
+| kettle_gun | 3 | smg | 71 | 414 | turret | Wet | 20 | 97 |
+| clot_orb | 3 | orb | 14 | 26 | orb | Blood | 20 | 120 |
+| acid_flask | 3 | shotgun | 20 | 38 | thrower | Acid | 19 | 112 |
+| blood_lance | 4 | sniper | 20 | 39 | charge | Blood | 40 | 80 |
+| cinder_flak | 4 | flak | 43 | 101 | flak | Fire | 36 | 89 |
+| eclipse_carbine | 4 | rifle | 156 | 921 | burst | Holy | 35 | 100 |
+| storm_seeker | 4 | homing | 76 | 409 | homing | Shock | 35 | 139 |
+| corrosion_burst | 4 | burst | 64 | 64 | mine | Acid | 34 | 142 |
+| stone_sling | 4 | rifle | 45 | 45 | sling | Stone | 33 | 132 |
+| napalm_lobber | 4 | mortar | 111 | 887 | mortar | Fire | 31 | 201 |
+| tar_mortar | 4 | mortar | 38 | 244 | mine | Oil | 30 | 152 |
+| railgun | 5 | sniper | 20 | 40 | charge | None | 48 | 95 |
+| glacier_lance | 5 | sniper | 26 | 52 | charge | Ice | 47 | 93 |
+| storm_pike | 5 | sniper | 20 | 40 | melee | Shock | 42 | 210 |
+| hydro_cannon | 5 | cannon | 23 | 47 | cannon | Wet | 42 | 167 |
+| sun_cannon | 5 | cannon | 27 | 53 | cannon | Holy | 41 | 186 |
+| void_orb | 5 | orb | 16 | 35 | orb | Void | 37 | 246 |
+| boulder_mortar | 5 | mortar | 55 | 440 | mortar | Stone | 33 | 267 |
+
+Pools, orbs, mortars and mines hit all eight pinned dummies, so their pack numbers overstate
+a real fight, where enemies walk out of a pool; the close-range guns (sprayers, nova,
+sweep, shotgun) pay with reach, which the probe does not count.
+
+Bots after the rework (`--one-floor`, headless, fixed 60 fps): idle six-gun bots still die
+on floor 1 in 6 of 6 runs (six light pistols/wands: 55 and 60 s; six close-range area guns:
+51, 95 and 293 s, the last at the boss; pike, nova, torch, arc, beam and mines: 205 s);
+moving four-gun bots cleared floor 1 in 4 of 4 runs that did not stall on navigation
+(fusion-probe w1 loadouts 0 and 1 at 18 and 43 health left; beam/torch/arc/mines and
+nova/beam/pike/turret at 99 and 100, which led to softer knockback on the nova and the
+pike). Two more runs stalled in a shop and a dead-end room (bot navigation, not guns).
+
 ### Weight
 - No gun slots. A **carry budget** (starts at 10, bought up in the shop).
-- Pistol 1, SMG 2, shotgun 3, flamethrower 5, lightning cannon 6, and so on.
+- Weight 1 to 5: pistols and the light repeater, wand and boomerang 1; sprayers, the nova and
+  light seekers 2; up to cannons, charge guns, the melee pike, the Boulder Mortar and the Void Orb at 5.
 - Total weight slows you (about 2.5% move speed per point). Many light guns = many small
   reactions everywhere. Few heavy guns = rare huge reactions. Both viable, both feel different.
 
@@ -510,13 +643,17 @@ reactions; 11 Shrine slots (22 talents, 57 ranks) and a 3-rank survival track.
   run. Treasure rooms are the build-defining source, shops are utility, boss drops are
   stat-ups, hidden rooms are weird and strong.
 - An active item slot with room-clear charges, Isaac's spacebar item.
-- Level-ups use the same tiers keyed on level and luck; mechanical level-ups are rare.
+- Level-ups use the same tiers keyed on level and luck (uncommon from level 2, rare from
+  3, epic from 5); mechanical level-ups are rare.
 
 ### In-run gear (the WoW loot loop, inside one run) — BUILT, first batch
 - Gear drops during the run and is lost at the end, like Isaac items. Elites drop an item
-  55% of the time, bosses always drop rare or better, shops sell two, treasure rooms offer
-  two guns and two items (take one), hidden rooms hold a rare, challenge rooms pay three
-  to choose from. Replacing an equipped item puts the old one back on the floor.
+  55% of the time (banked during an arena wave, see Spoils), bosses always drop rare or
+  better, shops sell two, treasure rooms offer two guns and two items (take one), hidden
+  rooms hold a rare, challenge rooms pay three to choose from. Replacing an equipped item
+  puts the old one back on the floor. With both rings (or trinkets) worn, a new one
+  replaces the weaker by default; the swap button (Y / Q) at the pedestal picks the other,
+  and the card shows the one replaced and the one kept (`Player.jewel_key`).
 - Slots: head, chest, hands, feet, two rings, two trinkets, and one mod per gun.
   Rarities common to legendary with WoW colours; epic and legendary are unlocked.
 - **Items are data.** `scripts/items.gd` has a small vocabulary: flat stat mods, conditional
@@ -667,9 +804,12 @@ ranks per side, active sides, survival ranks, bounties paid and lifetime Embers 
   is always unlocked; the twelve elemental classes unlock through achievements on their
   element's signature reaction, Isaac style. Later joiners in co-op get a random unlocked
   class. Picked on a card screen between Play and the first room.
-- Items are visible on the figure (Isaac costumes, Brotato weapons): hats, plate, gloves,
-  boots, charms, an aura for rings and legendaries, the active item on the back, and a
-  completed set tints the whole figure (Guppy-style transformation). Twenty
+- Items are visible on the figure (Isaac costumes, Brotato weapons): every head, chest,
+  hands and feet item is drawn as its own pixel piece (a wizard hat is a pointed hat, plate
+  has pauldrons, a cloak hangs behind) in its icon's colours, over the body the class and
+  gear themes blend (`worn_gear.gd`); rings get sparkles, legendaries an aura, the active
+  item hangs on the back, and a completed set tints the whole figure (Guppy-style
+  transformation). Twenty
   shot-modifier items (homing, shards, splash, boomerang, spectral, orbitals, shot size)
   are the tear-modifier layer.
 
@@ -719,6 +859,34 @@ ranks per side, active sides, survival ranks, bounties paid and lifetime Embers 
 - Code-driven scenes for now (everything is built in `_ready`), so the project is easy to
   read as plain scripts. Scenes get moved into the editor when they stabilise.
 
+### UI colour rule: rarity owns colour
+Element colours used to share hues with rarities (Poison green, Wet blue, Void purple,
+Fire orange, Holy near-white), so a green frame could mean Uncommon or Poison. The rule:
+- **Rarity owns colour** in UI: item and gun frames, card borders, name text, rarity
+  gems and pips, HUD gear boxes. The World of Warcraft palette, exact
+  (`Items.RARITY_COLORS`): Common `#FFFFFF`, Uncommon `#1EFF00`, Rare `#0070DD`, Epic
+  `#A335EE`, Legendary `#FF8000`. Small text uses `Items.RARITY_TEXT_COLORS`, the same
+  hues with Rare lifted to `#3D9BFF` and Epic to `#B866F5`; the exact Rare and Epic are
+  under 4.5:1 on the dark panels. The rarity word is always printed too ("Rare Hands",
+  "Overclock (Epic)"), and frames carry pips (1 Common to 5 Legendary), so colour is
+  never the only cue.
+- **Guns have tiers, not rarities**; a tier wears the palette through
+  `Items.tier_rarity(tier)` (I Common, II Uncommon, III Rare, IV Epic) and
+  `Items.tier_color` / `tier_text_color`. Gun cards print "Uncommon Smg tier II".
+- **Elements never colour a frame, border or name in UI.** An element shows only as a
+  badge, `ItemCard.draw_element_badge(canvas, pos, element)`: a dark chip, a neutral grey
+  border, a small swatch of the element colour and the element's name in neutral text
+  (or just the swatch where there is no room: hotbar slots, sheet stats, journal rows).
+  Item icons may carry a faint element wash (`Items.ui_icon_tint`, at most 25%), never
+  the frame. Set names use WoW's set yellow `#FFD100`, not the set's element colour.
+- **In the world, elements keep their colours**: particles, enemy states, floor
+  materials, projectiles, clouds.
+- The PostFx palette (ENDESGA 64 LUT, layer 1) only touches the world. UI (HUD 3,
+  overlays 40 to 50, menus) and the Crisp world-text layer (2, pedestal cards) sit above
+  it and are never quantised. Where the rarity colours do pass through the LUT (in-world
+  glows) they stay five distinct swatches after the grade and LUT: `#FFFFFF`, `#99E65F`,
+  `#0098DC`, `#DB3FFD`, `#ED7614`.
+
 ## 7. Milestones
 
 | # | Milestone | Status |
@@ -738,8 +906,13 @@ ranks per side, active sides, survival ranks, bounties paid and lifetime Embers 
 - Arena rooms lock their doors and run a timed wave; the timer grows with difficulty.
   Difficulty starts at 2, adds 4 per floor, and creeps up one step every second room
   cleared, so a floor is one difficulty band and the stairs are the jump.
-- Every arena clear pays out a free gun or item on a pedestal, so power grows with the
-  rooms whether or not the shop turns up. The minimap reveals rooms Isaac-style, as you
+- Every arena pays out once, at the wave's end (**Spoils**): one choice of a free gun, a
+  free item and one card per elite that dropped loot during the wave (banked, never a
+  pedestal mid-fight), at most four. Take one; the rest are salvaged for 30% of their shop
+  price in scrap, said out loud, and so is the whole row if the party leaves without
+  choosing. When the wave ends all scrap on the floor flies to the party, and scrap left
+  lying during a wave reaches further every second past six. Boss, treasure, hidden and
+  challenge rewards stay Isaac pedestals. The minimap reveals rooms Isaac-style, as you
   reach their neighbours; special rooms are dressed so you know them on sight.
 - Treasure rooms are chests: one pick from gear, a gun, or a run boon (Vitality, Pack
   Mule, Boiler, Hoard). Chest tier rises with the floor and a little luck, raising the
@@ -772,7 +945,13 @@ the time cap ended it),
 `--build=storm|mid --start-floor=N` (start on floor N with the human run's build at that
 floor, or a mediocre one; profile gear is kept), `--one-floor` (quit at the next floor),
 `--old-balance` (the late-floor tuning off, for before/after),
-`--no-fusions` (the tier ladder off: the pre-fusion game, for baselines), `--perf` (fps and
+`--dps-probe` (with `--build`: eight harmless dummies that never die, prints `[DPS]` damage
+per second and its tier shares over `--probe-secs=N`; `--probe-picks=id,id` adds level-up
+options, `--no-picks` drops the profile's; run with `--fixed-fps 60` for speed),
+`--payout-shot` (screenshots of the level-up cards, spoils, ring swap and merge pedestal),
+`--no-fusions` (the tier ladder off: the pre-fusion game, for baselines), `--gun-probe[=a,b]`
+(each gun alone against pinned dummies: `[GUN-PROBE]` single and pack dps; `--probe-secs=N`;
+with `--gun-shots` in a window, `autotest/gun_<id>.png` of each mechanic firing), `--perf` (fps and
 frame-time lines every 2 s), `--instance=N` (own save, Shrine and telemetry per parallel
 run). Every run ends with `[FUSION]` (counts, damage by tier, top names) and
 `[FUSION-CHECK]` (termination proof) lines.

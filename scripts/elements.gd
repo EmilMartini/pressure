@@ -337,11 +337,13 @@ func _leave_compound(reaction_name: String, enemy: Node2D, pos: Vector2, potency
     if c.is_empty():
         return
     var where := String(c["where"])
+    # Residue boon (LevelUps): compounds wait longer for their third element.
+    var life_mult := 1.0 + (source.stat("compound_life") if source != null and is_instance_valid(source) else 0.0)
     if on_enemy and where.contains("enemy") and enemy != null and enemy.has_method("set_compound"):
-        if enemy.set_compound(cid, reaction_name, float(c["lifetime_enemy"])):
+        if enemy.set_compound(cid, reaction_name, float(c["lifetime_enemy"]) * life_mult):
             dbg["compounds_enemy"] += 1
     if where.contains("cloud") or where.contains("floor"):
-        if Cloud.spawn_compound(_world(), pos, cid, reaction_name, float(c["patch_radius"]), float(c["lifetime_cloud"]), potency, source):
+        if Cloud.spawn_compound(_world(), pos, cid, reaction_name, float(c["patch_radius"]), float(c["lifetime_cloud"]) * life_mult, potency, source):
             dbg["compounds_patch"] += 1
 
 
@@ -451,6 +453,9 @@ func play_fusion(entry: Dictionary, anchor: Node2D, pos: Vector2, potency: float
                 reach = maxf(reach, float(a[3]))
     if source == null and anchor != null and "last_hit_by" in anchor:
         source = anchor.last_hit_by
+    # Alchemist / Apocalypse boons (LevelUps): fusion and cataclysm damage.
+    if source != null and is_instance_valid(source):
+        mult *= 1.0 + source.stat("cataclysm_power" if tier >= Fusions.TIER_CATACLYSM else "fusion_power")
     fusion_fired.emit(name, tier, pos, maxf(reach, 60.0), entry)
     var prev := _enter(tier)
     var tel_prev: Array = Telemetry.begin_fusion(name, tier)
@@ -493,8 +498,16 @@ func play_fusion(entry: Dictionary, anchor: Node2D, pos: Vector2, potency: float
     if tier == Fusions.TIER_FUSION and Fusions.leaves_field(name):
         var f := Fusions.field_of(name)
         if not f.is_empty():
-            Cloud.spawn_field(_world(), pos, name, int(f["payload"]), float(f["radius"]), float(f["life"]), potency * 0.6, source)
+            var field_mult := 1.0 + (source.stat("field_life") if source != null and is_instance_valid(source) else 0.0)
+            Cloud.spawn_field(_world(), pos, name, int(f["payload"]), float(f["radius"]), float(f["life"]) * field_mult, potency * 0.6, source)
             dbg["fields"] += 1
+
+
+## Smoulder boon (LevelUps): burn, poison and bleed set by reactions, fusions, cataclysms.
+static func _dot_mult(source) -> float:
+    if source == null or not is_instance_valid(source):
+        return 1.0
+    return 1.0 + float(source.stat("dot_power"))
 
 
 static func _is_area_action(act: Array) -> bool:
@@ -540,13 +553,13 @@ func _act_at(enemy: Node2D, pos: Vector2, source: Player, potency: float, act: A
                         e.apply_element(int(act[1]), potency * 0.8, source)
         "burn":
             if has_target:
-                enemy.add_burn(potency * float(act[1]), float(act[2]))
+                enemy.add_burn(potency * float(act[1]) * _dot_mult(source), float(act[2]))
         "poison":
             if has_target:
-                enemy.add_poison(potency * float(act[1]) * 0.5, float(act[2]))
+                enemy.add_poison(potency * float(act[1]) * 0.5 * _dot_mult(source), float(act[2]))
         "bleed":
             if has_target:
-                enemy.add_bleed(potency * float(act[1]) * 0.6, float(act[2]))
+                enemy.add_bleed(potency * float(act[1]) * 0.6 * _dot_mult(source), float(act[2]))
         "corrode":
             if has_target:
                 enemy.corrode(float(act[1]))

@@ -29,6 +29,7 @@ const STAT_HEAD := 32.0
 const REPEAT_DELAY := 0.35
 const REPEAT_RATE := 0.11
 const GOOD := Color(0.45, 0.95, 0.45)
+const STAT_SWATCH := 10.0   # element swatch before an element stat's name
 
 ## Slot positions inside the doll (its top-left is (0, TOP)).
 const SLOT_LAYOUT := {
@@ -490,7 +491,9 @@ func _draw_slot(c: Dictionary, focused: bool) -> void:
     _canvas.draw_rect(rect, Color(0.08, 0.06, 0.08, 0.95))
     if filled:
         var charged := key != "active" or player.active_charges > 0
-        Art.draw_icon(_canvas, Items.icon(it), rect.grow(-4.0), Items.icon_tint(it) if charged else Color(0.4, 0.38, 0.4))
+        Art.draw_icon(_canvas, Items.icon(it), rect.grow(-4.0), Items.ui_icon_tint(it) if charged else Color(0.4, 0.38, 0.4))
+        # Rarity as a count too (1 Common .. 5 Legendary), top-left: not colour alone.
+        ItemCard.draw_pips(_canvas, rect.position + Vector2(5, 5), int(it.get("rarity", 0)) + 1, border)
         if key == "active":
             var max_charges := Items.active_max_charges(player)
             for k in max_charges:
@@ -523,15 +526,17 @@ func _draw_guns() -> void:
             continue
         var rect: Rect2 = c["rect"]
         var focused := i == _focus
-        var ec: Color = g.data.color()
+        # Frame and tier pips in the tier's rarity colour (Items.tier_color); the element
+        # is only a small swatch, top-left (GDD 6, "Rarity owns colour").
+        var ec: Color = Items.tier_color(int(g.tier))
         if focused:
             _canvas.draw_rect(rect.grow(6.0), Color(ec, 0.3))
         _canvas.draw_rect(rect, Color(0.08, 0.06, 0.08, 0.95))
         Art.draw_icon(_canvas, Art.gun_icon(g.data.id), rect.grow(-4.0))
-        for k in int(g.tier):
-            var pip := Rect2(rect.position.x + 5.0 + float(k) * 7.0, rect.end.y - 9.0, 5.0, 5.0)
-            _canvas.draw_rect(pip.grow(1.0), Color(0, 0, 0, 0.7))
-            _canvas.draw_rect(pip, UiTheme.BONE)
+        ItemCard.draw_pips(_canvas, Vector2(rect.position.x + 5.0, rect.end.y - 9.0), int(g.tier), ec, 5.0)
+        var sw := Rect2(rect.position + Vector2(5, 5), Vector2(7, 7))
+        _canvas.draw_rect(sw.grow(1.0), Color(0, 0, 0, 0.85))
+        _canvas.draw_rect(sw, Element.COLORS[g.data.element])
         var m := 0
         for id in g.mods:
             var dot := Vector2(rect.end.x - 7.0 - float(m) * 9.0, rect.position.y + 7.0)
@@ -542,7 +547,7 @@ func _draw_guns() -> void:
             # A twin at the same tier: a pulsing green corner says "combine me".
             var pulse := 0.6 + 0.4 * sin(float(Time.get_ticks_msec()) / 180.0)
             _canvas.draw_colored_polygon(PackedVector2Array([rect.end - Vector2(18, 0), rect.end, rect.end - Vector2(0, 18)]), Color(GOOD, pulse))
-        _canvas.draw_rect(rect, Color.WHITE if focused else Color(ec, 0.85), false, 3.0 if focused else 2.0)
+        _canvas.draw_rect(rect, Color.WHITE if focused else ec, false, 3.0 if focused else 2.0)
 
 
 func _draw_card() -> void:
@@ -582,8 +587,9 @@ func _pct(v: float) -> String:
     return "%+d%%" % roundi(v * 100.0)
 
 
-func _add(name: String, value: String, color: Color = UiTheme.BONE) -> void:
-    _stats.append({ "n": name, "v": value, "c": color })
+## `el`: an Element.Kind drawn as a small swatch before the name (NONE for none).
+func _add(name: String, value: String, color: Color = UiTheme.BONE, el: int = Element.Kind.NONE) -> void:
+    _stats.append({ "n": name, "v": value, "c": color, "el": el })
 
 
 ## Rows only for stats that are not zero, under a header per group (headers with no rows
@@ -628,10 +634,19 @@ func _build_stats() -> void:
     for e in Element.ALL:
         var ek: String = Items.ELEMENT_KEYS[e]
         var el_name := String(Element.NAMES[e])
-        _nz("%s damage" % el_name, p.stat("dmg_" + ek), _pct(p.stat("dmg_" + ek)), Element.COLORS[e])
-        _nz("%s potency" % el_name, p.stat("potency_" + ek), _pct(p.stat("potency_" + ek)), Element.COLORS[e])
+        # Neutral text with an element swatch before the name, never element-coloured text.
+        _nz("%s damage" % el_name, p.stat("dmg_" + ek), _pct(p.stat("dmg_" + ek)), UiTheme.BONE, e)
+        _nz("%s potency" % el_name, p.stat("potency_" + ek), _pct(p.stat("potency_" + ek)), UiTheme.BONE, e)
     _nz("Duration", p.stat("state_duration"), _pct(p.stat("state_duration")))
     _nz("Chain jumps", p.stat("chain_jumps"), "%+d" % int(p.stat("chain_jumps")))
+    _nz("Burn, poison, bleed", p.stat("dot_power"), _pct(p.stat("dot_power")))
+    _nz("Fusion damage", p.stat("fusion_power"), _pct(p.stat("fusion_power")))
+    _nz("Cataclysm damage", p.stat("cataclysm_power"), _pct(p.stat("cataclysm_power")))
+    _nz("Compound lifetime", p.stat("compound_life"), _pct(p.stat("compound_life")))
+    _nz("Field lifetime", p.stat("field_life"), _pct(p.stat("field_life")))
+    for ek in LevelUps.ELEMENT_BOONS.keys():
+        var echo := float(p.bonus_stats.get("echo_" + ek, 0.0))
+        _nz("%s Echo" % String(ek).capitalize(), echo, "%d%%" % roundi(echo * 100.0), UiTheme.BONE, Items.ELEMENTS[ek])
     groups.append(["ELEMENTS", _stats_end()])
 
     _stats_begin()
@@ -661,7 +676,7 @@ func _build_stats() -> void:
     for sid in counts.keys():
         var s: Dictionary = Items.SETS[sid]
         var have := int(counts[sid])
-        var col := Items.set_color(sid)
+        var col := ItemCard.SET_COL   # not the set's element colour: names stay neutral
         _add(String(s["name"]), "%d / %d" % [have, (s["items"] as Array).size()], col)
         var thresholds: Array = s["bonuses"].keys()
         thresholds.sort()
@@ -693,9 +708,9 @@ func _stats_end() -> Array:
     return out
 
 
-func _nz(name: String, v: float, text: String, color: Color = UiTheme.BONE) -> void:
+func _nz(name: String, v: float, text: String, color: Color = UiTheme.BONE, el: int = Element.Kind.NONE) -> void:
     if absf(v) > 0.0001:
-        _add(name, text, color)
+        _add(name, text, color, el)
 
 
 func _next_threshold(thresholds: Array, have: int) -> int:
@@ -724,6 +739,8 @@ func _layout_stats() -> void:
         total += _entry_height(e, w)
         if e.has("n"):
             var need := font.get_string_size(String(e["n"]), HORIZONTAL_ALIGNMENT_LEFT, -1, 20).x + font.get_string_size(String(e["v"]), HORIZONTAL_ALIGNMENT_LEFT, -1, 20).x + 18.0
+            if int(e.get("el", Element.Kind.NONE)) != Element.Kind.NONE:
+                need += STAT_SWATCH + 6.0
             if need > half:
                 fits_half = false
     var cols := 1
@@ -772,15 +789,23 @@ func _draw_stats() -> void:
         if y > v.size.y or y + 60.0 < 0.0:
             continue
         if e.has("h"):
-            v.draw_string(font, Vector2(x, y + 24.0), String(e["h"]), HORIZONTAL_ALIGNMENT_LEFT, -1, 22, UiTheme.FOCUS)
-            v.draw_line(Vector2(x, y + 29.0), Vector2(x + col_w - 16.0, y + 29.0), Color(UiTheme.FOCUS, 0.35), 1.0)
+            # Neutral headings: orange here read as Legendary next to the cards.
+            v.draw_string(font, Vector2(x, y + 24.0), String(e["h"]), HORIZONTAL_ALIGNMENT_LEFT, -1, 22, UiTheme.BONE)
+            v.draw_line(Vector2(x, y + 29.0), Vector2(x + col_w - 16.0, y + 29.0), Color(UiTheme.BONE, 0.3), 1.0)
         elif e.has("t"):
             var ty := y
             for line in ItemCard._wrap(String(e["t"]), 20, col_w - 12.0):
                 v.draw_string(font, Vector2(x + 8.0, ty + 19.0), line, HORIZONTAL_ALIGNMENT_LEFT, -1, 20, e["c"])
                 ty += 24.0
         else:
-            v.draw_string(font, Vector2(x, y + 20.0), String(e["n"]), HORIZONTAL_ALIGNMENT_LEFT, -1, 20, UiTheme.DIM)
+            var nx := x
+            var el := int(e.get("el", Element.Kind.NONE))
+            if el != Element.Kind.NONE:
+                var sq := Rect2(Vector2(x + 1.0, y + 7.0), Vector2(STAT_SWATCH, STAT_SWATCH))
+                v.draw_rect(sq.grow(1.0), Color(0, 0, 0, 0.9))
+                v.draw_rect(sq, Element.COLORS[el])
+                nx += STAT_SWATCH + 6.0
+            v.draw_string(font, Vector2(nx, y + 20.0), String(e["n"]), HORIZONTAL_ALIGNMENT_LEFT, -1, 20, UiTheme.DIM)
             v.draw_string(font, Vector2(x, y + 20.0), String(e["v"]), HORIZONTAL_ALIGNMENT_RIGHT, col_w - 16.0, 20, e["c"])
     # Scroll hint when there is more below or above.
     var max_scroll := float(_stats_layout["height"]) - v.size.y + 8.0
