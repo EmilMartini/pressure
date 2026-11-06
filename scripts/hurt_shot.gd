@@ -18,6 +18,9 @@ extends Node
 ##                           next to a grunt; the _zoom file is the middle, 2x
 ##   read_fight2[_zoom].png  the same half a second later
 ##   read_flyers[_zoom].png  first, before any gun: bat, grunt, wisp, bat standing in a row
+##                           (with the region's resistance badges under each body)
+##   read_doors.png          the route-choice stairs out of the region, each naming where it
+##                           leads and what that region resists and is weak to
 ## Options for the capture (not saved): --pixel-size=2 and --set=crt:1,bloom:0, and
 ## --tag=name to suffix the file names.
 
@@ -163,6 +166,21 @@ func _read_shot() -> void:
     for e in line:
         e.queue_free()
     await _wait(0.1)
+    # The route doors out of this region (Room's boss-clear stairs), with their profiles.
+    var ways: Array = Regions.next_options(main.region_id)
+    if not ways.is_empty():
+        var kept: Array = room.data.stock.duplicate()
+        room.data.stock.clear()
+        for id in ways:
+            room.data.stock.append(FloorGen.offer("stairs", String(id), 0))
+        room._build_pedestals()
+        p.global_position = room.to_global(Vector2(0, 150))
+        await _wait(0.5)
+        await _shot("read_doors" + _tag)
+        room.data.stock = kept
+        room._build_pedestals()
+        p.global_position = Vector2(0, 0)
+        await _wait(0.1)
     p.weight_capacity_base = 40
     p.recalc_stats()
     for id in ["frost_caster", "blowtorch", "mist_sprayer", "gale_blaster", "storm_pike", "arc_rifle"]:

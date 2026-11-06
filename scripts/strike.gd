@@ -71,6 +71,8 @@ static func deal(enemy: Enemy, dmg: float, pot: float, el: int, extra_els: Array
             raw *= 1.0 + src.stat("vs_shocked")
         if enemy.has_state(Element.Kind.OIL):
             raw *= 1.0 + src.stat("vs_oiled")
+    if raw > 0.0:
+        raw = enemy.resisted(el, raw)   # the region's soft resistance (Regions)
     Telemetry.begin_shot(gid, el)
     enemy.take_damage(raw, col, true, src, is_crit)
     if is_instance_valid(enemy) and not enemy.is_queued_for_deletion():

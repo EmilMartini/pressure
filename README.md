@@ -562,8 +562,11 @@ which is the game before fusions for a like-for-like baseline. Late floors:
 carried there in a won run (guns and tiers, gear, gun mods, every level-up pick; the bot then
 only fills free slots), `--build=mid` is a mediocre build at the same levels (tier-one guns,
 random picks, no healing gear), `--route=ossuary_gate,rust_ruins,frostvault,the_forge,the_rift`
-fixes the regions taken (checked against the graph; otherwise each next region is a random
-built neighbour, and every bot run prints a `[ROUTE]` line with the graph check), `--one-floor`
+fixes the regions taken (checked against the graph; otherwise the bot takes a random route
+door out of each boss room and prints `[ROUTE-DOOR]`, and every bot run prints a `[ROUTE]`
+line with the graph check), `--no-exposed` turns the Exposed state off (soft resistances
+stay; for A/B runs), `--loadout=id@tier,...` with a `--build` replaces the build's guns
+(gear and levels stay), so element builds compare on one footing, `--one-floor`
 quits when the next floor starts, and
 `--old-balance` turns the late-floor tuning off (uncapped Leech, formula bosses without the
 rally, the old floor damage) for before/after comparisons. Each boss kill prints a `[BOSS]`
@@ -661,7 +664,8 @@ scenes/main.tscn     the only scene; everything is built in code
 scripts/
   main.gd            run orchestrator: floors, current room, scrap, camera, HUD, joins, bot
   regions.gd         the Descent: region graph (depth, theme, resists, weak to, hazards, boss,
-                     signature layouts, edges); a run walks one region per depth
+                     signature layouts, edges); a run walks one region per depth; the
+                     active region's soft resistances (60% / 140%) and Exposed
   floor_gen.gd       generates a floor: tree of rooms, specials on dead ends, hidden room
   room_data.gd       persistent state of one room (type, cleared, doors, shop stock)
   room.gd            a room in play: walls, doors, pedestals, waves, challenge, boss

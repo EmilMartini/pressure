@@ -634,7 +634,7 @@ Each phase ships a playable game, passes the checks in section 0, and updates `G
 **Default order:** 0, 0b, 1, 1b, 2, 3, 4, then 5 and 6 in batches. The designer can move 0b after
 1 (section 16).
 
-### Phase 0: Groundwork
+### Phase 0: Groundwork (DONE 2026-11-06)
 
 - **Goal:** runs become routes through a region graph, and regions have elemental profiles.
 - **Scope:**
@@ -684,11 +684,98 @@ Each phase ships a playable game, passes the checks in section 0, and updates `G
   inside The Rift, so no Chapel-route win is logged yet. Heavy fights averaged 99 fps
   (30 samples, min 92); 0 script errors.
 
-**Part 2 starts here (Tuesday):** soft resistances (60% / 140%) on damage and state duration
-from each region's `resists` / `weak` (element names; map with `Elements.Kind[name.to_upper()]`),
-the Exposed state, resistance badges, route-choice doors at the region exit (replace
-`Main._next_region`'s random pick with `Regions.next_options`), and the weakness-versus-
-resistance and Exposed measurements.
+**Part 2 done (2026-11-06): resistances, Exposed, badges, route doors.**
+- `Regions.activate(id)` (from `Main.start_floor`) holds the active region's profile as
+  `Element.Kind` lists. `Enemy.resist_mult(kind)` is 0.6 for a resisted element, 1.4 for a
+  weakness and 1.0 otherwise. It scales gun hits (`Strike.deal`), the burn, poison and
+  bleed ticks, and the duration of states of that element.
+  - Default: state duration uses the same 60% / 140% as damage. Section 5 says "half as
+    long" for a resisted state; that is a one-constant change if wanted.
+  - Default: reaction, fusion and prop damage stays neutral, so reactions are the way
+    through. Bosses take the region's profile like everyone else.
+- **Exposed (default):** any reaction or fusion on an enemy makes it Exposed for 4 s
+  (`Regions.EXPOSED_SECS`). While Exposed, the region's resistances count as weaknesses
+  (140%). This is the "electrifying a Cistern enemy turns its water resistance into a
+  weakness" rule, applied to every reaction. `--no-exposed` turns it off for A/B runs.
+- **Badges:** small squares under every enemy in the hostile frame (black, red rim).
+  - A resistance is a dull element colour barred in black.
+  - A weakness is a bright colour with a black crack.
+  - While Exposed, the resistance badges turn bright and cracked and blink white.
+
+  `--hurt-shot --read-shot` with `--start-floor`/`--route` saves `read_flyers_*` with the
+  badges and `read_doors_*` with the doors.
+- **Route doors:** the boss room offers one stairs pedestal per built region one edge down.
+  Each is labelled "Down to <region>" with its resists and weaknesses as element badges, and
+  is taken with the usual interact button, so it works on a pad.
+  - `Main.next_floor(to)` enters the chosen region.
+  - Bots follow `--route`, else pick a door at random and print `[ROUTE-DOOR]`.
+  - With six built regions only Frostvault has two doors (The Forge, Chapel of Ash). Every
+    other exit has one door until phase 5 builds the rest; nothing in the code limits this.
+- Bot tooling:
+  - With `--build`, `--loadout=id@tier,...` replaces the build's guns.
+  - `[DPS]` lines name the region and the Exposed count.
+  - `[TICK]`/`[END]` print a `resist:` line with damage dealt at each rate.
+
+**Measured (part 2):**
+- Weakness against resistance, from the `--dps-probe` (8 dummies, 40 s, 3 seeds each, which
+  gave identical numbers). The same two guns were swapped between the two regions, so gun
+  differences cancel out:
+
+  | Region | Fire guns (blowtorch + ember carbine) | Ice guns (frost caster + rime chakram) |
+  |---|---|---|
+  | Frostvault (resists Ice, weak to Fire) | 43 dps | 16 dps |
+  | The Forge (resists Fire, weak to Wet and Ice) | 18 dps | 37 dps |
+
+  Each build does about 2.3 times as much damage where it is the weakness (1.4 / 0.6).
+- Real runs in The Forge, using the `storm` profile's gear and levels with equal-weight tier 2
+  guns (2 seeds each). That gear favours fire, which biases the test toward the fire build:
+
+  | Build | Damage per second | Gun damage that hit the region's weakness |
+  |---|---|---|
+  | Ice: frost caster, rime chakram, glacier lance | 680 and 688 | 68k |
+  | Fire: flare pistol, blowtorch, ember carbine, cinder flak | 327 and 534 | 0 |
+
+  For the fire build, 21k of its gun damage was resisted and 9k was Exposed. Both builds
+  died at depth 4 (t = 34 to 100 s). Arenas spawn on timed waves, so kills per second were
+  about the same (5.1 to 5.5): extra damage shows up as damage and survival, not as fewer
+  seconds per arena.
+- Exposed, using a resisted build that reacts (ice guns plus a water pistol, so Deep Freeze
+  fires) in Frostvault with the `--dps-probe`, 3 seeds each:
+
+  | Exposed | Damage per second |
+  |---|---|
+  | On | 145 |
+  | Off (`--no-exposed`) | 118 to 119 |
+
+  Exposed adds 22%. Ice guns alone, with no reaction, do 16.
+- The idle six-gun bot dies in Ossuary Gate (t=78, 2 rooms cleared). The fusion probe clears
+  it (Brute King in 20.6 s) and takes the single door to Rust Ruins.
+- 5-region routes:
+  - **Chapel of Ash win.** `--build=storm --start-floor=2 --mastery=full
+    --route=...,chapel_of_ash,the_rift --secs=5000` won the route: Void Herald in 13.9 s, run
+    over at t=2433 with "clear +10", 0 script errors. Stand-in Pyre Lord in Chapel of Ash
+    died in 14.5 s.
+  - **Random doors, storm build.** The bot took Rust Ruins > Frostvault > The Forge (chosen
+    at random from Forge and Chapel) > The Rift, then hit the 5000 s cap in a Rift challenge
+    room, with 0 errors.
+  - **Random doors, naked bot from depth 1.** `--mastery=full` walked Ossuary Gate > Rust Ruins
+    > Frostvault > The Forge > The Rift (Rift at t=1938, level 26). Then it hit a stack
+    overflow: Inferno, Dark Flame and Black Hole apply or spread elements onto neighbours,
+    whose reactions nest inside their own. In The Rift's packed late crowd this chained until
+    the stack overflowed, and the error repeated every frame (a 48 GB log).
+    - Fixed: `Elements.MAX_REACTION_DEPTH` (24). Past that depth an element lands as a plain
+      state instead of reacting.
+    - Rerun after the fix, 0 script errors in all three runs:
+      - A naked `--mastery=full` bot took random doors through Ossuary Gate > Rust Ruins >
+        Frostvault > Chapel of Ash > The Rift and won at t=2921 (Void Herald 58.2 s).
+      - Two storm bots starting in The Rift won (Void Herald 16.9 s and 25.3 s).
+      - The deepest nesting reached was 8 to 14 levels (`[FUSION-CHECK] max_depth`).
+    - Open: one naked rerun stalled in a floor-1 shop for 2900 s. The bot pushed against an
+      offer it couldn't reach, and the 12 s stuck-teleport only covers walking to doors. This
+      was already in the code; part 2 didn't cause it.
+- Heavy fights: `--arsenal --gear --perf`, 54 samples, average 98.3 fps, min 88 (one sample).
+  Part 1 measured 99 and 92. No script errors.
+- Editor load check clean.
 
 ### Phase 0b: Boss framework
 
@@ -839,6 +926,10 @@ resistance and Exposed measurements.
 | Q | The graph's edges (phase 0) | As listed under Phase 0 part 1; crossings Rust Ruins > Frostvault and Frostvault > Forge |
 | R | Boss for a region whose own boss isn't built | The boss its depth had before: Hive Mother, Storm Warden, Pyre Lord |
 | S | How strongly a region colours its layouts | 35% of arenas use one of its signature layouts |
+| T | What triggers Exposed, and what it does | Any reaction or fusion on the enemy; for 4 s its resistances count as weaknesses (140%) |
+| U | How resistances scale state duration | The same 60% / 140% as damage (section 5 says "half as long" for resisted states) |
+| V | Do reactions and fusions obey resistances? | No: reaction, fusion and prop damage is neutral; burn, poison and bleed ticks obey them |
+| W | Route doors where only one built region lies below | One labelled door; phase 5 brings the 2 to 3 doors |
 
 ---
 

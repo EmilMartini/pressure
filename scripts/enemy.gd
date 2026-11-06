@@ -101,6 +101,8 @@ var contact_damage := 8.0
 var damage_mult := 1.0   # late-floor pressure, set by the room on spawn; scales shots too
 var base_color := Color(0.85, 0.30, 0.30)
 var immune_to: int = Element.Kind.NONE
+## Exposed (Regions): a reaction here made the region's resistances count as weaknesses.
+var exposed_time := 0.0
 var is_elite := false
 var scrap_value := 1
 var last_hit_by: Player = null
@@ -416,10 +418,11 @@ func apply_element(kind: int, potency: float, source: Player = null) -> String:
             compound = ""
             var fused := Elements.try_fuse(self, cid, compound_origin, kind, potency, source)
             if fused != "":
+                expose()
                 queue_redraw()
                 return fused
             compound = cid   # over the room's budget: the element lands plainly, the compound stays
-    for existing in states.keys():
+    for existing in (states.keys() if Elements.may_react() else []):
         if existing == kind:
             continue
         var reaction := Elements.reaction_name(existing, kind)
@@ -429,6 +432,7 @@ func apply_element(kind: int, potency: float, source: Player = null) -> String:
         if source != null:
             potency *= 1.0 + source.stat("potency:" + reaction)
         _react_window = 0.3
+        expose()
         _on_reaction_pair(existing, kind)
         Elements.try_react(self, existing, kind, potency)
         if source != null and is_instance_valid(source):
@@ -437,12 +441,48 @@ func apply_element(kind: int, potency: float, source: Player = null) -> String:
         if is_instance_valid(self):
             queue_redraw()
         return reaction
-    var duration: float = Element.DURATION[kind]
+    var duration: float = Element.DURATION[kind] * resist_mult(kind)
     if source != null:
         duration *= 1.0 + source.stat("state_duration")
     states[kind] = duration
     queue_redraw()
     return ""
+
+
+## The region's soft resistance to `kind` on this body (Regions.RESISTED / WEAK, 1.0 for
+## anything else); a resisted element counts as a weakness while the body is Exposed.
+func resist_mult(kind: int) -> float:
+    if kind == Element.Kind.NONE:
+        return 1.0
+    if Regions.active_weak.has(kind):
+        return Regions.WEAK
+    if Regions.active_resists.has(kind):
+        return Regions.WEAK if exposed_time > 0.0 else Regions.RESISTED
+    return 1.0
+
+
+## `amount` of `kind` damage after the region's resistance, counted for the bot logs.
+func resisted(kind: int, amount: float) -> float:
+    var m := resist_mult(kind)
+    var out := amount * m
+    var bucket := "plain"
+    if m > 1.0:
+        bucket = "exposed" if Regions.active_resists.has(kind) else "weak"
+    elif m < 1.0:
+        bucket = "resisted"
+    Regions.stat_dmg[bucket] += out
+    return out
+
+
+## A reaction or fusion on this body: Exposed for Regions.EXPOSED_SECS, if the region
+## resists anything (and `--no-exposed` is off).
+func expose() -> void:
+    if not Regions.exposed_enabled or Regions.active_resists.is_empty() or hp <= 0.0:
+        return
+    if exposed_time <= 0.0:
+        Regions.stat_exposed += 1
+    exposed_time = Regions.EXPOSED_SECS
+    queue_redraw()
 
 
 ## A reaction left its compound on this body. False while the post-fusion cooldown runs.
@@ -909,7 +949,7 @@ func _physics_process(delta: float) -> void:
     if burn_time > 0.0:
         burn_time -= delta
         Telemetry.dot_begin(_dot_tags["burn"])
-        take_damage(burn_dps * delta, Element.COLORS[Element.Kind.FIRE], false)
+        take_damage(resisted(Element.Kind.FIRE, burn_dps * delta), Element.COLORS[Element.Kind.FIRE], false)
         Telemetry.dot_end()
         if hp <= 0.0:
             return
@@ -925,7 +965,7 @@ func _physics_process(delta: float) -> void:
     if poison_time > 0.0:
         poison_time -= delta
         Telemetry.dot_begin(_dot_tags["poison"])
-        take_damage(poison_dps * float(poison_stacks) * delta, Element.COLORS[Element.Kind.POISON], false)
+        take_damage(resisted(Element.Kind.POISON, poison_dps * float(poison_stacks) * delta), Element.COLORS[Element.Kind.POISON], false)
         Telemetry.dot_end()
         if hp <= 0.0:
             return
@@ -936,7 +976,7 @@ func _physics_process(delta: float) -> void:
         bleed_time -= delta
         if velocity.length() > 10.0:
             Telemetry.dot_begin(_dot_tags["bleed"])
-            take_damage(bleed_dps * delta, Element.COLORS[Element.Kind.BLOOD], false)
+            take_damage(resisted(Element.Kind.BLOOD, bleed_dps * delta), Element.COLORS[Element.Kind.BLOOD], false)
             Telemetry.dot_end()
             if hp <= 0.0:
                 return
@@ -947,6 +987,7 @@ func _physics_process(delta: float) -> void:
     _lunge_cd = maxf(0.0, _lunge_cd - delta)
     _lunge_t = maxf(0.0, _lunge_t - delta)
     corroded_time = maxf(0.0, corroded_time - delta)
+    exposed_time = maxf(0.0, exposed_time - delta)
     slow_time = maxf(0.0, slow_time - delta)
     armour_time = maxf(0.0, armour_time - delta)
     haste_aura_time = maxf(0.0, haste_aura_time - delta)
@@ -1519,6 +1560,45 @@ func _draw() -> void:
         var w := radius * 2.2
         draw_rect(Rect2(-w / 2.0, radius + 5.0, w, 4.0), Color(0, 0, 0, 0.7))
         draw_rect(Rect2(-w / 2.0, radius + 5.0, w * maxf(0.0, hp) / max_hp, 4.0), Color(0.9, 0.2, 0.2))
+    if not Regions.active_resists.is_empty() or not Regions.active_weak.is_empty():
+        _draw_resist_badges()
+
+
+## The region's resistances as small badges under the body (design section 5): a dull
+## element square barred in black for a resistance, a bright one split by a black crack for
+## a weakness. Exposed turns the resistance badges bright and cracked, blinking white. The
+## frame is the hostile signature (black, red rim), so the badge reads as the enemy's own.
+func _draw_resist_badges() -> void:
+    var kinds: Array = []
+    for k in Regions.active_resists:
+        kinds.append([k, exposed_time > 0.0, true])
+    for k in Regions.active_weak:
+        kinds.append([k, true, false])
+    var s := 8.0
+    var gap := 3.0
+    var x0 := floorf(-(float(kinds.size()) * (s + 2.0) + float(kinds.size() - 1) * gap) / 2.0)
+    var y0 := floorf(radius + 11.0)
+    for i in kinds.size():
+        var k: int = kinds[i][0]
+        var cracked: bool = kinds[i][1]
+        var exposed: bool = cracked and kinds[i][2]
+        var x := x0 + float(i) * (s + 2.0 + gap)
+        draw_rect(Rect2(x - 1.0, y0 - 1.0, s + 4.0, s + 4.0), Hostile.RED)
+        draw_rect(Rect2(x, y0, s + 2.0, s + 2.0), Hostile.DARK)
+        var c: Color = Element.COLORS[k]
+        if not cracked:
+            c = c.lerp(Color(0.4, 0.4, 0.4), 0.25).darkened(0.4)
+        elif exposed and int(_fx_t * 8.0) % 2 == 0:
+            c = c.lerp(Color.WHITE, 0.6)
+        draw_rect(Rect2(x + 1.0, y0 + 1.0, s, s), c)
+        if cracked:
+            # A jagged black crack corner to corner.
+            draw_rect(Rect2(x + 2.0, y0 + 1.0, 1.0, 3.0), Hostile.DARK)
+            draw_rect(Rect2(x + 3.0, y0 + 4.0, 2.0, 1.0), Hostile.DARK)
+            draw_rect(Rect2(x + 5.0, y0 + 5.0, 1.0, 2.0), Hostile.DARK)
+            draw_rect(Rect2(x + 6.0, y0 + 7.0, 2.0, 1.0), Hostile.DARK)
+        else:
+            draw_rect(Rect2(x + 1.0, y0 + 4.0, s, 2.0), Hostile.DARK)
 
 
 ## A flickering flame of `count` pixel squares rising from `base` (local), `w` wide, `h` tall.

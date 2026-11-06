@@ -721,11 +721,43 @@ one per existing theme:
 The five unbuilt regions (Drowned Cistern, Rotting Gardens, Pitch Mire, Abattoir,
 Stormspire) are in the graph with `built: false` and are never picked, so today every
 route is Ossuary Gate > Rust Ruins > Frostvault > The Forge or Chapel of Ash > The Rift.
-The next region is a random built neighbour for now; route-choice doors come in part 2.
-Resists and weak-to are data only until part 2 (60% / 140% soft resistances, Exposed,
-badges). The HUD banner names the region, and every `[FLOOR]`, `[DEATH]`, `[END]` log
+The HUD banner names the region, and every `[FLOOR]`, `[DEATH]`, `[END]` log
 line and every telemetry event with a `floor` also carries the region (`run_end` adds the
 whole `route`). Bots print a `[ROUTE]` line and take `--route=a,b,c` to fix a route.
+
+**Soft resistances, Exposed and route doors (BUILT, phase 0 part 2, 2026-11-06).**
+- *Resistances.* Every enemy in a region, bosses included, takes 60% damage from the
+  region's resisted elements and 140% from its weaknesses (`Regions.RESISTED` / `WEAK`,
+  applied in `Enemy.resist_mult`). This covers gun hits (`Strike.deal`) and the burn,
+  poison and bleed ticks (Fire, Poison, Blood). The duration of a state of that element
+  on the body scales the same way. Reaction, fusion and prop damage stays neutral, so
+  reactions are the way through a resistance. Nothing is immune.
+- *Exposed.* Any reaction or fusion on an enemy leaves it Exposed for 4 s
+  (`Regions.EXPOSED_SECS`). While Exposed, the region's resistances count as weaknesses
+  (140%), so a resisted build that reacts breaks through. This only matters where the
+  region resists something. Bots can switch it off with `--no-exposed` for A/B runs.
+- *Badges.* Each enemy shows its region's elements as small badges under its body:
+  - A resistance is a dull element square with a black bar across it.
+  - A weakness is a bright square split by a black crack.
+  - While Exposed, the resistance badges turn bright and cracked and blink white.
+
+  Every badge has the hostile frame (black, red rim), so it reads as the enemy's own,
+  never the player's. Ossuary Gate resists nothing and shows none.
+- *Route doors.* Killing a boss puts one stairs door per built region one edge down into
+  the boss room instead of a single staircase. Each door is a pedestal the player walks
+  to and activates with the usual interact button (pad or keys). Its label names the
+  region ("Down to The Forge") and shows that region's resists and weaknesses as element
+  badges. With today's six built regions, Frostvault offers two doors (The Forge, Chapel
+  of Ash) and every other depth has one; the unbuilt regions add more in phase 5.
+  - Bots take the next region of `--route`. Without one, they pick a door at random and
+    print `[ROUTE-DOOR]`.
+  - Every `[TICK]`/`[END]` block prints a `resist:` line: enemies Exposed, and damage
+    dealt at the resisted, weak, Exposed and plain rates.
+- *Reaction depth cap.* Reactions that apply or spread an element onto neighbours (Inferno,
+  Dark Flame, Black Hole, Firestorm, ...) set off those neighbours' reactions inside their
+  own. In a packed late crowd that once chained until the stack overflowed. Past
+  `Elements.MAX_REACTION_DEPTH` (24) nested resolutions, an element now lands as a plain
+  state instead of reacting.
 
 **Raids** are the endgame: a longer co-op dungeon with multiple bosses that have WoW-style
 mechanics (split the party, soak zones, interrupt casts with a specific reaction, adds that

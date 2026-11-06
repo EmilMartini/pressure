@@ -8,14 +8,31 @@ extends RefCounted
 ## Every region of section 4 is listed so the graph is whole, but only `built` regions are
 ## picked: the six whose themes exist as art. The rest wait for phase 5.
 ##
-## `resists` and `weak` are element names (Elements). Phase 0 part 1 stores them only;
-## combat ignores them until part 2 adds the 60% / 140% soft resistances and Exposed.
+## `resists` and `weak` are element names (Element.NAMES). The region the party is in is
+## `activate`d by Main.start_floor; every enemy then takes RESISTED damage from a resisted
+## element and WEAK from a weakness, and its states of those elements last as much shorter
+## or longer (Enemy.resist_mult). A reaction on an enemy leaves it Exposed for EXPOSED_SECS:
+## its resistances count as weaknesses, so a resisted build breaks through with reactions.
 ## `boss` is the region's own boss from the design; `boss_kind` is the SpawnTable boss
 ## fought there today (a stand-in where the region's own boss is not built yet).
 ## `layouts` are the region's signature arena layouts (RoomLayouts.FAVOUR_SHARE of arenas).
 
 const FIRST := "ossuary_gate"
 const DEPTHS := 5
+
+## Soft resistances (design section 5, locked start values; tune with data).
+const RESISTED := 0.6
+const WEAK := 1.4
+const EXPOSED_SECS := 4.0
+
+## The active region's profile as Element.Kind lists (empty in the hub and Ossuary Gate).
+static var active_resists: Array = []
+static var active_weak: Array = []
+## Bots: `--no-exposed` turns Exposed off to measure what it is worth.
+static var exposed_enabled := true
+## Counters for bot logs: reactions that exposed an enemy, and damage dealt at each rate.
+static var stat_exposed := 0
+static var stat_dmg := { "resisted": 0.0, "weak": 0.0, "exposed": 0.0, "plain": 0.0 }
 
 const REGIONS := {
     "ossuary_gate": { "name": "Ossuary Gate", "depth": 1, "theme": "crypt", "built": true,
@@ -92,6 +109,28 @@ static func depth_of(id: String) -> int:
     return int(get_region(id)["depth"])
 
 
+## Make `id` the region enemies take their resistances from ("" clears it).
+static func activate(id: String) -> void:
+    active_resists = kinds(get_region(id)["resists"]) if id != "" else []
+    active_weak = kinds(get_region(id)["weak"]) if id != "" else []
+
+
+## Element names -> Element.Kind values.
+static func kinds(names: Array) -> Array:
+    var out: Array = []
+    for n in names:
+        var k: int = Element.Kind.get(String(n).to_upper(), Element.Kind.NONE)
+        if k != Element.Kind.NONE:
+            out.append(k)
+    return out
+
+
+static func reset_stats() -> void:
+    stat_exposed = 0
+    for k in stat_dmg.keys():
+        stat_dmg[k] = 0.0
+
+
 ## The built regions one step down from `id` (what a route choice offers).
 static func next_options(id: String) -> Array:
     var out: Array = []
@@ -101,8 +140,8 @@ static func next_options(id: String) -> Array:
     return out
 
 
-## The next region after `id`: a random built neighbour, "" at the bottom. Part 2 replaces
-## this with the route-choice doors.
+## The next region after `id`: a random built neighbour, "" at the bottom (used when no
+## door was taken, e.g. a planned bot route that ran out).
 static func pick_next(id: String) -> String:
     var opts := next_options(id)
     return "" if opts.is_empty() else String(opts.pick_random())

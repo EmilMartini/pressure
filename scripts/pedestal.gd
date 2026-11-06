@@ -94,7 +94,8 @@ func title() -> String:
         "repair":
             return "Repair +%d HP" % offer["amount"]
         "stairs":
-            return "Stairs down"
+            # A route-choice door names the region it leads to (Regions).
+            return "Down to %s" % Regions.display_name(String(offer["id"])) if String(offer["id"]) != "" else "Stairs down"
         "sigil":
             return "Challenge sigil"
     return "?"
@@ -238,6 +239,8 @@ func _draw_labels(cv: CanvasItem) -> void:
         if bs.x > 0.0:
             ItemCard.draw_element_badge(cv, Vector2(x0 + tw + 8.0, y - 15.0), el, 16)
         y += 22.0
+    if kind() == "stairs" and String(offer["id"]) != "":
+        y = _draw_region_profile(cv, y)
     var pt := price_text()
     if pt != "":
         cv.draw_string(body, Vector2(-141, y + 1), pt, HORIZONTAL_ALIGNMENT_CENTER, 280, 20, Color(0, 0, 0, 0.8))
@@ -266,6 +269,36 @@ func _draw_labels(cv: CanvasItem) -> void:
         # The player's own device's button, floating over the item.
         Prompts.draw(cv, Vector2(0, -78.0 + sin(_t * 5.0) * 2.0), prompt_key, prompt_kind, 24.0)
         cv.draw_string(body, Vector2(-140, y + 4.0), verb, HORIZONTAL_ALIGNMENT_CENTER, 280, 20, Color(0.6, 1.0, 1.0))
+
+
+## Under a route door: what its region resists and is weak to, as element badges, so the
+## choice reads before the stairs are taken. Returns the next free line.
+func _draw_region_profile(cv: CanvasItem, y: float) -> float:
+    var r := Regions.get_region(String(offer["id"]))
+    var body: Font = Art.FONT_BODY
+    var parts: Array = []   # [word, kinds]
+    if not (r["resists"] as Array).is_empty():
+        parts.append(["RESISTS", Regions.kinds(r["resists"])])
+    if not (r["weak"] as Array).is_empty():
+        parts.append(["WEAK", Regions.kinds(r["weak"])])
+    if parts.is_empty():
+        return y
+    for part in parts:
+        var word: String = part[0]
+        var tw := body.get_string_size(word, HORIZONTAL_ALIGNMENT_LEFT, -1, 16).x
+        var total := tw
+        for k in part[1]:
+            total += 8.0 + ItemCard.element_badge_size(k, 16).x
+        var x := -total / 2.0
+        var col := Color(0.75, 0.72, 0.7) if word == "RESISTS" else Color(1.0, 0.85, 0.5)
+        cv.draw_string(body, Vector2(x + 1, y + 1), word, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(0, 0, 0, 0.8))
+        cv.draw_string(body, Vector2(x, y), word, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, col)
+        x += tw + 8.0
+        for k in part[1]:
+            ItemCard.draw_element_badge(cv, Vector2(x, y - 15.0), k, 16)
+            x += ItemCard.element_badge_size(k, 16).x + 8.0
+        y += 22.0
+    return y
 
 
 ## The item or gun card, beside the plinth on whichever side keeps it on screen, compared

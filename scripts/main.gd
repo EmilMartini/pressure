@@ -24,6 +24,8 @@ var floor_number := 0
 var region_id := ""
 var route: Array = []          # region ids this run has entered, top first
 var _planned_route: Array = [] # bots: --route=a,b,c, or the random way down to --start-floor
+var _door_choice := ""          # the region behind the stairs door the party took (Room "stairs")
+var _bot_doors := {}            # bots: depth -> the door picked for it
 var rooms: Dictionary = {}          # Vector2i -> RoomData
 var current: Room = null
 var current_pos := Vector2i.ZERO
@@ -104,6 +106,9 @@ func _ready() -> void:
     var args := OS.get_cmdline_user_args()
     autotest = args.has("--autotest")
     old_balance = autotest and args.has("--old-balance")
+    Regions.activate("")
+    Regions.reset_stats()
+    Regions.exposed_enabled = not (autotest and args.has("--no-exposed"))
     if autotest:
         # Fresh, separate save so the bot never touches the real one. `--veteran` unlocks
         # every gun and class first, to measure a player whose pool is wide open.
@@ -483,7 +488,9 @@ func start_floor(n: int) -> void:
         return
     floor_number = n
     region_id = _next_region(n)
+    _door_choice = ""
     route.append(region_id)
+    Regions.activate(region_id)
     Music.set_floor(n)
     floor_rooms_cleared = 0
     _arena_dps = []
@@ -503,10 +510,11 @@ func start_floor(n: int) -> void:
     announce(Regions.display_name(region_id))
 
 
-## The region the party enters at depth `n`: the planned route if there is one, the top
-## region at depth 1, else a random built region one edge down from where it is now.
-## (Phase 0 part 2 replaces the random step with the route-choice doors.)
+## The region the party enters at depth `n`: the door it took, else the planned route if
+## there is one, the top region at depth 1, else a random built region one edge down.
 func _next_region(n: int) -> String:
+    if _door_choice != "" and n > 1:
+        return _door_choice
     if _planned_route.size() >= n:
         return String(_planned_route[n - 1])
     if n <= 1 or region_id == "":
@@ -626,7 +634,9 @@ func on_room_cleared(_room: Room) -> void:
     announce("Room cleared")
 
 
-func next_floor() -> void:
+## Down the stairs; `to` is the region behind the door taken ("" at the bottom).
+func next_floor(to: String = "") -> void:
+    _door_choice = to
     Progress.add("floors")
     if floor_number >= FLOORS or Regions.next_options(region_id).is_empty():
         victory = true
@@ -1076,11 +1086,18 @@ func _setup_autotest() -> void:
     for a in OS.get_cmdline_user_args():
         if a.begins_with("--loadout="):
             # Balance probe: start with exactly these guns, e.g. --loadout=water_pistol,flare_pistol
+            # With --build the loadout replaces the profile's guns (gear and levels stay),
+            # and `id@tier` sets a tier, so element builds compare on the same footing.
             var p0 := players[0]
             p0.weight_capacity_base = 40
             p0.recalc_stats()
-            for gid in a.substr(10).split(","):
-                p0.add_gun(gid)
+            if not _bot_build().is_empty():
+                for g in p0.guns.duplicate():
+                    p0.drop_gun(g)
+            for spec in a.substr(10).split(","):
+                var parts: PackedStringArray = String(spec).split("@")
+                if p0.add_gun(parts[0], parts.size() == 1) and parts.size() > 1:
+                    p0.guns[p0.guns.size() - 1].tier = int(parts[1])
             print("[LOADOUT] %s" % a.substr(10))
         if a == "--fusion-probe" or a.begins_with("--fusion-probe="):
             # Tier-ladder probe: four light guns of four elements, so compounds, fusions and
@@ -1349,8 +1366,9 @@ func _bot_wants(o: Dictionary, p: Player) -> bool:
         "sigil":
             return true
         "stairs":
-            # Like a player: see the whole floor (shop, treasure) before going down.
-            return _bot_next_dir() == Vector2i.ZERO
+            # Like a player: see the whole floor (shop, treasure) before going down, then
+            # take the door the route plans (or a random one).
+            return _bot_next_dir() == Vector2i.ZERO and (String(o["id"]) == "" or String(o["id"]) == _bot_door())
         "gun":
             return o["price"] <= scrap and p.can_carry(Guns.make(o["id"])) and not _bot_tried.has(o["id"])
         "item":
@@ -1380,6 +1398,25 @@ func _bot_wants(o: Dictionary, p: Player) -> bool:
         "repair":
             return o["price"] <= scrap and p.hp < p.max_hp * 0.6
     return false
+
+
+## The stairs door a bot takes out of this region: the next region of its --route while
+## that lasts, else one of the doors on offer picked at random (once per depth).
+func _bot_door() -> String:
+    var depth := floor_number + 1
+    if _planned_route.size() >= depth:
+        return String(_planned_route[depth - 1])
+    if not _bot_doors.has(depth):
+        var ids: Array = []
+        if current != null:
+            for o in current.data.stock:
+                if o["kind"] == "stairs" and String(o["id"]) != "":
+                    ids.append(String(o["id"]))
+        if ids.is_empty():
+            return ""
+        _bot_doors[depth] = String(ids.pick_random())
+        print("[ROUTE-DOOR] depth %d: %s of %s" % [depth, _bot_doors[depth], ids])
+    return String(_bot_doors[depth])
 
 
 ## Where to go next: a shop when scrap burns a hole in the pocket, else the nearest
@@ -1456,6 +1493,9 @@ func _print_stats(label: String) -> void:
         current.data.type_name() if current else "-", visited, rooms.size(),
         rooms_cleared, total_kills, scrap, p.hp, p.total_weight(), p.weight_capacity,
         get_tree().get_nodes_in_group("clouds").size()])
+    print("    resist: exposed=%d dmg resisted=%.0f weak=%.0f exposed=%.0f plain=%.0f (exposed %s)" % [
+        Regions.stat_exposed, Regions.stat_dmg["resisted"], Regions.stat_dmg["weak"], Regions.stat_dmg["exposed"], Regions.stat_dmg["plain"],
+        "on" if Regions.exposed_enabled else "off"])
     print("    reactions: %s" % str(_reaction_counts))
     print("    fusions: %s" % str(_fusion_counts))
     print("    unlocked this run: %s  (achievements %d/%d)" % [str(Progress.run_unlocks), Progress.achievements_count(), Progress.ACHIEVEMENTS.size()])

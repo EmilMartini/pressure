@@ -90,7 +90,8 @@ func tick(delta: float) -> void:
         for i in tiers.size():
             var d := float(tiers[i]) - (float(_tier0[i]) if i < _tier0.size() else 0.0)
             parts.append("t%d=%.0f%%" % [i, 100.0 * d / maxf(1.0, tsum)])
-        print("[DPS] floor=%d picks=%s dps=%.0f secs=%.0f %s" % [main.floor_number, _label if _label != "" else "-", dealt / _secs, _secs, " ".join(parts)])
+        print("[DPS] floor=%d region=%s picks=%s dps=%.0f secs=%.0f %s exposed=%d (%s)" % [main.floor_number, main.region_id, _label if _label != "" else "-", dealt / _secs, _secs, " ".join(parts),
+            Regions.stat_exposed, "on" if Regions.exposed_enabled else "off"])
         get_tree().quit()
 
 

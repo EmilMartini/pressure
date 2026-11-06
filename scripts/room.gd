@@ -433,7 +433,13 @@ func _tick_boss(delta: float) -> void:
                 _spawn_group()
     if boss == null or not is_instance_valid(boss):
         boss = null
-        data.stock.append(FloorGen.offer("stairs", "", 0))
+        # The route choice: one stairs door per built region one edge down (design
+        # section 4), or a single way out at the bottom.
+        var ways: Array = Regions.next_options(main.region_id) if main.floor_number < Main.FLOORS else []
+        if ways.is_empty():
+            data.stock.append(FloorGen.offer("stairs", "", 0))
+        for id in ways:
+            data.stock.append(FloorGen.offer("stairs", String(id), 0))
         _finish_fight(30)
         _build_pedestals()
         Music.play("run", 2.0)
@@ -1350,7 +1356,7 @@ func activate(ped: Pedestal, pl: Player) -> void:
             Sfx.play("buy")
         "stairs":
             Sfx.play("stairs")
-            main.next_floor()
+            main.next_floor(String(o["id"]))
             return
         "sigil":
             o["taken"] = true

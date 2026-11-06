@@ -162,6 +162,11 @@ var _repeats: Dictionary = {}      # name -> game times it fired inside REPEAT_W
 var _last_cataclysm := -99.0
 var _apply_left := -1              # element applications the running fusion may still cause (-1 = no cap)
 var _depth := 0                    # nested resolutions (reactions inside fusions inside ...)
+## Deepest nesting a reaction may start at. Reactions that apply or spread an element onto
+## neighbours set off their reactions inside their own, so a packed crowd carrying the
+## right states (The Rift, late in a strong run) chained deep enough to overflow the stack.
+## Past this depth an element lands as a plain state instead of reacting.
+const MAX_REACTION_DEPTH := 24
 var _frame_fusions := 0
 ## Termination proof, printed by the bot ([FUSION-CHECK]): the highest context tier entered,
 ## the most fusions and cataclysms run in one frame, the deepest nesting, and products made
@@ -313,6 +318,11 @@ func react_cloud(cloud: Cloud, incoming: int, potency: float, source: Player, co
 
 
 ## Enter a resolution at `tier`; returns the tier to restore with _leave.
+## Whether a new reaction may start here (MAX_REACTION_DEPTH).
+func may_react() -> bool:
+    return _depth < MAX_REACTION_DEPTH
+
+
 func _enter(tier: int) -> int:
     var prev := ctx_tier
     ctx_tier = tier
