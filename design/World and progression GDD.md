@@ -33,7 +33,7 @@ Read this section before starting any phase.
 | Rule | What it means in practice |
 |---|---|
 | Data, not guesses | Measure before and after with bots and telemetry. Report numbers, not impressions. |
-| Usage budget | About 20% of the weekly limit per work day. Keep agents few, runs short, edits targeted. Nothing runs overnight. |
+| Usage budget | The weekly limit is shared with the designer's day job, so game work must never fill it. Check usage before starting a phase and after each large step. Stop and report if this week's game share is used up: about 40% of the weekly limit, unless the designer sets another number. Keep agents few, runs short, edits targeted. Nothing runs overnight. |
 | Bot load | At most 4 Godot instances at once per agent. Measure fps only while nothing else runs. |
 | Difficulty | Like Hades: early runs are meant to fail, and meta progression carries the player. Fix unfair deaths (sudden bursts, unreadable threats), not overall difficulty. |
 | Single player | Design and test for one player. Don't break the existing co-op code, and don't invest in it. |
