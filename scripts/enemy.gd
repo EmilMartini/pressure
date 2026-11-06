@@ -229,6 +229,14 @@ const BRUTE_BARREL_CAP := 4
 const BARREL_HIT_R := 34.0
 const GUT_RADIUS := 130.0
 const GUT_WARN := 1.1
+var _burrow_state := 0       # Hive Mother: 1 digging in (wind-up), 2 underground, 0 above
+var _burrow_t := 0.0
+var _burrow_at := Vector2.ZERO
+var _spore_t := 3.0
+const BURROW_WARN := 0.8
+const BURROW_UNDER := 2.6
+const BURROW_MARK := 1.2       # the eruption circle shows this long before she bursts up
+const ERUPT_R := 72.0
 var _hazards: Array = []    # [{ "pos": Vector2, "t": float }] boss fire patches that hurt players
 var _hazard_tick := 0.0
 
@@ -560,6 +568,8 @@ func take_damage(amount: float, color: Color, flash: bool = true, source: Player
         last_hit_by = source
     if body != null:
         amount *= body.taken_mult(flash)   # the part hit, and the stagger bonus
+        if _burrow_state == 2 and not body.any_visible():
+            amount *= 0.25   # underground with her sacs gone: little gets through
     if shielded() and (body == null or not body.staggered()):
         # A shield blocks most raw damage, never all of it: reactions are the fast way in.
         # A staggered boss has dropped its guard.
@@ -784,6 +794,8 @@ func _draw_hostile(cv: CanvasItem) -> void:
         _draw_pyre_hostile(cv)
     elif boss_kind == "brute_king":
         _draw_brute_hostile(cv)
+    elif boss_kind == "hive_mother":
+        _draw_hive_hostile(cv)
     if body != null and body.has_parts():
         _draw_parts(cv)
     if _mode == MODE_TELEGRAPH and emerge <= 0.0 and hp > 0.0:
@@ -1475,8 +1487,27 @@ func _draw_parts(cv: CanvasItem) -> void:
                     cv.draw_arc(at, pr, a0, a1, 8, Hostile.DARK, 11.0)
                     cv.draw_arc(at, pr, a0, a1, 8, Color(0.86, 0.82, 0.70).lerp(Color.WHITE, flash * 0.6), 6.0)
                     cv.draw_arc(at, pr + 3.5, a0, a1, 8, Color(Hostile.RED, 0.9), 1.0)
-            "hide":
-                pass   # the sprite is the hide
+            "hide", "hive":
+                pass   # the sprite is the body
+            "sacs":
+                if p["broken"]:
+                    continue
+                # Swollen sacs on her back; one bursts per third of wear.
+                var n_sacs := ceili(float(p["integrity"]) * 3.0)
+                for k in n_sacs:
+                    var c := at + Vector2((float(k) - 1.0) * pr * 0.75, absf(float(k) - 1.0) * pr * 0.25)
+                    var sr := pr * (0.5 if k == 1 else 0.42) * (1.0 + 0.06 * sin(_fx_t * 5.0 + float(k)))
+                    cv.draw_circle(c, sr + 2.5, Hostile.DARK)
+                    cv.draw_circle(c, sr, Color(0.55, 0.72, 0.25).lerp(Color.WHITE, flash * 0.6))
+                    cv.draw_circle(c + Vector2(-sr * 0.3, -sr * 0.3), sr * 0.35, Color(0.8, 0.95, 0.5, 0.8))
+                    cv.draw_arc(c, sr + 2.5, 0.0, TAU, 18, Color(Hostile.RED, 0.9), 1.0)
+            "brood":
+                if not vis:
+                    continue
+                cv.draw_circle(at, pr + 3.0, Hostile.DARK)
+                cv.draw_arc(at, pr + 3.0, 0.0, TAU, 24, Hostile.RED, 1.5)
+                cv.draw_circle(at, pr, Color(0.95, 0.85, 0.45).lerp(Color.WHITE, flash))
+                cv.draw_circle(at, pr * 0.5, Color(1.0, 1.0, 0.75, 0.9))
             "core":
                 if not vis:
                     continue
@@ -1532,21 +1563,7 @@ func _think_boss(delta: float, target: Player, dir: Vector2, dist: float, mult: 
         "brute_king":
             return _think_brute(delta, target, dir, dist, mult)
         "hive_mother":
-            _t1 -= delta
-            _t2 -= delta
-            if _t1 <= 0.0:
-                _t1 = 4.0
-                _queue_summons("swarmer", 3 if _phase == 1 else 5, 0.7)
-            _ring_warn = maxf(0.0, _t2) if _t2 < 0.6 else 0.0
-            if _t2 <= 0.0:
-                _t2 = 5.0 if _phase == 1 else 3.5
-                _ring_warn = 0.0
-                var n := 8 if _phase == 1 else 12
-                var off := randf() * TAU
-                for i in n:
-                    _shoot(Vector2.RIGHT.rotated(off + TAU * float(i) / float(n)), 170.0, _projectile_damage(7.0), Element.Kind.POISON, 4.0, 7.0)
-                _squash = 1.0
-            return _keep_range(delta, dir, dist, 200.0, 320.0) * speed * mult
+            return _think_hive(delta, target, dir, dist, mult)
         "storm_warden":
             _t1 -= delta
             _t2 -= delta
@@ -1611,6 +1628,97 @@ func _think_boss(delta: float, target: Player, dir: Vector2, dist: float, mult: 
                 _queue_summons("wisp", 2 if _phase == 1 else 3, 0.8)
             return _keep_range(delta, dir, dist, 140.0, 240.0) * speed * mult
     return dir * speed * mult
+
+
+# --- The Hive Mother --------------------------------------------------------------
+
+
+func burrowed() -> bool:
+    return _burrow_state == 2
+
+
+## Phase 1: swarms, poison rings and spore clouds (poison you can light into Smog). Phase 2
+## adds a burrow: she digs in, her sacs stay above ground, and she bursts up under you
+## inside a marked circle. Phase 3: the hive splits open, faster rings, more swarmers.
+func _think_hive(delta: float, target: Player, dir: Vector2, dist: float, mult: float) -> Vector2:
+    var ph := clampi(_phase - 1, 0, 2)
+    if _sprite != null:
+        _sprite.self_modulate.a = 0.25 if _burrow_state == 2 else 1.0
+    if _burrow_state > 0:
+        _burrow_t -= delta
+        if _burrow_state == 1 and _burrow_t <= 0.0:
+            _burrow_state = 2
+            _burrow_t = BURROW_UNDER
+            Elements.nova.emit(global_position, radius * 1.6, Color(0.45, 0.35, 0.2, 0.7))
+            Sfx.play_at("hit_wall", global_position, 0.0)
+        elif _burrow_state == 2:
+            if _burrow_t > BURROW_MARK:
+                _burrow_at = _pick_point_near(target.global_position, 0.0, 40.0)
+            elif _burrow_t <= 0.0:
+                _erupt()
+        return Vector2.ZERO
+    _t1 -= delta
+    _t2 -= delta
+    _t3 -= delta
+    _spore_t -= delta
+    if _t1 <= 0.0:
+        _t1 = [4.0, 4.0, 3.2][ph]
+        _queue_summons("swarmer", [3, 4, 5][ph], 0.7)
+    _ring_warn = maxf(0.0, _t2) if _t2 < 0.6 else 0.0
+    if _t2 <= 0.0:
+        _t2 = [5.0, 4.2, 3.2][ph]
+        _ring_warn = 0.0
+        var n: int = [8, 10, 12][ph]
+        var off := randf() * TAU
+        for i in n:
+            _shoot(Vector2.RIGHT.rotated(off + TAU * float(i) / float(n)), 170.0, _projectile_damage(7.0), Element.Kind.POISON, 4.0, 7.0)
+        _squash = 1.0
+    if _spore_t <= 0.0 and body != null and body.visible(body.part_index("sacs")):
+        # The sacs puff spores: poison in the air, which fire turns into Smog against her.
+        _spore_t = 6.0
+        var w := _world()
+        if w != null:
+            Cloud.spawn(w, body.part_world(body.part_index("sacs")) + Vector2(randf_range(-40.0, 40.0), randf_range(-20.0, 30.0)), Element.Kind.POISON, 70.0, 6.0, 1.0, null)
+    if _phase >= 2 and _t3 <= 0.0 and _mode == MODE_CHASE:
+        _t3 = 9.0 if _phase == 2 else 7.0
+        _burrow_state = 1
+        _burrow_t = BURROW_WARN
+        _squash = 1.0
+        return Vector2.ZERO
+    return _keep_range(delta, dir, dist, 200.0, 320.0) * speed * mult
+
+
+## She bursts up at the marked spot: players inside the circle are hurt and thrown clear.
+func _erupt() -> void:
+    _burrow_state = 0
+    _teleport_to(_burrow_at)
+    for p in get_tree().get_nodes_in_group("players"):
+        if is_instance_valid(p) and p.alive and p.global_position.distance_to(_burrow_at) <= ERUPT_R + 12.0:
+            p.take_damage(_projectile_damage(11.0) * damage_mult, self, _burrow_at)
+    Elements.nova.emit(_burrow_at, ERUPT_R, Color(0.55, 0.75, 0.3, 0.8))
+    Sfx.play("nova_fire")
+    var fx := _fx()
+    if fx != null:
+        fx._shake(6.0)
+    _squash = 1.0
+
+
+func _draw_hive_hostile(cv: CanvasItem) -> void:
+    if _burrow_state == 1:
+        var k := 1.0 - _burrow_t / BURROW_WARN
+        var a := 0.5 + 0.4 * absf(sin(_fx_t * 16.0))
+        cv.draw_arc(Vector2.ZERO, radius * (1.6 - 0.5 * k), 0.0, TAU, 32, Color(Hostile.DARK, 0.8), 5.0)
+        cv.draw_arc(Vector2.ZERO, radius * (1.6 - 0.5 * k), 0.0, TAU, 32, Color(Hostile.RED, a), 2.0)
+    elif _burrow_state == 2:
+        # A churned mound where she went down, and the eruption circle once it is set.
+        cv.draw_circle(Vector2(0, radius * 0.4), radius * 0.9, Color(0.18, 0.13, 0.08, 0.85))
+        cv.draw_arc(Vector2(0, radius * 0.4), radius * 0.9, 0.0, TAU, 24, Hostile.DARK, 2.0)
+        if _burrow_t <= BURROW_MARK:
+            var k := 1.0 - _burrow_t / BURROW_MARK
+            var at := to_local(_burrow_at)
+            cv.draw_arc(at, ERUPT_R, 0.0, TAU, 32, Color(Hostile.DARK, 0.8), 6.0)
+            cv.draw_arc(at, ERUPT_R, 0.0, TAU, 32, Color(Hostile.RED, 0.45 + 0.5 * k), 2.5)
+            cv.draw_circle(at, ERUPT_R * k, Color(Hostile.RED, 0.18))
 
 
 # --- The Brute King ---------------------------------------------------------------

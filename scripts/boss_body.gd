@@ -70,6 +70,7 @@ static func floor1_mult(boss_kind: String) -> float:
 const PHASES := {
     "pyre_lord": [0.66, 0.33],
     "brute_king": [0.66, 0.33],
+    "hive_mother": [0.66, 0.33],
 }
 
 ## Body parts per boss kind. `offset` and `r` are in units of the boss radius. `innate`: an
@@ -81,8 +82,23 @@ const PHASES := {
 ## Together they make the chain readable: burning slag only steams, the core only glasses.
 ## `wear`: armour wear per product tier (default ARMOUR_WEAR). `tear_stagger`: stagger bar
 ## added when the part tears. `stays_off`: from this phase on a torn part never re-forms.
-## `from_phase`: the part is hidden (not hittable) before this phase.
+## `from_phase`: the part is hidden (not hittable) before this phase. `burrows`: hidden while
+## the boss is underground (Enemy.burrowed). `tear_damage`: share of max health a tear deals.
 const PARTS := {
+    # The Hive Mother: her spore sacs keep re-poisoning. Fire on them makes Smog on the sacs,
+    # shock on the Smog is Firedamp, which blows them off (a burst and a third of the stagger
+    # bar). Shock does nothing to a sac without Smog. In phase 2 she burrows and the sacs stay
+    # above ground; in phase 3 the hive splits open on a soft brood chamber.
+    "hive_mother": [
+        { "id": "sacs", "name": "Spore sacs", "offset": Vector2(0.0, -0.75), "r": 0.7,
+            "innate": Element.Kind.POISON, "armour": true, "tears": ["Firedamp"],
+            "wear": { 2: 0.0, 3: 0.12, 4: 0.6 }, "tear_stagger": 0.3, "tear_damage": 0.04,
+            "taken": 1.0, "inert": [Element.Kind.SHOCK] },
+        { "id": "hive", "name": "Hive body", "offset": Vector2(0.0, 0.25), "r": 0.9,
+            "taken": 0.8, "burrows": true },
+        { "id": "brood", "name": "Brood chamber", "offset": Vector2(0.0, 0.25), "r": 0.5,
+            "from_phase": 3, "taken": 1.8, "burrows": true },
+    ],
     # The Brute King teaches stagger: any reaction on his bone plates cracks one, tearing
     # them staggers him, and the barrels he throws are fuel (a barrel blast is a fusion's
     # worth on his body; a swallowed barrel set off by fire or shock is a Gut Blast).
@@ -181,6 +197,8 @@ func part_world(i: int) -> Vector2:
 func visible(i: int) -> bool:
     var p: Dictionary = parts[i]
     if p["broken"] or e._phase < int(p.get("from_phase", 0)):
+        return false
+    if p.get("burrows", false) and e.burrowed():
         return false
     var cover := String(p.get("covered_by", ""))
     if cover != "":
@@ -389,6 +407,8 @@ func tear(i: int, by: String) -> void:
     if i == cur:
         _load(i)
     fill(float(p.get("tear_stagger", 0.0)))
+    if p.has("tear_damage"):
+        e.take_damage(e.max_hp * float(p["tear_damage"]), Color(0.75, 0.9, 0.4), false)
     Elements.reaction_fired.emit("%s torn off!" % p["name"], part_world(i), Color(1.0, 0.75, 0.4))
     Elements.nova.emit(part_world(i), e.radius * 2.5, Color(1.0, 0.55, 0.2, 0.7))
     Sfx.play("die_elite")
@@ -451,6 +471,11 @@ func on_phase(n: int) -> void:
                     tear(pl, "phase 2")
             elif n == 3:
                 Elements.reaction_fired.emit("The crown is bare", part_world(part_index("crown")), Color(1.0, 0.85, 0.5))
+        "hive_mother":
+            if n == 2:
+                Elements.reaction_fired.emit("She digs in", e.global_position + Vector2(0, -e.radius * 1.8), Color(0.75, 0.9, 0.4))
+            elif n == 3:
+                Elements.reaction_fired.emit("The hive splits open", part_world(part_index("brood")), Color(0.95, 0.95, 0.5))
         "pyre_lord":
             var a := part_index("armour")
             if n == 2 and a >= 0:
@@ -470,6 +495,13 @@ func blast(product: String, at: Vector2, tier: int, share: float) -> void:
     focus_at(at)
     on_product(product, tier, true)
     e.take_damage(e.max_hp * share, Color(1.0, 0.6, 0.25), false)
+
+
+func any_visible() -> bool:
+    for i in parts.size():
+        if visible(i):
+            return true
+    return parts.is_empty()
 
 
 ## The bot log's summary of the fight.
