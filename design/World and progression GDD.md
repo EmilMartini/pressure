@@ -658,6 +658,38 @@ Each phase ships a playable game, passes the checks in section 0, and updates `G
   - Heavy fights hold about 98 to 100 fps.
 - **Out of scope:** new themes, new bosses, NPCs.
 
+**Part 1 done (2026-11-06): regions and routes.**
+- `scripts/regions.gd` holds the whole graph of section 4 (11 regions; the 5 without art have
+  `built: false` and are never picked). Each region has id, name, depth, theme, resists, weak
+  to, hazards, boss (the design's own), `boss_kind` (the boss fought today), signature
+  `layouts` and edges. `Regions.validate()` checks the graph; every bot prints it in `[ROUTE]`.
+- Edges fixed (default, easy to change): Ossuary Gate > Cistern, Gardens, Rust Ruins;
+  Cistern > Frostvault, Pitch Mire; Gardens > Pitch Mire, Abattoir; Rust Ruins > Frostvault,
+  Abattoir; Frostvault > Stormspire, Forge, Chapel of Ash; Pitch Mire > Stormspire, Forge;
+  Abattoir > Forge, Chapel of Ash; every depth 4 region > The Rift. Rust Ruins > Frostvault
+  and Frostvault > Forge are the crossings between the hot and cold halves.
+- `Main.region_id` and `Main.route`: the region sets theme, boss and 35% of arena layouts
+  (`RoomLayouts.FAVOUR_SHARE`); `Main.floor_number` is now the depth and still drives
+  difficulty, floor size, prices and enemy kinds. The next region is a random built
+  neighbour (`Main._next_region`); bots can fix one with `--route=a,b,c`.
+- Stand-in bosses (default): Rust Ruins fights the Hive Mother, Frostvault the Storm Warden,
+  Chapel of Ash the Pyre Lord, so depth 2 to 4 keep the bosses their floors had.
+- HUD banner, `[FLOOR]`, `[DEATH]`, `[END]` and every telemetry event with a `floor` name the
+  region; `run_end` stores the `route`.
+- Measured: idle six-gun bot dies in Ossuary Gate (t=73, 2 rooms cleared); fusion probe clears
+  it (Brute King in 14.5 s); `--build=storm --start-floor=2 --mastery=full` wins the Forge
+  route (The Rift took it about 840 game seconds); a naked `--mastery=full` bot walked the
+  whole Chapel route from Ossuary Gate into The Rift, and a storm bot from depth 4 cleared
+  Chapel of Ash (stand-in Pyre Lord in 19.9 s); both hit their time cap (2700 s, 1500 s)
+  inside The Rift, so no Chapel-route win is logged yet. Heavy fights averaged 99 fps
+  (30 samples, min 92); 0 script errors.
+
+**Part 2 starts here (Tuesday):** soft resistances (60% / 140%) on damage and state duration
+from each region's `resists` / `weak` (element names; map with `Elements.Kind[name.to_upper()]`),
+the Exposed state, resistance badges, route-choice doors at the region exit (replace
+`Main._next_region`'s random pick with `Regions.next_options`), and the weakness-versus-
+resistance and Exposed measurements.
+
 ### Phase 0b: Boss framework
 
 - **Goal:** bosses become multi-part elemental creatures, with aim that can target their parts.
@@ -804,6 +836,9 @@ Each phase ships a playable game, passes the checks in section 0, and updates `G
 | N | Opened shortcuts can close? | Never |
 | O | Embers dropped on death? | No |
 | P | The story's central question | What lies at the bottom of the Descent, and why do people keep going down? |
+| Q | The graph's edges (phase 0) | As listed under Phase 0 part 1; crossings Rust Ruins > Frostvault and Frostvault > Forge |
+| R | Boss for a region whose own boss isn't built | The boss its depth had before: Hive Mother, Storm Warden, Pyre Lord |
+| S | How strongly a region colours its layouts | 35% of arenas use one of its signature layouts |
 
 ---
 

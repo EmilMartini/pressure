@@ -111,7 +111,7 @@ func _exit_tree() -> void:
 
 func _ready() -> void:
     Telemetry.room_enter(self)
-    theme = Themes.for_floor(main.floor_number if main != null else 1)
+    theme = String(Regions.get_region(main.region_id)["theme"]) if main != null else "crypt"
     Themes.current = theme
     enemies = Node2D.new()
     enemies.name = "Enemies"
@@ -391,7 +391,7 @@ func _begin_boss() -> void:
             boss_pos = away * 300.0
     boss_pos = nearest_open(boss_pos, 40.0)
     boss = _spawn_enemy("boss", boss_pos)
-    boss.set_boss(SpawnTable.boss_for(main.floor_number))
+    boss.set_boss(String(Regions.get_region(main.region_id)["boss_kind"]))
     if main.floor_number >= 2 and not Main.old_balance:
         var want := BOSS_DPS_SECS * main.floor_arena_dps()
         boss.max_hp = clampf(want, boss.max_hp, boss.max_hp * BOSS_HP_MAX_MULT)

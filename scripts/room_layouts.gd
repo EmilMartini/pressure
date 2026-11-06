@@ -54,12 +54,21 @@ const ALL := ["open", "four_pillars", "pillar_hall", "cross", "l_shape", "ring",
 const MIN_SIZE := { "ring": 1, "moat": 1 }
 
 
-## The layout a room of this type and size gets.
-static func pick(type: int, size_class: int, rng: RandomNumberGenerator) -> String:
+## Share of arenas that take one of the region's signature layouts (Regions "layouts").
+const FAVOUR_SHARE := 0.35
+
+
+## The layout a room of this type and size gets; `favour` (the region's signature layouts)
+## takes FAVOUR_SHARE of the arenas.
+static func pick(type: int, size_class: int, rng: RandomNumberGenerator, favour: Array = []) -> String:
     var pool: Array = []
     match type:
         RoomData.Type.ARENA, RoomData.Type.CHALLENGE:
             pool = ARENA
+            if not favour.is_empty() and rng.randf() < FAVOUR_SHARE:
+                var fav: Array = favour.filter(func(n): return ARENA.has(n) and size_class >= int(MIN_SIZE.get(n, 0)))
+                if not fav.is_empty():
+                    pool = fav
         RoomData.Type.SHOP, RoomData.Type.TREASURE:
             pool = SIMPLE
         RoomData.Type.HIDDEN:

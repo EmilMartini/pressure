@@ -561,7 +561,10 @@ which is the game before fusions for a like-for-like baseline. Late floors:
 `--build=storm --start-floor=N` starts on floor N (2 to 5) with the build a human Stormcaller
 carried there in a won run (guns and tiers, gear, gun mods, every level-up pick; the bot then
 only fills free slots), `--build=mid` is a mediocre build at the same levels (tier-one guns,
-random picks, no healing gear), `--one-floor` quits when the next floor starts, and
+random picks, no healing gear), `--route=ossuary_gate,rust_ruins,frostvault,the_forge,the_rift`
+fixes the regions taken (checked against the graph; otherwise each next region is a random
+built neighbour, and every bot run prints a `[ROUTE]` line with the graph check), `--one-floor`
+quits when the next floor starts, and
 `--old-balance` turns the late-floor tuning off (uncapped Leech, formula bosses without the
 rally, the old floor damage) for before/after comparisons. Each boss kill prints a `[BOSS]`
 line (game seconds, phase two, max health, the arena output it was sized from). Every run ends with a
@@ -657,6 +660,8 @@ tools/               export_web.sh (export + serve), get_templates.sh, analyze_t
 scenes/main.tscn     the only scene; everything is built in code
 scripts/
   main.gd            run orchestrator: floors, current room, scrap, camera, HUD, joins, bot
+  regions.gd         the Descent: region graph (depth, theme, resists, weak to, hazards, boss,
+                     signature layouts, edges); a run walks one region per depth
   floor_gen.gd       generates a floor: tree of rooms, specials on dead ends, hidden room
   room_data.gd       persistent state of one room (type, cleared, doors, shop stock)
   room.gd            a room in play: walls, doors, pedestals, waves, challenge, boss

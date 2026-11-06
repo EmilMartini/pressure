@@ -46,6 +46,7 @@ var _run: Dictionary = {}
 var _main_ref: WeakRef = null
 var _clock := 0.0
 var _floor := 0
+var _region := ""   # Regions id of the floor (every event with a "floor" also gets "region")
 var _floor_t0 := 0.0
 var _floor_kills := 0
 var _run_kills := 0
@@ -191,6 +192,8 @@ func event(e: String, fields: Dictionary = {}) -> void:
         return
     var ev := { "t": snappedf(_clock, 0.1), "e": e }
     ev.merge(fields)
+    if fields.has("floor") and _region != "" and not fields.has("region"):
+        ev["region"] = _region
     (_run["events"] as Array).append(ev)
 
 
@@ -202,6 +205,7 @@ func run_start(main: Node) -> void:
     _clock = 0.0
     _last_us = 0
     _floor = 0
+    _region = ""
     _run_kills = 0
     _kills_by_kind_run = {}
     _scrap_earned = 0
@@ -246,6 +250,7 @@ func floor_start(main: Node) -> void:
         _skipped(main.get("current"))
         _floor_end(main)
     _floor = int(main.get("floor_number"))
+    _region = String(main.get("region_id"))
     _floor_t0 = _clock
     _floor_kills = 0
     _update_party(main)
@@ -327,7 +332,7 @@ func _finish_run(won: bool, abandoned: bool, award: Dictionary = {}) -> void:
         for p in main.get("players"):
             level = maxi(level, int(p.level))
     event("run_end", {
-        "won": won, "abandoned": abandoned, "floor": _floor, "secs": snappedf(_clock, 0.1),
+        "won": won, "abandoned": abandoned, "floor": _floor, "route": (main.get("route") as Array).duplicate() if main != null else [], "secs": snappedf(_clock, 0.1),
         "kills": _run_kills, "kills_by_kind": _kills_by_kind_run.duplicate(), "level": level,
         "scrap_total_earned": _scrap_earned, "scrap_spent": _scrap_spent,
         "unlocks": Progress.run_unlocks.duplicate(),

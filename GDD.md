@@ -701,6 +701,32 @@ A dungeon is 5 floors. Floors get larger and add more room types and enemy kinds
 distinct two-phase boss ends each floor (brute king, hive mother, storm warden, pyre
 lord, void herald).
 
+**Regions (BUILT, phase 0 part 1, 2026-11-06).** Each floor is now a *region* of the
+Descent (`scripts/regions.gd`, design in `design/World and progression GDD.md` section 4).
+A run walks one region per depth along the graph's edges. The region sets the floor's
+theme, its boss and its signature arena layouts (35% of arenas, `RoomLayouts.FAVOUR_SHARE`);
+the depth (`Main.floor_number`) still sets difficulty, floor size, prices and enemy kinds,
+so difficulty follows depth exactly as it followed the floor before. Six regions are built,
+one per existing theme:
+
+| Depth | Region | Theme | Resists | Weak to | Boss fought today | Signature layouts |
+|---|---|---|---|---|---|---|
+| 1 | Ossuary Gate | crypt | - | - | Brute King | four_pillars, pillar_hall, buttresses |
+| 2 | Rust Ruins | ruins | Stone | Acid | Hive Mother (stand-in for the Rusted Colossus) | broken, overgrown, l_shape |
+| 3 | Frostvault | frozen | Ice | Fire | Storm Warden (stand-in for the Frost Matron) | frozen, moat, flooded |
+| 4 | The Forge | forge | Fire | Wet, Ice | Pyre Lord | refinery, channels, broken |
+| 4 | Chapel of Ash | sanctum | Holy | Void | Pyre Lord (stand-in for the Ashen Bishop) | pillar_hall, cross, bastions |
+| 5 | The Rift | void | Void | Holy | Void Herald | rift, pit_maze, corner_pits |
+
+The five unbuilt regions (Drowned Cistern, Rotting Gardens, Pitch Mire, Abattoir,
+Stormspire) are in the graph with `built: false` and are never picked, so today every
+route is Ossuary Gate > Rust Ruins > Frostvault > The Forge or Chapel of Ash > The Rift.
+The next region is a random built neighbour for now; route-choice doors come in part 2.
+Resists and weak-to are data only until part 2 (60% / 140% soft resistances, Exposed,
+badges). The HUD banner names the region, and every `[FLOOR]`, `[DEATH]`, `[END]` log
+line and every telemetry event with a `floor` also carries the region (`run_end` adds the
+whole `route`). Bots print a `[ROUTE]` line and take `--route=a,b,c` to fix a route.
+
 **Raids** are the endgame: a longer co-op dungeon with multiple bosses that have WoW-style
 mechanics (split the party, soak zones, interrupt casts with a specific reaction, adds that
 must die in element order). Designed for 2-4 players. Only reachable at a gear score threshold.

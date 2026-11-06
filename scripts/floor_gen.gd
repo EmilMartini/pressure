@@ -9,8 +9,11 @@ const DIRS: Array[Vector2i] = [Vector2i.UP, Vector2i.DOWN, Vector2i.LEFT, Vector
 const OBSTACLES := ["pool", "thicket", "valve", "ward", "rubble", "miasma"]
 
 
-## `players` (optional) biases the stock toward the party's build through Drops.
-static func generate(floor_number: int, luck: float = 0.0, players: Array = []) -> Dictionary:
+## A floor for a region (Regions): its depth sets the size and the stock's level, its
+## signature layouts colour the arenas. `players` (optional) biases the stock toward the
+## party's build through Drops.
+static func generate(region_id: String, luck: float = 0.0, players: Array = []) -> Dictionary:
+    var floor_number := Regions.depth_of(region_id)
     var target := 7 + floor_number * 2
     var start := Vector2i(GRID / 2, GRID / 2)
     var rooms: Dictionary = {}
@@ -44,7 +47,7 @@ static func generate(floor_number: int, luck: float = 0.0, players: Array = []) 
         rooms[candidates[i]].type = specials[i]
 
     _place_hidden_room(rooms, start)
-    _shape_rooms(rooms, start)
+    _shape_rooms(rooms, start, Regions.get_region(region_id).get("layouts", []))
     _stock_rooms(rooms, floor_number, luck, players)
 
     rooms[start].discovered = true
@@ -117,7 +120,7 @@ static func _place_hidden_room(rooms: Dictionary, start: Vector2i) -> void:
 
 ## Size class, layout, seed and puzzle for every room; one floor in four (one in two with
 ## the "secret:alcove" unlock) hides an alcove in an arena too.
-static func _shape_rooms(rooms: Dictionary, start: Vector2i) -> void:
+static func _shape_rooms(rooms: Dictionary, start: Vector2i, favour: Array = []) -> void:
     var rng := RandomNumberGenerator.new()
     rng.seed = randi()
     var used: Array = []
@@ -140,7 +143,7 @@ static func _shape_rooms(rooms: Dictionary, start: Vector2i) -> void:
                 r.size_class = 1
         var lr := RandomNumberGenerator.new()
         lr.seed = r.layout_seed
-        r.layout = "open" if p == start else RoomLayouts.pick(r.type, r.size_class, lr)
+        r.layout = "open" if p == start else RoomLayouts.pick(r.type, r.size_class, lr, favour)
         r.secret = Secrets.pick(r.type, lr, used, r.layout) if p != start else ""
         if r.secret != "":
             used.append(r.secret)

@@ -441,7 +441,7 @@ func _draw_top(vp: Vector2) -> void:
     if room == null:
         return
     var cx := vp.x / 2.0
-    _centered(34, "FLOOR %d   %s" % [main.floor_number, room.data.type_name().to_upper()], 28, Color(room.data.color(), 0.95), vp, true)
+    _centered(34, "%s   %s" % [Regions.display_name(main.region_id).to_upper(), room.data.type_name().to_upper()], 28, Color(room.data.color(), 0.95), vp, true)
     if room.active and room.data.type == RoomData.Type.ARENA:
         var secs := ceili(room.wave_time_left)
         var col := Color(1.0, 0.35, 0.3) if secs <= 5 else UiTheme.BONE

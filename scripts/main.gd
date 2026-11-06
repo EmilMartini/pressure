@@ -4,7 +4,7 @@ extends Node2D
 ## couch co-op joins, and the self-test bot.
 
 const MAX_PLAYERS := 4
-const FLOORS := 5
+const FLOORS := Regions.DEPTHS   # one region per depth (Regions)
 const CAMERA_PAD := 90.0
 
 var players: Array[Player] = []
@@ -18,7 +18,12 @@ var gun_pick: GunPickScreen
 var _pending_levelups: Array = []
 var _shake := 0.0
 
+## The depth of the region the party is in (1 to FLOORS): drives difficulty, prices and
+## floor size. The region itself (`region_id`, see Regions) sets the theme, boss and layouts.
 var floor_number := 0
+var region_id := ""
+var route: Array = []          # region ids this run has entered, top first
+var _planned_route: Array = [] # bots: --route=a,b,c, or the random way down to --start-floor
 var rooms: Dictionary = {}          # Vector2i -> RoomData
 var current: Room = null
 var current_pos := Vector2i.ZERO
@@ -277,6 +282,7 @@ func _themes_shot() -> void:
     for i in Themes.ORDER.size():
         var tname := String(Themes.ORDER[i])
         floor_number = i + 1
+        region_id = Regions.for_theme(tname)
         rooms = _shot_rooms(centre, { "layout": String(layouts.get(tname, "open")), "size": 1 })
         enter_room(centre, Vector2i.ZERO)
         for pl in players:
@@ -470,20 +476,22 @@ func is_device_joined(device: int) -> bool:
 func start_floor(n: int) -> void:
     if autotest and OS.get_cmdline_user_args().has("--one-floor") and floor_number > 0 and n > floor_number:
         # Balance probe: one floor per instance, so late floors can be measured in parallel.
-        print("[FLOOR] %d reached at t=%.0f hp=%.0f/%.0f level=%d: --one-floor stops here" % [n, _clock, players[0].hp, players[0].max_hp, players[0].level])
+        print("[FLOOR] %d (%s) reached at t=%.0f hp=%.0f/%.0f level=%d: --one-floor stops here" % [n, _next_region(n), _clock, players[0].hp, players[0].max_hp, players[0].level])
         Telemetry.floor_start(self)
         _print_stats("END")
         get_tree().quit()
         return
     floor_number = n
+    region_id = _next_region(n)
+    route.append(region_id)
     Music.set_floor(n)
     floor_rooms_cleared = 0
     _arena_dps = []
     if autotest and not players.is_empty():
-        print("[FLOOR] %d at t=%.0f kills=%d scrap=%d hp=%.0f level=%d guns=%d items=%d" % [
-            n, _clock, total_kills, scrap, players[0].hp, players[0].level, players[0].guns.size(), players[0].equipment.size()])
+        print("[FLOOR] %d region=%s at t=%.0f kills=%d scrap=%d hp=%.0f level=%d guns=%d items=%d" % [
+            n, region_id, _clock, total_kills, scrap, players[0].hp, players[0].level, players[0].guns.size(), players[0].equipment.size()])
     Telemetry.floor_start(self)
-    rooms = FloorGen.generate(n, party_luck(), players)
+    rooms = FloorGen.generate(region_id, party_luck(), players)
     _scout_reveal()
     for p in players:
         p.pressure = 0.0
@@ -492,7 +500,19 @@ func start_floor(n: int) -> void:
             p.add_to_group("players")
         p.hp = maxf(p.hp, p.max_hp * (0.6 if n <= 2 else 0.4))   # deeper stairs patch you up less
     enter_room(Vector2i(FloorGen.GRID / 2, FloorGen.GRID / 2), Vector2i.ZERO)
-    announce("Floor %d" % n)
+    announce(Regions.display_name(region_id))
+
+
+## The region the party enters at depth `n`: the planned route if there is one, the top
+## region at depth 1, else a random built region one edge down from where it is now.
+## (Phase 0 part 2 replaces the random step with the route-choice doors.)
+func _next_region(n: int) -> String:
+    if _planned_route.size() >= n:
+        return String(_planned_route[n - 1])
+    if n <= 1 or region_id == "":
+        return Regions.FIRST
+    var next := Regions.pick_next(region_id)
+    return next if next != "" else region_id
 
 
 ## Shrine Scout talents: Cartographer shows the shop (1), treasure (2) and boss (3) rooms on
@@ -608,7 +628,7 @@ func on_room_cleared(_room: Room) -> void:
 
 func next_floor() -> void:
     Progress.add("floors")
-    if floor_number >= FLOORS:
+    if floor_number >= FLOORS or Regions.next_options(region_id).is_empty():
         victory = true
         announce("You cleared the dungeon!")
         _end_run(true)
@@ -809,7 +829,7 @@ func _on_player_died(_p: Player) -> void:
             return
     game_over = true
     if autotest:
-        print("[DEATH] floor=%d room=%s diff=%d t=%.0f kills=%d level=%d" % [floor_number, current.data.type_name() if current else "-", difficulty(), _clock, total_kills, players[0].level])
+        print("[DEATH] floor=%d region=%s room=%s diff=%d t=%.0f kills=%d level=%d" % [floor_number, region_id, current.data.type_name() if current else "-", difficulty(), _clock, total_kills, players[0].level])
         _print_arena("death")
     _end_run(false)
 
@@ -972,6 +992,21 @@ func _bot_start_floor() -> int:
     return 1
 
 
+## Bots: `--route=ossuary_gate,rust_ruins,...` fixes the regions in order (checked against
+## the graph); otherwise a bot starting deeper (--start-floor) takes a random way down.
+func _plan_bot_route() -> void:
+    for a in OS.get_cmdline_user_args():
+        if a.begins_with("--route="):
+            _planned_route = Regions.parse_route(a.substr(8))
+            if _planned_route.is_empty():
+                push_error("--route: not a way down the region graph: %s" % a.substr(8))
+    var start := _bot_start_floor()
+    if _planned_route.size() < start:
+        _planned_route = Regions.random_route(start)
+    var bad := Regions.validate()
+    print("[ROUTE] %s  graph %s" % [" > ".join(_planned_route), "valid" if bad.is_empty() else "INVALID: " + "; ".join(bad)])
+
+
 ## Fit the bot out as the --build profile stood at the start of floor `n`: guns and tiers,
 ## gear, mods, and every level-up the profile made before that floor.
 func _apply_bot_build(build: Dictionary, n: int) -> void:
@@ -1032,6 +1067,7 @@ func _setup_autotest() -> void:
         add_child(PayoutShot.new(self))   # level-up cards and wave-end spoils (payout_shot.gd)
     if HurtShot.wanted():
         add_child(HurtShot.new(self))   # hit flash, low health, hazards, death recap (hurt_shot.gd)
+    _plan_bot_route()
     _apply_bot_build(_bot_build(), _bot_start_floor())
     if GearShot.wanted():
         add_child(GearShot.new(self))   # worn-gear sheets and fight close-ups (gear_shot.gd)
@@ -1415,8 +1451,8 @@ func _print_stats(label: String) -> void:
     for r in rooms.values():
         if r.visited:
             visited += 1
-    print("[%s] t=%.0f wall=%.0f fps=%d floor=%d room=%s visited=%d/%d cleared=%d kills=%d scrap=%d hp=%.0f weight=%d/%d clouds=%d" % [
-        label, _clock, Time.get_ticks_msec() / 1000.0, Engine.get_frames_per_second(), floor_number,
+    print("[%s] t=%.0f wall=%.0f fps=%d floor=%d region=%s room=%s visited=%d/%d cleared=%d kills=%d scrap=%d hp=%.0f weight=%d/%d clouds=%d" % [
+        label, _clock, Time.get_ticks_msec() / 1000.0, Engine.get_frames_per_second(), floor_number, region_id,
         current.data.type_name() if current else "-", visited, rooms.size(),
         rooms_cleared, total_kills, scrap, p.hp, p.total_weight(), p.weight_capacity,
         get_tree().get_nodes_in_group("clouds").size()])
