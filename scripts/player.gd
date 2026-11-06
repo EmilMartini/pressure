@@ -139,7 +139,7 @@ func _ready() -> void:
     circle.radius = radius
     shape.shape = circle
     add_child(shape)
-    z_index = 10
+    z_index = 22   # above the particle layers (Fx 20, additive 21): your own effects never hide you
     var tiles: Array = Art.TILES["player"]
     _sprite = Art.sprite(tiles[index % tiles.size()], 2.0, Color.WHITE)
     _sprite.texture = Items.form_for(self)["texture"]

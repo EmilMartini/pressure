@@ -1656,6 +1656,8 @@ uniform int s0 = 0;
 uniform int cnt = 0;
 uniform int flick = 0;
 uniform float seed = 0.0;
+uniform vec2 clear_pos = vec2(0.0);   // the player: particles thin out around them
+uniform float clear_r = 0.0;
 const int LAYER = {LAYER};
 const int PER = {PER};
 
@@ -1814,6 +1816,10 @@ void vertex() {
     } else {
         VERTEX = pos + q * size;
     }
+    if (clear_r > 0.0) {
+        vec2 c = line ? (la + lb) * 0.5 : pos + size * 0.5;
+        col.a *= mix(0.3, 1.0, smoothstep(clear_r * 0.45, clear_r, distance(c, clear_pos)));
+    }
     COLOR = col;
 }
 """
@@ -1905,19 +1911,36 @@ func _upload_pixels() -> void:
         mat.set_shader_parameter(&"s0", s0)
         mat.set_shader_parameter(&"cnt", _cnt)
         mat.set_shader_parameter(&"flick", randi() % 7)
+        mat.set_shader_parameter(&"clear_pos", _clear_pos())
+        mat.set_shader_parameter(&"clear_r", CLEAR_R if _has_clear() else 0.0)
         if layer == 1:
             mat.set_shader_parameter(&"seed", randf() * 1000.0)
         var mm: MultiMesh = _px_mms[layer]
         mm.visible_instance_count = _cnt * int(PX_PER[layer])
 
 
+## Radius around the player in which particles and puffs fade to 30%, so a dense build
+## never buries its own character.
+const CLEAR_R := 46.0
+
+
+func _has_clear() -> bool:
+    return main != null and not main.players.is_empty() and is_instance_valid(main.players[0])
+
+
+func _clear_pos() -> Vector2:
+    return to_local(main.players[0].global_position) if _has_clear() else Vector2(-99999, -99999)
+
+
 func _draw_puffs(list: Array, canvas: CanvasItem) -> void:
+    var cp := _clear_pos()
     for p in list:
         var k: float = 1.0 - p["t"] / p["life"]
         var tex: Texture2D = p["tex"]
         var s: float = p["size"] * (0.55 + 0.65 * k) / tex.get_width()
         var col: Color = p["color"]
         col.a *= 1.0 - k * k
+        col.a *= lerpf(0.3, 1.0, smoothstep(CLEAR_R * 0.45, CLEAR_R, (p["pos"] as Vector2).distance_to(cp)))
         canvas.draw_set_transform(p["pos"], p["rot"] + k * p["spin"], Vector2(s, s))
         canvas.draw_texture(tex, -tex.get_size() / 2.0, col)
     canvas.draw_set_transform_matrix(Transform2D.IDENTITY)

@@ -856,13 +856,15 @@ func _draw_help(vp: Vector2) -> void:
         y += 22.0
 
 
-func _draw_toasts(vp: Vector2) -> void:
-    var y := 200.0
-    for t in _toasts:
+func _draw_toasts(_vp: Vector2) -> void:
+    # Top-left, under the player card and its low-health label: never over the character.
+    var y := 150.0
+    var shown := _toasts.slice(maxi(0, _toasts.size() - 4))
+    for t in shown:
         var alpha: float = clampf(t["t"], 0.0, 1.0)
         var pop: float = clampf((5.0 - t["t"]) / 0.15, 0.0, 1.0)
-        var box := Rect2(vp.x / 2.0 - 300, y - 24, 600, 34)
+        var box := Rect2(16, y, 360, 30)
         draw_rect(box, Color(0, 0, 0, 0.6 * alpha))
         draw_rect(box, Color(0.6, 1.0, 0.8, 0.5 * alpha), false, 2.0)
-        _body_in(box, t["text"], int(16 + 4 * pop), Color(0.6, 1.0, 0.8, alpha))
-        y += 40.0
+        _body_in(Rect2(box.position + Vector2(10, 0), box.size - Vector2(20, 0)), t["text"], int(16 + 2 * pop), Color(0.6, 1.0, 0.8, alpha), HORIZONTAL_ALIGNMENT_LEFT)
+        y += 36.0

@@ -52,7 +52,14 @@ static func play(main: Node, fusion_name: String, tier: int, pos: Vector2, reach
         var text := fusion_name.to_upper() if cata else fusion_name
         if first:
             text = "NEW  " + text
-        fx.label(pos + Vector2(0, -56.0 if cata else -42.0), text, col.lightened(0.35), 44 if cata else 28, 1.8 if cata else 1.2)
+        var lp := pos + Vector2(0, -56.0 if cata else -42.0)
+        # The name is centred on lp and about len * size * 0.75 wide: if any part of it would
+        # cross the character, lift it clear above them.
+        var half_w := maxf(200.0, float(text.length() * (44 if cata else 28)) * 0.75) * 0.5
+        for pl in main.get("players"):
+            if is_instance_valid(pl) and absf(lp.x - pl.global_position.x) < half_w + 16.0 and absf(lp.y - pl.global_position.y) < 70.0:
+                lp.y = pl.global_position.y - 100.0
+        fx.label(lp, text, col.lightened(0.35), 44 if cata else 28, 1.8 if cata else 1.2)
     # Sound: the entry's layers, the first loudest.
     var sounds: Array = entry.get("sound", [])
     for i in sounds.size():
