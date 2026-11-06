@@ -186,6 +186,31 @@ and the element's name. In the world, elements keep their colours. See GDD 6, "U
 rule". `-- --ui-shot --instance=N` (with `res://scenes/main.tscn`) saves review captures
 of every rarity and element to `autotest/ui_*.png`.
 
+## Danger: never die without knowing
+
+- **Every hit**: the screen edge flashes red, strongest on the side the hit came from
+  (all round for the floor), your figure flashes red-white, a red "-N" rises, the health
+  bar flashes and leaves a pale ghost of what you lost, and a deep "you were hit" thud plays.
+- **Low health** (under 35%): the screen edge glows red and pulses with a heartbeat, the
+  pad rumbles on each beat, the health bar and card pulse and say LOW HEALTH; under 15%
+  it is deeper and wider and says CRITICAL. The "Screen flashes" option softens the hit
+  flash and holds the low-health edge steady instead of pulsing.
+- **Hurting floors** (burning floor, charged water): your rim and a ring at your feet take
+  the floor's colour while you stand in it, each tick hisses, and the first time each kind
+  bites in a run it names itself ("Charged floor: 3/s"). A floor made by an element you
+  carry hurts you half (charged water is only ever made by shock).
+- **Exploding barrels** burn a 0.6 s fuse: they blink faster and faster while a ring grows
+  to the blast radius over the danger zone. **Bombers** show their blast radius once you
+  are close enough to be caught.
+- **Enemy shots** are drawn above all of your own effects: a near-black outline, the
+  element colour, a white-hot core.
+- **Death recap** on the run-over screen: what killed you, the last 10 s of damage by
+  source and a health line over the last 30 s with each hit marked.
+
+`-- --autotest --hurt-shot --instance=N` (real window) saves `autotest/hurt_*.png`: a hit
+from the left, low and critical health in a six-gun fight, charged water underfoot, a lit
+barrel and the death recap.
+
 ## Balance model
 
 Borrowed from Brotato and tuned by the bot:
@@ -492,8 +517,10 @@ others; every source with its URL is in `assets/audio/CREDITS.txt`. The `Sfx` au
 - **Impacts and deaths**: flesh, armour (wardens, elites) and attuned shields; props by
   material (wood, barrel, stone, crystal, metal, water) and walls; enemy deaths by size
   class, elite deaths, boss roar, phase change (re-shield) and death.
-- **Player**: hurt, down, Last Breath revive, level-up, gun pickup, item pickup by rarity
-  (richer as it gets rarer), active item, a low-health heartbeat under 30% HP.
+- **Player**: hurt (a punch with a deep thud under it, unlike any enemy hit), a hiss per
+  hurting floor tick, down, Last Breath revive, level-up, gun pickup, item pickup by rarity
+  (richer as it gets rarer), active item, a low-health heartbeat under 35% HP (faster and
+  louder toward 15%).
 - **World**: footsteps per floor theme (stone, moss and wet, snow, ash, glassy void),
   ceiling drips, and a looping ambient bed per theme (crypt wind and drips, ruins swamp,
   insects and water, frozen howling wind, forge rumble and fire, void drone, sanctum hum
@@ -508,7 +535,8 @@ others; every source with its URL is in `assets/audio/CREDITS.txt`. The `Sfx` au
 ## Damage numbers
 
 Every hit prints its damage over the target: element-coloured for bullets and
-reactions, big yellow with a bang for crits, red on your own figure when you are hit.
+reactions, big yellow with a bang for crits. Damage you take is a big "-N" in hot red
+with a black outline over your figure, never crowded out by your own numbers.
 Burn, poison and bleed ticks are batched into one dim number every half second so a
 burning crowd stays readable.
 
@@ -548,7 +576,7 @@ dummies that never die and prints `[DPS]`: damage per second over `--probe-secs=
 40) and its share by tier; `--probe-picks=id,id` adds level-up options, `--no-picks` drops
 the profile's own. Add `--fixed-fps 60` before the scene to run it faster than real time.
 `--payout-shot` saves the level-up cards, the wave-end spoils, the ring swap card and a
-merge pedestal to `autotest/` (real window). Bots print `[LEVEL]` (level, floor, rooms,
+merge pedestal to `autotest/` (real window); `--hurt-shot` the danger cues (see Danger). Bots print `[LEVEL]` (level, floor, rooms,
 XP so far), `[WAVE]` (what lay on the floor when a wave ended, lowest health),
 `[DWELL]` (seconds spent in a cleared arena) and `[SALVAGE]` lines. `godot --path . -- --menu-shot`
 screenshots the menu and codex. `godot --headless --path . res://scenes/main.tscn -- --obstacle-test`
@@ -663,6 +691,8 @@ scripts/
   cloud.gd           lingering element patches that react with what enters them
   prompts.gd         Xbox-style button and key-cap drawing
   post_fx.gd         bloom, grading and CRT post-process
+  danger_fx.gd       red screen edge: hit flashes toward the hit, low-health pulse
+  hurt_shot.gd       --hurt-shot capture of the danger cues
   character_sheet.gd gear, set bonuses and computed stats for one player
   music.gd           autoload `Music`: looping tracks with crossfades
   menu_pad.gd        direct controller polling for menu navigation

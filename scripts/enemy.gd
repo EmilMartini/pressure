@@ -302,6 +302,8 @@ func _ready() -> void:
     add_child(shape)
     z_index = 8
     _setup_sprite()
+    if kind_name == "bomber" or affix == "volatile":
+        Crisp.attach(self, _draw_blast_ring, 3)
     var fx := _fx()
     if fx != null:
         fx.puff(Art.PARTICLES["smoke"], global_position, Color(0.1, 0.08, 0.1, 0.7), radius * 4.5, 0.5, false, Vector2(0, -20))
@@ -698,6 +700,30 @@ func _die() -> void:
     queue_free()
 
 
+## Bombers (and volatile elites) show their blast radius on the Crisp layer once a player
+## is near enough to be caught: a thin ring that firms up as the player closes in, solid
+## and filled while the fuse burns. Their blast, on reaching you or on dying next to you,
+## was the largest single source of damage taken in the 2026-11-06 telemetry (23%).
+func _draw_blast_ring(cv: CanvasItem) -> void:
+    if _exploded or not is_inside_tree():
+        return
+    var near := INF
+    for p in get_tree().get_nodes_in_group("players"):
+        var pl := p as Node2D
+        if pl != null:
+            near = minf(near, pl.global_position.distance_to(global_position))
+    var reach := BOMB_RADIUS + 14.0
+    var k := clampf(1.0 - (near - reach) / 110.0, 0.0, 1.0)
+    if _fuse >= 0.0:
+        k = 1.0
+    if k <= 0.0:
+        return
+    if _fuse >= 0.0:
+        cv.draw_circle(Vector2.ZERO, BOMB_RADIUS, Color(1.0, 0.3, 0.1, 0.18))
+    cv.draw_arc(Vector2.ZERO, BOMB_RADIUS, 0.0, TAU, 40, Color(0.08, 0.0, 0.0, 0.55 * k), 4.0)
+    cv.draw_arc(Vector2.ZERO, BOMB_RADIUS, 0.0, TAU, 40, Color(1.0, 0.5, 0.2, 0.75 * k), 1.5 if _fuse < 0.0 else 2.5)
+
+
 ## Bomber blast: hurts players, and lands Fire on nearby enemies so reactions go off.
 func _explode(dmg: float, rad: float) -> void:
     if _exploded:
@@ -808,6 +834,7 @@ func _shoot(dir: Vector2, spd: float, dmg: float, element: int, life: float = 3.
     p.radius = rad
     p.direction = dir.normalized()
     p.owner_enemy = self
+    p.shooter = Telemetry.enemy_label(self)
     w.add_child(p)
     p.global_position = global_position + p.direction * radius * 0.8
 

@@ -272,6 +272,8 @@ func _fill_report() -> void:
     for p in main.players:
         levels.append("%s lv %d" % [p.display_name(), p.level])
     _line("Floor %d of %d    %d kills    %d:%02d    %s    %s" % [main.floor_number, Main.FLOORS, main.total_kills, secs / 60, secs % 60, cls, "   ".join(levels)], UiTheme.BONE)
+    if main.game_over:
+        _death_recap()
     _section("YOU UNLOCKED")
     if Progress.run_unlocks.is_empty():
         _line("Nothing new this time. Every run still counts toward the goals below.", UiTheme.DIM, 20)
@@ -291,6 +293,83 @@ func _fill_report() -> void:
         for k in bounties:
             kinds.append(String(k).replace("_", " ").capitalize())
         _line("First kill with this class: %s" % ", ".join(kinds), FANFARE, 20)
+
+
+const HURT_RED := Color(1.0, 0.32, 0.26)
+const RECAP_WINDOW := 10.0
+
+
+## Death recap: the blow that ended it, the last RECAP_WINDOW s of damage by source, and
+## health over the last Player.RECAP_SECS with each hit marked. Player 1's (single player
+## first); in co-op the last one standing, who fell last.
+func _death_recap() -> void:
+    var p: Player = null
+    for pl in main.players:
+        if is_instance_valid(pl) and (p == null or pl.life_t > p.life_t):
+            p = pl
+    if p == null:
+        return
+    var killer := Telemetry.source_name(p.killed_by) if p.killed_by != "" else "Unknown"
+    _section("KILLED BY %s" % killer.to_upper())
+    var by: Dictionary = {}
+    var hits: Dictionary = {}
+    var total := 0.0
+    for h in p.hurt_log:
+        if p.life_t - float(h[0]) > RECAP_WINDOW:
+            continue
+        var src := Telemetry.source_name(String(h[2]))
+        by[src] = float(by.get(src, 0.0)) + float(h[1])
+        hits[src] = int(hits.get(src, 0)) + 1
+        total += float(h[1])
+    var keys := by.keys()
+    keys.sort_custom(func(a, b): return float(by[a]) > float(by[b]))
+    var parts: Array = []
+    for k in keys:
+        parts.append("%s %d (%d hit%s)" % [k, roundi(float(by[k])), int(hits[k]), "" if int(hits[k]) == 1 else "s"])
+    if parts.is_empty():
+        _line("No damage in the last 10 s.", UiTheme.DIM, 20)
+    else:
+        _line("Last 10 s: %d damage.  %s" % [roundi(total), "   ".join(parts)], HURT_RED, 20)
+    var graph := HpGraph.new()
+    graph.player = p
+    graph.custom_minimum_size = Vector2(640, 86)
+    _report.add_child(graph)
+
+
+## Health over the last 30 s as a line, the 35% low-health line, a red tick per hit.
+class HpGraph extends Control:
+    var player: Player
+
+    func _draw() -> void:
+        var r := Rect2(Vector2(0, 4), Vector2(size.x, size.y - 22.0))
+        draw_rect(r, Color(0.04, 0.03, 0.05, 0.9))
+        draw_rect(r, Color(1, 1, 1, 0.15), false, 1.0)
+        if player == null or not is_instance_valid(player):
+            return
+        var now := player.life_t
+        var span := Player.RECAP_SECS
+        var low_y := r.end.y - r.size.y * Sfx.HEART_LOW
+        draw_dashed_line(Vector2(r.position.x, low_y), Vector2(r.end.x, low_y), Color(1.0, 0.3, 0.25, 0.4), 1.0, 6.0)
+        for h in player.hurt_log:
+            var x := r.position.x + r.size.x * (1.0 - (now - float(h[0])) / span)
+            if x < r.position.x:
+                continue
+            var tall := clampf(float(h[1]) / maxf(1.0, player.max_hp) * 4.0, 0.15, 1.0) * r.size.y
+            draw_line(Vector2(x, r.end.y), Vector2(x, r.end.y - tall), Color(1.0, 0.25, 0.2, 0.55), 2.0)
+        var pts := PackedVector2Array()
+        for s in player.hp_trace:
+            var x := r.position.x + r.size.x * (1.0 - (now - float(s[0])) / span)
+            if x < r.position.x:
+                continue
+            pts.append(Vector2(x, r.end.y - r.size.y * float(s[1])))
+        pts.append(Vector2(r.end.x, r.end.y))   # the fall to zero
+        if pts.size() >= 2:
+            draw_polyline(pts, Color(0.0, 0.0, 0.0, 0.7), 4.0)
+            draw_polyline(pts, Color(0.95, 0.9, 0.85), 2.0)
+        var f := get_theme_default_font()
+        draw_string(f, Vector2(r.position.x, size.y - 3.0), "-30 s", HORIZONTAL_ALIGNMENT_LEFT, -1, 15, UiTheme.DIM)
+        draw_string(f, Vector2(r.end.x - 120.0, size.y - 3.0), "death", HORIZONTAL_ALIGNMENT_RIGHT, 120.0, 15, UiTheme.DIM)
+        draw_string(f, Vector2(r.position.x + 4.0, low_y - 3.0), "35%", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(1.0, 0.4, 0.35, 0.7))
 
 
 func show_menu() -> void:

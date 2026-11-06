@@ -93,6 +93,12 @@ const BANK := {
     "boss_phase": ["boss_phase"],
     # Player
     "hurt": ["hurt_1", "hurt_2", "hurt_3"],
+    # "You were hit": the hurt punch an octave and a bit down under the normal one, a
+    # heavier thud than any enemy hit (hit_flesh is high and short). Floor hazards hiss
+    # (sizzle_*) instead.
+    "hurt_low": ["hurt_1", "hurt_2", "hurt_3"],
+    "sizzle_fire": ["vent_hot"],
+    "sizzle_shock": ["shot_shock_1", "shot_shock_3"],
     "down": ["player_down"],
     "revive": ["revive"],
     "level_up": ["level_up"],
@@ -145,7 +151,7 @@ const TRIM := {
     "die": -8.0, "die_elite": -6.0,
     "death_small": -10.0, "death_med": -9.0, "death_large": -7.0, "death_elite": -5.0, "die_boss": -1.0,
     "boss": -2.0, "boss_phase": -3.0,
-    "hurt": -5.0, "down": -3.0, "revive": -4.0, "level_up": -5.0, "pickup_gun": -4.0,
+    "hurt": -3.0, "hurt_low": -4.0, "sizzle_fire": -10.0, "sizzle_shock": -9.0, "down": -3.0, "revive": -4.0, "level_up": -5.0, "pickup_gun": -4.0,
     "item_0": -7.0, "item_1": -6.0, "item_2": -5.0, "item_3": -3.0, "item_4": -4.0, "active_use": -6.0,
     "scrap": -10.0, "tick": -6.0, "drip": -16.0, "door_lock": -6.0, "door_open": -6.0, "cleared": -6.0,
     "buy": -6.0, "deny": -8.0, "unlock": -4.0, "secret_found": -2.0, "wall_reveal": -4.0,
@@ -153,7 +159,7 @@ const TRIM := {
 }
 
 ## Base pitch per name; shots and hits get a wider wobble so repeats do not phase.
-const PITCH := { "shoot_oil": 0.95, "shoot_void": 1.0 }
+const PITCH := { "shoot_oil": 0.95, "shoot_void": 1.0, "hurt_low": 0.58, "sizzle_fire": 1.5, "sizzle_shock": 1.3 }
 const WOBBLE := {
     "shoot_fire": 0.14, "shoot_wet": 0.14, "shoot_shock": 0.1, "shoot_ice": 0.12, "shoot_oil": 0.12,
     "shoot_poison": 0.14, "shoot_acid": 0.12, "shoot_blood": 0.12, "shoot_void": 0.1, "shoot_holy": 0.06,
@@ -174,7 +180,7 @@ const VOICES := {
 ## Shared caps per family (name prefix), so twelve shot voices never pile up at once.
 const GROUP_VOICES := { "shoot_": 6, "hit_": 5, "rx_": 6, "burst_": 3, "death_": 5, "step_": 4 }
 ## Per-name rate limits longer than MIN_INTERVAL.
-const INTERVAL := { "hit_flesh": 0.035, "hit_wall": 0.08, "hit": 0.06, "drip": 0.15, "tick": 0.0, "hurt": 0.12 }
+const INTERVAL := { "hit_flesh": 0.035, "hit_wall": 0.08, "hit": 0.06, "drip": 0.15, "tick": 0.0, "hurt": 0.12, "hurt_low": 0.12, "sizzle_fire": 0.2, "sizzle_shock": 0.2 }
 
 ## Event reactions and the signature ones: dedicated, layered sounds instead of the
 ## composed element layers.
@@ -211,7 +217,11 @@ const STRIDE := 46.0
 const AMB_DB := -9.0
 const AMB_FIGHT_DB := -15.0
 const AMB_FADE := 1.6
-const HEART_DB := -8.0
+const HEART_DB := -3.0
+## Low health: the heartbeat starts under HEART_LOW of max HP and is at full rate and
+## volume by HEART_CRIT (DangerFx pulses the screen edge and the pad on its beats).
+const HEART_LOW := 0.35
+const HEART_CRIT := 0.15
 
 var enabled := true
 var theme := ""                         # floor theme of the ambience playing ("" = none)
@@ -536,18 +546,18 @@ func _poll_players(delta: float, tree: SceneTree) -> void:
             walked = 0.0
             play(String(STEP.get(theme, "step_stone")), lerpf(-3.0, 0.0, clampf(speed / 260.0, 0.0, 1.0)), -1.0, p.global_position)
         _steps[id] = walked
-    _set_heart(any and low < 0.3, low)
+    _set_heart(any and low < HEART_LOW, low)
 
 
 func _set_heart(on: bool, hp_frac: float) -> void:
     if _heart.stream == null:
         return
     if on:
-        var k := clampf((0.3 - hp_frac) / 0.25, 0.0, 1.0)
-        _heart.pitch_scale = lerpf(1.0, 1.3, k)
-        var target := HEART_DB + lerpf(-4.0, 0.0, k)
+        var k := clampf((HEART_LOW - hp_frac) / (HEART_LOW - HEART_CRIT), 0.0, 1.0)
+        _heart.pitch_scale = lerpf(1.0, 1.45, k)
+        var target := HEART_DB + lerpf(-6.0, 0.0, k)
         if not _heart.playing:
-            _heart.volume_db = -40.0
+            _heart.volume_db = -30.0
             _heart.play()
         _heart.volume_db = move_toward(_heart.volume_db, target, 1.0)
     elif _heart.playing:
@@ -555,6 +565,18 @@ func _set_heart(on: bool, hp_frac: float) -> void:
         if _heart.volume_db < -40.0:
             _heart.stop()
     _heart_on = on
+
+
+## 0..1, the heartbeat's loudness envelope right now (1 on each lub and dub, decaying fast),
+## or -1 when it is not beating. The loop (heartbeat.ogg, 1.8 s) holds two lub-dubs: beats
+## at 0.0 and 0.3 s of every 0.9 s, the second (dub) the louder.
+func heart_env() -> float:
+    if not _heart_on or _heart.stream == null or not _heart.playing:
+        return -1.0
+    var t := fmod(_heart.get_playback_position(), 0.9)
+    var lub := 0.75 * exp(-t * 9.0)
+    var dub := exp(-(t - 0.3) * 9.0) if t >= 0.3 else 0.0
+    return clampf(maxf(lub, dub), 0.0, 1.0)
 
 
 # --- Internals ---------------------------------------------------------------------

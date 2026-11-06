@@ -5,6 +5,9 @@ extends CharacterBody2D
 
 signal died(player: Player)
 signal leveled_up(player: Player)
+## Every hit that lands (after dodge, armour and invulnerability): `from` is where it came
+## from in the world (INF: from everywhere, the floor), `source` the Telemetry label.
+signal hurt(player: Player, amount: float, from: Vector2, source: String)
 
 const LAYER_PLAYERS := 1
 const LAYER_WALLS := 4
@@ -76,6 +79,36 @@ var _floor_t := 0.0               # next floor-material check
 var _on_ice := false
 var _wading := false               # deep water in a room layout slows us
 var _leech_budget := LEECH_PER_SEC  # reactions that may still heal right now (refills per second)
+
+## Danger readability. The last RECAP_SECS of hits ([time, amount, source]) and of health
+## (one sample every TRACE_STEP s) for the death recap on the run-over screen; the red
+## hit flash on the figure; the floor hazard we stand in (rim, feet ring, warning).
+const RECAP_SECS := 30.0
+const TRACE_STEP := 0.25
+var life_t := 0.0                 # seconds alive this run (game time)
+var hurt_log: Array = []          # [t, amount, source]
+var hp_trace: Array = []          # [t, hp fraction]
+var killed_by := ""               # source label of the blow that put us down
+var _trace_t := 0.0
+var _hurt_flash := 0.0
+var _floor_hit := false           # take_damage runs for a floor tick (sizzle, not the punch)
+var hazard_mat := 0               # Materials id of the hurting floor under us, 0 = none
+var _hazard_t := 0.0              # seconds left on the hazard tint after stepping off
+
+## Floor hazards: material -> [damage per tick, name, colour, element that makes it].
+## Ticks land every 0.75 s at most (polled every 0.25 s, then 0.6 s of invulnerability).
+## Halved while you carry the element that makes it (OWN_FLOOR_SCALE): the grid keeps no
+## owner per cell, but charged water is only ever made by shock (your guns, a vent, a rare
+## prop) and with a fire gun most fire on the floor is your own. Human telemetry of
+## 2026-11-06 (22 runs): floor ticks were 1% of all damage taken, but the deciding damage
+## of one death in three (a Stormcaller: 24 of the last 29 HP in 10 s from charged
+## puddles of their own making).
+const HAZARDS := {
+    Materials.FIRE: [2.0, "Burning floor", Color(1.0, 0.5, 0.15), Element.Kind.FIRE],
+    Materials.CHARGED: [4.0, "Charged floor", Color(0.55, 0.85, 1.0), Element.Kind.SHOCK],
+}
+const OWN_FLOOR_SCALE := 0.5
+const HAZARD_TICK_SECS := 0.75
 
 ## Lifesteal heals its amount per reaction, but only LEECH_PER_SEC reactions a second count
 ## (a small bucket, so a burst can spend it at once). A six-element build causes 40 to 80
@@ -516,7 +549,9 @@ func vent() -> void:
 # --- Health ----------------------------------------------------------------
 
 
-func take_damage(amount: float, attacker: Node2D = null) -> void:
+func take_damage(amount: float, attacker: Node2D = null, from: Vector2 = Vector2.INF) -> void:
+    # Who did it, read first: the hint a shot or a prop left must never outlive this call.
+    var source := Telemetry.hurt_source(self, attacker)
     if not alive or invuln > 0.0:
         return
     if randf() < stat("dodge"):
@@ -525,16 +560,23 @@ func take_damage(amount: float, attacker: Node2D = null) -> void:
         return
     amount = maxf(1.0, amount - stat("armor"))
     hp -= amount
-    Telemetry.player_hurt(self, amount, attacker)
+    Telemetry.player_hurt(self, amount, attacker, source)
+    _log_hurt(amount, source)
     invuln = 0.6
+    _hurt_flash = 0.14
+    if from == Vector2.INF and attacker != null and is_instance_valid(attacker):
+        from = attacker.global_position
     var tree_scene := get_tree().current_scene
     if tree_scene != null and "fx" in tree_scene and tree_scene.fx != null:
-        tree_scene.fx.number(global_position + Vector2(0, -16), amount, Color(1.0, 0.35, 0.3), true)
+        tree_scene.fx.hurt_number(global_position + Vector2(0, -16), amount)
     _squash = 1.0
-    Sfx.play("hurt")
+    if not _floor_hit:
+        Sfx.play("hurt")
+        Sfx.play("hurt_low")
     var scene := get_tree().current_scene
     if scene != null and scene.has_method("shake"):
         scene.shake(5.0)
+    hurt.emit(self, amount, from, source)
     var thorns := stat("thorns")
     if thorns > 0.0 and attacker != null and is_instance_valid(attacker) and attacker is Enemy:
         attacker.take_damage(thorns, Color.WHITE, true, self)
@@ -544,11 +586,30 @@ func take_damage(amount: float, attacker: Node2D = null) -> void:
     elif hp <= 0.0:
         hp = 0.0
         alive = false
+        killed_by = source
         remove_from_group("players")
         say("DOWN")
         Sfx.play("down")
         died.emit(self)
     queue_redraw()
+
+
+func _log_hurt(amount: float, source: String) -> void:
+    hurt_log.append([life_t, amount, source])
+    while not hurt_log.is_empty() and life_t - float(hurt_log[0][0]) > RECAP_SECS:
+        hurt_log.pop_front()
+
+
+## Health once every TRACE_STEP s for the last RECAP_SECS (the death recap's line).
+func _trace_hp(delta: float) -> void:
+    life_t += delta
+    _trace_t -= delta
+    if _trace_t > 0.0:
+        return
+    _trace_t = TRACE_STEP
+    hp_trace.append([life_t, clampf(hp / maxf(1.0, max_hp), 0.0, 1.0)])
+    while hp_trace.size() > int(RECAP_SECS / TRACE_STEP) + 1:
+        hp_trace.pop_front()
 
 
 ## The Shrine's survival track: stand back up at a quarter of max HP, briefly untouchable.
@@ -581,6 +642,9 @@ func _physics_process(delta: float) -> void:
     input.poll()
     if not alive:
         return
+    _trace_hp(delta)
+    _hurt_flash = maxf(0.0, _hurt_flash - delta)
+    _hazard_t = maxf(0.0, _hazard_t - delta)
 
     _floor_t -= delta
     if _floor_t <= 0.0:
@@ -628,20 +692,68 @@ func _physics_process(delta: float) -> void:
 
 
 ## What the floor does to us: fire and charged water hurt (invuln still applies), ice slides.
+## A hurting floor tints the rim and the feet ring in its colour, hisses on each tick and,
+## the first time each kind is stood in during a run, names itself over the player.
 func _feel_floor() -> void:
     _on_ice = false
     var rm := Room.here
     _wading = rm != null and is_instance_valid(rm) and rm.is_deep(global_position)
     var mats := Materials.find(self)
     if mats == null:
+        hazard_mat = 0
         return
-    match mats.material_at(global_position):
-        Materials.FIRE:
-            take_damage(2.0, null)
-        Materials.CHARGED:
-            take_damage(4.0, null)
-        Materials.ICE:
-            _on_ice = true
+    var m := mats.material_at(global_position)
+    if m == Materials.ICE:
+        _on_ice = true
+    if not HAZARDS.has(m):
+        hazard_mat = 0
+        return
+    hazard_mat = m
+    _hazard_t = 0.6
+    var dmg := hazard_damage(m)
+    _warn_hazard(m, dmg)
+    if invuln > 0.0:
+        return
+    var before := hp
+    _floor_hit = true
+    take_damage(dmg, null, Vector2.INF)
+    _floor_hit = false
+    if hp < before:
+        Sfx.play("sizzle_shock" if m == Materials.CHARGED else "sizzle_fire")
+        Sfx.play("hurt", -8.0)
+
+
+## Damage per tick of a hurting floor for this player (see HAZARDS).
+func hazard_damage(m: int) -> float:
+    var h: Array = HAZARDS[m]
+    var dmg := float(h[0])
+    if Main.old_balance:
+        return dmg
+    if int(h[3]) in element_kinds():
+        dmg *= OWN_FLOOR_SCALE
+    return dmg
+
+
+## Once per run and kind: the floor's name and its bite over the player, and a toast.
+func _warn_hazard(m: int, dmg: float) -> void:
+    var mn := main()
+    if mn == null:
+        return
+    var seen: Dictionary = mn.get_meta("hazards_warned", {})
+    if seen.has(m):
+        return
+    seen[m] = true
+    mn.set_meta("hazards_warned", seen)
+    var h: Array = HAZARDS[m]
+    var per_sec := maxf(1.0, dmg - stat("armor")) / HAZARD_TICK_SECS
+    var text := "%s: %d/s" % [String(h[1]), maxi(1, roundi(per_sec))]
+    if mn.fx != null:
+        mn.fx.label(global_position + Vector2(0, -60), text, h[2], 26, 2.4)
+    if mn.hud != null:
+        var own := ""
+        if dmg < float(h[0]):
+            own = " (your own %s: half damage)" % ("shock" if m == Materials.CHARGED else "fire")
+        mn.hud.toast("%s: %d damage a second. Step off it%s" % [String(h[1]), maxi(1, roundi(per_sec)), own])
 
 
 func _animate(delta: float, mv: Vector2) -> void:
@@ -779,7 +891,10 @@ func _draw() -> void:
         var k := 1.0 - since / 0.5
         draw_texture_rect(Art.PARTICLES["light"], Rect2(_sprite.position - Vector2(60, 60), Vector2(120, 120)), false, Color(glow, 0.7 * k))
         draw_arc(_sprite.position, 18.0 + 30.0 * (1.0 - k), 0.0, TAU, 24, Color(glow, k), 2.0)
-    if invuln > 0.0 and fmod(invuln, 0.2) < 0.1:
+    if _hurt_flash > 0.0:
+        # Hit: the figure flashes hot red-white for a beat (overbright, so it blooms).
+        body = Color(2.4, 0.55, 0.5)
+    elif invuln > 0.0 and fmod(invuln, 0.2) < 0.1:
         body = Color(body, 0.35)
     _sprite.modulate = body
     if absf(aim_dir.x) > 0.05:
@@ -802,8 +917,19 @@ func _draw() -> void:
     if rim != null:
         var sx := _sprite.scale.x * (-1.0 if _sprite.flip_h else 1.0)
         draw_set_transform(_sprite.position, _sprite.rotation, Vector2(sx, _sprite.scale.y))
-        draw_texture(rim, -rim.get_size() / 2.0, Color(color.darkened(0.3), 0.92 * body.a))
+        draw_texture(rim, -rim.get_size() / 2.0, Color(_rim_color(), 0.92 * body.a))
         draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+
+## The rim's colour: the player's own, or the hurting floor's, pulsing toward white while
+## we stand in it (and a moment after stepping off).
+func _rim_color() -> Color:
+    var base := color.darkened(0.3)
+    if _hazard_t <= 0.0 or not HAZARDS.has(hazard_mat):
+        return base
+    var hc: Color = HAZARDS[hazard_mat][2]
+    var beat := 0.5 + 0.5 * sin(life_t * 14.0)
+    return hc.lerp(Color(1, 1, 1), 0.45 * beat).lerp(base, 1.0 - clampf(_hazard_t / 0.3, 0.0, 1.0))
 
 
 ## The light pool under the player: a soft additive glow in the player's colour on the
@@ -841,6 +967,17 @@ func _draw_crisp(cv: CanvasItem) -> void:
                 if near >= 3:
                     break
     _crowd = move_toward(_crowd, 1.0 if near >= 3 else 0.0, 0.08)
+    # Standing in a hurting floor: the feet ring in its colour, pulsing, thick.
+    if alive and _hazard_t > 0.0 and HAZARDS.has(hazard_mat):
+        var hc: Color = HAZARDS[hazard_mat][2]
+        var beat := 0.5 + 0.5 * sin(life_t * 14.0)
+        var k := clampf(_hazard_t / 0.3, 0.0, 1.0)
+        var hz := PackedVector2Array()
+        for s in 25:
+            var a := TAU * float(s) / 24.0
+            hz.append(Vector2(cos(a) * (19.0 + 2.0 * beat), radius * 0.8 + sin(a) * (8.5 + beat)))
+        cv.draw_polyline(hz, Color(0, 0, 0, 0.6 * k), 4.5)
+        cv.draw_polyline(hz, Color(hc.lerp(Color.WHITE, 0.4 * beat), k), 2.5)
     if _crowd > 0.01:
         var pts := PackedVector2Array()
         for s in 25:

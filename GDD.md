@@ -526,6 +526,32 @@ contexts `heal_source` runs once, like other area actions.
   a test of whether you are reacting at all, with a bonus for the right one.
 - **Dungeon tiers** (see section 4). Difficulty keys to your gear score, like Mythic+ keystones.
 
+### Danger readability — BUILT (2026-11-06)
+The player said most runs ended with dying "without realising it". Human telemetry (22
+runs): 72% of damage taken was enemy contact (bomber blasts alone 23%), 27% enemy shots
+(12% logged as "projectile:unknown": the shooter had died before the shot landed), 1%
+floor and 1% barrels; deaths were HP trickling from about 50 to 0 over 50 to 70 s with no
+strong low-health cue, and the last blows were often not enemies (a Stormcaller's own
+charged puddles, an unseen barrel). What changed:
+- **Hits** (`danger_fx.gd`, `player.gd`, `hud.gd`, `fx.gd`): a red screen-edge flash biased
+  toward the hit's direction, the figure flashing red-white, a red outlined "-N" unlike
+  dealt numbers, a deep thud layered under the hurt punch, the HP bar flashing white with
+  a ghost of the loss.
+- **Low health**: under 35% a heartbeat (louder, faster to 15%), the screen edge pulsing on
+  its beats with a rumble per beat, the HP bar and card pulsing, LOW HEALTH / CRITICAL.
+  A "Screen flashes" option (also softening Main.flash) holds it steady instead.
+- **Hazards**: standing in a hurting floor tints the rim and a feet ring, hisses per tick,
+  and names it once a run. **Own floors hurt half**: when you carry the element that makes
+  the floor (shock for charged water, fire for a burning floor) its ticks are halved, since
+  the grid keeps no owner and charged water only comes from shock. Floor ticks were only 1%
+  of damage but decided one death in three. Bot check: the fusion probe took 19 from charged
+  water on floor 1 (about 45 at full rate) and still cleared; `--old-balance` restores it.
+- **Barrels** burn a 0.6 s fuse (blink plus a ring growing to the 150 px blast); bombers
+  show their 90 px blast ring when a player is near; **enemy shots** draw an outline and
+  core on the Crisp layer, above every player effect.
+- **Death recap** on the run-over screen; **attribution**: shots keep their shooter's kind,
+  and a shot's hint can no longer leak onto the next hit after invulnerability ate it.
+
 ### Late-floor balance (measured, 2026-11-05)
 The ground truth is a human Stormcaller run (telemetry `4487a37a46b6c384`): six guns of six
 elements, coatings, Leech Mail, Vampiric Loop, a Leech pick; won all five floors, never
@@ -949,6 +975,8 @@ floor, or a mediocre one; profile gear is kept), `--one-floor` (quit at the next
 per second and its tier shares over `--probe-secs=N`; `--probe-picks=id,id` adds level-up
 options, `--no-picks` drops the profile's; run with `--fixed-fps 60` for speed),
 `--payout-shot` (screenshots of the level-up cards, spoils, ring swap and merge pedestal),
+`--hurt-shot` (screenshots of the hit flash, low and critical health, a hurting floor, a lit
+barrel and the death recap),
 `--no-fusions` (the tier ladder off: the pre-fusion game, for baselines), `--gun-probe[=a,b]`
 (each gun alone against pinned dummies: `[GUN-PROBE]` single and pack dps; `--probe-secs=N`;
 with `--gun-shots` in a window, `autotest/gun_<id>.png` of each mechanic firing), `--perf` (fps and

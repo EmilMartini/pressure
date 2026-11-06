@@ -13,6 +13,7 @@ const ROWS := [
     { "key": "vsync", "label": "VSync", "type": "bool" },
     { "key": "screen_shake", "label": "Screen shake", "type": "slider" },
     { "key": "hit_stop", "label": "Hit-stop", "type": "bool" },
+    { "key": "flashes", "label": "Screen flashes", "type": "bool" },
     { "key": "damage_numbers", "label": "Damage numbers", "type": "bool" },
     { "key": "post_fx", "label": "Post-processing", "type": "bool" },
     { "key": "pixel_size", "label": "Pixel size", "type": "choice", "options": [2, 3, 4] },

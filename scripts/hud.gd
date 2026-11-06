@@ -54,6 +54,12 @@ var _seen_guns: Dictionary = {}    # player instance id -> gun ids carried last 
 
 const PICK_TIME := 3.0
 
+## Health bar readability: per player instance id, [ghost fraction, hold secs, hit flash secs,
+## last hp]. The ghost is the health just lost, shown in pale red and drained after a beat.
+var _hp_fx: Dictionary = {}
+const GHOST_HOLD := 0.45
+const HIT_FLASH := 0.25
+
 
 func _ready() -> void:
     set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -566,11 +572,42 @@ func _draw_vitals(p: Player, origin: Vector2) -> void:
     if not p.alive:
         _body_in(Rect2(x, origin.y + 8.0, w, 22.0), "DOWN", 16, Color(1.0, 0.35, 0.3), HORIZONTAL_ALIGNMENT_RIGHT)
 
-    # Health
+    # Health: the share just lost lingers as a pale ghost, the bar flashes white on a hit,
+    # and under Sfx.HEART_LOW the bar and card border pulse red (faster under HEART_CRIT).
     var hp_rect := Rect2(x, origin.y + 36.0, w, 20.0)
     var hp_frac := clampf(p.hp / p.max_hp, 0.0, 1.0)
-    _bar(hp_rect, hp_frac, Color(0.85, 0.2, 0.2).lerp(Color(0.35, 0.85, 0.4), hp_frac))
+    var st: Array = _hp_fx.get(p.get_instance_id(), [hp_frac, 0.0, 0.0, p.hp])
+    if p.hp < float(st[3]) - 0.01:
+        st[1] = GHOST_HOLD
+        st[2] = HIT_FLASH
+    st[3] = p.hp
+    var dt := get_process_delta_time() / maxf(Engine.time_scale, 0.001)
+    st[1] = maxf(0.0, float(st[1]) - dt)
+    st[2] = maxf(0.0, float(st[2]) - dt)
+    if float(st[1]) <= 0.0:
+        st[0] = move_toward(float(st[0]), hp_frac, dt * 0.8)
+    st[0] = maxf(float(st[0]), hp_frac)
+    _hp_fx[p.get_instance_id()] = st
+    var low := p.alive and hp_frac < Sfx.HEART_LOW
+    var crit := p.alive and hp_frac < Sfx.HEART_CRIT
+    var bar_col := Color(0.85, 0.2, 0.2).lerp(Color(0.35, 0.85, 0.4), hp_frac)
+    var border := Color(0, 0, 0, 0.8)
+    if low:
+        var beat := _pulse(9.0 if crit else 5.5)
+        if not Settings.flag("flashes"):
+            beat = 0.5
+        bar_col = Color(0.95, 0.12, 0.1).lerp(Color(1.0, 0.75, 0.7), 0.45 * beat)
+        border = Color(1.0, 0.15, 0.1).lerp(Color(1.0, 0.9, 0.85), beat * (0.6 if crit else 0.3))
+        draw_rect(card.grow(2.0), Color(1.0, 0.15, 0.1, 0.35 + 0.5 * beat), false, 3.0)
+    _bar(hp_rect, hp_frac, bar_col, border)
+    var ghost := float(st[0])
+    if ghost > hp_frac:
+        draw_rect(Rect2(hp_rect.position + Vector2(hp_rect.size.x * hp_frac, 0), Vector2(hp_rect.size.x * (ghost - hp_frac), hp_rect.size.y)), Color(1.0, 0.75, 0.6, 0.85))
+    if float(st[2]) > 0.0:
+        draw_rect(hp_rect, Color(1, 1, 1, 0.6 * float(st[2]) / HIT_FLASH))
     _body_in(hp_rect, "%d / %d" % [int(ceilf(p.hp)), int(p.max_hp)], 20, Color.WHITE)
+    if low and main.players.size() == 1:   # co-op cards stack too close for the word
+        _body_in(Rect2(card.position.x, card.end.y + 2.0, CARD_W, 22.0), "LOW HEALTH" if not crit else "CRITICAL", 18, Color(1.0, 0.3, 0.25).lerp(Color.WHITE, 0.3 * _pulse(6.0)), HORIZONTAL_ALIGNMENT_LEFT)
 
     # Experience toward the next level
     _bar(Rect2(x, origin.y + 64.0, w, 6.0), p.xp / p.xp_to_next(), Color(0.85, 0.65, 0.2))

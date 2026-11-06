@@ -13,6 +13,9 @@ var lifetime := 3.0
 var radius := 6.0
 var direction := Vector2.RIGHT
 var owner_enemy: Node2D = null
+## The shooter's kind (Telemetry.enemy_label), kept from the moment it fired: the shooter
+## is often dead by the time the shot lands, which used to log "projectile:unknown".
+var shooter := ""
 ## Room floor in global coordinates. Left empty, it is taken from the parent's `rect`
 ## (a Room keeps its floor as a local Rect2) when the shot enters the tree.
 var room_rect := Rect2()
@@ -70,8 +73,12 @@ func _physics_process(delta: float) -> void:
             hit = p
     if hit != null:
         var attacker: Node2D = owner_enemy if is_instance_valid(owner_enemy) else null
-        Telemetry.hurt_hint = "projectile:" + (Telemetry.enemy_label(attacker) if attacker != null else "unknown")
-        hit.take_damage(damage, attacker)
+        var who := shooter
+        if who == "":
+            who = Telemetry.enemy_label(attacker) if attacker != null else "unknown"
+        Telemetry.hurt_hint = "projectile:" + who
+        # The hit comes from where the shot flew in from, not from the shooter.
+        hit.take_damage(damage, attacker, global_position - direction * 40.0)
         var scene := get_tree().current_scene
         if scene != null and "fx" in scene and scene.fx != null:
             scene.fx.puff(Art.PARTICLES["circle"], global_position, Color(color(), 0.7), radius * 4.0, 0.25, true)
@@ -86,9 +93,19 @@ func _draw() -> void:
     for i in _trail.size():
         var k := 1.0 - float(i + 1) / float(TRAIL_POINTS + 1)
         draw_circle(to_local(_trail[i]), radius * (0.3 + 0.6 * k), Color(c, 0.45 * k))
-    # Glow, body, hot core.
+    # Glow under the body; the body itself is drawn sharp on the Crisp layer (draw_crisp).
     var pulse := 1.0 + 0.15 * sin(_age * 18.0)
     draw_circle(Vector2.ZERO, radius * 2.2 * pulse, Color(c, 0.18))
     draw_circle(Vector2.ZERO, radius * 1.4, Color(c, 0.45))
-    draw_circle(Vector2.ZERO, radius, c)
-    draw_circle(Vector2.ZERO, radius * 0.45, Color(1, 1, 1, 0.85))
+
+
+## The readable part, drawn by Fx on the Crisp layer above the player's own effects: a
+## near-black outline, the element colour lifted toward white, a white-hot core. Nothing
+## the player fires has a dark outline, so an incoming shot reads in any cloud or blaze.
+func draw_crisp(cv: CanvasItem, at: Vector2) -> void:
+    var c := color()
+    var r := maxf(radius * 0.85, 4.0)
+    var pulse := 0.5 + 0.5 * sin(_age * 18.0)
+    cv.draw_circle(at, r + 2.5, Color(0.05, 0.0, 0.04, 0.95))
+    cv.draw_circle(at, r, c.lightened(0.3))
+    cv.draw_circle(at, r * (0.45 + 0.1 * pulse), Color(1.0, 1.0, 0.95))

@@ -37,6 +37,8 @@ const SPECS := {
 }
 
 const C_FIRE := Color(1.00, 0.45, 0.15)
+const FUSE_SECS := 0.6
+const BLAST_RADIUS := 150.0
 const C_STEAM := Color(0.90, 0.95, 1.00)
 
 var kind := "crate"
@@ -264,13 +266,13 @@ func _barrel(el: int) -> bool:
                 states.erase("frozen")
                 _steam_puff(0.6)
                 return true
-            _explode()
+            _light_fuse()
             return true
         Element.Kind.SHOCK:
             if states.has("frozen"):
                 _chips(Element.Kind.SHOCK)
                 return true
-            _explode()
+            _light_fuse()
             return true
         Element.Kind.ICE:
             _set_state("frozen", 14.0)
@@ -607,6 +609,19 @@ func _leak(big: bool) -> void:
         _break(1)   # run dry
 
 
+## A lit barrel bursts after FUSE_SECS, never on the frame it is hit: it flashes faster
+## and faster and a ring grows out to the blast radius, so the blast is never a surprise
+## (two player deaths in the 2026-11-06 telemetry ended on an unseen barrel). Chained
+## barrels each light their own fuse, so a row goes off as a quick ripple.
+func _light_fuse() -> void:
+    if _gone or _timers.has("fuse"):
+        return
+    _timers["fuse"] = FUSE_SECS
+    Crisp.attach(self, _draw_fuse_ring, 4)   # above every particle; goes with the barrel
+    Sfx.play_at("tick", global_position, 2.0)
+    Sfx.play_at("react_ignition", global_position, -4.0)
+
+
 ## Barrel blast: a fire nova, the floor alight, damage around, chains into other props.
 func _explode() -> void:
     if _gone:
@@ -625,9 +640,9 @@ func _explode() -> void:
         if _alive(e):
             e.add_burn(5.0, 3.0)
             e.apply_element(Element.Kind.FIRE, 1.0)
-    for p in _players_within(150.0):
+    for p in _players_within(BLAST_RADIUS):
         Telemetry.hurt_hint = "prop:" + kind
-        p.take_damage(15.0, null)
+        p.take_damage(15.0, null, gp)
     _fxc("signature", [Element.Kind.FIRE, gp, 80.0, 1.6, Vector2.ZERO])
     _fxc("smoke", [gp, 18, 40.0, Fx.PAL_SMOKE])
     var scene := get_tree().current_scene
@@ -1018,6 +1033,8 @@ func _timer_ended(t: String) -> void:
             _break(1 if kind == "crate" else 0)
         "erode":
             _crumble(1)
+        "fuse":
+            _explode()
 
 
 ## A pillar is cover against enemy shots too (they do not collide with walls by
@@ -1094,6 +1111,28 @@ func _draw() -> void:
         draw_circle(Vector2.ZERO, half.x + 8.0, Color(Element.COLORS[_contaminant], 0.18))
 
 
+## A lit fuse: the barrel blinks white faster and faster (here, on the sprite), and a ring
+## grows from the barrel to the blast radius over a faint disc of the whole danger zone
+## (_draw_fuse_ring, on the Crisp layer so the player's own effects never hide it).
+func _draw_fuse(half: Vector2) -> void:
+    var left := float(_timers["fuse"])
+    var k := clampf(1.0 - left / FUSE_SECS, 0.0, 1.0)
+    if fmod(left * (8.0 + 22.0 * k), 1.0) < 0.5:
+        _over.draw_rect(Rect2(-half, half * 2.0).grow(3.0), Color(1.0, 1.0, 0.9, 0.8))
+
+
+func _draw_fuse_ring(cv: CanvasItem) -> void:
+    if _gone or not _timers.has("fuse"):
+        return
+    var k := clampf(1.0 - float(_timers["fuse"]) / FUSE_SECS, 0.0, 1.0)
+    cv.draw_circle(Vector2.ZERO, BLAST_RADIUS, Color(1.0, 0.25, 0.08, 0.08 + 0.1 * k))
+    cv.draw_arc(Vector2.ZERO, BLAST_RADIUS, 0.0, TAU, 64, Color(0.08, 0.0, 0.0, 0.75), 5.0)
+    cv.draw_arc(Vector2.ZERO, BLAST_RADIUS, 0.0, TAU, 64, Color(1.0, 0.45, 0.15, 0.6 + 0.4 * k), 2.0)
+    var r := lerpf(14.0, BLAST_RADIUS, k)
+    cv.draw_arc(Vector2.ZERO, r, 0.0, TAU, 48, Color(0.08, 0.0, 0.0, 0.7), 5.0)
+    cv.draw_arc(Vector2.ZERO, r, 0.0, TAU, 48, Color(1.0, 0.9, 0.45), 2.5)
+
+
 ## A faint rim round the sprite (its silhouette one pixel off on each side, under it):
 ## dark below and to the sides, pale on top, so a prop reads as an object on the dark
 ## floor. Puzzle pieces (Secrets) get none: they stay part of the room.
@@ -1115,6 +1154,8 @@ func _draw_rim() -> void:
 ## Over the sprite: state overlays.
 func _draw_over() -> void:
     var half := size / 2.0
+    if _timers.has("fuse"):
+        _draw_fuse(half)
     var r := Rect2(-half, size)
     var t := Time.get_ticks_msec() * 0.001
     if states.has("oiled"):

@@ -10,6 +10,7 @@ const CAMERA_PAD := 90.0
 var players: Array[Player] = []
 var fx: Fx
 var hud: Hud
+var danger: DangerFx   # hit flashes and the low-health edge (danger_fx.gd)
 var camera: PixelCamera
 var pause_menu: PauseMenu
 var levelup: LevelUpScreen
@@ -80,6 +81,8 @@ func _ready() -> void:
     RenderingServer.set_default_clear_color(Art.CLEAR)
 
     add_child(PostFx.new())
+    danger = DangerFx.new(self)
+    add_child(danger)   # layer 3 like the HUD, added first: draws under it
     var layer := CanvasLayer.new()
     layer.layer = 3   # over the PostFx (1) and the Crisp world-text layer (2)
     add_child(layer)
@@ -431,8 +434,12 @@ func _tick_feedback(real_delta: float) -> void:
         _flash_rect.color.a = maxf(0.0, _flash_rect.color.a - _flash_fade * real_delta)
 
 
-## A full-screen tinted flash that fades out; strength is the starting alpha.
+## A full-screen tinted flash that fades out; strength is the starting alpha. With the
+## "Screen flashes" option off it is a third as strong and fades twice as slowly.
 func flash(color: Color, strength: float = 0.5, life: float = 0.25) -> void:
+    if not Settings.flag("flashes"):
+        strength *= 0.3
+        life *= 2.0
     if _ticker == null:
         _ticker = FeedbackTicker.new()
         _ticker.main = self
@@ -686,6 +693,8 @@ func _spawn_player(device: int, keyboard: bool) -> Player:
     players.append(p)
     p.died.connect(_on_player_died)
     p.leveled_up.connect(_on_leveled_up)
+    if danger != null:
+        p.hurt.connect(danger.on_hurt)
     # Player 1 plays the class picked on the menu; later joiners get a random unlocked one.
     var class_id: String = Progress.chosen_class
     if players.size() > 1:
@@ -992,6 +1001,8 @@ func _setup_autotest() -> void:
         add_child(_probe)
     if PayoutShot.wanted():
         add_child(PayoutShot.new(self))   # level-up cards and wave-end spoils (payout_shot.gd)
+    if HurtShot.wanted():
+        add_child(HurtShot.new(self))   # hit flash, low health, hazards, death recap (hurt_shot.gd)
     _apply_bot_build(_bot_build(), _bot_start_floor())
     if GearShot.wanted():
         add_child(GearShot.new(self))   # worn-gear sheets and fight close-ups (gear_shot.gd)

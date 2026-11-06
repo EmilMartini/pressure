@@ -205,6 +205,17 @@ func _ready() -> void:
     # Boss and elite deaths: hook every enemy as it enters the tree.
     get_tree().node_added.connect(_on_node_added)
     Crisp.attach(self, _draw_texts, 10)
+    Crisp.attach(self, _draw_enemy_shots, 6)
+
+
+## Enemy shots' outline and core on the Crisp layer (EnemyProjectile.draw_crisp): above
+## every particle, cloud and bloom of the player's own guns, so a shot coming in always
+## reads. Their glow and trail stay in the world below.
+func _draw_enemy_shots(cv: CanvasItem) -> void:
+    for s in get_tree().get_nodes_in_group("enemy_projectiles"):
+        var shot := s as EnemyProjectile
+        if shot != null and not shot.is_queued_for_deletion():
+            shot.draw_crisp(cv, shot.global_position - global_position)
 
 
 func _build_palettes() -> void:
@@ -904,8 +915,31 @@ func number(pos: Vector2, amount: float, color: Color, big := false, dim := fals
     var p := pos + Vector2(randf_range(-14.0, 14.0), -22.0 + randf_range(-6.0, 6.0))
     _texts.append({ "pos": p, "text": text, "color": col, "t": 0.9 if big else 0.7, "life": 0.9 if big else 0.7, "size": size,
         "vel": Vector2(randf_range(-20.0, 20.0), -70.0 if big else -50.0) })
-    if _texts.size() > MAX_TEXTS:
-        _texts.pop_front()
+    _cap_texts()
+
+
+## Damage the player took: "-12" in hot red with a black outline, bigger and slower than
+## the numbers you deal (which are white, element-tinted or yellow crits), rising from the
+## figure. Never pushed out by a busy fight's numbers (see _cap_texts).
+func hurt_number(pos: Vector2, amount: float) -> void:
+    if not Settings.flag("damage_numbers"):
+        return
+    var n := maxi(1, roundi(amount))
+    var p := pos + Vector2(randf_range(-8.0, 8.0), -30.0)
+    _texts.append({ "pos": p, "text": "-%d" % n, "color": Color(1.0, 0.16, 0.14), "t": 1.1, "life": 1.1, "size": 30,
+        "vel": Vector2(randf_range(-12.0, 12.0), -60.0), "hurt": true })
+    _cap_texts()
+
+
+## Drops the oldest number past MAX_TEXTS, never one of the player's own hurt numbers.
+func _cap_texts() -> void:
+    while _texts.size() > MAX_TEXTS:
+        var drop := 0
+        for i in _texts.size():
+            if not _texts[i].has("hurt"):
+                drop = i
+                break
+        _texts.remove_at(drop)
 
 
 ## A floating name over a big moment (fusions, cataclysms): the reaction-label path, bigger,
@@ -2013,5 +2047,9 @@ func _draw_texts(cv: CanvasItem) -> void:
         col.a = clampf(t["t"] / 0.5, 0.0, 1.0)
         var size := int(t.get("size", 20) + 6 * pop)
         var w: float = t.get("w", 200.0)
+        if t.has("hurt"):
+            cv.draw_string_outline(Art.FONT, t["pos"] + Vector2(-w * 0.5, 0), t["text"], HORIZONTAL_ALIGNMENT_CENTER, w, size, 6, Color(0.05, 0.0, 0.0, col.a))
+            cv.draw_string(Art.FONT, t["pos"] + Vector2(-w * 0.5, 0), t["text"], HORIZONTAL_ALIGNMENT_CENTER, w, size, col)
+            continue
         cv.draw_string(Art.FONT, t["pos"] + Vector2(-w * 0.5 + 1.0, 1), t["text"], HORIZONTAL_ALIGNMENT_CENTER, w, size, Color(0, 0, 0, col.a * 0.8))
         cv.draw_string(Art.FONT, t["pos"] + Vector2(-w * 0.5, 0), t["text"], HORIZONTAL_ALIGNMENT_CENTER, w, size, col)

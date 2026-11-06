@@ -16,6 +16,7 @@ const DEFAULTS := {
     "vsync": true,
     "screen_shake": 1.0,
     "hit_stop": true,
+    "flashes": true,                  # full-strength screen flashes and the pulsing low-health edge
     "damage_numbers": true,
     "post_fx": true,
     "crt": false,                     # CRT curve, scanlines, a little aberration and grain

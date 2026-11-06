@@ -584,9 +584,11 @@ func _flush_damage() -> void:
     _reset_damage()
 
 
-func player_hurt(p: Node, amount: float, attacker: Node) -> void:
-    if _run.is_empty():
-        return
+## What hurt `p`: the hint the damage dealer left (a shot, a prop), else the enemy, else
+## the floor material under `p`. Always consumes the hint, so one never outlives its hit
+## (a shot that met invulnerability used to label the next floor tick). Player calls this
+## once per hit and passes the result to `player_hurt` and its own death recap.
+func hurt_source(p: Node, attacker: Node) -> String:
     var source := hurt_hint
     hurt_hint = ""
     if source == "":
@@ -600,6 +602,33 @@ func player_hurt(p: Node, amount: float, attacker: Node) -> void:
             source = "material:%s" % MATERIAL_NAMES[m] if m > 0 and m < MATERIAL_NAMES.size() else "unknown"
         else:
             source = "unknown"
+    return source
+
+
+## A readable name for a damage source label: "projectile:spitter" -> "Spitter shot".
+static func source_name(source: String) -> String:
+    var parts := source.split(":")
+    var head := parts[0]
+    var rest := ":".join(parts.slice(1)) if parts.size() > 1 else ""
+    match head:
+        "projectile":
+            return "%s shot" % source_name(rest)
+        "material":
+            return "%s floor" % rest.replace("_", " ").capitalize()
+        "prop":
+            return "Exploding barrel" if rest == "barrel" else rest.replace("_", " ").capitalize()
+        "boss":
+            return rest.replace("_", " ").capitalize()
+        "unknown", "":
+            return "Unknown"
+    return source.replace("_", " ").capitalize()
+
+
+func player_hurt(p: Node, amount: float, attacker: Node, source: String = "") -> void:
+    if source == "":
+        source = hurt_source(p, attacker)
+    if _run.is_empty():
+        return
     _last_source = source
     _room_hp_lost += amount
     event("damage_taken", { "source": source, "amount": snappedf(amount, 0.1), "floor": _floor, "hp_after": snappedf(maxf(0.0, float(p.get("hp"))), 0.1) })
