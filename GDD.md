@@ -759,6 +759,45 @@ whole `route`). Bots print a `[ROUTE]` line and take `--route=a,b,c` to fix a ro
   `Elements.MAX_REACTION_DEPTH` (24) nested resolutions, an element now lands as a plain
   state instead of reacting.
 
+**Boss framework (BUILT, phase 0b part 1, 2026-11-06).** `scripts/boss_body.gd`: every boss
+carries a `BossBody` (`Enemy.body`). Design: `design/World and progression GDD.md`, section 6.
+- *Stagger.* Reactions on the boss fill a bar: 1.5% a reaction, 8% a fusion, half the bar
+  for a cataclysm. A product in a patch or field over the boss fills half that. A full bar
+  staggers the boss for 4 s: it stops moving and attacking, its wind-ups freeze, it takes
+  x1.5 damage and its reaction shield lets raw damage through. Afterwards the bar rests for
+  5 s, and it drains after 4 s without a reaction. Stagger adds to the rallies; it does not
+  replace them. HUD: a gold bar under the boss bar, "STAGGERED" in the bar.
+- *Phases.* `BossBody.PHASES` sets health fractions per kind. The Pyre Lord has three
+  (0.66, 0.33), the other four keep their two (0.5). Each new phase roars, shakes, shows
+  "PHASE n" and lights a pip beside the boss bar.
+- *Name card.* For the first 3.5 s of a fight a band across the screen gives the boss's name
+  and region; afterwards the name sits in its health bar.
+- *Body parts* (`BossBody.PARTS`). A part has its own element states, compound and fusion
+  cooldown (`PART_FUSION_CD`, 1.5 s). The Enemy's own `states`/`compound` fields always
+  hold the focused part. A hit focuses the part nearest to where it landed
+  (`Strike.deal`), area effects land on the part last hit, and `BossBody.tick` runs the
+  other parts' clocks. On a parted boss every compound stays on its part, Steam included,
+  and part fusions skip the room-wide repeat gap, since patches round the boss used it up.
+  Parts are drawn on the Crisp layer with a dark outline, so they read through the player's
+  effects. The HUD shows one chip per part with its states and compound.
+- *The Pyre Lord* is the first boss built on it (radius 34, health share 0.4 of the usual
+  30 s of arena output, `BossBody.HP_SHARE`).
+  - Parts:
+    - **Slag armour** keeps burning. Shock and ice do nothing to it until it is steamed.
+      Water makes Steam on it, then shock on the Steam makes a Storm Cloud, which tears the
+      armour off. Other fusions wear it 10%.
+    - **Molten core**, under the armour, holds Magma by itself once bare. Only ice touches
+      it: ice makes Obsidian, which shatters for 3% of max health and a full stagger.
+    - **Fire crown** on top keeps burning and takes any reaction.
+  - Torn armour re-forms after 12 s (8 s in phase 3).
+  - Phases: phase 2 cracks the armour open. Phase 3 re-forms the armour at once and floods
+    the forge: lava pools well up near the player, each shown for 1 s before it burns.
+  - Attacks, all in the hostile signature: a burning trail; flame waves that roll out as
+    arcs after a 0.9 s wind-up in which he plants his feet (one wide arc, then a faster
+    wider one, then three arcs with gaps), so a sidestep always dodges them; bombers.
+- The other four bosses use the framework without parts, which gives them stagger, the
+  name card and phase pips. Their attacks are unchanged.
+
 **Raids** are the endgame: a longer co-op dungeon with multiple bosses that have WoW-style
 mechanics (split the party, soak zones, interrupt casts with a specific reaction, adds that
 must die in element order). Designed for 2-4 players. Only reachable at a gear score threshold.
@@ -1088,7 +1127,8 @@ Fire orange, Holy near-white), so a green frame could mean Uncommon or Poison. T
   Treasure rooms give a free pick of one gun from three. Challenge rooms start from a sigil,
   spawn two sequence elites plus adds, and pay out scrap and a free gun pick.
 - The boss has a reaction sequence shield, re-shields with a new sequence at half health,
-  and summons adds. From floor 2 its health is sized to the party's measured output and it
+  and summons adds. It staggers from reactions and has a name card; the Pyre Lord has body
+  parts and three phases (see "Boss framework"). From floor 2 its health is sized to the party's measured output and it
   rallies twice (a guard held by a wave of adds). Killing it spawns the stairs. Five
   floors, then the run is won.
 - The trigger always fires along your aim even with no enemy in range, so obstacles can

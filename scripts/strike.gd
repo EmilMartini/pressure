@@ -45,6 +45,8 @@ func hit(enemy: Enemy, mult: float = 1.0, pos: Vector2 = Vector2.INF, knock: Vec
 ## multipliers and the shooter's vs-state gear, then the element and its coatings.
 static func deal(enemy: Enemy, dmg: float, pot: float, el: int, extra_els: Array, col: Color, is_crit: bool, src: Player, gid: String, pos: Vector2) -> void:
     var raw := dmg
+    if enemy.body != null:
+        enemy.body.focus_at(pos)   # a parted boss: the element lands on the part it hit
     if enemy.immune_to == el and el != Element.Kind.NONE:
         raw = 0.0
     # How the element meets what the target already carries, before any gear bonuses:

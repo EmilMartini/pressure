@@ -111,6 +111,9 @@ var last_hit_by: Player = null
 var affix := ""
 ## Boss pattern: "" (plain chase) or one of BOSS_KINDS. Set with set_boss().
 var boss_kind := ""
+## The boss framework (BossBody): stagger, phases, name card and, for some kinds, body parts
+## whose element state is swapped into `states`/`compound` below. null on everything else.
+var body: BossBody = null
 
 ## Attuned shield: only the one reaction it is attuned to cracks it, one hit per crack.
 var weakness := Vector2i(-1, -1)
@@ -283,15 +286,17 @@ func set_boss(kind: String) -> void:
             _t2 = 6.0
         "pyre_lord":
             speed = 80.0
-            radius = 30.0
+            radius = 34.0
             _t1 = 0.5
             _t2 = 5.0
+            _t3 = 3.0
         "void_herald":
             speed = 70.0
             radius = 30.0
             _reshield_at = [0.66, 0.33]
             _t1 = 2.0
             _t2 = 5.0
+    body = BossBody.new(self, boss_kind) if kind_name == "boss" else null
     if _shape != null:
         _shape.radius = radius
     _setup_sprite()
@@ -409,7 +414,8 @@ func apply_element(kind: int, potency: float, source: Player = null) -> String:
                     and e.global_position.distance_to(global_position) <= 110.0:
                 e.add_burn(burn_dps * 0.7, 2.5)
     # Tier 3 before any pair reaction: a compound on this body meets a new element.
-    if compound != "":
+    # A boss part may shrug an element off (BossBody.inert / sealed).
+    if compound != "" and (body == null or not body.sealed(kind)):
         var cid := compound
         if Fusions.fusion(cid, kind, compound_origin).is_empty():
             # One of its own elements: the compound is fed, not fused.
@@ -418,10 +424,16 @@ func apply_element(kind: int, potency: float, source: Player = null) -> String:
             compound = ""
             var fused := Elements.try_fuse(self, cid, compound_origin, kind, potency, source)
             if fused != "":
+                if body != null and is_instance_valid(self):
+                    if body.has_parts():
+                        fusion_cd = BossBody.PART_FUSION_CD
+                    body.on_product(fused, int(Fusions.by_name(fused).get("tier", Fusions.TIER_FUSION)), true)
                 expose()
                 queue_redraw()
                 return fused
             compound = cid   # over the room's budget: the element lands plainly, the compound stays
+    if body != null and body.inert(kind):
+        return ""
     for existing in (states.keys() if Elements.may_react() else []):
         if existing == kind:
             continue
@@ -435,6 +447,8 @@ func apply_element(kind: int, potency: float, source: Player = null) -> String:
         expose()
         _on_reaction_pair(existing, kind)
         Elements.try_react(self, existing, kind, potency)
+        if body != null and is_instance_valid(self) and hp > 0.0:
+            body.on_product(reaction, Fusions.TIER_REACTION, true)
         if source != null and is_instance_valid(source):
             source.on_reaction(reaction)
             Items.fire(source, "reaction", { "target": self, "reaction": reaction, "element": kind, "other": existing, "pos": global_position })
@@ -531,8 +545,11 @@ func take_damage(amount: float, color: Color, flash: bool = true, source: Player
         return   # a spawn marker is not a target yet
     if source != null:
         last_hit_by = source
-    if shielded():
+    if body != null:
+        amount *= body.taken_mult(flash)   # the part hit, and the stagger bonus
+    if shielded() and (body == null or not body.staggered()):
         # A shield blocks most raw damage, never all of it: reactions are the fast way in.
+        # A staggered boss has dropped its guard.
         _shield_flash = maxf(_shield_flash, 0.15)
         amount *= 0.2
     if flash and is_armoured() and states.is_empty() and _react_window <= 0.0:
@@ -750,6 +767,10 @@ func _die() -> void:
 func _draw_hostile(cv: CanvasItem) -> void:
     if kind_name == "bomber" or affix == "volatile":
         _draw_blast_ring(cv)
+    if boss_kind == "pyre_lord":
+        _draw_pyre_hostile(cv)
+    if body != null and body.has_parts():
+        _draw_parts(cv)
     if _mode == MODE_TELEGRAPH and emerge <= 0.0 and hp > 0.0:
         var length := 420.0 * 0.5 if kind_name == "charger" else 300.0
         var a := 0.45 + 0.4 * absf(sin(_fx_t * 20.0))
@@ -946,6 +967,8 @@ func _physics_process(delta: float) -> void:
         if compound_time <= 0.0:
             compound = ""
     fusion_cd = maxf(0.0, fusion_cd - delta)
+    if body != null:
+        body.tick(delta)
     if burn_time > 0.0:
         burn_time -= delta
         Telemetry.dot_begin(_dot_tags["burn"])
@@ -1014,7 +1037,7 @@ func _physics_process(delta: float) -> void:
 
     var prev_vel := velocity
     var target := _nearest_player()
-    if frozen_time > 0.0 or stun_time > 0.0 or target == null:
+    if frozen_time > 0.0 or stun_time > 0.0 or target == null or (body != null and body.staggered()):
         velocity = Vector2.ZERO
     else:
         velocity = _think(delta, target)
@@ -1061,8 +1084,8 @@ func _speed_mult() -> float:
         m *= 1.35
     if haste_aura_time > 0.0:
         m *= 1.15
-    if boss_kind == "pyre_lord" and _phase == 2:
-        m *= 1.4
+    if boss_kind == "pyre_lord" and _phase >= 2:
+        m *= 1.25
     return m
 
 
@@ -1196,13 +1219,18 @@ func _tick_affix(delta: float) -> void:
 
 ## Phase change, scripted summons and hazards; runs even while the boss is frozen.
 func _tick_boss_passive(delta: float) -> void:
-    if _phase == 1 and hp <= max_hp * 0.5:
-        _phase = 2
-        Telemetry.boss_phase2(self)
-        Elements.reaction_fired.emit("ENRAGED", global_position, Color(1.0, 0.3, 0.2))
+    var next_phase := body.phase_for(hp / max_hp) if body != null else (2 if hp <= max_hp * 0.5 else 1)
+    if next_phase > _phase:
+        _phase = next_phase
+        if _phase == 2:
+            Telemetry.boss_phase2(self)
+        Elements.reaction_fired.emit("ENRAGED" if _phase == 2 else "PHASE %d" % _phase, global_position, Color(1.0, 0.3, 0.2))
+        Sfx.play("boss_phase")
         var fx := _fx()
         if fx != null:
             fx._shake(8.0)
+        if body != null:
+            body.on_phase(_phase)
     if _ward_t > 0.0:
         _ward_t -= delta
         _ward_adds = _ward_adds.filter(func(e): return is_instance_valid(e) and not e.is_queued_for_deletion() and e.hp > 0.0)
@@ -1242,9 +1270,12 @@ func _tick_boss_passive(delta: float) -> void:
                     if not is_instance_valid(p) or not p.alive:
                         continue
                     for hz in _hazards:
-                        if p.global_position.distance_to(hz["pos"]) <= 55.0:
+                        if float(hz.get("warn", 0.0)) <= 0.0 and p.global_position.distance_to(hz["pos"]) <= float(hz.get("r", 55.0)):
                             p.take_damage(5.0 + 0.25 * float(_wave), self)
                             break
+            for hz in _hazards:
+                hz["warn"] = maxf(0.0, float(hz.get("warn", 0.0)) - delta)
+            _tick_flame_waves(delta)
 
 
 ## The adds that hold a rally guard up: once they are all dead the guard breaks.
@@ -1257,6 +1288,202 @@ func _queue_summons(type: String, count: int, warn: float) -> void:
         var a := TAU * float(i) / float(count) + randf() * 0.5
         var pos := global_position + Vector2.RIGHT.rotated(a) * (radius + 60.0)
         _pending.append({ "pos": pos, "t": warn, "type": type })
+
+
+# --- The Pyre Lord (design section 6: molten core, slag armour, fire crown) -----------------
+
+## Flame waves: arcs of fire that roll out from where he stood, never full rings, so a
+## sidestep always dodges them. Each one winds up for WAVE_WARN with its arc shown.
+const WAVE_SPEED := 230.0
+const WAVE_REACH := 360.0
+const WAVE_BAND := 16.0
+const WAVE_WARN := 0.9
+var _waves: Array = []      # [{ "o": origin, "a": angle, "hw": half width, "r", "warn", "speed", "hit": {} }]
+var _lava_t := 2.0
+
+
+func _think_pyre(delta: float, target: Player, dir: Vector2, mult: float) -> Vector2:
+    _t1 -= delta
+    _t2 -= delta
+    _t3 -= delta
+    if _t1 <= 0.0:
+        # A trail of burning ground behind him.
+        _t1 = [1.2, 0.9, 0.7][clampi(_phase - 1, 0, 2)]
+        var w := _world()
+        if w != null:
+            Cloud.spawn(w, global_position, Element.Kind.FIRE, 60.0, 5.0, 5.0, null)
+        _hazards.append({ "pos": global_position, "t": 5.0, "r": 55.0 })
+    if _t2 <= 0.0:
+        _t2 = 8.0
+        _queue_summons("bomber", 2 if _phase == 1 else 3, 0.9)
+    if _t3 <= 0.0:
+        var aim := (target.global_position - global_position).angle()
+        match _phase:
+            1:
+                _t3 = 4.0
+                _add_wave(aim, 0.8, WAVE_SPEED)
+            2:
+                _t3 = 2.8
+                _add_wave(aim, 0.9, WAVE_SPEED * 1.2)
+            _:
+                _t3 = 3.2
+                for k in 3:
+                    _add_wave(aim + TAU * float(k) / 3.0, 0.7, WAVE_SPEED * 1.1)
+    if _phase >= 3:
+        # The forge floods: lava wells up near the player, shown a second before it burns.
+        _lava_t -= delta
+        if _lava_t <= 0.0:
+            _lava_t = 2.2
+            var at := target.global_position + Vector2.from_angle(randf() * TAU) * randf_range(20.0, 90.0)
+            _hazards.append({ "pos": at, "t": 7.0, "r": 60.0, "warn": 1.0, "lava": true })
+    while _hazards.size() > 16:
+        _hazards.pop_front()
+    for wv in _waves:
+        if float(wv["warn"]) > 0.0:
+            return Vector2.ZERO   # he plants his feet for the wind-up
+    return dir * speed * mult
+
+
+func _add_wave(angle: float, half_width: float, wave_speed: float) -> void:
+    _waves.append({ "o": global_position, "a": angle, "hw": half_width, "r": radius, "warn": WAVE_WARN, "speed": wave_speed, "hit": {} })
+
+
+func _tick_flame_waves(delta: float) -> void:
+    for i in range(_waves.size() - 1, -1, -1):
+        var wv: Dictionary = _waves[i]
+        if float(wv["warn"]) > 0.0:
+            # A stagger or a freeze holds the wave in his hands; it never fires unseen.
+            if not (body != null and body.staggered()) and frozen_time <= 0.0 and stun_time <= 0.0:
+                wv["warn"] = float(wv["warn"]) - delta
+            continue
+        wv["r"] = float(wv["r"]) + float(wv["speed"]) * delta
+        if float(wv["r"]) > WAVE_REACH:
+            _waves.remove_at(i)
+            continue
+        for p in get_tree().get_nodes_in_group("players"):
+            if not is_instance_valid(p) or not p.alive or wv["hit"].has(p):
+                continue
+            var to: Vector2 = p.global_position - Vector2(wv["o"])
+            if absf(to.length() - float(wv["r"])) <= WAVE_BAND * 0.5 + 8.0 \
+                    and absf(angle_difference(float(wv["a"]), to.angle())) <= float(wv["hw"]):
+                wv["hit"][p] = true
+                p.take_damage(12.0 + 0.6 * float(_wave), self)
+
+
+## Waves, their wind-ups and the burning and flooding ground, in the hostile signature.
+func _draw_pyre_hostile(cv: CanvasItem) -> void:
+    var near: Array = []
+    for p in get_tree().get_nodes_in_group("players"):
+        if p is Node2D:
+            near.append((p as Node2D).global_position)
+    for hz in _hazards:
+        # Like burning floor, a patch is outlined only where a player could step into it.
+        var close := false
+        for pp in near:
+            if Vector2(pp).distance_to(hz["pos"]) <= 300.0:
+                close = true
+                break
+        if not close:
+            continue
+        var lp := to_local(hz["pos"])
+        var warn := float(hz.get("warn", 0.0))
+        if warn > 0.0:
+            Hostile.dash_ring(cv, lp, float(hz["r"]) * (1.0 - 0.3 * warn), 0.6 + 0.4 * absf(sin(_fx_t * 12.0)), 3.0)
+        else:
+            Hostile.dash_ring(cv, lp, float(hz["r"]), 0.7 * clampf(float(hz["t"]), 0.0, 1.0))
+    for wv in _waves:
+        var o := to_local(wv["o"])
+        var a := float(wv["a"])
+        var hw := float(wv["hw"])
+        if float(wv["warn"]) > 0.0:
+            var k := 0.5 + 0.5 * absf(sin(_fx_t * 14.0))
+            _hostile_arc(cv, o, radius + 22.0, a, hw, 6.0, k)
+            _hostile_arc(cv, o, WAVE_REACH, a, hw, 3.0, 0.35 * k)
+            cv.draw_line(o + Vector2.from_angle(a - hw) * (radius + 22.0), o + Vector2.from_angle(a - hw) * WAVE_REACH, Color(Hostile.RED, 0.3 * k), 1.0)
+            cv.draw_line(o + Vector2.from_angle(a + hw) * (radius + 22.0), o + Vector2.from_angle(a + hw) * WAVE_REACH, Color(Hostile.RED, 0.3 * k), 1.0)
+        else:
+            _hostile_arc(cv, o, float(wv["r"]), a, hw, WAVE_BAND, 1.0)
+
+
+func _hostile_arc(cv: CanvasItem, at: Vector2, r: float, a: float, hw: float, width: float, alpha: float) -> void:
+    var n := 18
+    var pts := PackedVector2Array()
+    for k in n + 1:
+        pts.append(at + Vector2.from_angle(a - hw + 2.0 * hw * float(k) / float(n)) * r)
+    cv.draw_polyline(pts, Color(Hostile.DARK, 0.85 * alpha), width + 4.0)
+    cv.draw_polyline(pts, Color(Hostile.RED, alpha), maxf(2.0, width * 0.5))
+    cv.draw_polyline(pts, Color(1.0, 0.75, 0.35, alpha), 1.0)
+
+
+## The body parts, their element states and compounds, on the Crisp layer with the hostile
+## tells: a boss is hostile, and its parts must read through the player's own fusion effects.
+func _draw_parts(cv: CanvasItem) -> void:
+    if body == null or emerge > 0.0 or hp <= 0.0:
+        return
+    var R := radius
+    for i in body.parts.size():
+        var p: Dictionary = body.parts[i]
+        var at: Vector2 = Vector2(p["offset"]) * R
+        var pr: float = float(p["r"]) * R
+        var flash := float(p["flash"]) / 0.35
+        var vis := body.visible(i)
+        match String(p["id"]):
+            "armour":
+                if p["broken"]:
+                    continue
+                # Slag plates round the body; one falls away per sixth of wear, the gaps glow.
+                var plates := ceili(float(p["integrity"]) * 6.0)
+                for k in 6:
+                    var a0 := -PI * 0.5 + float(k) * TAU / 6.0 + 0.08
+                    var a1 := a0 + TAU / 6.0 - 0.16
+                    if k < plates:
+                        cv.draw_arc(at, pr, a0, a1, 8, Hostile.DARK, 10.0)
+                        cv.draw_arc(at, pr, a0, a1, 8, Color(0.34, 0.24, 0.20).lerp(Color.WHITE, flash * 0.6), 6.0)
+                        cv.draw_arc(at, pr + 3.0, a0, a1, 8, Color(Hostile.RED, 0.9), 1.0)
+                    else:
+                        cv.draw_arc(at, pr, a0, a1, 8, Color(1.0, 0.55, 0.15, 0.55 + 0.3 * sin(_fx_t * 8.0)), 3.0)
+                    cv.draw_arc(at, pr, a1, a1 + 0.16, 3, Color(1.0, 0.45, 0.1, 0.9), 4.0)
+            "core":
+                if not vis:
+                    continue
+                var pulse := 0.5 + 0.5 * sin(_fx_t * 6.0)
+                cv.draw_circle(at, pr + 4.0, Hostile.DARK)
+                cv.draw_arc(at, pr + 4.0, 0.0, TAU, 28, Hostile.RED, 1.5)
+                cv.draw_circle(at, pr, Color(1.0, 0.45 + 0.2 * pulse, 0.1).lerp(Color.WHITE, flash))
+                cv.draw_circle(at, pr * 0.55, Color(1.0, 0.9, 0.5, 0.9))
+            "crown":
+                var top := at.y - pr * 0.4
+                var pts := PackedVector2Array([Vector2(-pr, top + pr), Vector2(-pr, top), Vector2(-pr * 0.5, top + pr * 0.5), Vector2(0, top - pr * 0.4), Vector2(pr * 0.5, top + pr * 0.5), Vector2(pr, top), Vector2(pr, top + pr)])
+                var shifted := PackedVector2Array()
+                for q in pts:
+                    shifted.append(Vector2(at.x + q.x, q.y))
+                cv.draw_polyline(shifted, Hostile.DARK, 5.0)
+                cv.draw_colored_polygon(shifted, Color(0.15, 0.06, 0.04))
+                cv.draw_polyline(shifted, Color(1.0, 0.6, 0.2).lerp(Color.WHITE, flash), 2.0)
+        if not vis:
+            continue
+        # The part's element states as pips beside it, its compound as a ring of motes.
+        var st: Dictionary = p["states"] if i != body.cur else states
+        var cid: String = String(p["compound"]) if i != body.cur else compound
+        var n := 0
+        for k in st.keys():
+            var pip := at + Vector2(pr + 7.0, -pr * 0.5 + 8.0 * float(n))
+            cv.draw_rect(Rect2(pip - Vector2(3.5, 3.5), Vector2(7, 7)), Color(0.05, 0.02, 0.02))
+            cv.draw_rect(Rect2(pip - Vector2(2.5, 2.5), Vector2(5, 5)), Element.COLORS[k])
+            n += 1
+        if cid != "":
+            var cc: Color = Fusions.compound(cid).get("color", Color.WHITE)
+            var ring := pr + 5.0
+            cv.draw_arc(at, ring, 0.0, TAU, 28, Color(cc, 0.55), 1.5)
+            for k in 4:
+                var am := _fx_t * 3.2 + TAU * float(k) / 4.0
+                var mp := at + Vector2(cos(am), sin(am) * 0.6) * ring
+                cv.draw_rect(Rect2(floorf(mp.x - 2.0), floorf(mp.y - 2.0), 4.0, 4.0), cc.lightened(0.3))
+    if body.staggered():
+        cv.draw_arc(Vector2.ZERO, R * 1.45, 0.0, TAU, 40, Color(1.0, 0.9, 0.4, 0.5 + 0.4 * absf(sin(_fx_t * 10.0))), 2.0)
+        for k in 4:
+            var a := _fx_t * 4.0 + float(k) * TAU / 4.0
+            cv.draw_circle(Vector2(cos(a), sin(a) * 0.35) * R * 1.1 + Vector2(0, -R * 1.9), 3.0, Color(1, 0.9, 0.4))
 
 
 func _think_boss(delta: float, target: Player, dir: Vector2, dist: float, mult: float) -> Vector2:
@@ -1313,20 +1540,7 @@ func _think_boss(delta: float, target: Player, dir: Vector2, dist: float, mult: 
                 return Vector2.ZERO
             return _keep_range(delta, dir, dist, 160.0, 280.0) * speed * mult
         "pyre_lord":
-            _t1 -= delta
-            _t2 -= delta
-            if _t1 <= 0.0:
-                _t1 = 1.2 if _phase == 1 else 0.7
-                var w := _world()
-                if w != null:
-                    Cloud.spawn(w, global_position, Element.Kind.FIRE, 60.0, 5.0, 5.0, null)
-                _hazards.append({ "pos": global_position, "t": 5.0 })
-                if _hazards.size() > 12:
-                    _hazards.pop_front()
-            if _t2 <= 0.0:
-                _t2 = 8.0
-                _queue_summons("bomber", 2 if _phase == 1 else 3, 0.9)
-            return dir * speed * mult
+            return _think_pyre(delta, target, dir, mult)
         "void_herald":
             _t1 -= delta
             _t2 -= delta
@@ -1473,7 +1687,7 @@ func _draw() -> void:
         draw_arc(Vector2.ZERO, radius + 3.0, 0.0, TAU, 24, Color(0.5, 1.0, 0.5, 0.6), 2.0)
     if affix != "":
         _draw_affix()
-    if compound != "":
+    if compound != "" and (body == null or not body.has_parts()):
         # Primed: a thin rim and three motes orbiting in the compound's colour, brightening
         # as it is about to fade, so "add a third element here" reads at a glance.
         var cc: Color = Fusions.compound(compound).get("color", Color.WHITE)
@@ -1540,7 +1754,7 @@ func _draw() -> void:
             draw_circle(Vector2(cos(a), sin(a) * 0.4) * radius * 1.2 + Vector2(0, -radius - 4.0), 2.5, Color(1, 1, 0.6))
     # Generic markers for element states beyond the ones drawn above.
     var i := 0
-    for kind in states.keys():
+    for kind in (states.keys() if body == null or not body.has_parts() else []):
         if kind in [Element.Kind.WET, Element.Kind.SHOCK]:
             continue
         draw_circle(Vector2(-radius + 4.0 + 7.0 * i, -radius - 8.0), 3.0, Element.COLORS[kind])
@@ -1697,7 +1911,7 @@ func _draw_affix() -> void:
 
 func _draw_boss() -> void:
     # Phase two: a red pulse around the body.
-    if _phase == 2:
+    if _phase >= 2:
         draw_arc(Vector2.ZERO, radius + 16.0, 0.0, TAU, 48, Color(1, 0.2, 0.15, 0.35 + 0.25 * sin(_fx_t * 6.0)), 3.0)
     # Telegraphed summons: a closing ring where each will appear.
     for s in _pending:
@@ -1736,8 +1950,9 @@ func _draw_boss() -> void:
                 draw_circle(Vector2.ZERO, radius * 0.5, Color(Element.COLORS[Element.Kind.SHOCK], 0.35))
         "pyre_lord":
             for hz in _hazards:
-                draw_circle(to_local(hz["pos"]), 55.0, Color(1.0, 0.35, 0.1, 0.10 * clampf(float(hz["t"]), 0.0, 1.0)))
-            _draw_pixel_flame(Vector2(0, -radius * 0.5), radius * 1.6, radius * 2.2, 14 if _phase == 2 else 10)
+                var lava := bool(hz.get("lava", false))
+                draw_circle(to_local(hz["pos"]), float(hz.get("r", 55.0)), Color(1.0, 0.35 if lava else 0.35, 0.1, (0.28 if lava and float(hz.get("warn", 0.0)) <= 0.0 else 0.10) * clampf(float(hz["t"]), 0.0, 1.0)))
+            _draw_pixel_flame(Vector2(0, -radius * 0.5), radius * 1.6, radius * 2.2, 14 if _phase >= 2 else 10)
         "void_herald":
             var pull_r := 260.0 if _phase == 1 else 320.0
             var c: Color = Element.COLORS[Element.Kind.VOID]

@@ -508,6 +508,17 @@ func start_floor(n: int) -> void:
         p.hp = maxf(p.hp, p.max_hp * (0.6 if n <= 2 else 0.4))   # deeper stairs patch you up less
     enter_room(Vector2i(FloorGen.GRID / 2, FloorGen.GRID / 2), Vector2i.ZERO)
     announce(Regions.display_name(region_id))
+    if autotest and OS.get_cmdline_user_args().has("--boss-only"):
+        # Boss probe: straight into the floor's boss room. `--boss-dps=N` stands in for the
+        # arena output a real floor would have measured (it sizes the boss from depth 2).
+        for a in OS.get_cmdline_user_args():
+            if a.begins_with("--boss-dps="):
+                _arena_dps = [float(a.substr(11))]
+        for rp in rooms.keys():
+            if (rooms[rp] as RoomData).type == RoomData.Type.BOSS:
+                rooms[rp].visited = true
+                enter_room(rp, Vector2i.ZERO)
+                break
 
 
 ## The region the party enters at depth `n`: the door it took, else the planned route if
@@ -942,6 +953,9 @@ const FUSION_LOADOUTS := [
     ["slick_wand", "flare_pistol", "spark_needler", "zephyr_rang"],     # oil fire shock gale
     ["water_pistol", "flare_pistol", "spark_needler", "vein_pistol"],   # wet fire shock blood
     ["slick_wand", "flare_pistol", "vein_pistol", "zephyr_rang"],       # oil fire blood gale
+    # The Pyre Lord's chain (water, shock, ice; he brings the fire). Only by --fusion-probe=4,
+    # the --instance rotation keeps to the first four.
+    ["water_pistol", "spark_needler", "rime_chakram", "flare_pistol"],
 ]
 
 
@@ -1068,6 +1082,7 @@ func _apply_bot_build(build: Dictionary, n: int) -> void:
 
 
 func _setup_autotest() -> void:
+    BossBody.log_enabled = true
     _bot_idle_fights = OS.get_cmdline_user_args().has("--idle")
     _bot_kite = OS.get_cmdline_user_args().has("--kite")
     if OS.get_cmdline_user_args().has("--dps-probe"):
@@ -1104,7 +1119,7 @@ func _setup_autotest() -> void:
             # cataclysms actually happen. The loadout rotates with --instance (or pick one
             # with --fusion-probe=K); each is four w1 guns, the same weight and dps as four
             # copies of one, so single-element runs compare like for like.
-            var k := int(a.substr(15)) if a.begins_with("--fusion-probe=") else int(_instance_tag().trim_prefix("_"))
+            var k := int(a.substr(15)) if a.begins_with("--fusion-probe=") else posmod(int(_instance_tag().trim_prefix("_")), 4)
             var lo: Array = FUSION_LOADOUTS[posmod(k, FUSION_LOADOUTS.size())]
             var p1 := players[0]
             p1.weight_capacity_base = 40

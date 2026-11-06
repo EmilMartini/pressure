@@ -453,11 +453,15 @@ func _draw_top(vp: Vector2) -> void:
         var r := Rect2(cx - w / 2.0, 52, w, 22)
         _bar(r, b.hp / b.max_hp, Color(0.85, 0.15, 0.25))
         _body_in(r, "%d / %d" % [int(b.hp), int(b.max_hp)], 20, Color.WHITE)
+        var y := 100.0
+        if b.body != null:
+            _draw_boss_frame(b, r, vp)
+            y = 128.0
         if b.shielded():
             draw_rect(r.grow(4.0), Color(1, 1, 1, 0.5 + 0.4 * absf(sin(_time * 6.0))), false, 3.0)
             var line := "SHIELD  %d / %d cracks   any reaction cracks it, %s cracks twice" % [b.shield_hp, b.shield_max, b.weakness_name()]
-            _centered(100, line, 17, Color(1, 1, 1, 0.92), vp)
-        else:
+            _centered(int(y), line, 17, Color(1, 1, 1, 0.92), vp)
+        elif b.body == null:
             _centered(104, "BOSS", 24, Color(1, 0.8, 0.8), vp, true)
     elif room.active:
         _centered(86, "FIGHT", 40, Color(1.0, 0.5, 0.4), vp, true)
@@ -480,6 +484,65 @@ func _draw_top(vp: Vector2) -> void:
     if main.message != "":
         var pop: float = clampf((3.0 - main._message_time) / 0.15, 0.0, 1.0)
         _centered(150, main.message, int(26 + 12 * pop), ANNOUNCE, vp, true)
+
+
+## The boss framework's frame (BossBody): its name over the bar, phase pips, the stagger bar
+## under it, a chip per body part with its element states and compound, and for the first
+## seconds of the fight a large name card.
+func _draw_boss_frame(b: Enemy, r: Rect2, vp: Vector2) -> void:
+    var bb: BossBody = b.body
+    var name := BossBody.display_name(b.boss_kind)
+    _body_in(Rect2(r.position.x + 8.0, r.position.y, r.size.x - 16.0, r.size.y), name.to_upper(), 16, Color(1.0, 0.92, 0.88), HORIZONTAL_ALIGNMENT_LEFT)
+    # Phase pips at the bar's right end: lit up to the current phase.
+    for k in bb.phases():
+        var pc := Vector2(r.end.x + 14.0 + 14.0 * float(k), r.position.y + r.size.y * 0.5)
+        draw_rect(Rect2(pc - Vector2(5, 5), Vector2(10, 10)), Color(0.05, 0.0, 0.03))
+        draw_rect(Rect2(pc - Vector2(3.5, 3.5), Vector2(7, 7)), Color(1.0, 0.3, 0.2) if k < b._phase else Color(0.3, 0.2, 0.2))
+    # Stagger: fills from reactions; while staggered it flashes and drains.
+    var sr := Rect2(r.position.x, r.end.y + 4.0, r.size.x, 8.0)
+    draw_rect(sr.grow(2.0), Color(0.05, 0.0, 0.03, 0.9))
+    if bb.staggered():
+        var k := bb.stagger_t / BossBody.STAGGER_SECS
+        draw_rect(Rect2(sr.position, Vector2(sr.size.x * k, sr.size.y)), Color(1.0, 0.95, 0.5, 0.7 + 0.3 * absf(sin(_time * 10.0))))
+        _body_in(Rect2(r.position.x + 8.0, r.position.y, r.size.x - 16.0, r.size.y), "STAGGERED", 16, Color(1.0, 0.95, 0.55), HORIZONTAL_ALIGNMENT_RIGHT)
+    else:
+        draw_rect(Rect2(sr.position, Vector2(sr.size.x * bb.stagger, sr.size.y)), Color(1.0, 0.8, 0.3, 0.85))
+    if bb.has_parts():
+        var chips: Array = []
+        for i in bb.parts.size():
+            var p: Dictionary = bb.parts[i]
+            var st: Dictionary = p["states"] if i != bb.cur else b.states
+            var cid: String = String(p["compound"]) if i != bb.cur else b.compound
+            var label := String(p["name"])
+            if p["broken"]:
+                label += " (torn)"
+            elif not bb.visible(i):
+                label += " (covered)"
+            elif cid != "":
+                label += ": " + String(Fusions.compound(cid).get("name", cid))
+                var only: Array = p.get("only", [])
+                if only.size() == 1:
+                    label += ", %s shatters it" % Element.NAMES[only[0]].to_lower()
+            chips.append({ "label": label, "states": st.keys(), "on": bb.visible(i) })
+        var cw := r.size.x / float(chips.size())
+        for i in chips.size():
+            var c: Dictionary = chips[i]
+            var cr := Rect2(r.position.x + cw * float(i), sr.end.y + 4.0, cw - 6.0, 18.0)
+            draw_rect(cr, Color(0.05, 0.0, 0.03, 0.75))
+            var px := cr.position.x + 6.0
+            for kind in c["states"]:
+                draw_rect(Rect2(px, cr.position.y + 5.0, 8, 8), Element.COLORS[kind])
+                px += 11.0
+            _body_in(Rect2(px, cr.position.y, cr.end.x - px, cr.size.y), String(c["label"]), 13, UiTheme.BONE if c["on"] else UiTheme.DIM)
+    # Name card: the first seconds of the fight.
+    if bb.age < 3.5:
+        var a := clampf(minf(bb.age / 0.3, (3.5 - bb.age) / 0.6), 0.0, 1.0)
+        var cy := vp.y * 0.36
+        draw_rect(Rect2(0, cy - 46.0, vp.x, 96.0), Color(0.03, 0.0, 0.02, 0.7 * a))
+        draw_rect(Rect2(0, cy - 46.0, vp.x, 2.0), Color(1.0, 0.15, 0.1, 0.8 * a))
+        draw_rect(Rect2(0, cy + 48.0, vp.x, 2.0), Color(1.0, 0.15, 0.1, 0.8 * a))
+        _centered(int(cy + 6.0), name.to_upper(), 44, Color(1.0, 0.88, 0.8, a), vp, true)
+        _centered(int(cy + 38.0), Regions.display_name(main.region_id), 18, Color(1.0, 0.6, 0.5, a), vp)
 
 
 # --- Top right: minimap, scrap, kills -------------------------------------

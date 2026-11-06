@@ -570,7 +570,17 @@ stay; for A/B runs), `--loadout=id@tier,...` with a `--build` replaces the build
 quits when the next floor starts, and
 `--old-balance` turns the late-floor tuning off (uncapped Leech, formula bosses without the
 rally, the old floor damage) for before/after comparisons. Each boss kill prints a `[BOSS]`
-line (game seconds, phase two, max health, the arena output it was sized from). Every run ends with a
+line (game seconds, phase two, max health, the arena output it was sized from) and a
+`[BOSS-BODY]` line (phases reached and when, staggers, every reaction and fusion per body
+part). During the fight `[BOSS-PHASE]`, `[STAGGER]` and `[BOSS-CHAIN]` lines log phases,
+staggers, and each product on a part, plus torn and re-formed armour.
+`--boss-only` sends the bot straight to the floor's boss room and quits when the boss dies.
+`--boss-dps=N` stands in for the arena output a real floor would have measured, which
+sizes bosses from depth 2. `--boss-shot` (real window) saves `autotest/boss_<kind>_<s>.png`
+at 1.5, 6, 12, 18, 24, 30 and 38 s into the fight. `--fusion-probe=4` is the Pyre Lord's
+chain loadout (water, shock, ice, fire). Example:
+`--build=storm --start-floor=4 --route=ossuary_gate,rust_ruins,frostvault,the_forge,the_rift
+--loadout=water_pistol@2,spark_needler@2,rime_chakram@2,flare_pistol@2 --boss-only --boss-dps=2200`. Every run ends with a
 `[FUSION]` line (fusions and cataclysms fired, compounds and fields made, damage share by
 tier 0 to 4, the top names by count and by share of fusion damage, a `[FUSION-JSON]` dump
 for scripts) and a `[FUSION-CHECK] PASS/FAIL` line: the termination proof (no context
@@ -663,6 +673,7 @@ tools/               export_web.sh (export + serve), get_templates.sh, analyze_t
 scenes/main.tscn     the only scene; everything is built in code
 scripts/
   main.gd            run orchestrator: floors, current room, scrap, camera, HUD, joins, bot
+  boss_body.gd       the boss framework: stagger, phases, name card, body parts (Pyre Lord)
   regions.gd         the Descent: region graph (depth, theme, resists, weak to, hazards, boss,
                      signature layouts, edges); a run walks one region per depth; the
                      active region's soft resistances (60% / 140%) and Exposed

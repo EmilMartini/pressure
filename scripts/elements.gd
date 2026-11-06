@@ -349,6 +349,13 @@ func _leave_compound(reaction_name: String, enemy: Node2D, pos: Vector2, potency
     var where := String(c["where"])
     # Residue boon (LevelUps): compounds wait longer for their third element.
     var life_mult := 1.0 + (source.stat("compound_life") if source != null and is_instance_valid(source) else 0.0)
+    if on_enemy and enemy != null and "body" in enemy and enemy.body != null and enemy.body.has_parts():
+        # A parted boss holds every compound on the part it formed on, clouds included,
+        # so the chain builds on its body (BossBody).
+        var life := maxf(float(c["lifetime_enemy"]), float(c["lifetime_cloud"])) * life_mult
+        if enemy.set_compound(cid, reaction_name, life):
+            dbg["compounds_enemy"] += 1
+        return
     if on_enemy and where.contains("enemy") and enemy != null and enemy.has_method("set_compound"):
         if enemy.set_compound(cid, reaction_name, float(c["lifetime_enemy"]) * life_mult):
             dbg["compounds_enemy"] += 1
@@ -383,7 +390,10 @@ func try_fuse(enemy: Node2D, compound_id: String, origin: String, incoming: int,
     if not fusions_enabled or not Fusions.can_produce(Fusions.TIER_FUSION, ctx_tier):
         return ""
     var entry := Fusions.fusion(compound_id, incoming, origin)
-    if entry.is_empty() or not _gap_ok(String(entry["name"])) or not fusion_budget():
+    # A boss part has its own fusion cooldown (BossBody.PART_FUSION_CD) instead of the
+    # room-wide gap, or the patches round the boss would starve the chain on its body.
+    var parted: bool = "body" in enemy and enemy.body != null and enemy.body.has_parts()
+    if entry.is_empty() or (not parted and not _gap_ok(String(entry["name"]))) or not fusion_budget():
         return ""
     play_fusion(entry, enemy, enemy.global_position, potency, 0.0, source, [], false)
     return String(entry["name"])
@@ -493,9 +503,13 @@ func play_fusion(entry: Dictionary, anchor: Node2D, pos: Vector2, potency: float
                 continue
             if source != null and is_instance_valid(source):
                 e.last_hit_by = source
+            var parted: bool = "body" in e and e.body != null and e.body.has_parts()
             if e.has_method("crack_shield"):
                 e.crack_shield(cracks)
-                e.fusion_cd = Fusions.FUSION_COOLDOWN
+                if not parted:
+                    e.fusion_cd = Fusions.FUSION_COOLDOWN   # a parted boss keeps a cooldown per part
+            if "body" in e and e.body != null:
+                e.body.on_product(name, tier, false)   # a patch or field over a boss: stagger only
             for act in acts:
                 if not is_instance_valid(e) or e.is_queued_for_deletion():
                     break

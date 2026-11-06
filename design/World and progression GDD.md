@@ -777,7 +777,7 @@ Each phase ships a playable game, passes the checks in section 0, and updates `G
   Part 1 measured 99 and 92. No script errors.
 - Editor load check clean.
 
-### Phase 0b: Boss framework
+### Phase 0b: Boss framework (part 1 DONE 2026-11-06)
 
 - **Goal:** bosses become multi-part elemental creatures, with aim that can target their parts.
 - **Scope:**
@@ -798,6 +798,86 @@ Each phase ships a playable game, passes the checks in section 0, and updates `G
   - Each boss reaches all three phases.
   - No fps loss in boss fights.
   - Screenshots show readable body parts and the hostile signature on every attack.
+
+**Part 1 done (2026-11-06): the framework and the Pyre Lord.** `scripts/boss_body.gd`; the
+write-up is in `GDD.md` under "Boss framework".
+- **Framework, every boss:**
+  - A stagger bar filled by reactions by tier, which drops the guard for 4 s.
+  - Phases at health fractions per kind.
+  - A name card at the start of the fight, then the name in the boss bar with phase pips.
+- **Body parts:** each part holds its own states, compound and fusion cooldown. A hit lands
+  on the part nearest to it. Parts are drawn on the Crisp layer, and the HUD shows a chip
+  per part.
+- **The Pyre Lord** has three parts: slag armour, a molten core and a fire crown.
+  - Water steams the burning armour. Shock on the Steam makes a Storm Cloud that tears the
+    armour off. Ice on the bare core, which holds Magma, gives an Obsidian shatter.
+  - The armour ignores shock and ice until it is steamed, and the core takes only ice, so
+    the chain reads clearly.
+  - Three phases: flame waves; then the armour cracks open and the waves are faster; then
+    the armour re-forms, three waves fire at once and lava wells up.
+  - Every attack winds up and uses the hostile signature.
+- The other four bosses use the framework without parts (stagger, name card, their two
+  phases).
+
+**Measured (part 1):**
+- **Pyre Lord on real Forge floors.** The fusion bot is the storm build at depth 4 with
+  water, shock, ice and fire guns at tier 2. It fought every arena, then the boss:
+
+  | Run | Fight | Health | Phases | Staggers |
+  |---|---|---|---|---|
+  | 1 | 26.5 s | 25.0k | 3 of 3 | 2 |
+  | 2 | 42.4 s | 27.1k | 3 of 3 | 4 |
+
+  0 script errors. Before the health share (`BossBody.HP_SHARE`, 0.4), he had 72k to 73k
+  health and the fights took 80.5 s and 93.4 s.
+  Only two real-floor samples so far. `--boss-only` probes take longer (43 to 96 s) because
+  that bot arrives at level 15 instead of 24, with the same health from `--boss-dps`. Use
+  them for the chain and the frame rate, not for fight length.
+- **The chain on his body**, logged by `[BOSS-CHAIN]` (`--boss-only --boss-dps=2200`, same
+  bot): Steam on the armour at 0.5 s and 3.4 s, then a Storm Cloud on the armour at 3.4 s,
+  which tore it off. It re-formed at 15.5 s, phase 2 cracked it at 31.9 s, and Obsidian hit
+  the core at 36.5 s. One earlier fight logged 8 armour tears by Storm Cloud and 4
+  Obsidian shatters.
+- **The other bosses still die normally** (storm build, `--boss-only --boss-dps=1500`, 0
+  errors):
+
+  | Boss | Fight |
+  |---|---|
+  | Hive Mother | 49.2 s |
+  | Storm Warden | 27.6 s |
+  | Void Herald | 15.1 s |
+  | Brute King (in the fusion-probe run) | 25.8 s, 3 staggers |
+
+- **First region:**
+  - The idle six-gun bot dies in Ossuary Gate (t=46).
+  - The fusion probe clears it and reaches Rust Ruins.
+- **Frame rate:**
+  - The standard heavy-fight probe averaged 96.7 fps (median 98).
+  - The Pyre Lord fight was compared with the old code: the committed version plus only the
+    `--boss-only` jump, storm build guns, seconds 3 to 30 of the fight:
+
+    | Code | Average fps |
+    |---|---|
+    | New | 83.8 and 87.7 |
+    | Old | 82.1 and 84.3 |
+
+    There is no loss. The first build drew a marching hostile ring on every patch of his fire
+    trail and fell to 65.5; rings are now drawn only within 300 px of a player.
+  - The absolute 84 to 88 is older than this phase. In a Forge boss room, render objects
+    climb from about 2k to 18k within 30 s on the old code too, while a 72 s Hive Mother
+    fight holds 98 fps. Open: find what accumulates there.
+- **Screenshots:** `--boss-shot` saves `autotest/boss_pyre_lord_*.png`. The slag plates,
+  crown and bare core read through a full whiteout of player effects. The flame-wave arcs,
+  their wind-ups and the burning and lava ground are drawn black and red.
+- The editor load check is clean.
+
+**Part 2 starts here:**
+- The three aim modes (section 7), with soft lock on boss parts. Today the bot hits
+  whichever part its shots reach.
+- Arena tools: quench vats in the Forge.
+- A music layer per phase.
+- Rework the other four bosses with parts, three phases each, and 25 to 50 s fusion-bot kills.
+- The Forge boss-room frame rate above.
 
 ### Phase 1: The Hollow, part 1
 
@@ -930,6 +1010,11 @@ Each phase ships a playable game, passes the checks in section 0, and updates `G
 | U | How resistances scale state duration | The same 60% / 140% as damage (section 5 says "half as long" for resisted states) |
 | V | Do reactions and fusions obey resistances? | No: reaction, fusion and prop damage is neutral; burn, poison and bleed ticks obey them |
 | W | Route doors where only one built region lies below | One labelled door; phase 5 brings the 2 to 3 doors |
+| X | Stagger: fill and effect (phase 0b) | 1.5% a reaction, 8% a fusion, 50% a cataclysm, half that in a patch over the boss; 4 s with no attacks, x1.5 damage and the shield open; then 5 s of rest |
+| Y | Which part an element lands on | The part nearest the hit; area effects land on the part last hit; compounds stay on the part; part fusions skip the room-wide repeat gap |
+| Z | Pyre Lord chain gates | Armour ignores shock and ice until steamed; the bare core takes only ice; Storm Cloud tears the armour, phase 2 cracks it, phase 3 re-forms it, and it re-forms after 12 s (8 s in phase 3) |
+| AA | Pyre Lord health | 0.4 of the usual 30 s of arena output, for 25 to 50 s fights |
+| AB | The other bosses until their rework | The framework without parts: stagger, name card, their two phases |
 
 ---
 

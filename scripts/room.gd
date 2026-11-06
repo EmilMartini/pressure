@@ -393,7 +393,7 @@ func _begin_boss() -> void:
     boss = _spawn_enemy("boss", boss_pos)
     boss.set_boss(String(Regions.get_region(main.region_id)["boss_kind"]))
     if main.floor_number >= 2 and not Main.old_balance:
-        var want := BOSS_DPS_SECS * main.floor_arena_dps()
+        var want := BOSS_DPS_SECS * main.floor_arena_dps() * BossBody.hp_share(boss.boss_kind)
         boss.max_hp = clampf(want, boss.max_hp, boss.max_hp * BOSS_HP_MAX_MULT)
         boss.hp = boss.max_hp
         boss.rally_secs = RALLY_SECS
@@ -416,7 +416,13 @@ func _begin_boss() -> void:
 
 
 func _tick_boss(delta: float) -> void:
+    var was := _boss_secs
     _boss_secs += delta
+    if main.autotest and OS.get_cmdline_user_args().has("--boss-shot") and boss != null and is_instance_valid(boss):
+        # Readability shots: the name card, then the fight every few seconds (real window).
+        for at in [1.5, 6.0, 12.0, 18.0, 24.0, 30.0, 38.0]:
+            if was < at and _boss_secs >= at:
+                main._screenshot("res://autotest/boss_%s_%02d.png" % [boss.boss_kind, int(at)])
     if _boss_p2 < 0.0 and boss != null and is_instance_valid(boss) and boss.hp <= boss.max_hp * 0.5:
         _boss_p2 = _boss_secs
     _add_timer -= delta
@@ -663,6 +669,11 @@ func _on_enemy_died(e: Enemy) -> void:
             var pl: Player = main.players[0]
             print("[BOSS] floor=%d kind=%s secs=%.1f phase2=%.1f max_hp=%.0f arena_dps=%.0f player_hp=%.0f/%.0f low=%.2f" % [
                 main.floor_number, e.boss_kind, _boss_secs, _boss_p2, e.max_hp, main.floor_arena_dps(), pl.hp, pl.max_hp, low_hp])
+            if e.body != null:
+                print("[BOSS-BODY] kind=%s secs=%.1f %s" % [e.boss_kind, _boss_secs, e.body.summary()])
+            if OS.get_cmdline_user_args().has("--boss-only"):
+                main._print_stats("END")
+                main.get_tree().quit()
         if e.boss_kind != "":
             Progress.add("boss:" + e.boss_kind)   # the Shrine's first-kill bounties
     elif e.is_elite:
