@@ -222,6 +222,13 @@ const RALLY_LEAK := 0.05
 ## Damage every enemy has actually lost (overkill trimmed), all sources: the room reads it to
 ## measure the party's output per arena second, which sizes the boss (Room._begin_boss).
 static var dealt_total := 0.0
+var _barrels: Array = []    # Brute King: barrels in flight [{ "from", "to", "t", "dur" }]
+var _swallowed := 0         # Brute King: barrels in his gut (phase 2+); fire or shock sets them off
+var _gut_warn := 0.0        # Brute King: > 0 while a Gut Blast winds up
+const BRUTE_BARREL_CAP := 4
+const BARREL_HIT_R := 34.0
+const GUT_RADIUS := 130.0
+const GUT_WARN := 1.1
 var _hazards: Array = []    # [{ "pos": Vector2, "t": float }] boss fire patches that hurt players
 var _hazard_tick := 0.0
 
@@ -401,6 +408,12 @@ func apply_element(kind: int, potency: float, source: Player = null) -> String:
         return ""
     if source != null:
         last_hit_by = source
+    if boss_kind == "brute_king" and _swallowed > 0 and _gut_warn <= 0.0 and hp > 0.0 \
+            and (kind == Element.Kind.FIRE or kind == Element.Kind.SHOCK):
+        # The barrels in his gut catch: he braces, then bursts (telegraphed ring).
+        _gut_warn = GUT_WARN
+        Elements.reaction_fired.emit("His gut catches!", global_position + Vector2(0, -radius * 1.6), Color(1.0, 0.6, 0.25))
+        Sfx.play_at("react_ignition", global_position, 0.0)
     # What the element does to the body's condition before any pair reaction:
     # water puts fire out, fire thaws ice, wind fans a burning body onto its neighbours.
     if kind == Element.Kind.WET and burn_time > 0.0:
@@ -769,6 +782,8 @@ func _draw_hostile(cv: CanvasItem) -> void:
         _draw_blast_ring(cv)
     if boss_kind == "pyre_lord":
         _draw_pyre_hostile(cv)
+    elif boss_kind == "brute_king":
+        _draw_brute_hostile(cv)
     if body != null and body.has_parts():
         _draw_parts(cv)
     if _mode == MODE_TELEGRAPH and emerge <= 0.0 and hp > 0.0:
@@ -1251,6 +1266,12 @@ func _tick_boss_passive(delta: float) -> void:
                 Elements.nova.emit(s["pos"], 30.0, Color(base_color, 0.6))
     match boss_kind:
         "brute_king":
+            for i in range(_barrels.size() - 1, -1, -1):
+                var b: Dictionary = _barrels[i]
+                b["t"] = float(b["t"]) + delta
+                if float(b["t"]) >= float(b["dur"]):
+                    _barrels.remove_at(i)
+                    _land_barrel(b["to"])
             if not _summoned_60 and hp <= max_hp * 0.6:
                 _summoned_60 = true
                 _queue_summons("grunt", 3, 0.8)
@@ -1443,6 +1464,19 @@ func _draw_parts(cv: CanvasItem) -> void:
                     else:
                         cv.draw_arc(at, pr, a0, a1, 8, Color(1.0, 0.55, 0.15, 0.55 + 0.3 * sin(_fx_t * 8.0)), 3.0)
                     cv.draw_arc(at, pr, a1, a1 + 0.16, 3, Color(1.0, 0.45, 0.1, 0.9), 4.0)
+            "plates":
+                if p["broken"]:
+                    continue
+                # Bone plates round the body; one cracks off per sixth of wear.
+                var bones := ceili(float(p["integrity"]) * 6.0)
+                for k in bones:
+                    var a0 := -PI * 0.5 + float(k) * TAU / 6.0 + 0.1
+                    var a1 := a0 + TAU / 6.0 - 0.2
+                    cv.draw_arc(at, pr, a0, a1, 8, Hostile.DARK, 11.0)
+                    cv.draw_arc(at, pr, a0, a1, 8, Color(0.86, 0.82, 0.70).lerp(Color.WHITE, flash * 0.6), 6.0)
+                    cv.draw_arc(at, pr + 3.5, a0, a1, 8, Color(Hostile.RED, 0.9), 1.0)
+            "hide":
+                pass   # the sprite is the hide
             "core":
                 if not vis:
                     continue
@@ -1452,6 +1486,13 @@ func _draw_parts(cv: CanvasItem) -> void:
                 cv.draw_circle(at, pr, Color(1.0, 0.45 + 0.2 * pulse, 0.1).lerp(Color.WHITE, flash))
                 cv.draw_circle(at, pr * 0.55, Color(1.0, 0.9, 0.5, 0.9))
             "crown":
+                var bone := boss_kind == "brute_king"
+                if bone and not vis:
+                    # A bone helm until phase 3 bares the crown.
+                    cv.draw_circle(at, pr * 0.9 + 2.0, Hostile.DARK)
+                    cv.draw_circle(at, pr * 0.9, Color(0.62, 0.58, 0.50))
+                    cv.draw_arc(at, pr * 0.9 + 2.0, 0.0, TAU, 20, Color(Hostile.RED, 0.9), 1.0)
+                    continue
                 var top := at.y - pr * 0.4
                 var pts := PackedVector2Array([Vector2(-pr, top + pr), Vector2(-pr, top), Vector2(-pr * 0.5, top + pr * 0.5), Vector2(0, top - pr * 0.4), Vector2(pr * 0.5, top + pr * 0.5), Vector2(pr, top), Vector2(pr, top + pr)])
                 var shifted := PackedVector2Array()
@@ -1459,7 +1500,7 @@ func _draw_parts(cv: CanvasItem) -> void:
                     shifted.append(Vector2(at.x + q.x, q.y))
                 cv.draw_polyline(shifted, Hostile.DARK, 5.0)
                 cv.draw_colored_polygon(shifted, Color(0.15, 0.06, 0.04))
-                cv.draw_polyline(shifted, Color(1.0, 0.6, 0.2).lerp(Color.WHITE, flash), 2.0)
+                cv.draw_polyline(shifted, (Color(0.95, 0.88, 0.6) if bone else Color(1.0, 0.6, 0.2)).lerp(Color.WHITE, flash), 2.0)
         if not vis:
             continue
         # The part's element states as pips beside it, its compound as a ring of motes.
@@ -1489,9 +1530,7 @@ func _draw_parts(cv: CanvasItem) -> void:
 func _think_boss(delta: float, target: Player, dir: Vector2, dist: float, mult: float) -> Vector2:
     match boss_kind:
         "brute_king":
-            if _phase == 1:
-                return _charge_ai(delta, dir, dist, mult, 0.8, 480.0, 0.6, 2.5, 340.0)
-            return _charge_ai(delta, dir, dist, mult, 0.5, 540.0, 0.6, 1.2, 420.0)
+            return _think_brute(delta, target, dir, dist, mult)
         "hive_mother":
             _t1 -= delta
             _t2 -= delta
@@ -1572,6 +1611,125 @@ func _think_boss(delta: float, target: Player, dir: Vector2, dist: float, mult: 
                 _queue_summons("wisp", 2 if _phase == 1 else 3, 0.8)
             return _keep_range(delta, dir, dist, 140.0, 240.0) * speed * mult
     return dir * speed * mult
+
+
+# --- The Brute King ---------------------------------------------------------------
+
+
+## Phase 1 smashes (charges) and throws a barrel; phase 2 throws two and swallows the ones
+## near him; phase 3 is enraged: faster, shorter charges, the crown bare.
+func _think_brute(delta: float, target: Player, dir: Vector2, dist: float, mult: float) -> Vector2:
+    _t1 -= delta
+    if _gut_warn > 0.0:
+        _gut_warn -= delta
+        if _gut_warn <= 0.0:
+            _gut_blast()
+        return Vector2.ZERO
+    var lure := Vector2.INF
+    if _phase >= 2 and _swallowed < 3:
+        lure = _swallow_near()
+    if _t1 <= 0.0 and _mode == MODE_CHASE:
+        _t1 = [4.5, 4.0, 3.5][clampi(_phase - 1, 0, 2)]
+        for k in (1 if _phase == 1 else 2):
+            _throw_barrel(_pick_point_near(target.global_position, 20.0 + 70.0 * float(k), 100.0 + 70.0 * float(k)))
+    if lure != Vector2.INF and _mode == MODE_CHASE:
+        return (lure - global_position).normalized() * speed * mult
+    if _phase < 3:
+        return _charge_ai(delta, dir, dist, mult, 0.8, 480.0, 0.6, 2.5 if _phase == 1 else 1.8, 340.0)
+    return _charge_ai(delta, dir, dist, mult, 0.5, 540.0, 0.6, 1.2, 420.0)
+
+
+func _throw_barrel(to: Vector2) -> void:
+    var live := _barrels.size()
+    for pr in get_tree().get_nodes_in_group("props"):
+        if pr is Prop and pr.kind == "barrel" and pr.has_meta("brute") and not pr.is_queued_for_deletion():
+            live += 1
+    if live >= BRUTE_BARREL_CAP:
+        return
+    _barrels.append({ "from": global_position + Vector2(0, -radius), "to": to, "t": 0.0, "dur": 1.0 })
+    _squash = 1.0
+    Sfx.play_at("hit_wall", global_position, -4.0)
+
+
+## A thrown barrel lands: a thud that hurts inside its marked circle, and a barrel to use.
+func _land_barrel(to: Vector2) -> void:
+    for p in get_tree().get_nodes_in_group("players"):
+        if is_instance_valid(p) and p.alive and p.global_position.distance_to(to) <= BARREL_HIT_R + 12.0:
+            p.take_damage(_projectile_damage(9.0) * damage_mult, self, to)
+    Elements.nova.emit(to, BARREL_HIT_R, Color(0.6, 0.42, 0.3, 0.6))
+    Sfx.play_at("hit_wall", to, -2.0)
+    var rm := Room.here
+    if rm == null or not is_instance_valid(rm) or hp <= 0.0:
+        return
+    var b := Prop.new("barrel")
+    b.room = rm
+    b.set_meta("brute", true)
+    rm.add_child(b)
+    b.global_position = to
+
+
+## Phase 2+: swallows an unlit barrel within reach. Returns the nearest barrel worth walking
+## to (Vector2.INF if none), so he goes for his fuel and the player can set it off first.
+func _swallow_near() -> Vector2:
+    var best := Vector2.INF
+    var best_d := 300.0
+    for pr in get_tree().get_nodes_in_group("props"):
+        if not pr is Prop or pr.kind != "barrel" or pr.is_queued_for_deletion() or pr._gone or pr._timers.has("fuse"):
+            continue
+        var d: float = pr.global_position.distance_to(global_position)
+        if d <= radius + 26.0:
+            pr.queue_free()
+            _swallowed += 1
+            _squash = 1.0
+            Elements.reaction_fired.emit("Swallows a barrel", global_position + Vector2(0, -radius * 1.6), Color(1.0, 0.7, 0.4))
+            Sfx.play_at("hit_wall", global_position, 0.0)
+            if BossBody.log_enabled and body != null:
+                print("[BOSS-CHAIN] t=%.1f part=hide SWALLOWED n=%d phase=%d" % [body.age, _swallowed, _phase])
+            return Vector2.INF
+        if d < best_d:
+            best_d = d
+            best = pr.global_position
+    return best
+
+
+func _gut_blast() -> void:
+    var n := _swallowed
+    _swallowed = 0
+    for p in get_tree().get_nodes_in_group("players"):
+        if is_instance_valid(p) and p.alive and p.global_position.distance_to(global_position) <= GUT_RADIUS + 12.0:
+            p.take_damage(_projectile_damage(12.0) * damage_mult, self, global_position)
+    Elements.nova.emit(global_position, GUT_RADIUS, Color(1.0, 0.5, 0.2, 0.8))
+    Sfx.play("nova_fire")
+    var fx := _fx()
+    if fx != null:
+        fx._shake(7.0)
+    if body != null:
+        body.blast("Gut Blast", global_position, 4, 0.03 * float(n))
+
+
+func _draw_brute_hostile(cv: CanvasItem) -> void:
+    for b in _barrels:
+        var k := float(b["t"]) / float(b["dur"])
+        var to := to_local(b["to"])
+        cv.draw_arc(to, BARREL_HIT_R, 0.0, TAU, 24, Color(Hostile.DARK, 0.75), 5.0)
+        cv.draw_arc(to, BARREL_HIT_R, 0.0, TAU, 24, Color(Hostile.RED, 0.4 + 0.5 * k), 2.0)
+        cv.draw_circle(to, BARREL_HIT_R * k, Color(Hostile.RED, 0.18))
+        var at := to_local(b["from"]).lerp(to, k) + Vector2(0, -sin(k * PI) * 90.0)
+        cv.draw_rect(Rect2(at - Vector2(9, 11), Vector2(18, 22)), Hostile.DARK)
+        cv.draw_rect(Rect2(at - Vector2(7, 9), Vector2(14, 18)), Color(0.55, 0.38, 0.26))
+        cv.draw_rect(Rect2(at - Vector2(9, 11), Vector2(18, 22)), Hostile.RED, false, 1.0)
+    if _gut_warn > 0.0:
+        var k := 1.0 - _gut_warn / GUT_WARN
+        var a := 0.5 + 0.4 * absf(sin(_fx_t * 18.0))
+        cv.draw_arc(Vector2.ZERO, GUT_RADIUS, 0.0, TAU, 40, Color(Hostile.DARK, 0.8), 6.0)
+        cv.draw_arc(Vector2.ZERO, GUT_RADIUS, 0.0, TAU, 40, Color(Hostile.RED, a), 2.5)
+        cv.draw_circle(Vector2.ZERO, GUT_RADIUS * k, Color(Hostile.RED, 0.15))
+    elif _swallowed > 0 and hp > 0.0:
+        # A swollen gut that glows: fire or shock sets it off.
+        var g := Vector2(0, radius * 0.25)
+        cv.draw_circle(g, radius * 0.3 + 2.0, Hostile.DARK)
+        cv.draw_circle(g, radius * 0.3, Color(1.0, 0.45 + 0.15 * sin(_fx_t * 6.0), 0.15))
+        cv.draw_arc(g, radius * 0.3 + 2.0, 0.0, TAU, 20, Hostile.RED, 1.0)
 
 
 func _pick_point_near(around: Vector2, min_d: float, max_d: float) -> Vector2:

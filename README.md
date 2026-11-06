@@ -574,6 +574,9 @@ line (game seconds, phase two, max health, the arena output it was sized from) a
 `[BOSS-BODY]` line (phases reached and when, staggers, every reaction and fusion per body
 part). During the fight `[BOSS-PHASE]`, `[STAGGER]` and `[BOSS-CHAIN]` lines log phases,
 staggers, and each product on a part, plus torn and re-formed armour.
+`--aim=assisted|manual|auto` sets the aim mode for the run (never saved); `--bot-aim` makes
+the bot hold fire at its own pick in fights (on a parted boss, intact armour first, then
+the part that takes most), and `--aim=manual` implies it.
 `--boss-only` sends the bot straight to the floor's boss room and quits when the boss dies.
 `--boss-dps=N` stands in for the arena output a real floor would have measured, which
 sizes bosses from depth 2. `--boss-shot` (real window) saves `autotest/boss_<kind>_<s>.png`

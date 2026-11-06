@@ -26,7 +26,8 @@ raids, loot tables).
 ### Controls
 - Controller first, mouse and keyboard fully supported.
 - Left stick / WASD moves. Right stick / mouse aims. Right trigger / left mouse fires the primary.
-- **Aim mode toggle** (Y / Tab): auto-aim or manual.
+- **Aiming** (Options, "Aiming"): assisted twin-stick (default), manual or auto. See
+  "Firing model".
 - **Vent** (LB / Space) dumps the pressure gauge as a nova.
 - **Swap primary** (X / Q) cycles which carried gun is on the trigger.
 
@@ -34,8 +35,18 @@ raids, loot tables).
 - Every gun you carry aims and fires on its own at the nearest enemy in range, Brotato
   style. Guns orbit the figure and point where they shoot, so your loadout is visible.
   Auto-fire targets enemies only, never obstacles, props or puzzle pieces.
-- Holding RT (left mouse) fires every gun where you aim (right stick, mouse, or the way you
-  face): that is how you hit obstacles, props and hidden walls. Beams and sprays hold while
+- **Aim modes** (phase 0b part 2, `Player.gun_dir`, design doc section 7):
+  - *Assisted* (default): pushing the right stick, moving the mouse or holding RT fires
+    every gun where you aim, with a soft lock that bends the shot onto the enemy or visible
+    boss part nearest your aim inside a 12-degree cone (wider for a big target close by).
+    1.2 s without aim input, it falls back to auto-fire.
+  - *Manual*: guns fire only while RT / left mouse is held, or, with "Manual fire: toggle",
+    after a press turns constant fire on. No assist.
+  - *Auto*: the old behaviour, nearest enemy with RT to override.
+  - Telemetry: `run_end` records `aim_mode`, `aim_secs` (seconds firing where aimed) and
+    `auto_secs` (seconds auto-firing with an enemy in reach).
+- Aimed fire (RT, left mouse, or the way you face) is how you hit obstacles, props and
+  hidden walls. Beams and sprays hold while
   the trigger is held; a chain gun with nothing to arc to fires a plain bolt; a turret gun
   also shoots from the hand so doors and props can be reached.
 - How a gun fires depends on its archetype (see "Gun archetypes" below).
@@ -795,8 +806,29 @@ carries a `BossBody` (`Enemy.body`). Design: `design/World and progression GDD.m
   - Attacks, all in the hostile signature: a burning trail; flame waves that roll out as
     arcs after a 0.9 s wind-up in which he plants his feet (one wide arc, then a faster
     wider one, then three arcs with gaps), so a sidestep always dodges them; bombers.
-- The other four bosses use the framework without parts, which gives them stagger, the
-  name card and phase pips. Their attacks are unchanged.
+- *The Brute King* (phase 0b part 2) teaches stagger. Floor 1 keeps the old health formula
+  times `BossBody.FLOOR1_MULT` (2.2).
+  - Parts:
+    - **Bone plates** round the body (taken x0.7). Any reaction cracks them (4% wear, 8% a
+      fusion); a barrel blast tears them at once. Tearing them fills 35% of the stagger bar.
+      They re-form after 12 s in phase 1 and fall for good in phase 2.
+    - **Hide** under the plates (taken x1.25).
+    - **Bone crown**, under a helm until phase 3 (taken x2).
+  - Barrels are his weapon and your fuel. He lobs oil barrels at you (one in phase 1, two
+    later; at most four of his on the floor). Each lands after 1 s inside a marked hostile
+    circle and stays as an ordinary barrel. A barrel going off next to him is a Barrel
+    Blast on his nearest part: a fusion's worth of stagger and 2% of his health.
+  - Phase 2: the plates fall and he walks to his barrels and swallows them (a glowing gut).
+    Fire or shock on him then sets off a Gut Blast: a 1.1 s ring wind-up, a burst that hurts
+    players inside, and for him half the stagger bar and 3% of his health per barrel.
+  - Phase 3: enraged, with faster, shorter charges and the crown bare.
+  - Every attack winds up in the hostile signature: the charge line, the landing circles,
+    the barrel in flight, the gut ring.
+- *Max-health damage.* Reactions that take a slice of max health (Decay, Null Acid,
+  Exsanguinate, the Hollow fusions) take a tenth of the slice from a boss
+  (`Elements.BOSS_DECAY`), since each body part reacts on its own.
+- The other three bosses (Hive Mother, Storm Warden, Void Herald) still use the framework
+  without parts: stagger, the name card and phase pips. Their attacks are unchanged.
 
 **Raids** are the endgame: a longer co-op dungeon with multiple bosses that have WoW-style
 mechanics (split the party, soak zones, interrupt casts with a specific reaction, adds that

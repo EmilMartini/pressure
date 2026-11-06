@@ -637,6 +637,9 @@ func _explode() -> void:
         mats.ignite(gp, 150.0, true)
     for e in _enemies_within(150.0):
         e.take_damage(25.0, C_FIRE, true, null)
+        if e.body != null and e.body.has_parts():
+            # A barrel going off against a boss is fuel: a fusion's worth on the part nearest.
+            e.body.blast("Barrel Blast", gp, 3, 0.02)
         if _alive(e):
             e.add_burn(5.0, 3.0)
             e.apply_element(Element.Kind.FIRE, 1.0)

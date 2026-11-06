@@ -55,9 +55,21 @@ static func hp_share(boss_kind: String) -> float:
     return float(HP_SHARE.get(boss_kind, 1.0))
 
 
+## Floor 1 keeps the old health formula (Room), times this. The Brute King's fight is his
+## plates, barrels and three phases; at the old health the fusion bot killed him in 5 to 28 s.
+const FLOOR1_MULT := {
+    "brute_king": 2.2,
+}
+
+
+static func floor1_mult(boss_kind: String) -> float:
+    return float(FLOOR1_MULT.get(boss_kind, 1.0))
+
+
 ## Health fractions where a new phase starts. Bosses not listed keep today's two phases.
 const PHASES := {
     "pyre_lord": [0.66, 0.33],
+    "brute_king": [0.66, 0.33],
 }
 
 ## Body parts per boss kind. `offset` and `r` are in units of the boss radius. `innate`: an
@@ -67,7 +79,22 @@ const PHASES := {
 ## `inert`: elements that neither stay on the part nor react with it (they still fuse its
 ## compound). `only`: the part ignores every other element entirely, compound included.
 ## Together they make the chain readable: burning slag only steams, the core only glasses.
+## `wear`: armour wear per product tier (default ARMOUR_WEAR). `tear_stagger`: stagger bar
+## added when the part tears. `stays_off`: from this phase on a torn part never re-forms.
+## `from_phase`: the part is hidden (not hittable) before this phase.
 const PARTS := {
+    # The Brute King teaches stagger: any reaction on his bone plates cracks one, tearing
+    # them staggers him, and the barrels he throws are fuel (a barrel blast is a fusion's
+    # worth on his body; a swallowed barrel set off by fire or shock is a Gut Blast).
+    "brute_king": [
+        { "id": "plates", "name": "Bone plates", "offset": Vector2(0.0, 0.1), "r": 1.0,
+            "armour": true, "wear": { 2: 0.04, 3: 0.08, 4: 0.5 }, "tears": ["Barrel Blast"],
+            "tear_stagger": 0.35, "stays_off": 2, "taken": 0.7 },
+        { "id": "hide", "name": "Hide", "offset": Vector2(0.0, 0.1), "r": 0.8,
+            "covered_by": "plates", "taken": 1.25 },
+        { "id": "crown", "name": "Bone crown", "offset": Vector2(0.0, -1.15), "r": 0.45,
+            "from_phase": 3, "taken": 2.0 },
+    ],
     "pyre_lord": [
         { "id": "armour", "name": "Slag armour", "offset": Vector2(0.0, 0.15), "r": 1.0,
             "innate": Element.Kind.FIRE, "armour": true, "tears": ["Storm Cloud"], "taken": 1.0,
@@ -153,7 +180,7 @@ func part_world(i: int) -> Vector2:
 
 func visible(i: int) -> bool:
     var p: Dictionary = parts[i]
-    if p["broken"]:
+    if p["broken"] or e._phase < int(p.get("from_phase", 0)):
         return false
     var cover := String(p.get("covered_by", ""))
     if cover != "":
@@ -311,7 +338,8 @@ func on_product(product: String, tier: int, on_part: bool) -> void:
         print("[BOSS-CHAIN] t=%.1f part=%s %s tier=%d phase=%d" % [age, p["id"], product, tier, e._phase])
     if p.get("armour", false):
         var tears: Array = p.get("tears", [])
-        p["integrity"] = float(p["integrity"]) - (1.0 if tears.has(product) else float(ARMOUR_WEAR.get(tier, 0.0)))
+        var wear: Dictionary = p.get("wear", ARMOUR_WEAR)
+        p["integrity"] = float(p["integrity"]) - (1.0 if tears.has(product) else float(wear.get(tier, 0.0)))
         if float(p["integrity"]) <= 0.0:
             tear(cur, product)
     elif product == "Obsidian" and p.get("holds", "") == "MAGMA":
@@ -322,10 +350,15 @@ func on_product(product: String, tier: int, on_part: bool) -> void:
 
 
 func add_stagger(tier: int, share: float = 1.0) -> void:
+    fill(float(STAGGER_FILL.get(tier, 0.0)) * share)
+
+
+## Adds `amount` (0..1) to the stagger bar; a full bar staggers.
+func fill(amount: float) -> void:
     if stagger_t > 0.0 or _rest > 0.0 or e.hp <= 0.0:
         return
     _since_fill = 0.0
-    stagger += float(STAGGER_FILL.get(tier, 0.0)) * share
+    stagger += amount
     if stagger >= 1.0:
         stagger = 0.0
         stagger_t = STAGGER_SECS
@@ -351,8 +384,11 @@ func tear(i: int, by: String) -> void:
     p["states"] = {}
     p["compound"] = ""
     p["regrow"] = ARMOUR_REGROW_LATE if e._phase >= 3 else ARMOUR_REGROW
+    if e._phase >= int(p.get("stays_off", 99)):
+        p["regrow"] = INF
     if i == cur:
         _load(i)
+    fill(float(p.get("tear_stagger", 0.0)))
     Elements.reaction_fired.emit("%s torn off!" % p["name"], part_world(i), Color(1.0, 0.75, 0.4))
     Elements.nova.emit(part_world(i), e.radius * 2.5, Color(1.0, 0.55, 0.2, 0.7))
     Sfx.play("die_elite")
@@ -405,6 +441,16 @@ func on_phase(n: int) -> void:
     if log_enabled:
         print("[BOSS-PHASE] t=%.1f kind=%s phase=%d hp=%.2f" % [age, kind, n, e.hp / e.max_hp])
     match kind:
+        "brute_king":
+            var pl := part_index("plates")
+            if n == 2 and pl >= 0:
+                # The plates fall away for good; he starts swallowing his barrels.
+                if parts[pl]["broken"]:
+                    parts[pl]["regrow"] = INF
+                else:
+                    tear(pl, "phase 2")
+            elif n == 3:
+                Elements.reaction_fired.emit("The crown is bare", part_world(part_index("crown")), Color(1.0, 0.85, 0.5))
         "pyre_lord":
             var a := part_index("armour")
             if n == 2 and a >= 0:
@@ -414,6 +460,16 @@ func on_phase(n: int) -> void:
                 # The forge floods: the slag re-forms at once, so the chain starts over.
                 if parts[a]["broken"]:
                     _reform(a)
+
+
+## A blast at `at` hit this boss (a barrel he threw, his own swallowed barrels): counts as a
+## product of `tier` on the part nearest to it, plus `share` of his health.
+func blast(product: String, at: Vector2, tier: int, share: float) -> void:
+    if e.hp <= 0.0:
+        return
+    focus_at(at)
+    on_product(product, tier, true)
+    e.take_damage(e.max_hp * share, Color(1.0, 0.6, 0.25), false)
 
 
 ## The bot log's summary of the fight.

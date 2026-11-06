@@ -399,6 +399,9 @@ func _begin_boss() -> void:
         boss.rally_secs = RALLY_SECS
         boss.rally_at = RALLY_AT.duplicate()
         boss.rallied.connect(_on_boss_rallied)
+    elif not Main.old_balance:
+        boss.max_hp *= BossBody.floor1_mult(boss.boss_kind)
+        boss.hp = boss.max_hp
     Telemetry.boss_start(boss)
     var pairs := Elements.available_reactions(main.party_elements())
     var hits := 5 + main.difficulty() / 3

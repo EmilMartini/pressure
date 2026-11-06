@@ -777,7 +777,7 @@ Each phase ships a playable game, passes the checks in section 0, and updates `G
   Part 1 measured 99 and 92. No script errors.
 - Editor load check clean.
 
-### Phase 0b: Boss framework (part 1 DONE 2026-11-06)
+### Phase 0b: Boss framework (parts 1 and 2 DONE 2026-11-06; part 3 left)
 
 - **Goal:** bosses become multi-part elemental creatures, with aim that can target their parts.
 - **Scope:**
@@ -878,6 +878,74 @@ write-up is in `GDD.md` under "Boss framework".
 - A music layer per phase.
 - Rework the other four bosses with parts, three phases each, and 25 to 50 s fusion-bot kills.
 - The Forge boss-room frame rate above.
+
+**Part 2 done (2026-11-06): the aim modes and the Brute King.** Write-up in `GDD.md`
+("Firing model" and "Boss framework").
+- **Aim modes** (section 7): assisted twin-stick (default), manual (hold or toggle) and
+  auto, in Options. Soft lock on enemies and visible boss parts in a 12-degree cone.
+  Telemetry records the mode and the seconds aimed and auto-fired. Bot flags `--aim=MODE`
+  and `--bot-aim`.
+- **The Brute King** on the framework: bone plates that any reaction cracks, a hide, a bone
+  crown bared in phase 3. He throws barrels (landing circles); a barrel blast next to him
+  is a Barrel Blast on his body; in phase 2 he swallows barrels and fire or shock sets off
+  a Gut Blast. Three phases at 0.66 and 0.33.
+
+**Measured (part 2):**
+- **Aim modes, Pyre Lord** (`--boss-only --boss-dps=2200`, storm build, 0 errors). Every
+  mode killed him through all three phases with Obsidian on the core:
+
+  | Mode | Fight |
+  |---|---|
+  | Auto (`--aim=auto`) | 48.6 s |
+  | Assisted, bot aiming at the part that takes most | 83.6 s |
+  | Manual, bot aiming the same way (`--aim=manual`) | 97.6 s |
+
+  That bot aimed at the crown while the armour stood, which is the wrong part. It now
+  aims at intact armour first. The aimed runs have not been re-measured since.
+  `--boss-only` lengths vary from 43 to 96 s on their own (part 1), so use these to show
+  the modes work, not to rank them.
+- **Default mode, existing bots.** With no aim input, assisted is the same code path as
+  auto. The idle six-gun bot died in Ossuary Gate in 5 of 6 runs (t=55, 50, 44, 49, 171),
+  the last two with the final code. In the
+  fourth it got through and killed the old-health Brute King, which led to the health
+  change below. The fusion probe cleared Ossuary Gate in every run that reached the boss.
+- **Brute King, real Ossuary floors** (`--one-floor --fusion-probe=K`, 0 errors, all
+  3 of 3 phases):
+
+  | Floor-1 health | Fights (s), builds 1/2/3/0 |
+  |---|---|
+  | x1 (old formula) | 5.3 to 27.8 (phases at 1 to 4 s) |
+  | x2.0 | 23.2, 24.5, 35.4, 38.4 |
+  | x2.5 | 28.4, 27.7, 83.5, 55.9 |
+  | x2.2 | 25.0, 19.4; then 69.1 and 5.0 (build 3), 37.1 (build 0) |
+  | x2.2 with `BOSS_DECAY` (shipped) | 35.2, 33.4, 40.1, 61.9 |
+
+  The 5.0 s kill (8.2k health) came from void reactions that take a share of max health
+  (Decay 15%, Null Acid 12%, Exsanguinate 10%, the Hollow fusions 5%). Each body part
+  reacts on its own, so the shares stacked. Bosses now take a tenth of that share
+  (`Elements.BOSS_DECAY`, 0.1). With it the spread closed to 33 to 62 s, median 37.7. The
+  Pyre Lord with it, on a real Forge floor: 37.6 s, 3 of 3 phases, Storm Cloud tears and
+  Obsidian on the core. A second run died in a Forge arena at t=150.
+  The chain shows in the logs: `TORN` (plates) at 1 to 3 s, `SWALLOWED`, `Gut Blast`
+  (tier 4) and `Barrel Blast` on hide or crown in most fights. The plates still tear early,
+  because the bot opens with a burst of reactions; a later pass could slow the first tear.
+- **Frame rate,** Brute King fight, real window, vsync, `--fusion-probe=2 --boss-only`:
+  boss-room ticks of 100/100/97/99 and 91/100/99/100 on the new code, against
+  99/100/100/100 and 100 on `044bce2`. No loss.
+- **Screenshots** (`--boss-shot`): the name card, the bone plates (black outline, red
+  rim) and the helm read through a shock whiteout. The barrel landing circle and the
+  barrel in flight are drawn black and red.
+- Editor load check clean.
+
+**Part 3 starts here:**
+- Rework the Hive Mother, the Storm Warden and the Void Herald with parts and three phases
+  each, measured on real floors. Their sketches are in section 6.
+- Arena tools: quench vats in the Forge first.
+- A music layer per phase (`music.gd`).
+- Optional: bring the Brute King's fight spread nearer 25 to 50 s, slow his first plate
+  tear, re-measure the aimed bot, and look at the Forge boss-room frame rate.
+- Bot follow-up: in one of four runs, the `--fusion-probe=1` bot stood in an Ossuary Shop
+  room from about t=200 to the end of the run.
 
 ### Phase 1: The Hollow, part 1
 
@@ -1015,6 +1083,11 @@ write-up is in `GDD.md` under "Boss framework".
 | Z | Pyre Lord chain gates | Armour ignores shock and ice until steamed; the bare core takes only ice; Storm Cloud tears the armour, phase 2 cracks it, phase 3 re-forms it, and it re-forms after 12 s (8 s in phase 3) |
 | AA | Pyre Lord health | 0.4 of the usual 30 s of arena output, for 25 to 50 s fights |
 | AB | The other bosses until their rework | The framework without parts: stagger, name card, their two phases |
+| AC | Aim mode default (C) | Assisted. With no aim input it is the auto path, so bots are unchanged; mode comparisons by bot so far are noisy |
+| AD | Assisted fallback and soft lock | 1.2 s without aim input falls back to auto; 12-degree cone, wider for a big target close by; boss parts are targets |
+| AE | Brute King health on floor 1 | The old formula x2.2 (`BossBody.FLOOR1_MULT`); floor-1 bosses are not sized from arena output |
+| AG | Max-health damage on bosses | Bosses take a tenth of the decay share (`Elements.BOSS_DECAY`); parts made the shares stack |
+| AF | Brute King plates | 4% wear a reaction, 8% a fusion, torn by a Barrel Blast; tearing them fills 35% of the stagger bar; gone from phase 2 |
 
 ---
 

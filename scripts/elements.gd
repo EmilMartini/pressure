@@ -629,10 +629,16 @@ func _act_at(enemy: Node2D, pos: Vector2, source: Player, potency: float, act: A
                     e.apply_element(int(act[1]), potency * 0.7, source)
         "decay":
             if has_target:
-                enemy.take_damage(enemy.max_hp * float(act[1]) + potency, COLORS[Kind.VOID], true, source)
+                # A boss takes a tenth of the slice (BOSS_DECAY): its parts react on their
+                # own, and three parts of 10-15% slices killed a 8k Brute King in 5 s.
+                var share := float(act[1]) * (BOSS_DECAY if enemy.kind_name == "boss" else 1.0)
+                enemy.take_damage(enemy.max_hp * share + potency, COLORS[Kind.VOID], true, source)
         "heal_source":
             if source != null and is_instance_valid(source):
                 source.heal(float(act[1]))
+
+
+const BOSS_DECAY := 0.1
 
 
 ## Element applications a running fusion may still cause (MAX_SECONDARY_APPLIES); always
