@@ -22,6 +22,7 @@ func _init(p_gun: Gun, p_life: float) -> void:
 
 
 func _ready() -> void:
+    modulate.a = Settings.own_fx()   # "Your effects" (friend or foe, see Hostile)
     add_to_group("gun_fx")
     var fx := Strike.fx_of(self)
     if fx != null:
@@ -59,6 +60,7 @@ func _draw() -> void:
     draw_circle(Vector2.ZERO, 10.0, Color(0, 0, 0, 0.4))
     draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
     draw_circle(Vector2.ZERO, 8.0, Color(0.22, 0.2, 0.19))
+    draw_arc(Vector2.ZERO, 8.0, 0.0, TAU, 20, Color(0.8, 0.78, 0.72, 0.8), 1.5)   # pale rim: yours (Hostile)
     draw_circle(Vector2.ZERO, 5.5, c.darkened(0.35))
     draw_line(Vector2.ZERO, _aim * 11.0, Color(0.75, 0.72, 0.68), 3.0)
     draw_circle(_aim * 11.0, 2.0, c)

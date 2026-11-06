@@ -537,7 +537,7 @@ func party_guns_factor() -> float:
 ## (tuned on its own); floors 2 to 5 were x1.0, 1.15, 1.3, 1.5 (blasts flat) and are now
 ## FLOOR_DAMAGE (GDD "Late-floor balance": with Leech capped, a replay of run 4487a37a's own
 ## hits puts its low point on floors 2 to 5 near 51, 62, 42 and 28%).
-const FLOOR_DAMAGE := [1.0, 1.0, 1.3, 1.55, 1.55, 1.55]
+const FLOOR_DAMAGE := [1.0, 1.0, 1.15, 1.55, 1.55, 1.55]
 
 
 static func floor_damage_mult(floor_number: int) -> float:

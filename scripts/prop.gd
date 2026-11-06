@@ -1125,9 +1125,8 @@ func _draw_fuse_ring(cv: CanvasItem) -> void:
     if _gone or not _timers.has("fuse"):
         return
     var k := clampf(1.0 - float(_timers["fuse"]) / FUSE_SECS, 0.0, 1.0)
-    cv.draw_circle(Vector2.ZERO, BLAST_RADIUS, Color(1.0, 0.25, 0.08, 0.08 + 0.1 * k))
-    cv.draw_arc(Vector2.ZERO, BLAST_RADIUS, 0.0, TAU, 64, Color(0.08, 0.0, 0.0, 0.75), 5.0)
-    cv.draw_arc(Vector2.ZERO, BLAST_RADIUS, 0.0, TAU, 64, Color(1.0, 0.45, 0.15, 0.6 + 0.4 * k), 2.0)
+    cv.draw_circle(Vector2.ZERO, BLAST_RADIUS, Color(Hostile.RED, 0.06 + 0.1 * k))
+    Hostile.dash_ring(cv, Vector2.ZERO, BLAST_RADIUS, 0.7 + 0.3 * k, 2.5)
     var r := lerpf(14.0, BLAST_RADIUS, k)
     cv.draw_arc(Vector2.ZERO, r, 0.0, TAU, 48, Color(0.08, 0.0, 0.0, 0.7), 5.0)
     cv.draw_arc(Vector2.ZERO, r, 0.0, TAU, 48, Color(1.0, 0.9, 0.45), 2.5)

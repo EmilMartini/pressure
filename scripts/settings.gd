@@ -18,6 +18,7 @@ const DEFAULTS := {
     "hit_stop": true,
     "flashes": true,                  # full-strength screen flashes and the pulsing low-health edge
     "damage_numbers": true,
+    "own_fx": 1.0,                    # opacity of your own effects (own_fx()), 1 = full
     "post_fx": true,
     "crt": false,                     # CRT curve, scanlines, a little aberration and grain
     "crt_intensity": 0.6,
@@ -81,6 +82,13 @@ func flag(key: String) -> bool:
 
 func number(key: String) -> float:
     return float(get_value(key))
+
+
+## Opacity of the player's own effects (projectiles, beams, sprays, pools, clouds, mines,
+## turrets, muzzle effects and the particle layers), the "Your effects" option: 1 at full,
+## down to 0.25 at the lowest step, so enemy shots and hostile edges stand out more.
+func own_fx() -> float:
+    return lerpf(0.25, 1.0, clampf(number("own_fx"), 0.0, 1.0))
 
 
 ## Multiplier for camera shake (0 = off).

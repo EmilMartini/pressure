@@ -36,6 +36,7 @@ func _init(p_gun: Gun) -> void:
 
 
 func _ready() -> void:
+    modulate.a = Settings.own_fx()   # "Your effects" (friend or foe, see Hostile)
     add_to_group("gun_fx")
 
 

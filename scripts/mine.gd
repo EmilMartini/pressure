@@ -28,6 +28,7 @@ func _init(s: Strike, p_blast: float, p_life: float) -> void:
 
 
 func _ready() -> void:
+    modulate.a = Settings.own_fx()   # "Your effects" (friend or foe, see Hostile)
     add_to_group("gun_fx")
 
 
@@ -83,7 +84,8 @@ func _draw() -> void:
     draw_set_transform(Vector2(0, 3), 0.0, Vector2(1.0, 0.45))
     draw_circle(Vector2.ZERO, 6.0, Color(0, 0, 0, 0.4))
     draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-    draw_circle(Vector2.ZERO, 5.0, Color(0.16, 0.14, 0.13))
+    # A pale casing, not a dark one: dark rims are the hostile signature (Hostile).
+    draw_circle(Vector2.ZERO, 5.0, Color(0.62, 0.6, 0.56))
     draw_circle(Vector2.ZERO, 3.5, c.darkened(0.3))
     if _armed:
         var blink := fmod(_t * (2.0 + 4.0 * clampf((_t - TOSS) / life, 0.0, 1.0)), 1.0) < 0.5

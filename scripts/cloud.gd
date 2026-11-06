@@ -150,6 +150,7 @@ func _init(p_element: int, p_radius: float, p_life: float, p_potency: float, p_s
 
 
 func _ready() -> void:
+    modulate.a = Settings.own_fx()   # "Your effects" (friend or foe, see Hostile)
     add_to_group("clouds")
     if is_puddle():
         # The floor's material layer gets the same water, so the two systems agree.

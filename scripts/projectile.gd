@@ -64,6 +64,7 @@ static var live := 0   # shots in the tree (the bot's --perf probe prints it)
 
 
 func _ready() -> void:
+    modulate.a = Settings.own_fx()   # "Your effects" (friend or foe, see Hostile)
     live += 1
     body_entered.connect(_on_body_entered)
     z_index = 5
@@ -397,8 +398,8 @@ func _draw() -> void:
             draw_circle(Vector2.ZERO, radius, color)
         Element.Kind.VOID:
             draw_circle(Vector2.ZERO, radius * 1.3, Color(color, 0.35))
-            draw_circle(Vector2.ZERO, radius, Color(0.05, 0.02, 0.1))
-            draw_arc(Vector2.ZERO, radius * 1.1, 0.0, TAU, 20, color, 2.0)
+            draw_circle(Vector2.ZERO, radius, Color(color.darkened(0.55), 1.0))   # deep, never black (Hostile)
+            draw_arc(Vector2.ZERO, radius * 1.1, 0.0, TAU, 20, color.lightened(0.2), 2.0)
         Element.Kind.HOLY:
             draw_line(-dir * radius * 1.6, dir * radius * 1.6, Color(1, 1, 1), 2.0)
             draw_line(-side * radius * 1.2, side * radius * 1.2, Color(1, 1, 1), 2.0)

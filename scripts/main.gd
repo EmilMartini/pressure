@@ -546,6 +546,8 @@ func enter_room(pos: Vector2i, moved: Vector2i) -> void:
 
     current_pos = pos
     Elements.room_reset()
+    if autotest and not players.is_empty():
+        _arena_snap = [_clock, players[0].hp, players[0].hurt_total, players[0].healed_total, players[0].healed_leech, players[0].healed_regen]
     current = Room.new(rooms[pos], self)
     add_child(current)
     _update_spectacle()
@@ -581,7 +583,22 @@ func _on_door_entered(dir: Vector2i) -> void:
     call_deferred("enter_room", current_pos + dir, dir)
 
 
+## Bots: health at room entry, then lost and healed since ([ARENA] lines at clear and death).
+var _arena_snap: Array = []
+
+
+func _print_arena(tag: String) -> void:
+    if not autotest or players.is_empty() or _arena_snap.size() < 6 or current == null:
+        return
+    var p: Player = players[0]
+    print("[ARENA] %s floor=%d room=%s secs=%.0f level=%d max=%.0f hp_in=%.0f hp_out=%.0f lost=%.0f healed=%.0f (leech %.0f regen %.0f) low=%.2f leech=%.0f regen=%.1f armor=%.0f guns=%d guards=%d" % [
+        tag, floor_number, current.data.type_name(), _clock - float(_arena_snap[0]), p.level, p.max_hp,
+        float(_arena_snap[1]), p.hp, p.hurt_total - float(_arena_snap[2]), p.healed_total - float(_arena_snap[3]), p.healed_leech - float(_arena_snap[4]), p.healed_regen - float(_arena_snap[5]), current.low_hp,
+        p.stat("lifesteal"), p.stat("regen"), p.stat("armor"), p.guns.size(), p.burst_guards])
+
+
 func on_room_cleared(_room: Room) -> void:
+    _print_arena("clear")
     rooms_cleared += 1
     Progress.add("rooms")
     floor_rooms_cleared += 1
@@ -757,13 +774,23 @@ func _on_leveled_up(p: Player) -> void:
         return   # the dps probe measures a fixed build
     if autotest:
         print("[LEVEL] %d floor=%d t=%.0f rooms=%d xp_total=%.0f" % [p.level, floor_number, _clock, rooms_cleared, p.xp_total])
-        var opts: Array = LevelUps.roll(p, 1)
+        # Picks one of three like a player would: the rarest card, then what kills or keeps
+        # you alive over vent and fusion niche picks.
+        var opts: Array = LevelUps.roll(p, 3)
         if not opts.is_empty():
-            Telemetry.levelup(opts, 0, int(p.level))
-        if not opts.is_empty():
-            p.apply_upgrade(opts[0])
+            var best := 0
+            for i in opts.size():
+                if _bot_pick_score(opts[i]) > _bot_pick_score(opts[best]):
+                    best = i
+            Telemetry.levelup(opts, best, int(p.level))
+            p.apply_upgrade(opts[best])
         return
     _pending_levelups.append(p)
+
+
+func _bot_pick_score(opt: Dictionary) -> float:
+    var cat_bonus := { "OFFENCE": 3.0, "DEFENCE": 3.0, "REACTIONS": 2.5, "ELEMENT": 2.0, "FUSIONS": 1.5, "TRADE-OFF": 1.0, "VENT": 0.0 }
+    return 10.0 * float(opt.get("rarity", 0)) + float(cat_bonus.get(String(opt.get("cat", "")), 0.0)) + randf()
 
 
 func _serve_levelups() -> void:
@@ -783,6 +810,7 @@ func _on_player_died(_p: Player) -> void:
     game_over = true
     if autotest:
         print("[DEATH] floor=%d room=%s diff=%d t=%.0f kills=%d level=%d" % [floor_number, current.data.type_name() if current else "-", difficulty(), _clock, total_kills, players[0].level])
+        _print_arena("death")
     _end_run(false)
 
 
@@ -996,6 +1024,7 @@ func _apply_bot_build(build: Dictionary, n: int) -> void:
 
 func _setup_autotest() -> void:
     _bot_idle_fights = OS.get_cmdline_user_args().has("--idle")
+    _bot_kite = OS.get_cmdline_user_args().has("--kite")
     if OS.get_cmdline_user_args().has("--dps-probe"):
         _probe = BalanceProbe.new(self)
         add_child(_probe)
@@ -1102,11 +1131,13 @@ func _autotest_tick(delta: float) -> void:
         # Low on health: run, don't orbit. Otherwise circle at range like a player kiting.
         var flee := p.hp < p.max_hp * 0.5
         p.input.force_move = (-to_enemy * (1.0 if flee else 0.8) + circle * (0.25 if flee else 0.6)).normalized()
+        if _bot_kite:
+            p.input.force_move = _bot_kite_dir(p)
         if _bot_idle_fights:
             # Balance probe: stand still in the middle of every fight, as a lazy player would.
             p.input.force_move = -p.global_position.normalized() if p.global_position.length() > 40.0 else Vector2.ZERO
         var inner := current.rect.grow(-120.0)
-        if not inner.has_point(p.global_position):
+        if not inner.has_point(p.global_position) and not _bot_kite:
             p.input.force_move = (inner.get_center() - p.global_position).normalized()
         _bot_idle = 0.0
     else:
@@ -1149,6 +1180,54 @@ func _autotest_tick(delta: float) -> void:
             print("[EMBERS] time cap: a death here would pay +%d (%s)" % [int(would["total"]), Mastery.award_text(would)])
         _print_stats("END")
         get_tree().quit()
+
+
+## `--kite`: a player-like dodge instead of orbiting the nearest enemy. Every enemy and
+## enemy shot within reach pushes (closer pushes harder), the bot slides sideways along
+## that push the way a player circles a crowd, and the room's edge pulls it back in
+## gradually, so it is not steered into the pack it is fleeing.
+var _bot_kite := false
+var _bot_kite_side := 1.0
+var _bot_kite_flip := 0.0
+
+
+func _bot_kite_dir(p: Player) -> Vector2:
+    var pos := p.global_position
+    var push := Vector2.ZERO
+    var crowd := 0
+    for e in current.enemies.get_children():
+        if not is_instance_valid(e) or not e is Enemy:
+            continue
+        var d: Vector2 = pos - (e as Enemy).global_position
+        var l := d.length()
+        if l < 340.0 and l > 0.5:
+            push += d / l * pow((340.0 - l) / 340.0, 2.0) * (2.5 if (e as Enemy).is_elite else 1.0)
+            crowd += 1
+    for sh in get_tree().get_nodes_in_group("enemy_projectiles"):
+        if not is_instance_valid(sh) or not sh is Node2D:
+            continue
+        var d2: Vector2 = pos - (sh as Node2D).global_position
+        var l2 := d2.length()
+        if l2 < 160.0 and l2 > 0.5:
+            push += d2 / l2 * (160.0 - l2) / 160.0 * 1.5
+    var away := push.normalized() if push.length() > 0.01 else Vector2.ZERO
+    _bot_kite_flip -= get_process_delta_time()
+    if _bot_kite_flip <= 0.0:
+        _bot_kite_flip = randf_range(2.5, 5.0)
+        _bot_kite_side = -_bot_kite_side
+    var dir := away * 0.75 + away.orthogonal() * _bot_kite_side * 0.65
+    if crowd == 0:
+        dir = Vector2.ZERO
+    # The edge: pull toward the middle as the bot nears a wall, harder the closer it is.
+    var inner := current.rect.grow(-90.0)
+    var center_pull := Vector2.ZERO
+    if not inner.has_point(pos):
+        var clamped := Vector2(clampf(pos.x, inner.position.x, inner.end.x), clampf(pos.y, inner.position.y, inner.end.y))
+        center_pull = (clamped - pos) / 60.0 + (inner.get_center() - pos).normalized() * 0.4
+    dir += center_pull
+    if dir.length() < 0.05:
+        return Vector2.ZERO
+    return current.path_dir(pos, pos + dir.normalized() * 80.0)
 
 
 func _bot_navigate(p: Player) -> void:
@@ -1286,6 +1365,13 @@ func _bot_next_dir() -> Vector2i:
         goal = _bot_bfs(func(r: RoomData) -> bool: return not r.visited and r.type != RoomData.Type.BOSS)
     if goal == NO_STEP:
         goal = _bot_bfs(func(r: RoomData) -> bool: return not r.visited)
+    if goal == NO_STEP:
+        # Everything seen (a shop trip can come after the boss): back to the stairs.
+        goal = _bot_bfs(func(r: RoomData) -> bool:
+            for o in r.stock:
+                if o["kind"] == "stairs" and not o.get("taken", false):
+                    return true
+            return false)
     if goal == NO_STEP:
         return Vector2i.ZERO
     return goal

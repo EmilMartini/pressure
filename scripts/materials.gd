@@ -109,6 +109,13 @@ var _tlist := PackedInt32Array()   # cells whose texel must be rewritten
 var _timg: Image
 var _ttex: ImageTexture
 var _draw_rng := RandomNumberGenerator.new()
+# Hostile edges (see Hostile edges): the outline of floor that hurts, near a player.
+var _hurt_steps := 0                         # steps left to look for hurting cells
+var _edge_base := PackedVector2Array()       # whole cell sides on the boundary, segment pairs
+var _edge_base_cols := PackedColorArray()    # dark band, one colour per segment
+var _edge_dash := [PackedVector2Array(), PackedVector2Array()]       # red half-sides, per march phase
+var _edge_dash_cols := [PackedColorArray(), PackedColorArray()]
+var _edge_cv: Crisp
 
 
 ## Additive child: fire, charge, embers, acid and steam cores as soft 2x squares for bloom
@@ -799,10 +806,16 @@ func _step() -> void:
         _redraw_uniforms()
     if not _tlist.is_empty():
         _flush_texels()
+    if _hurt_steps > 0:
+        _hurt_steps -= 1
+        _build_hostile_edges()
+    elif not _edge_base.is_empty():
+        _clear_hostile_edges()
 
 
 func _step_fire(i: int) -> void:
     _flicker = true
+    _hurt_steps = 3
     if (_flag[i] & F_FRONT) != 0:
         _flag[i] = _flag[i] & ~F_FRONT   # the front moves on to the cells it lit
         _touch(i)
@@ -1009,6 +1022,7 @@ func _step_steam(i: int) -> void:
 ## Charged water strobes and sparks along the pool's edge.
 func _step_charged(i: int) -> void:
     _flicker = true
+    _hurt_steps = 3
     var l := int(life[i]) - 1
     if l <= 0:
         _put(i, WATER, amt[i], 4)
@@ -1151,6 +1165,179 @@ func _find_fx() -> Fx:
 func _spark(i: int) -> void:
     if _fx != null and is_instance_valid(_fx):
         _fx.pixels(Element.Kind.SHOCK, _cell_world(i), 2, 60.0, 4.0)
+
+
+# --- Hostile edges -------------------------------------------------------------
+#
+# Floor that can hurt a player (Player.HAZARDS: fire, charged water) gets the hostile
+# signature (Hostile) along its outline, but only within EDGE_R of a living player, so a
+# burning room stays calm until the fire is close. Rebuilt once per step (12 Hz) while
+# such cells are being stepped: a box of 12 px blocks around each player (about 24x24) is
+# read and every side of a hurting block that faces a harmless one becomes a segment. Drawn on
+# the Crisp layer above every player effect: a dark band, and red dashes on alternating
+# half-sides that swap with the march phase. Three draw calls; nothing when no edge is near.
+
+const EDGE_R := 130.0
+const EDGE_FADE := 45.0
+const EDGE_B := 2       # cells per outline block side (12 px)
+const EDGE_CLOSE := 2   # blocks of closing: holes up to 48 px fill in
+
+
+func _hurts(m: int) -> bool:
+    return m == FIRE or m == CHARGED
+
+
+func _clear_hostile_edges() -> void:
+    _edge_base.clear()
+    _edge_base_cols.clear()
+    for k in 2:
+        (_edge_dash[k] as PackedVector2Array).clear()
+        (_edge_dash_cols[k] as PackedColorArray).clear()
+
+
+func _build_hostile_edges() -> void:
+    _clear_hostile_edges()
+    if not is_inside_tree():
+        return
+    # Outlined in blocks of EDGE_B x EDGE_B cells (a block hurts when any cell in it does):
+    # burning floor is ragged, and a per-cell outline read as red confetti.
+    var bw := ceili(float(_w) / EDGE_B)
+    var bh := ceili(float(_h) / EDGE_B)
+    var bs := float(CELL * EDGE_B)
+    var hurt := {}   # block index -> true, for blocks near a player
+    var near := {}   # block index -> opacity
+    var lps: Array[Vector2] = []   # living players, local
+    for p in get_tree().get_nodes_in_group("players"):
+        var pl := p as Player
+        if pl == null or not pl.alive:
+            continue
+        var lp := pl.global_position - global_position
+        lps.append(lp)
+        var b0 := Vector2i(((lp - _origin - Vector2(EDGE_R, EDGE_R)) / bs).floor())
+        var b1 := Vector2i(((lp - _origin + Vector2(EDGE_R, EDGE_R)) / bs).floor())
+        for by in range(maxi(0, b0.y - 1), mini(bh, b1.y + 2)):
+            for bx in range(maxi(0, b0.x - 1), mini(bw, b1.x + 2)):
+                var bi := by * bw + bx
+                if hurt.has(bi):
+                    continue
+                var any := false
+                for k in EDGE_B * EDGE_B:
+                    var cx := bx * EDGE_B + k % EDGE_B
+                    var cy := by * EDGE_B + floori(float(k) / EDGE_B)
+                    if cx < _w and cy < _h and _hurts(mat[cy * _w + cx]):
+                        any = true
+                        break
+                if not any:
+                    continue
+                hurt[bi] = true
+                var d := (_origin + Vector2(bx + 0.5, by + 0.5) * bs).distance_to(lp)
+                var a := 1.0 - smoothstep(EDGE_R - EDGE_FADE, EDGE_R, d)
+                if a > float(near.get(bi, 0.0)):
+                    near[bi] = a
+    # Morphological closing on the blocks (grow by CLOSE blocks, then shrink by as many):
+    # gaps and holes up to 2 * CLOSE blocks wide fill in, the outer outline stays where it
+    # is. Burning floor and surged, charged water are full of small safe-looking holes that
+    # are no safe ground, and each would add a ring of dashes.
+    var grown := hurt.duplicate()
+    for it in EDGE_CLOSE:
+        var add := {}
+        for bi: int in grown:
+            for nb in _block_nbs(bi, bw, bh):
+                add[nb] = true
+        grown.merge(add)
+    for it in EDGE_CLOSE:
+        var keep := {}
+        for bi: int in grown:
+            var nbs := _block_nbs(bi, bw, bh)
+            if nbs.size() < 4:
+                continue
+            var all_in := true
+            for nb in nbs:
+                if not grown.has(nb):
+                    all_in = false
+                    break
+            if all_in:
+                keep[bi] = true
+        grown = keep
+    for bi: int in grown:
+        if hurt.has(bi):
+            continue
+        var at := _origin + Vector2(bi % bw + 0.5, floori(float(bi) / bw) + 0.5) * bs
+        var a := 0.0
+        for lp0: Vector2 in lps:
+            a = maxf(a, 1.0 - smoothstep(EDGE_R - EDGE_FADE, EDGE_R, at.distance_to(lp0)))
+        if a > 0.0:
+            near[bi] = a
+    for bi: int in near:
+        hurt[bi] = true
+    for bi: int in near:
+        var a: float = near[bi]
+        var bx := bi % bw
+        var by := floori(float(bi) / bw)
+        var o := _origin + Vector2(bx, by) * bs
+        # Sides: left, right, top, bottom, as corner pairs.
+        for side in 4:
+            var nx := bx + (-1 if side == 0 else (1 if side == 1 else 0))
+            var ny := by + (-1 if side == 2 else (1 if side == 3 else 0))
+            if hurt.has(ny * bw + nx) and nx >= 0 and nx < bw and ny >= 0 and ny < bh:
+                continue
+            var p0: Vector2
+            var p1: Vector2
+            match side:
+                0:
+                    p0 = o
+                    p1 = o + Vector2(0, bs)
+                1:
+                    p0 = o + Vector2(bs, 0)
+                    p1 = o + Vector2(bs, bs)
+                2:
+                    p0 = o
+                    p1 = o + Vector2(bs, 0)
+                _:
+                    p0 = o + Vector2(0, bs)
+                    p1 = o + Vector2(bs, bs)
+            _edge_base.append(p0)
+            _edge_base.append(p1)
+            _edge_base_cols.append(Color(Hostile.DARK, 0.8 * a))
+            var mid := (p0 + p1) * 0.5
+            var ph := (bx + by) & 1
+            for k in 2:
+                var dash: PackedVector2Array = _edge_dash[k]
+                var dc: PackedColorArray = _edge_dash_cols[k]
+                if ((ph + k) & 1) == 0:
+                    dash.append(p0)
+                    dash.append(mid)
+                else:
+                    dash.append(mid)
+                    dash.append(p1)
+                dc.append(Color(Hostile.RED, a))
+    if not _edge_base.is_empty() and _edge_cv == null:
+        _edge_cv = Crisp.attach(self, _draw_hostile_edges, -1)   # under the player's own crisp rim
+
+
+## The 4-neighbours of block `bi` inside the bw x bh block grid.
+func _block_nbs(bi: int, bw: int, bh: int) -> PackedInt32Array:
+    var out := PackedInt32Array()
+    var bx := bi % bw
+    if bx > 0:
+        out.append(bi - 1)
+    if bx < bw - 1:
+        out.append(bi + 1)
+    if bi >= bw:
+        out.append(bi - bw)
+    if bi < bw * (bh - 1):
+        out.append(bi + bw)
+    return out
+
+
+func _draw_hostile_edges(cv: CanvasItem) -> void:
+    if _edge_base.is_empty():
+        return
+    # In whole cells on the screen's pixel grid, like the floor under them.
+    var c := Hostile.cell(cv)
+    cv.draw_multiline_colors(Hostile.snap(cv, _edge_base), _edge_base_cols, c * 2.0)
+    var k := 0 if Hostile.march() < 0.5 else 1
+    cv.draw_multiline_colors(Hostile.snap(cv, _edge_dash[k], true), _edge_dash_cols[k], c)
 
 
 # --- Drawing -----------------------------------------------------------------

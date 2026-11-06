@@ -548,9 +548,34 @@ charged puddles, an unseen barrel). What changed:
   water on floor 1 (about 45 at full rate) and still cleared; `--old-balance` restores it.
 - **Barrels** burn a 0.6 s fuse (blink plus a ring growing to the 150 px blast); bombers
   show their 90 px blast ring when a player is near; **enemy shots** draw an outline and
-  core on the Crisp layer, above every player effect.
+  core on the Crisp layer, above every player effect (see Friend or foe).
 - **Death recap** on the run-over screen; **attribution**: shots keep their shooter's kind,
   and a shot's hint can no longer leak onto the next hit after invulnerability ate it.
+
+### Friend or foe — BUILT (2026-11-06)
+The player could not tell their own bullets and harmless effects from enemy shots and
+floors that hurt: both used the element colours. The rule (`scripts/hostile.gd`):
+- **Hostile = black and red, above everything.** Whatever can hurt you wears a near-black
+  outline with a hot red rim, drawn on the Crisp layer above every particle, cloud and
+  bloom of your guns, in whole screen cells on the PostFx pixel grid (palette-mapped), so
+  it stays pixel art. Enemy shots: a pixel disc with a 1-cell dark outline, a 1-cell red
+  rim, the element colour lifted and a pulsing white core. Areas: a marching black and red
+  dashed edge: bomber and volatile blast rings, lit barrel fuses, the charger and brute
+  king dash telegraph (now on the Crisp layer too), and **floor that hurts** (fire,
+  charged water, Player.HAZARDS) within 130 px of a player, outlined in 12 px blocks with
+  holes up to 48 px closed (`materials.gd`, rebuilt 12 times a second only while such
+  cells exist; nothing is drawn far from you, so a burning room stays calm).
+- **Friendly = never black-outlined, never red-rimmed**, drawn in the world under the
+  pixel grid and bloom. Mines got a pale casing and turrets a pale rim, void shots a deep
+  violet body instead of black. Water, oil, poison, acid, clouds, fields and compounds
+  (which never hurt you) get no edge.
+- **"Your effects"** option (Settings `own_fx`, a slider, default full): fades your
+  projectiles, beams, sprays, pools, clouds, mines, turrets, muzzle effects and the Fx
+  particle and shape layers down to 25%. Hostile things never fade.
+- **Flyers drawn bigger** (sprite only; collision and hit radius unchanged): bats 1.5x
+  (24 px), wisps 1.35x (32 px) next to a 29 px grunt, hovering over a soft shadow on the
+  floor below. Bats were 7.7% of damage taken but hard to see.
+Check: `--hurt-shot --read-shot` (section 8).
 
 ### Late-floor balance (measured, 2026-11-05)
 The ground truth is a human Stormcaller run (telemetry `4487a37a46b6c384`): six guns of six
@@ -581,7 +606,8 @@ hits under another sustain and damage model.
 - **Cause 3, late damage was flat where it mattered.** Bomber and volatile blasts were a
   flat 18 on every floor and the top damage source of floors 2 to 4; boss and splitter
   summons always hit at x1.0. Blasts and summons now take the floor multiplier, which is
-  x1.3 on floor 2 and x1.55 on floors 3 to 5 (was 1.0, 1.15, 1.3, 1.5; floor 1 stays x1.0).
+  x1.15 on floor 2 (x1.3 until 2026-11-06, see "Floor 2 and the meta curve" below) and x1.55
+  on floors 3 to 5 (was 1.0, 1.15, 1.3, 1.5; floor 1 stays x1.0).
   The multipliers come from the replay: with Leech capped, the run's own hits put its low
   point near 51% (floor 2), 62% (3), 42% (4) and 28% (5).
 - Measured with bots replaying that build (`--build=storm --start-floor=N`, gear kept,
@@ -602,6 +628,60 @@ hits under another sustain and damage model.
   mid-frame): room, boss and elite seconds read about 1.4x long for bots and up to
   2x on the human's late floors (127 s "arenas" on floor 5 were 60 s waves). It now counts
   wall-clock time.
+
+### Floor 2 and the meta curve (measured, 2026-11-06)
+Target (the user's): like Hades, a first run is not expected to win. A fresh save with a
+decent player usually dies on floor 2 and sometimes reaches floor 3; floor 1 is clearable;
+about half the Shrine usually reaches floors 3 to 4; the full Shrine with a strong build can
+win, not reliably. Deaths must be readable: no 60%-to-0 in a few seconds.
+- **Humans, fresh XP curve (two runs, build 2026.11.05).** Pyromancer `ce704d42`: level 4
+  at the end of floor 1, died 20 s into floor 2 from 66 HP: bomber 23, grunts 13, 13,
+  swarmer 8, grunt 13 in 4.8 s. Voidwalker `37274807`: level 5, died in floor 2's third
+  arena (grunts 11 each were 45% of the damage). Both pay 43 and 59 Embers. Hit sizes on
+  floor 2 against ~100 to 110 max health: grunt 13 (12%), bomber and brute 21 to 23 (20%).
+  The hit invulnerability is 0.6 s, so a crowd lands a hit every 0.6 s.
+- **Changes.** (1) Floor 2 damage x1.3 -> x1.15 (`Room.FLOOR_DAMAGE`): grunt 11.6 to 12.4,
+  bomber blast and brute 21. Floors 3 to 5 keep x1.55. (2) **Burst guard**
+  (`Player.BURST_*`, floors 2+, off with `--old-balance`): when the hits of the last 3 s add
+  up to 25% of max health and leave you under half health, you are untouchable for 1.5 s
+  ("Steady"), at most once per 6 s. A crowd still kills; it no longer kills before you can
+  react. Replaying the two human deaths: both fatal sequences end at 20 and 6 to 16 HP
+  instead of 0 (the rest of the arena is not replayed). A first version without the "under
+  half health" rule fired every 6 s on floors 3+ for a build that heals as fast as it bleeds
+  (23 times on one floor 3): a hidden damage cut, so it was narrowed. The XP curve, Leech
+  cap, boss sizing and floor 1 are unchanged.
+- **Bots.** `--kite` is a player-like dodge (every enemy and enemy shot within reach pushes,
+  the bot slides sideways along the push, the room edge pulls it back gradually); the old
+  orbit bot died in floor 1's first arena in 7 of 8 one-gun starts. Bots pick the rarest of
+  three level-up cards (offence and defence first). `[ARENA]` lines give, per room, health
+  in and out, lost, healed (Leech and regen split out), the low point, sustain stats and how
+  often the guard fired. Fresh save, kite bot, live level-ups, Pyromancer, Voidwalker and
+  Vagrant (11 runs after, 4 before; the first 7 after ran earlier guard settings):
+  | | floor 1 deaths | floor 2 deaths | reached floor 4+ | floor 2: level at end, low, lost / healed per arena, boss |
+  |---|---|---|---|---|
+  | before (x1.3, no guard) | 2 of 4 | 0 | 2 of 4 (time cap) | 12, 72 to 75%, 10-21 / 10-18, 39 to 41 s |
+  | after | 3 of 11 | 3 of 11 | 5 of 11 (one won at 3,000 s) | 11, 36 to 76%, 36-49 / 32-45, 25 to 74 s |
+  Floor-2 deaths after came over 13 s or more (three telegraphed bomber blasts; armour
+  chip damage), not in bursts. Mid Shrine (`--mastery=464`: all three Last Breath, most
+  comfort sides; dmg-eq +3.7%, HP +12): 1 floor-2 death, 2 wins in 3. Full Shrine plus
+  `--veteran`: 1 win in 1. The idle six-gun bot still dies on floor 1 (t=112 s).
+- **What the bots do not show.** Past floor 2 the kite bot is far better than a human: it
+  loses 4 to 100 HP per arena on floors 3 to 5 and heals all of it (Leech, regen and the
+  heal reactions, which are uncapped), bosses die in 41 to 98 s at 86 to 100% health. A
+  bot that survives floor 2 mostly wins, at every meta stage, so the bots cannot place the
+  meta curve; the humans (who die on floor 2 fresh) are the reference. The Shrine is
+  deliberately small in power (section 4: full is dmg-eq +7.7%, HP +12 and three revives),
+  so the curve from fresh to a win rests on skill, unlocks and the revives.
+- **Embers per run** (bots start on an empty save, so every reaction is a first discovery
+  and their numbers are high): floor-1 death 7 to 54, floor-2 death 59 to 135, floor 4 at
+  the time cap 244 to 335, a win 578 to 667 (elites alone 336 to 362: 168 to 181 elites at
+  2 each; discoveries 87 to 162; bounties 60). Humans: floor-1 deaths 23 to 25, floor-2
+  deaths 43 and 59, the old won run 427. The Shrine costs 928, so two wins buy all of it.
+  Proposal (not built): rooms 1, elites 1 with at most 10 a run, discoveries 2, fusions and
+  cataclysms at most 6 a run, bosses 3, bounties 5, depth 3 per floor past the first, a
+  clear 20. Without first discoveries that pays a floor-1 death 2 to 7, a floor-2 death 17
+  to 27, a floor-4 run about 56 and a win about 107, so the Shrine fills in about 35 to 45
+  runs (mid Shrine around run 20) instead of 2 to 3 wins.
 
 ## 3. Run structure: Brotato waves inside an Isaac map
 
@@ -970,13 +1050,16 @@ the time cap ended it),
 `--fusion-probe[=K]` (four w1 guns of four elements, rotating with `--instance`),
 `--build=storm|mid --start-floor=N` (start on floor N with the human run's build at that
 floor, or a mediocre one; profile gear is kept), `--one-floor` (quit at the next floor),
-`--old-balance` (the late-floor tuning off, for before/after),
+`--old-balance` (the late-floor tuning off, for before/after), `--kite` (a player-like
+dodge instead of orbiting the nearest enemy; per-room `[ARENA]` lines are always printed),
 `--dps-probe` (with `--build`: eight harmless dummies that never die, prints `[DPS]` damage
 per second and its tier shares over `--probe-secs=N`; `--probe-picks=id,id` adds level-up
 options, `--no-picks` drops the profile's; run with `--fixed-fps 60` for speed),
 `--payout-shot` (screenshots of the level-up cards, spoils, ring swap and merge pedestal),
 `--hurt-shot` (screenshots of the hit flash, low and critical health, a hurting floor, a lit
-barrel and the death recap),
+barrel and the death recap; with `--read-shot` the friend-or-foe pictures instead: a
+six-gun fight with enemy shots, a burning and a charged floor, and a flyer lineup;
+`--pixel-size=N`, `--set=crt:1` and `--tag=name` for the capture),
 `--no-fusions` (the tier ladder off: the pre-fusion game, for baselines), `--gun-probe[=a,b]`
 (each gun alone against pinned dummies: `[GUN-PROBE]` single and pack dps; `--probe-secs=N`;
 with `--gun-shots` in a window, `autotest/gun_<id>.png` of each mechanic firing), `--perf` (fps and

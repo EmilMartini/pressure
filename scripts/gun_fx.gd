@@ -46,6 +46,7 @@ static func rail(parent: Node, p_a: Vector2, p_b: Vector2, w: float, col: Color)
 
 
 func _ready() -> void:
+    modulate.a = Settings.own_fx()   # "Your effects" (friend or foe, see Hostile)
     top_level = true
     z_index = 6
     add_to_group("gun_fx")

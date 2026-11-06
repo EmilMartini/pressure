@@ -79,6 +79,12 @@ var _floor_t := 0.0               # next floor-material check
 var _on_ice := false
 var _wading := false               # deep water in a room layout slows us
 var _leech_budget := LEECH_PER_SEC  # reactions that may still heal right now (refills per second)
+var hurt_total := 0.0             # health lost this run (bots: per-arena [ARENA] lines)
+var healed_total := 0.0           # health healed this run, by any source
+var healed_leech := 0.0           # of which by Leech
+var healed_regen := 0.0           # of which by regen
+var burst_guards := 0             # times the burst guard fired this run (bots print it)
+var _burst_ready_t := 0.0         # life_t from which the burst guard may fire again
 
 ## Danger readability. The last RECAP_SECS of hits ([time, amount, source]) and of health
 ## (one sample every TRACE_STEP s) for the death recap on the run-over screen; the red
@@ -116,6 +122,21 @@ const HAZARD_TICK_SECS := 0.75
 ## full heal every second: 10 to 20 times the damage the floor dealt. Capped, Leech is a
 ## strong sustain (3 HP/s per point) that a hard moment can still outpace.
 const LEECH_PER_SEC := 3.0
+
+## Burst guard (floors 2+, not with --old-balance): losing BURST_FRACTION of max health
+## within BURST_WINDOW seconds buys BURST_INVULN seconds untouchable ("Steady"), at most
+## once per BURST_COOLDOWN. A crowd still kills, but not from 60% health in under 5 s:
+## human run ce704d42 lost 66 HP in 4.8 s on floor 2's first arena (bomber 23, grunts 13,
+## 13, 13, swarmer 8) with nothing to read or answer between the hits, and a pinned bot
+## took a hit every 0.6 s (the hit invulnerability) for 88 HP in 5.8 s. At 0.3 in 2.5 s
+## that bot never tripped it (47 of 49 HP); 0.25 in 3 s catches both. It only fires once
+## the burst has left you under BURST_BELOW of max health: on floors 3+ a build that heals
+## as fast as it bleeds tripped it every 6 s at high health (a hidden 25% damage cut).
+const BURST_FRACTION := 0.25
+const BURST_BELOW := 0.5
+const BURST_WINDOW := 3.0
+const BURST_INVULN := 1.5
+const BURST_COOLDOWN := 6.0
 
 const ORBIT_RADIUS := 60.0
 const ORBIT_HIT := 10.0
@@ -488,7 +509,9 @@ func move_speed() -> float:
 
 func heal(amount: float) -> void:
     if alive:
+        var before := hp
         hp = minf(max_hp, hp + amount)
+        healed_total += hp - before
 
 
 ## Called by enemies when a reaction this player caused fires.
@@ -496,7 +519,9 @@ func on_reaction(_reaction_name: String) -> void:
     var steal := stat("lifesteal")
     if steal > 0.0 and (_leech_budget >= 1.0 or Main.old_balance):
         _leech_budget -= 1.0
+        var h0 := healed_total
         heal(steal)
+        healed_leech += healed_total - h0
 
 
 # --- Pressure --------------------------------------------------------------
@@ -559,10 +584,12 @@ func take_damage(amount: float, attacker: Node2D = null, from: Vector2 = Vector2
         invuln = 0.25
         return
     amount = maxf(1.0, amount - stat("armor"))
+    hurt_total += minf(amount, maxf(0.0, hp))
     hp -= amount
     Telemetry.player_hurt(self, amount, attacker, source)
     _log_hurt(amount, source)
     invuln = 0.6
+    _burst_guard()
     _hurt_flash = 0.14
     if from == Vector2.INF and attacker != null and is_instance_valid(attacker):
         from = attacker.global_position
@@ -592,6 +619,24 @@ func take_damage(amount: float, attacker: Node2D = null, from: Vector2 = Vector2
         Sfx.play("down")
         died.emit(self)
     queue_redraw()
+
+
+func _burst_guard() -> void:
+    if hp <= 0.0 or hp > BURST_BELOW * max_hp or life_t < _burst_ready_t or Main.old_balance:
+        return
+    var mn := main()
+    if mn == null or mn.floor_number < 2:
+        return
+    var recent := 0.0
+    for h in hurt_log:
+        if life_t - float(h[0]) <= BURST_WINDOW:
+            recent += float(h[1])
+    if recent < BURST_FRACTION * max_hp:
+        return
+    invuln = BURST_INVULN
+    _burst_ready_t = life_t + BURST_COOLDOWN
+    burst_guards += 1
+    say("Steady")
 
 
 func _log_hurt(amount: float, source: String) -> void:
@@ -672,7 +717,9 @@ func _physics_process(delta: float) -> void:
     invuln = maxf(0.0, invuln - delta)
     var regen := stat("regen")
     if regen > 0.0:
+        var h1 := healed_total
         heal(regen * delta)
+        healed_regen += healed_total - h1
     _leech_budget = minf(LEECH_PER_SEC, _leech_budget + LEECH_PER_SEC * delta)
     _message_time = maxf(0.0, _message_time - delta)
     if _message_time <= 0.0:

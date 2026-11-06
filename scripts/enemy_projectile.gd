@@ -99,13 +99,61 @@ func _draw() -> void:
     draw_circle(Vector2.ZERO, radius * 1.4, Color(c, 0.45))
 
 
-## The readable part, drawn by Fx on the Crisp layer above the player's own effects: a
-## near-black outline, the element colour lifted toward white, a white-hot core. Nothing
-## the player fires has a dark outline, so an incoming shot reads in any cloud or blaze.
+## The readable part, drawn by Fx on the Crisp layer above the player's own effects, in
+## the hostile signature (Hostile) but as pixel art that matches the world: a disc of
+## whole screen cells (Settings "pixel_size"), snapped to the PostFx grid and put through
+## its palette, with a 1-cell near-black outline, a 1-cell red rim, the element colour
+## lifted toward white and a white-hot core that pulses between two frames. Nothing the
+## player fires is outlined dark or rimmed red, so an incoming shot reads in any cloud
+## or blaze.
 func draw_crisp(cv: CanvasItem, at: Vector2) -> void:
-    var c := color()
-    var r := maxf(radius * 0.85, 4.0)
-    var pulse := 0.5 + 0.5 * sin(_age * 18.0)
-    cv.draw_circle(at, r + 2.5, Color(0.05, 0.0, 0.04, 0.95))
-    cv.draw_circle(at, r, c.lightened(0.3))
-    cv.draw_circle(at, r * (0.45 + 0.1 * pulse), Color(1.0, 1.0, 0.95))
+    var xf := cv.get_global_transform_with_canvas()
+    var k := maxf(0.05, xf.get_scale().x)
+    var ps := PostFx.pixel_size() if Settings.flag("post_fx") else 1.0
+    var world_d := 2.0 * (maxf(radius * 0.85, 4.0) + 3.5)
+    var n := ceili(world_d * k / ps)
+    n += 1 - n % 2   # odd: a centre cell
+    var hot := sin(_age * 18.0) > 0.0
+    var tex := sprite(color(), n, hot)
+    # Top-left corner on the screen's cell grid, back in the canvas' units.
+    var scr := xf * at - Vector2(n, n) * ps * 0.5
+    scr = (scr / ps).round() * ps
+    cv.draw_texture_rect(tex, Rect2(xf.affine_inverse() * scr, Vector2(n, n) * ps / k), false)
+
+
+static var _sprites: Dictionary = {}
+
+
+## A shot's pixel disc, `n` cells across (one texel per cell), cached per colour, size,
+## frame and palette setting.
+static func sprite(c: Color, n: int, hot: bool) -> Texture2D:
+    var pal := Settings.flag("palette") and Settings.flag("post_fx")
+    var key := "%s:%d:%s:%s" % [c.to_html(false), n, hot, pal]
+    if _sprites.has(key):
+        return _sprites[key]
+    var img := Image.create_empty(n, n, false, Image.FORMAT_RGBA8)
+    var r := float(n) * 0.5
+    var body := c.lightened(0.3)
+    var core_r := maxf(0.75, r * (0.42 if hot else 0.3))
+    for y in n:
+        for x in n:
+            var d := Vector2(float(x) + 0.5 - r, float(y) + 0.5 - r).length()
+            var col := Color(0, 0, 0, 0)
+            if d <= r:
+                col = Color(Hostile.DARK, 1.0)
+            if d <= r - 1.0:
+                col = Hostile.RED
+            if d <= r - 2.0:
+                col = body
+                if x < int(r) and y < int(r) and d > r - 3.0:
+                    col = body.lightened(0.35)   # a lit upper-left edge
+            if d <= core_r:
+                col = Color(1.0, 1.0, 0.92)
+            img.set_pixel(x, y, col)
+    if pal:
+        Art._quantize(img)
+    var tex := ImageTexture.create_from_image(img)
+    if _sprites.size() > 256:
+        _sprites.clear()
+    _sprites[key] = tex
+    return tex

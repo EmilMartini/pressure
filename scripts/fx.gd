@@ -142,6 +142,7 @@ var _px_mats: Array[ShaderMaterial] = []
 var _px_mms: Array[MultiMesh] = []
 var _px_was_live := false
 var _shape_layer: ShapeLayer
+var _own_a := 1.0   # Settings.own_fx(), for the puffs
 
 
 class AddLayer extends Node2D:
@@ -206,6 +207,20 @@ func _ready() -> void:
     get_tree().node_added.connect(_on_node_added)
     Crisp.attach(self, _draw_texts, 10)
     Crisp.attach(self, _draw_enemy_shots, 6)
+    _apply_own_fx("own_fx")
+    Settings.changed.connect(_apply_own_fx)
+
+
+## The "Your effects" option (Settings.own_fx): the particle and shape layers fade with it.
+## They are almost all the player's own (guns, reactions, fusions); enemy shots and every
+## hostile edge are on the Crisp layer and never fade.
+func _apply_own_fx(key: String) -> void:
+    if key != "own_fx":
+        return
+    _own_a = Settings.own_fx()
+    _shape_layer.modulate.a = _own_a
+    for mat in _px_mats:
+        mat.set_shader_parameter(&"own_a", _own_a)
 
 
 ## Enemy shots' outline and core on the Crisp layer (EnemyProjectile.draw_crisp): above
@@ -1658,6 +1673,7 @@ uniform int flick = 0;
 uniform float seed = 0.0;
 uniform vec2 clear_pos = vec2(0.0);   // the player: particles thin out around them
 uniform float clear_r = 0.0;
+uniform float own_a = 1.0;            // Settings.own_fx(): the "Your effects" option
 const int LAYER = {LAYER};
 const int PER = {PER};
 
@@ -1820,6 +1836,7 @@ void vertex() {
         vec2 c = line ? (la + lb) * 0.5 : pos + size * 0.5;
         col.a *= mix(0.3, 1.0, smoothstep(clear_r * 0.45, clear_r, distance(c, clear_pos)));
     }
+    col.a *= own_a;
     COLOR = col;
 }
 """
@@ -1941,6 +1958,7 @@ func _draw_puffs(list: Array, canvas: CanvasItem) -> void:
         var col: Color = p["color"]
         col.a *= 1.0 - k * k
         col.a *= lerpf(0.3, 1.0, smoothstep(CLEAR_R * 0.45, CLEAR_R, (p["pos"] as Vector2).distance_to(cp)))
+        col.a *= _own_a
         canvas.draw_set_transform(p["pos"], p["rot"] + k * p["spin"], Vector2(s, s))
         canvas.draw_texture(tex, -tex.get_size() / 2.0, col)
     canvas.draw_set_transform_matrix(Transform2D.IDENTITY)

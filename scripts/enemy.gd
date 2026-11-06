@@ -9,6 +9,11 @@ signal died(enemy: Enemy)
 signal rallied(enemy: Enemy)   # a boss raised its rally guard (see rally_secs)
 
 const LAYER_ENEMIES := 2
+## Flyers are drawn bigger than their body (sprite scale only: collision and hit radius
+## stay) over a soft shadow on the floor below, so bats and wisps read as flying and are
+## not lost among the player's effects. A bat (radius 6) draws 24 px, a wisp (9) 32 px,
+## next to a 29 px grunt (11).
+const FLYER_SCALE := { "swarmer": 1.5, "wisp": 1.35 }
 const LAYER_WALLS := 4
 
 ## Per kind: [hp base, hp per difficulty, speed, radius, contact damage base, scrap].
@@ -302,8 +307,8 @@ func _ready() -> void:
     add_child(shape)
     z_index = 8
     _setup_sprite()
-    if kind_name == "bomber" or affix == "volatile":
-        Crisp.attach(self, _draw_blast_ring, 3)
+    if kind_name in ["bomber", "charger", "boss"] or affix == "volatile":
+        Crisp.attach(self, _draw_hostile, 3)
     var fx := _fx()
     if fx != null:
         fx.puff(Art.PARTICLES["smoke"], global_position, Color(0.1, 0.08, 0.1, 0.7), radius * 4.5, 0.5, false, Vector2(0, -20))
@@ -318,7 +323,7 @@ func _setup_sprite() -> void:
     else:
         base_color = Art.ENEMY_TINT.get(kind_name, base_color)
     var coord: Vector2i = KIND_TILES[key] if KIND_TILES.has(key) else Art.TILES.get(kind_name, Art.TILES["grunt"])
-    _sprite_scale = radius / 6.0
+    _sprite_scale = radius / 6.0 * float(FLYER_SCALE.get(kind_name, 1.0))
     if _sprite == null:
         _sprite = Art.sprite(coord, 0.01, base_color)
         add_child(_sprite)
@@ -700,6 +705,21 @@ func _die() -> void:
     queue_free()
 
 
+## Hostile tells on the Crisp layer, above the player's own effects (Hostile): blast
+## rings and the dash telegraph of chargers and the brute king.
+func _draw_hostile(cv: CanvasItem) -> void:
+    if kind_name == "bomber" or affix == "volatile":
+        _draw_blast_ring(cv)
+    if _mode == MODE_TELEGRAPH and emerge <= 0.0 and hp > 0.0:
+        var length := 420.0 * 0.5 if kind_name == "charger" else 300.0
+        var a := 0.45 + 0.4 * absf(sin(_fx_t * 20.0))
+        var w := radius * (0.6 if kind_name == "charger" else 1.6)
+        var tip := _dash_dir * length
+        cv.draw_line(Vector2.ZERO, tip, Color(Hostile.DARK, 0.6 * a), w + 4.0)
+        cv.draw_line(Vector2.ZERO, tip, Color(Hostile.RED, a), w)
+        cv.draw_line(Vector2.ZERO, tip, Color(1, 0.9, 0.8, a), 1.5)
+
+
 ## Bombers (and volatile elites) show their blast radius on the Crisp layer once a player
 ## is near enough to be caught: a thin ring that firms up as the player closes in, solid
 ## and filled while the fuse burns. Their blast, on reaching you or on dying next to you,
@@ -719,9 +739,8 @@ func _draw_blast_ring(cv: CanvasItem) -> void:
     if k <= 0.0:
         return
     if _fuse >= 0.0:
-        cv.draw_circle(Vector2.ZERO, BOMB_RADIUS, Color(1.0, 0.3, 0.1, 0.18))
-    cv.draw_arc(Vector2.ZERO, BOMB_RADIUS, 0.0, TAU, 40, Color(0.08, 0.0, 0.0, 0.55 * k), 4.0)
-    cv.draw_arc(Vector2.ZERO, BOMB_RADIUS, 0.0, TAU, 40, Color(1.0, 0.5, 0.2, 0.75 * k), 1.5 if _fuse < 0.0 else 2.5)
+        cv.draw_circle(Vector2.ZERO, BOMB_RADIUS, Color(Hostile.RED, 0.16))
+    Hostile.dash_ring(cv, Vector2.ZERO, BOMB_RADIUS, 0.8 * k, 1.5 if _fuse < 0.0 else 2.5)
 
 
 ## Bomber blast: hurts players, and lands Fire on nearby enemies so reactions go off.
@@ -1350,6 +1369,8 @@ func _update_sprite() -> void:
     if moving:
         _anim_t += delta * (9.0 + speed * 0.02)
     var hop := absf(sin(_anim_t)) * 3.0 if moving else 0.0
+    if FLYER_SCALE.has(kind_name):
+        hop = 1.5 + 1.5 * sin(_fx_t * 5.0 + float(get_instance_id() % 7))   # a hover, not a hop
     var s := _sprite_scale * (_spawn_t + 0.35 * sin(_spawn_t * PI))
     _sprite.scale = Vector2(s * (1.0 + 0.4 * _squash), s * (1.0 - 0.4 * _squash))
     _sprite.position = Vector2(0, -hop)
@@ -1386,7 +1407,14 @@ func _draw() -> void:
         return
     if _sprite != null and _sprite.modulate.a < 1.0:
         _sprite.modulate.a = 1.0
-    draw_circle(Vector2(0, radius * 0.6), radius * 0.9, Color(0, 0, 0, 0.35))
+    if FLYER_SCALE.has(kind_name):
+        # In the air: a flat, soft shadow on the floor well below the body.
+        draw_set_transform(Vector2(0, radius * 1.5 + 5.0), 0.0, Vector2(1.0, 0.4))
+        draw_circle(Vector2.ZERO, radius * 1.3, Color(0, 0, 0, 0.25))
+        draw_circle(Vector2.ZERO, radius * 0.85, Color(0, 0, 0, 0.4))
+        draw_set_transform_matrix(Transform2D.IDENTITY)
+    else:
+        draw_circle(Vector2(0, radius * 0.6), radius * 0.9, Color(0, 0, 0, 0.35))
     _draw_outline()
     _draw_kind()
     if is_elite:
@@ -1531,12 +1559,7 @@ func _draw_pixel_flame(base: Vector2, w: float, h: float, count: int) -> void:
 
 ## Per-kind tells: charge lines, fuses, armour plates, heal pulses, boss telegraphs.
 func _draw_kind() -> void:
-    if _mode == MODE_TELEGRAPH:
-        var length := 420.0 * 0.5 if kind_name == "charger" else 300.0
-        var a := 0.35 + 0.35 * absf(sin(_fx_t * 20.0))
-        var w := radius * (0.6 if kind_name == "charger" else 1.6)
-        draw_line(Vector2.ZERO, _dash_dir * length, Color(1, 0.25, 0.2, a), w)
-        draw_line(Vector2.ZERO, _dash_dir * length, Color(1, 0.9, 0.8, a), 1.5)
+    # The dash telegraph is drawn on the Crisp layer (_draw_hostile).
     match kind_name:
         "bomber":
             # Lit fuse on the head; while armed, the blast radius flashes.

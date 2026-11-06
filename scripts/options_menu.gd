@@ -15,6 +15,7 @@ const ROWS := [
     { "key": "hit_stop", "label": "Hit-stop", "type": "bool" },
     { "key": "flashes", "label": "Screen flashes", "type": "bool" },
     { "key": "damage_numbers", "label": "Damage numbers", "type": "bool" },
+    { "key": "own_fx", "label": "Your effects", "type": "slider" },
     { "key": "post_fx", "label": "Post-processing", "type": "bool" },
     { "key": "pixel_size", "label": "Pixel size", "type": "choice", "options": [2, 3, 4] },
     { "key": "palette", "label": "Palette and dither", "type": "bool" },
