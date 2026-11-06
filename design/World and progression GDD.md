@@ -22,6 +22,11 @@ Read this section before starting any phase.
   what is out of scope. Do one phase per task unless told otherwise.
 - When a phase is done, update section 16 (decisions and open questions) and the relevant
   section of `GDD.md`.
+- **Each phase runs in a fresh session**, decided by the designer on 2026-11-06. Start from this
+  document, `GDD.md` and `README.md`, not from an old conversation. A long session re-reads its
+  whole history on every message, which costs far more of the budget.
+- Keep usage low: use a cheaper model for research, line reviews and simple checks; test small;
+  don't re-run a measurement unless a result looks wrong.
 
 ### Standing rules from the designer
 
@@ -578,6 +583,29 @@ Four currencies is the upper limit. **Default:** Embers are kept on death, never
 
 Tune Embers per run so the Shrine fills in about 25 to 40 runs, measured with bots at each stage
 (`--mastery=N` and `--mastery=full`).
+
+**Measured proposal from 2026-11-06, not built yet.** In a bot win, elites paid 336 to 362 of the
+Embers (2 each for 168 to 181 elites), so two wins bought the whole 928-Ember Shrine. Proposed
+income per run:
+
+| Source | Embers |
+|---|---|
+| Each room | 1 |
+| Each elite, at most 10 per run | 1 |
+| Each first discovery | 2 |
+| Fusions and cataclysms | at most 6 per run |
+| Each boss | 3 |
+| Each bounty | 5 |
+| Each floor past the first | 3 |
+| A win | 20 |
+
+Once first discoveries run out, this pays about 2 to 7 for a death on the first floor, 17 to 27
+for a death on the second, about 56 for reaching the fourth, and about 107 for a win. The Shrine
+then fills in about 35 to 45 runs. Reaching a first win after 20 to 40 hours would also need
+Shrine costs roughly doubled. Phase 3 builds and measures this.
+
+Caveat: bots play far better than humans past the second floor, so they can't place the meta
+curve on their own. Human runs are the reference for the fresh-save target.
 
 ---
 
