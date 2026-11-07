@@ -1335,6 +1335,10 @@ func _tick_boss_passive(delta: float) -> void:
                             break
             for hz in _hazards:
                 hz["warn"] = maxf(0.0, float(hz.get("warn", 0.0)) - delta)
+            for i in range(_quenched.size() - 1, -1, -1):
+                _quenched[i]["t"] = float(_quenched[i]["t"]) - delta
+                if float(_quenched[i]["t"]) <= 0.0:
+                    _quenched.remove_at(i)
             _tick_flame_waves(delta)
 
 
@@ -1359,6 +1363,8 @@ const WAVE_REACH := 360.0
 const WAVE_BAND := 16.0
 const WAVE_WARN := 0.9
 var _waves: Array = []      # [{ "o": origin, "a": angle, "hw": half width, "r", "warn", "speed", "hit": {} }]
+var _quenched: Array = []   # [{ "pos", "r", "t" }] ground a quench vat soaked: no fire or lava lands there
+const QUENCH_SAFE := 8.0
 var _lava_t := 2.0
 
 
@@ -1370,9 +1376,9 @@ func _think_pyre(delta: float, target: Player, dir: Vector2, mult: float) -> Vec
         # A trail of burning ground behind him.
         _t1 = [1.2, 0.9, 0.7][clampi(_phase - 1, 0, 2)]
         var w := _world()
-        if w != null:
+        if w != null and not _is_quenched(global_position):
             Cloud.spawn(w, global_position, Element.Kind.FIRE, 60.0, 5.0, 5.0, null)
-        _hazards.append({ "pos": global_position, "t": 5.0, "r": 55.0 })
+        _add_hazard({ "pos": global_position, "t": 5.0, "r": 55.0 })
     if _t2 <= 0.0:
         _t2 = 8.0
         _queue_summons("bomber", 2 if _phase == 1 else 3, 0.9)
@@ -1395,13 +1401,38 @@ func _think_pyre(delta: float, target: Player, dir: Vector2, mult: float) -> Vec
         if _lava_t <= 0.0:
             _lava_t = 2.2
             var at := target.global_position + Vector2.from_angle(randf() * TAU) * randf_range(20.0, 90.0)
-            _hazards.append({ "pos": at, "t": 7.0, "r": 60.0, "warn": 1.0, "lava": true })
+            _add_hazard({ "pos": at, "t": 7.0, "r": 60.0, "warn": 1.0, "lava": true })
     while _hazards.size() > 16:
         _hazards.pop_front()
     for wv in _waves:
         if float(wv["warn"]) > 0.0:
             return Vector2.ZERO   # he plants his feet for the wind-up
     return dir * speed * mult
+
+
+func _add_hazard(hz: Dictionary) -> void:
+    if not _is_quenched(hz["pos"]):
+        _hazards.append(hz)
+
+
+func _is_quenched(at: Vector2) -> bool:
+    for q in _quenched:
+        if at.distance_to(q["pos"]) <= float(q["r"]):
+            return true
+    return false
+
+
+## A quench vat burst at `at`: his fire and lava within `r` go out, and the ground stays
+## safe for QUENCH_SAFE s (in phase 3, the only safe paths through the flood).
+func quench(at: Vector2, r: float) -> void:
+    if boss_kind != "pyre_lord":
+        return
+    _hazards = _hazards.filter(func(hz): return Vector2(hz["pos"]).distance_to(at) > r + float(hz.get("r", 55.0)) * 0.5)
+    for q in _quenched:
+        if Vector2(q["pos"]).distance_to(at) < 10.0:
+            q["t"] = QUENCH_SAFE
+            return
+    _quenched.append({ "pos": at, "r": r, "t": QUENCH_SAFE })
 
 
 func _add_wave(angle: float, half_width: float, wave_speed: float) -> void:

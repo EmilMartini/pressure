@@ -392,6 +392,13 @@ func _begin_boss() -> void:
     boss_pos = nearest_open(boss_pos, 40.0)
     boss = _spawn_enemy("boss", boss_pos)
     boss.set_boss(String(Regions.get_region(main.region_id)["boss_kind"]))
+    if boss.boss_kind == "pyre_lord":
+        # The arena is a weapon (design section 6): quench vats in the four corners.
+        for off in [Vector2(-280, -170), Vector2(280, -170), Vector2(-280, 170), Vector2(280, 170)]:
+            var vat := Prop.new("quench_vat")
+            vat.room = self
+            vat.position = nearest_open(off, 40.0)
+            add_child(vat)
     if main.floor_number >= 2 and not Main.old_balance:
         var want := BOSS_DPS_SECS * main.floor_arena_dps() * BossBody.hp_share(boss.boss_kind)
         boss.max_hp = clampf(want, boss.max_hp, boss.max_hp * BOSS_HP_MAX_MULT)

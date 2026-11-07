@@ -33,6 +33,9 @@ const SPECS := {
     "lightning_rod": { "tile": Vector2i(5, 15), "tint": Color(0.72, 0.72, 0.80), "scale": 2.4, "size": Vector2(16, 30), "hp": INF, "solid": true, "scrap": [0, 0] },
     "wind_chime": { "tile": Vector2i(44, 8), "tint": Color(0.75, 0.90, 0.85), "scale": 2.0, "size": Vector2(18, 20), "hp": 4.0, "solid": false, "scrap": [1, 1] },
     "blood_altar": { "tile": Vector2i(4, 11), "tint": Color(0.72, 0.36, 0.36), "scale": 2.8, "size": Vector2(44, 32), "hp": INF, "solid": true, "scrap": [0, 0] },
+    # The Forge's quench vats (Pyre Lord arena): shoot one and it bursts, soaking what stands
+    # near and quenching his fire and lava; it refills after QUENCH_REFILL s.
+    "quench_vat": { "tile": Vector2i(5, 14), "tint": Color(0.45, 0.70, 1.00), "scale": 2.4, "size": Vector2(32, 30), "hp": INF, "solid": true, "scrap": [0, 0] },
     "stone_pillar": { "tile": Vector2i(3, 12), "tint": Color(0.60, 0.56, 0.50), "scale": 2.6, "size": Vector2(32, 36), "hp": INF, "solid": true, "scrap": [2, 2] },
 }
 
@@ -40,6 +43,8 @@ const C_FIRE := Color(1.00, 0.45, 0.15)
 const FUSE_SECS := 0.6
 const BLAST_RADIUS := 150.0
 const C_STEAM := Color(0.90, 0.95, 1.00)
+const QUENCH_R := 140.0
+const QUENCH_REFILL := 9.0
 
 var kind := "crate"
 var hp := 3.0
@@ -153,6 +158,10 @@ func apply_element(element: int, _potency: float = 1.0, dir: Vector2 = Vector2.Z
             used = _altar(element)
         "stone_pillar":
             used = _pillar(element)
+        "quench_vat":
+            used = off_time <= 0.0 and element != Element.Kind.WET
+            if used:
+                _quench()
     if used:
         _flash = 0.1
         Telemetry.prop(self, element)
@@ -201,6 +210,11 @@ func take_damage(_amount: float) -> void:
             _chips(Element.Kind.GALE)
             if hp <= 0.0:
                 _break(_roll_scrap())
+        "quench_vat":
+            if off_time <= 0.0:
+                _quench()
+            else:
+                _chips(Element.Kind.STONE)
         _:
             _chips(Element.Kind.STONE)
 
@@ -505,6 +519,30 @@ func _vat(el: int) -> bool:
         Element.Kind.ACID:
             return true
     return false
+
+
+## The vat bursts: water over everything near, the Pyre Lord's fire and lava put out (his
+## burning slag steams), and the ground stays safe a while. Refills after QUENCH_REFILL.
+func _quench() -> void:
+    var gp := global_position
+    off_time = QUENCH_REFILL
+    Elements.reaction_fired.emit("Quenched", gp + Vector2(0, -24), Element.COLORS[Element.Kind.WET])
+    Elements.nova.emit(gp, QUENCH_R, Color(Element.COLORS[Element.Kind.WET], 0.6))
+    Sfx.play_at("rx_wet", gp, 0.0)
+    _fxc("pixels", [Element.Kind.WET, gp, 24, 160.0, 12.0])
+    var mats := _mats()
+    if mats != null:
+        mats.stamp(Element.Kind.WET, gp, QUENCH_R * 0.8, 220)
+    for e in _enemies_within(QUENCH_R + 40.0):
+        if _alive(e):
+            if e.body != null:
+                e.body.focus_at(gp)
+            e.apply_element(Element.Kind.WET, 1.0)
+    for e in get_tree().get_nodes_in_group("enemies"):
+        if _alive(e) and e.boss_kind == "pyre_lord":
+            e.quench(gp, QUENCH_R)
+    if BossBody.log_enabled:
+        print("[ARENA] quench vat burst at %s" % [gp.round()])
 
 
 func _rod(el: int) -> bool:
@@ -921,6 +959,8 @@ func _process(delta: float) -> void:
     _flash = maxf(0.0, _flash - delta)
     _hum = maxf(0.0, _hum - delta)
     off_time = maxf(0.0, off_time - delta)
+    if kind == "quench_vat" and _sprite != null:
+        _sprite.modulate.a = 0.4 if off_time > 0.0 else 1.0   # empty until it refills
     for k in _cd.keys():
         _cd[k] = float(_cd[k]) - delta
         if float(_cd[k]) <= 0.0:
@@ -1156,6 +1196,11 @@ func _draw_rim() -> void:
 ## Over the sprite: state overlays.
 func _draw_over() -> void:
     var half := size / 2.0
+    if kind == "quench_vat" and off_time <= 0.0:
+        # Full: a ring of water over it, so it reads as a tool to shoot.
+        var wc: Color = Element.COLORS[Element.Kind.WET]
+        _over.draw_arc(Vector2(0, -2), half.x + 6.0, 0.0, TAU, 24, Color(0.02, 0.05, 0.12, 0.8), 4.0)
+        _over.draw_arc(Vector2(0, -2), half.x + 6.0, 0.0, TAU, 24, Color(wc, 0.6 + 0.3 * sin(Time.get_ticks_msec() * 0.003)), 2.0)
     if _timers.has("fuse"):
         _draw_fuse(half)
     var r := Rect2(-half, size)
