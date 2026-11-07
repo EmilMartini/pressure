@@ -49,7 +49,8 @@ const NAMES := {
 const HP_SHARE := {
     "pyre_lord": 0.4,
     "hive_mother": 1.5,   # her chain is quick to set up; at 1.0 to 1.2 bot fights took 14 to 33 s
-    "storm_warden": 1.5,   # at 1.0 to 1.3 the bot fights took 17 to 35 s
+    "storm_warden": 1.5,
+    "void_herald": 2.3,   # at 1.0 to 1.9 the bot fights took 14 to 29 s   # at 1.0 to 1.3 the bot fights took 17 to 35 s
 }
 
 
@@ -74,6 +75,7 @@ const PHASES := {
     "brute_king": [0.66, 0.33],
     "hive_mother": [0.66, 0.33],
     "storm_warden": [0.66, 0.33],
+    "void_herald": [0.66, 0.33],
 }
 
 ## Body parts per boss kind. `offset` and `r` are in units of the boss radius. `innate`: an
@@ -90,6 +92,18 @@ const PHASES := {
 ## `wear_by`: armour wear for one named product (overrides `wear`). `payoff`: product -> share
 ## of max health it deals on this part, with a cataclysm's worth of stagger.
 const PARTS := {
+    # The Void Herald: a ring of void shards orbits a hollow centre. Shock on a shard is a
+    # Singularity that leaves a Rift on the ring; a fusion of that Rift pulls the shards in
+    # on themselves and the centre is bare (other products only wear them). Phase 3 the shards come back and close in.
+    "void_herald": [
+        { "id": "shards", "name": "Orbiting shards", "offset": Vector2(0.0, 0.0), "r": 1.15,
+            "innate": Element.Kind.VOID, "armour": true, "wear": { 2: 0.0, 3: 0.04, 4: 0.3 },
+            "tears": ["Drowned Rift", "Accretion", "Frozen Rift", "Smothered Rift", "Venomous Rift",
+                "Caustic Rift", "Sanguine Rift", "Exorcised Rift", "Howling Rift", "Grounded Rift"],
+            "tear_stagger": 0.35, "tear_damage": 0.03, "taken": 0.8 },
+        { "id": "hollow", "name": "Hollow centre", "offset": Vector2(0.0, 0.0), "r": 0.55,
+            "covered_by": "shards", "taken": 1.6 },
+    ],
     # The Storm Warden: his lightning rods keep their charge. Stone on a charged rod is
     # Grounded (three tear them, as do fusions on the glass it leaves). The bare storm core
     # holds no charge of its own: steam it, and his own recharge strike, or your shock, sets
@@ -508,6 +522,10 @@ func on_phase(n: int) -> void:
                 if not parts[rd]["broken"]:
                     tear(rd, "phase 3")
                 Elements.reaction_fired.emit("He becomes the storm", e.global_position + Vector2(0, -e.radius * 1.8), Color(0.95, 0.95, 0.5))
+        "void_herald":
+            var sh := part_index("shards")
+            if n == 3 and sh >= 0 and parts[sh]["broken"]:
+                _reform(sh)   # the shards come back, and close in
         "pyre_lord":
             var a := part_index("armour")
             if n == 2 and a >= 0:

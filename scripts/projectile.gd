@@ -21,6 +21,9 @@ signal body_entered(body: Node)
 static var _add_material: CanvasItemMaterial
 
 var velocity := Vector2.ZERO
+## The Void Herald's gravity wells: [{ "pos", "r", "warn", "t" }] while he lives (Enemy).
+static var wells: Array = []
+static var well_owner: Node = null
 var damage := 1.0
 var element: int = Element.Kind.NONE
 var potency := 1.0
@@ -83,6 +86,28 @@ func _ready() -> void:
         material = _add_material
 
 
+## A gravity well bends the shot towards its centre; a holy shot collapses it.
+func _bend(delta: float) -> void:
+    if not is_instance_valid(well_owner) or well_owner.hp <= 0.0:
+        wells = []
+        return
+    var here := global_position
+    for w in wells:
+        var to: Vector2 = w["pos"] - here
+        var r: float = w["r"]
+        var d2 := to.length_squared()
+        if d2 > r * r or d2 < 1.0 or float(w["warn"]) > 0.0 or float(w["t"]) <= 0.0:
+            continue
+        var d := sqrt(d2)
+        if element == Element.Kind.HOLY or extra_elements.has(Element.Kind.HOLY):
+            w["t"] = 0.0
+            Elements.reaction_fired.emit("Well collapsed", w["pos"], Color(1.0, 0.95, 0.7))
+            Elements.nova.emit(w["pos"], float(w["r"]), Color(1.0, 0.95, 0.7, 0.6))
+            continue
+        var turn := clampf(velocity.angle_to(to), -1.0, 1.0) * 5.0 * delta * (1.0 - d / float(w["r"]))
+        velocity = velocity.rotated(turn)
+
+
 func _physics_process(delta: float) -> void:
     if _landed:
         return
@@ -104,6 +129,8 @@ func _physics_process(delta: float) -> void:
     if _trail.size() > 6:
         _trail.pop_back()
     _ob_grace = maxf(0.0, _ob_grace - delta)
+    if not wells.is_empty() and not lobbed:
+        _bend(delta)
     if homing_turn > 0.0 and not _returning:
         _steer(delta)   # homing stacks with flak, boomerang (on the way out) and straight shots
     match behaviour:

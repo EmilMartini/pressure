@@ -242,6 +242,16 @@ var _strike_t := 1.5
 var _storm_trail := 0.0
 const STRIKE_R := 58.0
 const STRIKE_SELF_R := 1.6     # x radius: a recharge strike on himself
+var _wells: Array = []        # Void Herald: gravity wells [{ "pos", "r", "warn", "t" }]
+var _volleys: Array = []      # Void Herald phase 3: shards closing in [{ "from", "to", "warn", "t", "hit" }]
+var _fed := {}                # Void Herald: element -> hits, for the theft in phase 2
+var _stolen: int = Element.Kind.NONE
+const WELL_R := 110.0
+const WELL_WARN := 1.0
+const WELL_LIFE := 6.0
+const WELL_PULL := 45.0
+const SHARD_WARN := 1.0
+const SHARD_TRAVEL := 0.55
 var _hazards: Array = []    # [{ "pos": Vector2, "t": float }] boss fire patches that hurt players
 var _hazard_tick := 0.0
 
@@ -421,6 +431,8 @@ func apply_element(kind: int, potency: float, source: Player = null) -> String:
         return ""
     if source != null:
         last_hit_by = source
+    if boss_kind == "void_herald" and source != null:
+        _fed[kind] = int(_fed.get(kind, 0)) + 1
     if boss_kind == "brute_king" and _swallowed > 0 and _gut_warn <= 0.0 and hp > 0.0 \
             and (kind == Element.Kind.FIRE or kind == Element.Kind.SHOCK):
         # The barrels in his gut catch: he braces, then bursts (telegraphed ring).
@@ -803,6 +815,8 @@ func _draw_hostile(cv: CanvasItem) -> void:
         _draw_hive_hostile(cv)
     elif boss_kind == "storm_warden":
         _draw_warden_hostile(cv)
+    elif boss_kind == "void_herald":
+        _draw_herald_hostile(cv)
     if body != null and body.has_parts():
         _draw_parts(cv)
     if _mode == MODE_TELEGRAPH and emerge <= 0.0 and hp > 0.0:
@@ -1301,6 +1315,8 @@ func _tick_boss_passive(delta: float) -> void:
                 _queue_summons("grunt", 3, 0.8)
         "storm_warden":
             _tick_strikes(delta)
+        "void_herald":
+            _tick_herald(delta)
         "pyre_lord":
             _hazard_tick -= delta
             for i in range(_hazards.size() - 1, -1, -1):
@@ -1517,6 +1533,24 @@ func _draw_parts(cv: CanvasItem) -> void:
                     cv.draw_circle(tip, tr + 2.5, Hostile.DARK)
                     cv.draw_circle(tip, tr, glow.lerp(Color.WHITE, flash * 0.6))
                     cv.draw_arc(tip, tr + 2.5, 0.0, TAU, 14, Color(Hostile.RED, 0.9), 1.0)
+            "shards":
+                if p["broken"]:
+                    continue
+                # Void shards orbiting the hollow; one drops away per fifth of wear.
+                var n_sh := ceili(float(p["integrity"]) * 5.0)
+                var orbit := pr * (0.8 if _phase >= 3 else 1.0)
+                for k in n_sh:
+                    var ang := _fx_t * 1.4 + TAU * float(k) / 5.0
+                    var c := at + Vector2.from_angle(ang) * orbit
+                    _draw_shard(cv, c, ang, 9.0, flash)
+            "hollow":
+                if not vis:
+                    continue
+                var hr := pr * (1.0 + 0.1 * sin(_fx_t * 6.0))
+                cv.draw_circle(at, hr + 3.0, Hostile.DARK)
+                cv.draw_arc(at, hr + 3.0, 0.0, TAU, 24, Hostile.RED, 1.5)
+                cv.draw_circle(at, hr, Color(0.55, 0.3, 0.85).lerp(Color.WHITE, flash))
+                cv.draw_circle(at, hr * 0.6, Color(0.04, 0.0, 0.08))
             "storm_core":
                 if not vis:
                     continue
@@ -1608,35 +1642,7 @@ func _think_boss(delta: float, target: Player, dir: Vector2, dist: float, mult: 
         "pyre_lord":
             return _think_pyre(delta, target, dir, mult)
         "void_herald":
-            _t1 -= delta
-            _t2 -= delta
-            _t3 -= delta
-            # Pull: players within range are dragged slowly towards the herald.
-            var pull_r := 260.0 if _phase == 1 else 320.0
-            var pull_s := 40.0 if _phase == 1 else 65.0
-            for p in get_tree().get_nodes_in_group("players"):
-                if is_instance_valid(p) and p.alive and p is CharacterBody2D:
-                    var d: float = p.global_position.distance_to(global_position)
-                    if d <= pull_r and d > radius + 20.0:
-                        (p as CharacterBody2D).move_and_collide((global_position - p.global_position).normalized() * pull_s * delta)
-            # Spiral volleys.
-            if _t1 <= 0.0 and _spiral_left <= 0.0:
-                _t1 = 5.0 if _phase == 1 else 3.5
-                _spiral_left = 2.5
-                _burst_t = 0.0
-            if _spiral_left > 0.0:
-                _spiral_left -= delta
-                _burst_t -= delta
-                _spiral_angle += delta * 3.2
-                if _burst_t <= 0.0:
-                    _burst_t = 0.12
-                    var arms := 2 if _phase == 1 else 3
-                    for i in arms:
-                        _shoot(Vector2.RIGHT.rotated(_spiral_angle + TAU * float(i) / float(arms)), 180.0, _projectile_damage(6.0), Element.Kind.VOID, 4.0, 7.0)
-            if _t2 <= 0.0:
-                _t2 = 7.0
-                _queue_summons("wisp", 2 if _phase == 1 else 3, 0.8)
-            return _keep_range(delta, dir, dist, 140.0, 240.0) * speed * mult
+            return _think_herald(delta, target, dir, dist, mult)
     return dir * speed * mult
 
 
@@ -1777,6 +1783,169 @@ func _draw_warden_hostile(cv: CanvasItem) -> void:
             cv.draw_polyline(pts, Hostile.DARK, 7.0)
             cv.draw_polyline(pts, Hostile.RED, 3.0)
             cv.draw_polyline(pts, Color(1.0, 0.95, 0.8), 1.0)
+
+
+# --- The Void Herald --------------------------------------------------------------
+
+
+## Phase 1: gravity wells (a marked circle first) that pull you and bend your shots; holy
+## collapses them. Spiral volleys and wisps as before. Phase 2: it steals the element you
+## hit it with most: immune to it, and its spirals carry it. Phase 3: the theft ends and the
+## shards close in: rings of shards that fly at where you stood, their paths marked first.
+func _think_herald(delta: float, target: Player, dir: Vector2, dist: float, mult: float) -> Vector2:
+    _t1 -= delta
+    _t2 -= delta
+    _t3 -= delta
+    if _t1 <= 0.0 and _spiral_left <= 0.0:
+        _t1 = [5.0, 3.8, 4.5][clampi(_phase - 1, 0, 2)]
+        _spiral_left = 2.5
+        _burst_t = 0.0
+    if _spiral_left > 0.0:
+        _spiral_left -= delta
+        _burst_t -= delta
+        _spiral_angle += delta * 3.2
+        if _burst_t <= 0.0:
+            _burst_t = 0.12
+            var arms := 2 if _phase == 1 else 3
+            var el: int = _stolen if _stolen != Element.Kind.NONE else Element.Kind.VOID
+            for i in arms:
+                _shoot(Vector2.RIGHT.rotated(_spiral_angle + TAU * float(i) / float(arms)), 180.0, _projectile_damage(6.0), el, 4.0, 7.0)
+    if _t2 <= 0.0:
+        _t2 = 7.0
+        _queue_summons("wisp", 2 if _phase == 1 else 3, 0.8)
+    if _t3 <= 0.0:
+        if _phase >= 3:
+            _t3 = 3.5
+            _close_in(target.global_position)
+        else:
+            _t3 = 6.0 if _phase == 1 else 5.0
+            var live := 0
+            for w in _wells:
+                if float(w["t"]) > 0.0:
+                    live += 1
+            if live < (2 if _phase == 1 else 3):
+                _wells.append({ "pos": _pick_point_near(target.global_position, 40.0, 140.0), "r": WELL_R, "warn": WELL_WARN, "t": WELL_LIFE })
+    return _keep_range(delta, dir, dist, 160.0, 260.0) * speed * mult
+
+
+## Phase 2: the element the party fed it most is now its own.
+func _steal() -> void:
+    var best: int = Element.Kind.NONE
+    var most := 0
+    for k in _fed.keys():
+        if int(k) != Element.Kind.NONE and int(_fed[k]) > most:
+            most = int(_fed[k])
+            best = int(k)
+    if best == Element.Kind.NONE:
+        best = Element.Kind.FIRE
+    _stolen = best
+    immune_to = best
+    Elements.reaction_fired.emit("It steals your %s" % Element.NAMES[best], global_position + Vector2(0, -radius * 1.8), Element.COLORS[best])
+    if BossBody.log_enabled and body != null:
+        print("[BOSS-MOVE] t=%.1f kind=void_herald steals=%s phase=%d" % [body.age, Element.NAMES[best], _phase])
+
+
+## Six shards on a ring round `at` fly in at it after their paths show.
+func _close_in(at: Vector2) -> void:
+    var off := randf() * TAU
+    for k in 6:
+        var from := at + Vector2.from_angle(off + TAU * float(k) / 6.0) * 240.0
+        _volleys.append({ "from": from, "to": at + (at - from) * 0.4, "warn": SHARD_WARN, "t": 0.0, "hit": false })
+    while _volleys.size() > 18:
+        _volleys.pop_front()
+    if BossBody.log_enabled and body != null:
+        print("[BOSS-MOVE] t=%.1f kind=void_herald close_in phase=%d" % [body.age, _phase])
+
+
+func _tick_herald(delta: float) -> void:
+    if _phase == 2 and _stolen == Element.Kind.NONE:
+        _steal()
+    elif _phase >= 3 and _stolen != Element.Kind.NONE:
+        Elements.reaction_fired.emit("It lets go of your %s" % Element.NAMES[_stolen], global_position + Vector2(0, -radius * 1.8), Element.COLORS[_stolen])
+        _stolen = Element.Kind.NONE
+        immune_to = Element.Kind.NONE
+    Projectile.wells = _wells
+    Projectile.well_owner = self
+    for i in range(_wells.size() - 1, -1, -1):
+        var w: Dictionary = _wells[i]
+        if float(w["warn"]) > 0.0:
+            w["warn"] = float(w["warn"]) - delta
+            continue
+        w["t"] = float(w["t"]) - delta
+        if float(w["t"]) <= 0.0:
+            _wells.remove_at(i)
+            continue
+        for p in get_tree().get_nodes_in_group("players"):
+            if is_instance_valid(p) and p.alive and p is CharacterBody2D:
+                var d: float = p.global_position.distance_to(w["pos"])
+                if d <= float(w["r"]) and d > 12.0:
+                    (p as CharacterBody2D).move_and_collide((Vector2(w["pos"]) - p.global_position).normalized() * WELL_PULL * delta)
+    var dmg := _projectile_damage(8.0) * damage_mult
+    for i in range(_volleys.size() - 1, -1, -1):
+        var v: Dictionary = _volleys[i]
+        if float(v["warn"]) > 0.0:
+            v["warn"] = float(v["warn"]) - delta
+            continue
+        v["t"] = float(v["t"]) + delta / SHARD_TRAVEL
+        if float(v["t"]) >= 1.0:
+            _volleys.remove_at(i)
+            continue
+        if v["hit"]:
+            continue
+        var at: Vector2 = Vector2(v["from"]).lerp(v["to"], float(v["t"]))
+        for p in get_tree().get_nodes_in_group("players"):
+            if is_instance_valid(p) and p.alive and p.global_position.distance_to(at) <= 16.0:
+                p.take_damage(dmg, self, at)
+                v["hit"] = true
+                break
+
+
+func _exit_tree() -> void:
+    if Projectile.well_owner == self:
+        Projectile.wells = []
+        Projectile.well_owner = null
+
+
+func _draw_shard(cv: CanvasItem, c: Vector2, ang: float, sz: float, flash: float) -> void:
+    var pts := PackedVector2Array([c + Vector2(sz * 1.4, 0).rotated(ang), c + Vector2(0, sz * 0.6).rotated(ang), c + Vector2(-sz * 1.4, 0).rotated(ang), c + Vector2(0, -sz * 0.6).rotated(ang)])
+    var big := PackedVector2Array()
+    for q in pts:
+        big.append(c + (q - c) * 1.35)
+    cv.draw_colored_polygon(big, Hostile.DARK)
+    cv.draw_colored_polygon(pts, Color(0.6, 0.35, 0.95).lerp(Color.WHITE, flash * 0.6))
+    big.append(big[0])
+    cv.draw_polyline(big, Color(Hostile.RED, 0.9), 1.0)
+
+
+func _draw_herald_hostile(cv: CanvasItem) -> void:
+    for w in _wells:
+        var at := to_local(w["pos"])
+        var r := float(w["r"])
+        if float(w["warn"]) > 0.0:
+            var k := 1.0 - float(w["warn"]) / WELL_WARN
+            cv.draw_arc(at, r, 0.0, TAU, 32, Color(Hostile.DARK, 0.8), 6.0)
+            cv.draw_arc(at, r, 0.0, TAU, 32, Color(Hostile.RED, 0.45 + 0.5 * k), 2.5)
+            cv.draw_circle(at, r * k, Color(Hostile.RED, 0.15))
+        else:
+            # A dark well with arcs spiralling into it.
+            cv.draw_circle(at, r, Color(0.05, 0.0, 0.08, 0.35))
+            cv.draw_arc(at, r, 0.0, TAU, 32, Hostile.DARK, 4.0)
+            cv.draw_arc(at, r + 2.0, 0.0, TAU, 32, Color(Hostile.RED, 0.8), 1.5)
+            for j in 3:
+                var a0 := -_fx_t * 2.5 + TAU * float(j) / 3.0
+                var rr := r * (0.35 + 0.5 * fmod(_fx_t * 0.6 + float(j) / 3.0, 1.0))
+                cv.draw_arc(at, rr, a0, a0 + 1.6, 10, Color(Hostile.RED, 0.7), 2.0)
+    for v in _volleys:
+        var f := to_local(v["from"])
+        var t := to_local(v["to"])
+        var ang := (t - f).angle()
+        if float(v["warn"]) > 0.0:
+            var k := 1.0 - float(v["warn"]) / SHARD_WARN
+            cv.draw_line(f, t, Color(Hostile.DARK, 0.7), 5.0)
+            cv.draw_line(f, t, Color(Hostile.RED, 0.35 + 0.5 * k), 1.5)
+            _draw_shard(cv, f, ang, 8.0, 0.0)
+        elif not v["hit"]:
+            _draw_shard(cv, f.lerp(t, float(v["t"])), ang, 9.0, 0.0)
 
 
 # --- The Hive Mother --------------------------------------------------------------

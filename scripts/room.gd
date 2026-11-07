@@ -673,7 +673,7 @@ func _on_enemy_died(e: Enemy) -> void:
             print("[BOSS] floor=%d kind=%s secs=%.1f phase2=%.1f max_hp=%.0f arena_dps=%.0f player_hp=%.0f/%.0f low=%.2f" % [
                 main.floor_number, e.boss_kind, _boss_secs, _boss_p2, e.max_hp, main.floor_arena_dps(), pl.hp, pl.max_hp, low_hp])
             if e.body != null:
-                print("[BOSS-BODY] kind=%s secs=%.1f %s" % [e.boss_kind, _boss_secs, e.body.summary()])
+                print("[BOSS-BODY] kind=%s secs=%.1f max_hp=%.0f %s" % [e.boss_kind, _boss_secs, e.max_hp, e.body.summary()])
             if OS.get_cmdline_user_args().has("--boss-only"):
                 main._print_stats("END")
                 main.get_tree().quit()
