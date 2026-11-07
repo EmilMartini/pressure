@@ -445,6 +445,13 @@ func hitstop(secs: float, scale: float = 0.05) -> void:
     Engine.time_scale = scale
 
 
+## Bot, probe and capture runs: any user argument after `--` (or `--autotest` anywhere).
+## Every autoload checks this in its own _ready, before its first load, so such a run never
+## reads or writes the player's settings.json, save.json, mastery.json or runs.jsonl.
+static func bot_run() -> bool:
+    return not OS.get_cmdline_user_args().is_empty() or OS.get_cmdline_args().has("--autotest")
+
+
 ## Parallel bot runs: `--instance=N` gives each its own save, mastery and telemetry files
 ## (and `--audio-driver Dummy` on the command line keeps them silent).
 static func _instance_tag() -> String:

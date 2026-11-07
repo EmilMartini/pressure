@@ -112,6 +112,10 @@ func _ready() -> void:
     for k in Element.COLORS.keys():
         var c: Color = Element.COLORS[k]
         _color_names[c.to_html()] = String(Element.NAMES[k])
+    # Bot runs keep their records in runs_<n>.jsonl (runs_bot.jsonl without --instance).
+    if Main.bot_run():
+        var tag := Main._instance_tag()
+        FILE = "%s/runs%s.jsonl" % [DIR, tag if tag != "" else "_bot"]
     device_id = String(Settings.get_value("telemetry_device_id"))
     if device_id == "" or device_id == "<null>":
         device_id = _hex(8)

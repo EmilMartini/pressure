@@ -254,6 +254,9 @@ func _init() -> void:
 
 
 func _ready() -> void:
+    # Bot runs never touch the player's Shrine (main.gd / hub.gd reset this file later).
+    if Main.bot_run():
+        save_path = "user://mastery_autotest%s.json" % Main._instance_tag()
     load_save()
 
 

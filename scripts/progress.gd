@@ -187,7 +187,7 @@ func _ready() -> void:
     # Bot and capture runs (any user argument after `--`) never read or write the player's
     # save, not even here before main.gd or hub.gd pick their own file: loading migrates
     # and settles, and both write.
-    if not OS.get_cmdline_user_args().is_empty():
+    if Main.bot_run():
         save_path = "user://save_autotest%s.json" % Main._instance_tag()
     load_save()
 

@@ -55,7 +55,15 @@ var save_path := SAVE_PATH
 
 func _ready() -> void:
     process_mode = Node.PROCESS_MODE_ALWAYS
+    # Bot runs use a throwaway options file per instance, never the player's: the hub
+    # tutorial, explainer and play-data prompt are marked done and uploads stay off.
+    if Main.bot_run():
+        save_path = "user://settings_autotest%s.json" % Main._instance_tag()
     load_settings()
+    if Main.bot_run():
+        values["tutorial_done"] = true
+        values["seen_explainer"] = true
+        values["telemetry"] = "off"
     _ensure_buses()
     get_tree().node_added.connect(_on_node_added)
     Input.joy_connection_changed.connect(_on_joy_connection_changed)
