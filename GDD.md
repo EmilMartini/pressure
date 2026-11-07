@@ -1104,6 +1104,12 @@ ranks per side, active sides, survival ranks, bounties paid and lifetime Embers 
 - A hub room between runs that fills up: trophies from bosses on the wall, a bestiary with
   what you have learned about elites (their sequences shown once discovered), a reaction
   compendium, run history. Nothing in it changes gameplay.
+- **Built in phase 1 of `design/World and progression GDD.md` (2026-11-07):** the hub is now
+  the Hollow, five connected rooms with people in them. The Keeper is the Shrine, the
+  Gatewarden the Gate and a bare run history, and the Archivist (freed in the Ossuary with a
+  Torn Bestiary Page) brings the Journal's reaction tabs and the full Ledger. Lines are keyed
+  to the save (`scripts/dialogue.gd`) and are placeholders until the voice sheets are
+  approved. See the README's hub section.
 
 ### Save file
 - Unlocks, characters, highest keystone per character, bestiary, stats and run history.

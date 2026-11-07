@@ -293,11 +293,23 @@ HUD and effect engine pick it up with no other change.
 
 ## The hub, the tutorial and the loop
 
-The game starts in a hub room (Enter the Gungeon's Breach): walk to a station and press
-A or E. The Gate starts a run (pick a class first), the Armory is the Journal, the Shrine
-the talent board, the Mirror sets names, the Workshop opens Options, the Ledger shows
-your last runs and totals, and the Trophy Wall lights one tile per achievement with the
-next three goals under it. The first time you play, a short tutorial room runs before the
+The game starts in the Hollow, a hub of five connected rooms (`scripts/hub.gd`): walk up
+to a person or a station and press A or E. People talk first (a line keyed to your save,
+`scripts/dialogue.gd`), then offer their services as buttons. In the Fire, the Keeper
+opens the talent board (the Shrine). In the Stair, the Gatewarden starts a run (pick a
+class first) and shows your past runs; the Gate arch beside them starts a run directly.
+The Archivist, once freed (see below), lives in the Library and opens the Journal
+(Reactions, Fusions, Cataclysms, Secrets) and the full Ledger with totals. In the Forge,
+the Armory opens the Journal's Arsenal and Gear tabs and the Workshop opens Options. In
+the Chapel, the Mirror sets names and the Trophy Wall lights one tile per achievement with
+the next three goals under it. A fresh save shows only the Keeper, the Gatewarden and the
+Gate; the Forge and Chapel stations appear after the first run.
+
+The Archivist sits chained in the treasure room of the Ossuary Gate (the first region)
+every run until freed. The first elite you kill in a run drops a Torn Bestiary Page;
+carry it to the Archivist and give it (A / E) to free them. People are drawn in code
+(`scripts/npc.gd`, FigureGen blends). Every line in the game is a placeholder until the
+voice sheets in `design/Voice sheets, phase 1.md` are approved. The first time you play, a short tutorial room runs before the
 hub (replayable from the hub's Esc menu). A one-time explainer card states the loop:
 runs are five floors ending in bosses; dying keeps achievements, unlocks and Embers;
 runs pay Embers for rooms, elites and new reactions, and the Shrine trades them for
@@ -605,7 +617,15 @@ the profile's own. Add `--fixed-fps 60` before the scene to run it faster than r
 merge pedestal to `autotest/` (real window); `--hurt-shot` the danger cues (see Danger). Bots print `[LEVEL]` (level, floor, rooms,
 XP so far), `[WAVE]` (what lay on the floor when a wave ended, lowest health),
 `[DWELL]` (seconds spent in a cleared arena) and `[SALVAGE]` lines. `godot --path . -- --menu-shot`
-screenshots the menu and codex. `godot --headless --path . res://scenes/main.tscn -- --obstacle-test`
+screenshots the menu and codex. `--recruit-probe` (with `--autotest`, e.g. with
+`--fusion-probe --one-floor`) walks to the Torn Bestiary Page after the first elite dies,
+carries it to the chained Archivist, frees them and quits; it prints `[RECRUIT]` lines.
+`godot --headless --fixed-fps 60 --path . res://scenes/hub.tscn -- --hub-walk --instance=N`
+walks the Hollow on a fresh save and uses every station on show (`[HUB]`, `[HUB-FRESH]`,
+`[HUB-TALK]`, `[HUB-STEP]`, `[HUB-WALK] PASS/FAIL`); `--keep-save` keeps the instance's
+save instead (run it after a `--recruit-probe` on the same instance to check the Archivist,
+the Journal and every old station), and `--hub-shot` (real window) saves
+`autotest/hub_<station>.png` and `_talk` captures. `godot --headless --path . res://scenes/main.tscn -- --obstacle-test`
 checks projectiles hit obstacles. `godot --headless --fixed-fps 60 --path . res://scenes/main.tscn -- --autotest
 --gun-probe[=a,b,...]` fires each gun (or the ones named) alone at tier I against pinned
 dummies and prints `[GUN-PROBE] id archetype mechanic element weight single=.. pack=..

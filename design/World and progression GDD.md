@@ -1120,7 +1120,7 @@ Left:
 - Not measured: whether text and badges are now too sparse for a new player (for example, an
   unaimed enemy's resistances can't be seen at a glance).
 
-### Phase 1: The Hollow, part 1
+### Phase 1: The Hollow, part 1 (BUILT 2026-11-07, lines wait for approval)
 
 - **Goal:** a walkable hub with people in it, and features that arrive with them.
 - **Scope:**
@@ -1140,6 +1140,80 @@ Left:
   - Recruiting the Archivist opens the Journal.
   - The line batch passes the writing review (section 9).
   - Hub screenshots read well on a TV.
+
+**Phase 1 handoff (2026-11-07, built while Emil was away; part 1 of 2: the line batch waits for
+approval).**
+
+Done:
+- **The Hollow** (`scripts/hub.gd`): five rooms joined by doorways, the camera following the
+  players. The Fire (the Keeper and a code-drawn fire), the Stair (the Gatewarden and the
+  Gate arch), the Library (shelves, a desk, the Archivist once home), the Forge (Armory and
+  Workshop plinths, a cold hearth and an anvil) and the Chapel (trophy wall and goals, the
+  Mirror). Floors and walls use the crypt, forge, ruins and sanctum themes.
+- **Dialogue** (`scripts/dialogue.gd`): lines with conditions on the save (where, talks,
+  runs, deaths, last result, last floor and region, Embers, the Archivist's state, the page),
+  a priority, `once`, and least-heard-first among equals. Counts live in the save (`npcs`,
+  `seen_lines`; old saves load with neither). Run history entries now carry the region.
+- **The talk box:** name in the NPC's colour, the line, then their services as buttons and
+  Leave; pad, keyboard and mouse. The Keeper offers Talents; the Gatewarden Descend and Past
+  runs; the Archivist Journal and Ledger.
+- **The Archivist:** chained in the first region's treasure room (shop if none) every run
+  until freed. The first elite killed in a run drops the Torn Bestiary Page as a pedestal;
+  carrying it, the Archivist's prompt reads "Give: Torn Bestiary Page". Giving frees them
+  (save state `recruited`), the toast says where to find them, and the Library desk is
+  theirs from the next hub visit. Meeting without the page sets `met`, and the next line
+  remembers it.
+- **Features arrive with people:** the Journal is split by station (`Journal.set_view`): the
+  Archivist has Reactions, Fusions, Cataclysms and Secrets; the Armory Arsenal and Gear; the
+  trophy wall Achievements. Before the Archivist, the Gatewarden's Past runs is the bare
+  history (last five runs and a count of deaths); after, it is the full ledger with totals.
+- **Looks** (`scripts/npc.gd`): FigureGen theme blends at 3.5x with a rim in the NPC's
+  colour (Keeper fire and vagrant, Gatewarden plate and stone, Archivist arcane and poison),
+  chains and shackles drawn in code. No new art files.
+- **Voice sheets** for the three: `design/Voice sheets, phase 1.md`, ten samples each, a
+  Haiku review against section 9 (19 of 44 lines flagged; 10 fixed, 3 left for Emil).
+  The game ships 14 plain lines tagged `"placeholder": true`.
+
+Measured:
+- `--recruit-probe` (fusion probe loadouts, 3 runs): page dropped at t=21, 23 and 48 s,
+  taken 5 to 7 s later, the Archivist freed at t=99, 148 and 91 s; 0 script errors.
+- `--hub-walk`, fresh save: `[HUB-FRESH] PASS` (on show: keeper, gatewarden, gate), and the
+  Keeper's talents, the Gatewarden's past runs and Descend, and the Gate all open.
+- `--hub-walk --keep-save` after a recruit run: all 8 stations on show; every step PASS,
+  including the Archivist's Journal (Reactions, Fusions, Cataclysms, Secrets) and Ledger, the
+  Armory (Arsenal, Gear), the Workshop (options), the Mirror (names) and the trophy wall.
+- Screenshots (`--hub-shot`, 1280x720): NPCs were 40 px tall and the Archivist's name sat on
+  the desk; NPCs are now 56 px, names 24 px over their heads, the prompt and verb above the
+  name, the talk box text 28 px and its name 30 px. In the Stair the camera stops at the
+  room's edge and the box covered the Gatewarden, so the box moves to the top of the screen
+  when the speaker is in the lower half.
+- Section 0 checks: editor load check clean. Idle six-gun bot (2 runs): 0 script errors, died
+  in Ossuary Gate at t=145 and 44 s. Fusion probe (2 runs): 0 script errors, cleared Ossuary
+  Gate (Brute King 12.7 and 69.9 s), `[FUSION-CHECK] PASS`, `[SPAWN-CHECK] PASS` close=0.
+  Neither bot picks up the page (only `--recruit-probe` does), so their play is unchanged.
+
+Left:
+- **The real line batch.** Waits for Emil's approval of the voice sheets; then write the
+  1,500 to 3,000 line target in batches, starting with these three, and run the section 9
+  review on each batch. The boss name token (`{boss}`, sample Gatewarden 2) and the killer of
+  the last run are not in the context yet; add them with the batch.
+- Death-keyed lines need the killer in the run history (`Progress.end_run`); only the region
+  and floor are stored now.
+- The Archivist's Journal tabs for enemies, region profiles and lessons (section 9's cast
+  table) do not exist yet; lessons are phase 3.
+- Giving the page costs nothing yet: it has no other use. Section 9 wants giving to cost
+  something; a page that can be read for a run bonus, or sold, would make it a choice.
+- NPC pronouns are open (the samples avoid them).
+- Hub screenshots were checked at 1280x720 only, not on a TV.
+
+Defaults taken (listed in section 16 as AN to AR):
+- Stations whose NPC isn't built (Armory, Workshop, Mirror, trophy wall) appear from the
+  first run on, so a fresh save shows only the Shrine (Keeper) and the Gate (Gatewarden).
+- The old Ledger station is gone: the Gatewarden keeps the bare history, the Archivist the
+  full one. Players with old saves lose the reaction tabs until they free the Archivist.
+- The page drops from the first elite killed in any region; the Archivist is only in the
+  Ossuary. A page found deeper waits for the next run, since pages don't carry over.
+- The Gate arch still starts a run without talking, next to the Gatewarden.
 
 ### Phase 1b: Bonds
 
@@ -1267,6 +1341,11 @@ Left:
 | AK | Void Herald chain and theft | Any Rift fusion collapses the shards; the theft is the element with the most hits by the end of phase 1, immune for phase 2 only |
 | AL | Gravity wells | 110 px, 6 s, pull 45 px/s, bend player shots; holy collapses them |
 | AM | Music per phase | Track change, filter and a 6% pitch lift from the existing boss pool; no new audio |
+| AN | Stations without an NPC yet (phase 1) | Armory, Workshop, Mirror and trophy wall work as before, shown from the first run on |
+| AO | Where the run history lives before and after the Archivist | Gatewarden: last five runs and deaths; Archivist: the full ledger with totals |
+| AP | Where the Archivist is chained | The Ossuary Gate's treasure room (shop if none), every run until freed |
+| AQ | Which elite drops the Torn Bestiary Page | The first elite killed in a run, any region, while the Archivist is not home |
+| AR | Placeholder lines before the voice sheets are approved | Ship plain functional lines tagged `placeholder` in `scripts/dialogue.gd` |
 
 ---
 
