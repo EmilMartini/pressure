@@ -1037,6 +1037,89 @@ depth (recipes in `README.md`):
 - Music layers are track changes, filter and pitch from the existing pool; real stems would
   need new CC0 or CC BY music.
 
+### Clarity pass (DONE 2026-11-07)
+
+Emil plays solo and could not tell elements, enemies and shots apart. Brotato and Noita read
+clearly to him. This pass came before more content. No new art; the DCSS packs stay.
+
+What changed:
+1. **Nothing spawns on the player** (Brotato's rule). Every spawn keeps 170 px from players
+   after clamping (`Room.SPAWN_MIN`; a ring point near a wall used to be clamped onto a player).
+   A spawn telegraphs for 1 s (`Enemy.EMERGE_SECS`, was 0.75) under a marker: a dark disc,
+   a red rim, red pixels closing in. A player within 80 px of a marker moves it
+   (`Room.respawn_point`) and its telegraph starts over. Room spawns, elites, secret-room
+   spawns and boss summons (`_pending`) all do this. Bot log: `[SPAWN-MOVED]` per move, and
+   `[SPAWN-CHECK] PASS/FAIL` at the end: no body finished emerging within 60 px of a player.
+2. **Quieter own effects.** Fields and gas draw full only at their rim; insides are at 15%
+   (`fill` in the Materials shader). The field layer is at 80%, its glow at 25%. Bloom is
+   0.35 (was 0.85). "Your effects" defaults to 0.45 (was 1.0); `FX_REV` 3 lowers saved
+   values once. Enemy shots and hostile edges are on the Crisp layer, unfaded, so they stay
+   the brightest thing on screen.
+3. **Less combat text.**
+   - Damage numbers show only for crits, and for hits at 2.5x the running average (at least
+     25), so the cutoff follows the build.
+   - Reaction names were already limited to fusions and cataclysms. Each name now shows at
+     most once per 4 s.
+   - A first discovery is a HUD toast ("New fusion: X") instead of "NEW" in the fight.
+   - Toasts that arrive during a fight wait until the room is clear.
+4. **Enemy outlines.** Bodies draw 15% larger than their hit circle, with an opaque dark
+   outline 2 world px wide in 8 directions (was 1 texel in 4 directions at 85%).
+5. **Flat floor.** Floor tiles and boss-room floor decals keep 50% saturation and 60%
+   contrast around a dark middle (`Room.FLAT_FLOOR`, mid 0.08). A flat grey (mid 0.4) and
+   mid 0.16 scored lower on enemy contrast: the DCSS bodies are mid-tone, so a dark floor
+   separates them best.
+6. **Badges** (region resistances) show only on the aimed enemy (`Player.aimed`), on elites
+   and on bosses.
+
+**Measured** with `--clarity-shot` (README, Self-test): a fixed seed, the storm build, the
+player standing near the middle, shots at 5, 8 and 11 s (boss: 5, 9, 13 s, boss health x5).
+Averages of seeds 7 and 11. "Before" is d301b70 (item 1 only), so spawn placement matches.
+
+| Scene | Own effects, % of screen | Own effects, mean change | Enemy contrast, per pixel | Enemy contrast, means | Text items |
+|---|---|---|---|---|---|
+| Frostvault arena | 75.9 -> 49.4 | 50.1 -> 20.4 | 0.213 -> 0.227 | 0.185 -> 0.158 | 47.5 -> 14.2 |
+| Rust Ruins arena | 10.5 -> 13.8 | 4.5 -> 5.3 | 0.260 -> 0.288 | 0.249 -> 0.282 | 30.7 -> 4.4 |
+| Hive Mother | 12.5 -> 9.8 | 6.6 -> 4.1 | 0.367 -> 0.350 | 0.358 -> 0.336 | 33.8 -> 6.3 |
+
+How to read the measurements:
+- **Own effects, % of screen:** pixels that change by more than 0.1 when the player's
+  shots, clouds, pools, sprays, beams, mines, particles and floor fields are hidden.
+- **Own effects, mean change:** the average change over the whole screen, in % of full scale.
+- **Enemy contrast, per pixel:** mean |luminance with the body - without it| over each
+  enemy's disc. Floor texture counts towards it, so flattening the floor lowers it a little
+  by itself.
+- **Enemy contrast, means:** the same, using the disc's average luminance with and without
+  the body.
+
+In Frostvault the field layer was most of the white: with each layer hidden alone, its mean
+change went from 47 to 27 at a 30% inside, before the 15% inside. Rust Ruins own effects
+were small before and after; that difference is frame noise between seeds. Enemy contrast is
+noisy from frame to frame (±0.05 between seeds). It went up in Rust Ruins, about level in
+the Hive Mother fight, and down on the "means" measure in Frostvault, where the frost
+monsters are pale. Screenshots: `autotest/clarity_<region>[_boss]_<before|after>_<n>.png`.
+
+Checks:
+- Idle bot, fusion probe (two loadouts) and a real-floor storm run to the Storm Warden: 0
+  script errors, `[FUSION-CHECK] PASS`, `[SPAWN-CHECK] PASS` with close=0, and 6 to 10
+  markers moved per run.
+- Brute King boss-only and Hive Mother real-floor runs (on the item 1 code): PASS, 6 and 9
+  moves.
+- fps, real window, storm build in Frostvault, 110 s, run in both orders: old 69.3 and 68.8,
+  new 68.5 and 68.7 (minimum 35/36 old, 38/37 new).
+
+Left:
+- Gas still leaves a grey grid in big steam clouds: neighbours' gas drifts into a cell's
+  border at full strength (the drift loop after the rim fade in the Materials shader).
+- Frostvault enemies are pale and the frozen floor is light. If they still blend for Emil,
+  that is the case for a region-specific floor mid or an art change (out of scope here).
+- A splitter's two swarmers still appear where it dies, without a telegraph (a death split,
+  not a spawn).
+- `Cloud`, `Pool` and `Spray` nodes are only faded by "Your effects", not drawn as rims.
+- Spawn markers are prominent in big refills (8 to 10 at once in Frostvault). If that reads
+  as noise, shrink them or hide the disc until the last half second.
+- Not measured: whether text and badges are now too sparse for a new player (for example, an
+  unaimed enemy's resistances can't be seen at a glance).
+
 ### Phase 1: The Hollow, part 1
 
 - **Goal:** a walkable hub with people in it, and features that arrive with them.

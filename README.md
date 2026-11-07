@@ -534,8 +534,8 @@ others; every source with its URL is in `assets/audio/CREDITS.txt`. The `Sfx` au
 
 ## Damage numbers
 
-Every hit prints its damage over the target: element-coloured for bullets and
-reactions, big yellow with a bang for crits. Damage you take is a big "-N" in hot red
+Big hits print their damage over the target: crits always (big yellow with a bang),
+any other hit at 2.5x the running average of your hits (at least 25), element-coloured. Damage you take is a big "-N" in hot red
 with a black outline over your figure, never crowded out by your own numbers.
 Burn, poison and bleed ticks are batched into one dim number every half second so a
 burning crowd stays readable.
@@ -622,7 +622,9 @@ hub's sanctum as `autotest/theme_<name>.png`.
 `--build=storm --start-floor=N --route=...`) stands the player in the floor's first arena (or boss
 room) from a fixed seed and saves `autotest/clarity_<region>_<tag>_<n>.png` at three moments, each
 with a `[CLARITY]` line: the share of screen pixels the player's own effects change, enemy-to-floor
-luminance contrast, and on-screen text items (design doc "Clarity pass"). Every bot run prints
+luminance contrast, and on-screen text items (design doc "Clarity pass"). `--clarity-parts` adds a
+`[CLARITY-PARTS]` line (each kind of own effect hidden alone); `--floor-flat=sat,contrast,mid`
+tries other floor flattening values. Every bot run prints
 `[SPAWN-MOVED]` when a player walks onto a spawn marker and it moves, and `[SPAWN-CHECK] PASS/FAIL`
 at the end (no body finished emerging within 60 px of a player).
 A bot plays by itself for up to five minutes: explores rooms, buys from pedestals,
