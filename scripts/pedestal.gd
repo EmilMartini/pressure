@@ -19,6 +19,7 @@ const KIND_ICONS := {
     "reroll": "item/misc/misc_deck_new.png",
     "carry": "gui/spells/translocation/apportation_new.png",
     "repair": "gui/spells/necromancy/regeneration_new.png",
+    "page": "item/book/parchment_new.png",
 }
 
 var offer: Dictionary
@@ -45,6 +46,10 @@ func empty() -> bool:
 func _ready() -> void:
     if empty():
         return
+    if kind() == "archivist":
+        # Drawn by Npc.draw in _draw, chained until freed; the line he says floats above.
+        _card = Crisp.attach(self, _draw_crisp, 80)
+        return
     # Guns, gear and upgrades show their 32 px Dungeon Crawl icon untinted (the frame and
     # the card carry the rarity); stairs and sigils keep their 1-bit tiles.
     match kind():
@@ -55,7 +60,7 @@ func _ready() -> void:
             _sprite.modulate = Items.icon_tint(item())
         "boon":
             _sprite = Art.icon_sprite(Art.icon(String(BOON_ICONS.get(offer["id"], "item/gold/gold_pile_25.png"))), ICON_SCALE)
-        "gunsmith", "reroll", "carry", "repair":
+        "gunsmith", "reroll", "carry", "repair", "page":
             _sprite = Art.icon_sprite(Art.icon(String(KIND_ICONS[kind()])), ICON_SCALE)
         _:
             _sprite = Art.sprite(Art.TILES.get(kind(), Art.TILES["cog"]), 2.5, color())
@@ -98,12 +103,20 @@ func title() -> String:
             return "Down to %s" % Regions.display_name(String(offer["id"])) if String(offer["id"]) != "" else "Stairs down"
         "sigil":
             return "Challenge sigil"
+        "page":
+            return "Torn Bestiary Page"
+        "archivist":
+            return Npc.display_name("archivist")
     return "?"
 
 
 func price_text() -> String:
     if kind() in ["stairs", "sigil"]:
         return ""
+    if kind() == "page":
+        return "for the Archivist"
+    if kind() == "archivist":
+        return "Give: Torn Bestiary Page" if offer.get("page", false) and not offer.get("freed", false) else ""
     if offer.get("spoils", false):
         return "SPOILS: take 1"
     return "FREE" if offer["price"] == 0 else "%d scrap" % offer["price"]
@@ -152,11 +165,17 @@ func color() -> Color:
             return Color(0.7, 0.7, 0.7)
         "sigil":
             return Color(0.8, 0.4, 1.0)
+        "page":
+            return Color(0.93, 0.89, 0.80)
+        "archivist":
+            return Npc.color("archivist")
     return Color.WHITE
 
 
 func _process(delta: float) -> void:
     _t += delta
+    if offer.has("say_age"):
+        offer["say_age"] = float(offer["say_age"]) + delta
     if _sprite != null and kind() not in ["sigil", "stairs"]:
         _sprite.position.y = -38.0 + sin(_t * 2.2) * 3.0
         _sprite.rotation = sin(_t * 1.1) * 0.08
@@ -181,6 +200,9 @@ func _draw() -> void:
     var glow: Texture2D = Art.PARTICLES["light"]
     var g := 110.0 + sin(_t * 2.2) * 8.0
     draw_texture_rect(glow, Rect2(Vector2(-g / 2.0, -g / 2.0 - 36.0), Vector2(g, g)), false, Color(c, 0.16 + (0.1 if highlighted else 0.0)))
+    if kind() == "archivist":
+        Npc.draw(self, "archivist", Vector2(0, 14), _t, highlighted, not offer.get("freed", false))
+        return
     if kind() == "sigil":
         draw_arc(Vector2.ZERO, 44.0, 0.0, TAU, 48, Color(c, 0.6), 3.0)
         draw_arc(Vector2.ZERO, 30.0, 0.0, TAU, 6, Color(c, 0.8), 2.0)
@@ -208,6 +230,12 @@ func _draw_crisp(cv: CanvasItem) -> void:
         return
     _draw_labels(cv)
     _draw_card(cv)
+    if kind() == "archivist" and offer.has("say") and float(offer.get("say_age", 99.0)) < 8.0:
+        # His line, over his head, until it has had time to be read.
+        var body: Font = Art.FONT_BODY
+        var a := clampf((8.0 - float(offer["say_age"])) / 1.0, 0.0, 1.0)
+        cv.draw_rect(Rect2(-214, -150, 428, 66), Color(0.04, 0.03, 0.05, 0.85 * a))
+        cv.draw_multiline_string(body, Vector2(-204, -126), String(offer["say"]), HORIZONTAL_ALIGNMENT_CENTER, 408, 20, 3, Color(0.93, 0.89, 0.80, a))
 
 
 func _draw_labels(cv: CanvasItem) -> void:
@@ -266,6 +294,8 @@ func _draw_labels(cv: CanvasItem) -> void:
             cv.draw_multiline_string(body, Vector2(-162, y + 16), desc, HORIZONTAL_ALIGNMENT_CENTER, 324, 20, 2, Color(0.92, 0.9, 0.85))
             y += box_h + 4.0
         var verb := "begin" if kind() == "sigil" else ("descend" if kind() == "stairs" else ("equip" if kind() == "item" else "take"))
+        if kind() == "archivist":
+            verb = "give the page" if offer.get("page", false) and not offer.get("freed", false) else "talk"
         # The player's own device's button, floating over the item.
         Prompts.draw(cv, Vector2(0, -78.0 + sin(_t * 5.0) * 2.0), prompt_key, prompt_kind, 24.0)
         cv.draw_string(body, Vector2(-140, y + 4.0), verb, HORIZONTAL_ALIGNMENT_CENTER, 280, 20, Color(0.6, 1.0, 1.0))

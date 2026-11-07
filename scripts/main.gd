@@ -59,6 +59,9 @@ var _room_entered_t := 0.0   # game time of the last room entry (bots: survives 
 # Self-test: `godot --path . -- --autotest` plays by itself, saves screenshots to
 # res://autotest/ and prints progress. Used to verify builds without a human.
 var autotest := false
+## The Torn Bestiary Page this run: "" (none yet), "dropped", "carried" or "given".
+var page_state := ""
+var _recruit_probe := false
 ## Balance probe `--old-balance`: the late-floor tuning of 2026-11-05 off (uncapped Leech,
 ## formula bosses without the rally, old floor damage), for like-for-like bot comparisons.
 static var old_balance := false
@@ -108,6 +111,7 @@ func _ready() -> void:
 
     var args := OS.get_cmdline_user_args()
     autotest = args.has("--autotest")
+    _recruit_probe = autotest and args.has("--recruit-probe")
     Enemy.spawn_log = autotest   # [SPAWN-MOVED] / [SPAWN-CLOSE] lines (Enemy.EMERGE_SECS)
     old_balance = autotest and args.has("--old-balance")
     Regions.activate("")
@@ -373,7 +377,7 @@ func _end_run(won: bool) -> void:
     var award: Dictionary = Mastery.award(floor_number, won, Progress.chosen_class)
     var gained := int(award.get("total", 0))
     Telemetry.run_end(self, won, award)
-    Progress.end_run(won, floor_number, total_kills, gained)
+    Progress.end_run(won, floor_number, total_kills, gained, region_id)
     if gained > 0:
         announce("+%d Embers" % gained)
     if autotest:
@@ -503,6 +507,7 @@ func start_floor(n: int) -> void:
             n, region_id, _clock, total_kills, scrap, players[0].hp, players[0].level, players[0].guns.size(), players[0].equipment.size()])
     Telemetry.floor_start(self)
     rooms = FloorGen.generate(region_id, party_luck(), players)
+    _place_archivist()
     _scout_reveal()
     for p in players:
         p.pressure = 0.0
@@ -898,6 +903,79 @@ func _input(event: InputEvent) -> void:
                 n = 9
             if n < ids.size() and not players.is_empty():
                 players[0].add_gun(ids[n])
+
+
+# --- The Archivist (World and progression GDD, phase 1) ----------------------
+
+
+## The Archivist sits chained in a side room of the Ossuary (the first region's treasure
+## room, else its shop) until someone brings him the Torn Bestiary Page. Missed, never
+## lost: he is there every run until recruited.
+func _place_archivist() -> void:
+    if region_id != Regions.FIRST or Progress.npc_home("archivist"):
+        return
+    for want in [RoomData.Type.TREASURE, RoomData.Type.SHOP]:
+        for pos in rooms:
+            var r: RoomData = rooms[pos]
+            if r.type == want:
+                r.stock.append({ "kind": "archivist", "id": "archivist", "price": 0, "taken": false,
+                    "pos": Vector2(-300, -110), "page": page_state == "carried" })
+                if autotest:
+                    print("[RECRUIT] archivist chained in the %s at %s" % [RoomData.TYPE_NAMES.get(want, "?"), pos])
+                return
+
+
+## The first elite killed in a run (Archivist not yet home) drops the Torn Bestiary Page.
+func drop_page(room: Room, pos: Vector2) -> void:
+    if page_state != "" or Progress.npc_home("archivist"):
+        return
+    page_state = "dropped"
+    room.data.stock.append({ "kind": "page", "id": "bestiary_page", "price": 0, "taken": false, "pos": pos })
+    room._build_pedestals()
+    Telemetry.event("page_dropped", { "floor": floor_number })
+    if autotest:
+        print("[RECRUIT] page dropped by an elite on floor %d at t=%.0f" % [floor_number, _clock])
+
+
+func take_page(o: Dictionary, pl: Player) -> void:
+    o["taken"] = true
+    page_state = "carried"
+    pl.say("Torn Bestiary Page")
+    Sfx.play("buy")
+    for pos in rooms:
+        for so in (rooms[pos] as RoomData).stock:
+            if so["kind"] == "archivist":
+                so["page"] = true
+    if autotest:
+        print("[RECRUIT] page taken at t=%.0f" % _clock)
+
+
+## Talking to the chained Archivist: a line keyed to the save; with the page, giving it
+## frees him and he moves into the Hollow (the page leaves the run).
+func talk_archivist(o: Dictionary, pl: Player) -> void:
+    var giving: bool = page_state == "carried" and not o.get("freed", false)
+    var line := Dialogue.say("archivist", Dialogue.context({ "where": "ossuary", "page": giving }))
+    o["say"] = String(line.get("text", ""))
+    o["say_age"] = 0.0
+    if giving:
+        page_state = "given"
+        o["page"] = false
+        o["freed"] = true
+        Progress.set_npc_state("archivist", "recruited")
+        Telemetry.event("npc_recruited", { "npc": "archivist", "floor": floor_number })
+        hud.toast("Archivist freed: the Journal is in the Hollow's library")
+        Sfx.play("unlock")
+        if autotest:
+            print("[RECRUIT] archivist recruited at t=%.0f: \"%s\"" % [_clock, o["say"]])
+            if _recruit_probe:
+                _print_stats("END")
+                get_tree().quit()
+    else:
+        if Progress.npc_state("archivist") == "":
+            Progress.set_npc_state("archivist", "met")
+        Sfx.play("ui_open")
+        if autotest:
+            print("[RECRUIT] archivist says: \"%s\"" % o["say"])
 
 
 ## Leave the run for the hub (pause menu, run-over screen).
@@ -1414,6 +1492,10 @@ func _bot_wants(o: Dictionary, p: Player) -> bool:
     match o["kind"]:
         "sigil":
             return true
+        "page":
+            return _recruit_probe
+        "archivist":
+            return _recruit_probe and page_state == "carried"
         "stairs":
             # Like a player: see the whole floor (shop, treasure) before going down, then
             # take the door the route plans (or a random one).
@@ -1475,6 +1557,14 @@ const NO_STEP := Vector2i(99, 99)   # BFS sentinel: a real step can be (-1, 0)
 
 func _bot_next_dir() -> Vector2i:
     var goal := NO_STEP
+    if _recruit_probe and page_state == "carried":
+        goal = _bot_bfs(func(r: RoomData) -> bool:
+            for o in r.stock:
+                if o["kind"] == "archivist" and not o.get("freed", false):
+                    return true
+            return false)
+        if goal != NO_STEP:
+            return goal
     if scrap > 150:
         goal = _bot_bfs(func(r: RoomData) -> bool:
             if r.type != RoomData.Type.SHOP:

@@ -170,6 +170,11 @@ var run_discoveries: Array = []       # reactions fired for the first time ever,
 var run_fusion_discoveries: Array = []      # fusions (tier 3) set off for the first time ever, this run
 var run_cataclysm_discoveries: Array = []   # cataclysms (tier 4) likewise
 var names: Array = ["", "", "", ""]   # player names; empty falls back to P1..P4
+## Hollow NPCs (design/World and progression GDD.md, section 9): id -> { "state": "" / "met"
+## / "recruited", "talks": lines heard }. The Keeper and the Gatewarden are always home;
+## everyone else moves in when recruited, and their station arrives with them.
+var npcs: Dictionary = {}
+var seen_lines: Dictionary = {}       # Dialogue line id -> times shown
 var chosen_class := "vagrant"         # class picked on the menu for player 1; not saved
 
 
@@ -351,8 +356,8 @@ func start_run() -> void:
     add("runs_started")
 
 
-func end_run(won: bool, floor_number: int, kills: int, embers: int = 0) -> void:
-    history.append({ "won": won, "floor": floor_number, "kills": kills, "unlocks": run_unlocks.duplicate(), "embers": embers })
+func end_run(won: bool, floor_number: int, kills: int, embers: int = 0, region: String = "") -> void:
+    history.append({ "won": won, "floor": floor_number, "kills": kills, "unlocks": run_unlocks.duplicate(), "embers": embers, "region": region })
     if history.size() > 50:
         history.pop_front()
     if won:
@@ -391,6 +396,8 @@ func save() -> void:
         "achievements": achievements_done.keys(),
         "history": history,
         "names": names,
+        "npcs": npcs,
+        "seen_lines": seen_lines,
     }
     var f := FileAccess.open(save_path, FileAccess.WRITE)
     if f == null:
@@ -405,6 +412,8 @@ func load_save() -> void:
     stats = {}
     achievements_done = {}
     history = []
+    npcs = {}
+    seen_lines = {}
     for u in BASE_UNLOCKS:
         unlocks[u] = true
     if not FileAccess.file_exists(save_path):
@@ -423,6 +432,12 @@ func load_save() -> void:
     for a in parsed.get("achievements", []):
         achievements_done[a] = true
     history = parsed.get("history", [])
+    var saved_npcs = parsed.get("npcs", {})
+    if saved_npcs is Dictionary:
+        npcs = saved_npcs
+    var saved_seen = parsed.get("seen_lines", {})
+    if saved_seen is Dictionary:
+        seen_lines = saved_seen
     var saved_names: Array = parsed.get("names", [])
     for i in mini(4, saved_names.size()):
         names[i] = str(saved_names[i]).strip_edges().left(12)
@@ -448,6 +463,47 @@ func _settle() -> void:
                 touched = true
     if touched:
         save()
+
+
+# --- Hollow NPCs -----------------------------------------------------------
+
+
+const HOME_NPCS := ["keeper", "gatewarden"]
+
+
+func npc_state(id: String) -> String:
+    if HOME_NPCS.has(id):
+        return "recruited"
+    return String((npcs.get(id, {}) as Dictionary).get("state", ""))
+
+
+func set_npc_state(id: String, state: String) -> void:
+    var d: Dictionary = npcs.get(id, {})
+    d["state"] = state
+    npcs[id] = d
+    save()
+
+
+func npc_home(id: String) -> bool:
+    return npc_state(id) == "recruited"
+
+
+func npc_talks(id: String) -> int:
+    return int((npcs.get(id, {}) as Dictionary).get("talks", 0))
+
+
+## A line was shown: count it for the NPC and the line (Dialogue picks fresh lines first).
+func note_line(npc: String, line_id: String) -> void:
+    var d: Dictionary = npcs.get(npc, {})
+    d["talks"] = int(d.get("talks", 0)) + 1
+    npcs[npc] = d
+    seen_lines[line_id] = int(seen_lines.get(line_id, 0)) + 1
+    save()
+
+
+## Runs that did not end at the bottom (abandoned runs count): the Gatewarden's tally.
+func deaths() -> int:
+    return maxi(0, stat("runs_started") - stat("runs_won"))
 
 
 ## Wipe everything: back to a first-ever run.

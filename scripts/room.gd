@@ -740,6 +740,8 @@ func _on_enemy_died(e: Enemy) -> void:
     # Loot: bosses always drop rare or better, elites drop sometimes.
     var inner := rect.grow(-90.0)
     var drop_pos := nearest_open(Vector2(clampf(e.global_position.x, inner.position.x, inner.end.x), clampf(e.global_position.y, inner.position.y, inner.end.y)), 26.0)
+    if e.is_elite and e.kind_name != "boss":
+        main.drop_page(self, nearest_open(drop_pos + Vector2(48, 0), 26.0))
     if e.kind_name == "boss":
         data.stock.append(Items.offer(Drops.roll_item(main.difficulty() + 4, Items.Rarity.RARE, [], main.party_luck(), "boss", main.players), 0, Vector2(0, 150)))
         _build_pedestals()
@@ -1204,6 +1206,8 @@ func _build_pedestals() -> void:
         if o.has("pos"):
             var ped := Pedestal.new(o)
             ped.position = o["pos"]
+            if o["kind"] == "archivist":
+                ped.position = nearest_open(o["pos"], 40.0)
             add_child(ped)
             pedestals.append(ped)
 
@@ -1312,6 +1316,13 @@ func _fit_mod(pl: Player, gun: Gun, o: Dictionary) -> void:
 
 func activate(ped: Pedestal, pl: Player) -> void:
     var o := ped.offer
+    if o["kind"] == "page":
+        main.take_page(o, pl)
+        _build_pedestals()
+        return
+    if o["kind"] == "archivist":
+        main.talk_archivist(o, pl)
+        return
     var tel_snap: Dictionary = Telemetry.offer_snapshot(o, self)
     match o["kind"]:
         "gun":

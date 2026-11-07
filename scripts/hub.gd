@@ -1,34 +1,58 @@
 class_name Hub
 extends Node2D
-## The hub (Enter the Gungeon's Breach): one dark room the player walks around between
-## runs. Stations are plinths with a prompt: the Gate starts a run (class picker, then
-## main.tscn), the Armory opens the Journal, the Shrine the talent board, the Mirror the
-## names, the Workshop the options, the Ledger the run history, and the Trophy Wall along
-## the top shows every achievement plus the next three goals. Esc / Start opens a small
-## menu. Late pads join on Start like in a run.
+## The Hollow (World and progression GDD, section 9): a few connected rooms the player
+## walks through between runs, with people in them. The Fire (the Keeper: talents), the
+## Stair (the Gatewarden: the Gate and past runs, and the Gate arch itself), the Library
+## (the Archivist once recruited: the Journal and the full ledger), the Forge (the Armory
+## and the Workshop, until their NPCs arrive) and the Chapel (the trophy wall and the
+## Mirror). Talking opens a line keyed to the save (Dialogue) and the NPC's services.
+## A fresh save shows only the Keeper, the Gatewarden and the Gate; the stations without
+## an NPC yet show from the first finished run on. Esc / Start opens a small menu. Late
+## pads join on Start like in a run.
 ##
 ## `-- --menu-shot` saves hub, journal, mastery, names, classes and options captures.
+## `-- --hub-walk --instance=N` is the bot: it walks the rooms and uses every station on
+## show (`--keep-save` keeps that instance's save, `--hub-shot` saves captures).
 
-const INNER := Vector2(1100, 600)
 const WALL := 60.0
+const DOOR := 140.0
 const RANGE := 64.0
+const NPC_RANGE := 84.0
 const HINT_SECS := 7.0
 const LIT := Color(1.0, 0.82, 0.35)
+const FIRE := Vector2(-80, -150)
+
+## Room inner rects; rooms sit two walls apart, so each builds its own walls.
+const ROOMS := {
+    "hall": { "name": "THE FIRE", "rect": Rect2(-450, -300, 900, 600), "theme": "sanctum" },
+    "chapel": { "name": "THE CHAPEL", "rect": Rect2(-350, -840, 700, 420), "theme": "sanctum" },
+    "library": { "name": "THE LIBRARY", "rect": Rect2(-1210, -260, 640, 520), "theme": "crypt" },
+    "forge": { "name": "THE FORGE", "rect": Rect2(570, -260, 640, 520), "theme": "forge" },
+    "stair": { "name": "THE STAIR", "rect": Rect2(-350, 420, 700, 420), "theme": "ruins" },
+}
+## Doorways: the middle of the gap where the two rooms' walls meet.
+const DOORS := [
+    { "a": "hall", "b": "chapel", "at": Vector2(0, -360) },
+    { "a": "hall", "b": "library", "at": Vector2(-510, 0) },
+    { "a": "hall", "b": "forge", "at": Vector2(510, 0) },
+    { "a": "hall", "b": "stair", "at": Vector2(0, 360) },
+]
 
 const STATIONS := [
-    { "id": "gate", "name": "THE GATE", "sub": "start a run", "pos": Vector2(0, 236), "tile": Vector2i(4, 10), "tint": Color(0.55, 1.0, 1.0), "verb": "descend", "style": "gate" },
-    { "id": "armory", "name": "ARMORY", "sub": "guns and gear", "pos": Vector2(-420, -100), "tile": Vector2i(42, 9), "icon": "item/weapon/ranged/crossbow_2.png", "tint": Color(1.0, 0.6, 0.3), "verb": "browse", "style": "plinth" },
-    { "id": "shrine", "name": "SHRINE", "sub": "talents", "pos": Vector2(-420, 150), "tile": Vector2i(28, 12), "icon": "gui/invocations/kiku_necronomicon.png", "tint": Color(0.8, 0.5, 1.0), "verb": "kneel", "style": "plinth" },
-    { "id": "mirror", "name": "MIRROR", "sub": "names", "pos": Vector2(420, -100), "tile": Vector2i(31, 0), "icon": "item/misc/mirror.png", "tint": Color(0.6, 0.85, 1.0), "verb": "look", "style": "plinth" },
-    { "id": "workshop", "name": "WORKSHOP", "sub": "options", "pos": Vector2(420, 150), "tile": Vector2i(41, 5), "icon": "gui/spells/earth/maxwells_silver_hammer.png", "tint": Color(0.85, 0.8, 0.7), "verb": "tinker", "style": "plinth" },
-    { "id": "ledger", "name": "LEDGER", "sub": "run history", "pos": Vector2(-230, 210), "tile": Vector2i(44, 6), "icon": "item/book/parchment_new.png", "tint": Color(0.95, 0.8, 0.5), "verb": "read", "style": "plinth" },
-    { "id": "trophies", "name": "", "sub": "", "pos": Vector2(0, -80), "tile": Vector2i(9, 11), "tint": LIT, "verb": "all achievements", "style": "wall" },
+    { "id": "keeper", "npc": "keeper", "sub": "talents", "pos": Vector2(-170, -120), "verb": "talk", "style": "npc", "room": "hall" },
+    { "id": "gatewarden", "npc": "gatewarden", "sub": "the Gate, past runs", "pos": Vector2(-170, 690), "verb": "talk", "style": "npc", "room": "stair" },
+    { "id": "gate", "name": "THE GATE", "sub": "start a run", "pos": Vector2(0, 776), "tile": Vector2i(4, 10), "tint": Color(0.55, 1.0, 1.0), "verb": "descend", "style": "gate", "room": "stair" },
+    { "id": "archivist", "npc": "archivist", "sub": "journal, ledger", "pos": Vector2(-880, -50), "verb": "talk", "style": "npc", "room": "library" },
+    { "id": "armory", "name": "ARMORY", "sub": "guns and gear", "pos": Vector2(760, -40), "tile": Vector2i(42, 9), "icon": "item/weapon/ranged/crossbow_2.png", "tint": Color(1.0, 0.6, 0.3), "verb": "browse", "style": "plinth", "room": "forge" },
+    { "id": "workshop", "name": "WORKSHOP", "sub": "options", "pos": Vector2(1020, -40), "tile": Vector2i(41, 5), "icon": "gui/spells/earth/maxwells_silver_hammer.png", "tint": Color(0.85, 0.8, 0.7), "verb": "tinker", "style": "plinth", "room": "forge" },
+    { "id": "mirror", "name": "MIRROR", "sub": "names", "pos": Vector2(250, -520), "tile": Vector2i(31, 0), "icon": "item/misc/mirror.png", "tint": Color(0.6, 0.85, 1.0), "verb": "look", "style": "plinth", "room": "chapel" },
+    { "id": "trophies", "name": "", "sub": "", "pos": Vector2(-60, -580), "tile": Vector2i(9, 11), "tint": LIT, "verb": "all achievements", "style": "wall", "room": "chapel" },
 ]
 
 const EXPLAINER := [
     "A run is five floors. Each floor ends in a boss.",
     "Dying keeps your achievements, unlocks and Embers.",
-    "Runs pay Embers for rooms, elites and new reactions; the Shrine trades them for swappable talents.",
+    "Runs pay Embers for rooms, elites and new reactions; the Keeper trades them for swappable talents.",
     "Classes only change how a run starts.",
 ]
 
@@ -42,6 +66,7 @@ var _pad := MenuPad.new()
 var _cooldown := 0.0
 var _closed_frame := -1
 var _shot := false
+var _walk := false
 
 var _ui: Control
 var _dim: ColorRect
@@ -56,6 +81,7 @@ var _name_edits: Array = []
 var _options: OptionsMenu
 var _options_center: CenterContainer
 var _ledger_center: CenterContainer
+var _ledger_title: Label
 var _ledger_body: VBoxContainer
 var _ledger_back: Button
 var _explainer_center: CenterContainer
@@ -64,6 +90,12 @@ var _esc_center: CenterContainer
 var _esc_first: Button
 var _consent_center: CenterContainer
 var _consent_allow: Button
+var _talk_root: Control
+var _talk_panel: PanelContainer
+var _talk_name: Label
+var _talk_text: Label
+var _talk_buttons: HBoxContainer
+var _talking := ""
 var _class_select: ClassSelect = null
 var _cv: CanvasItem = null     # where _text and prompts draw (the Crisp proxy)
 var ambience: Ambience = null
@@ -79,8 +111,22 @@ func _ready() -> void:
             get_tree().call_deferred("change_scene_to_file", "res://scenes/main.tscn")
             return
     _shot = args.has("--menu-shot")
+    _walk = args.has("--hub-walk")
     var theme_shot := args.has("--themes-shot")
-    if _shot or theme_shot:
+    if _walk:
+        # The hub bot: its own save, Shrine and play-data files per --instance, fresh
+        # unless --keep-save (after a --recruit-probe run on the same instance).
+        var tag := Main._instance_tag()
+        Progress.save_path = "user://save_autotest%s.json" % tag
+        Mastery.save_path = "user://mastery_autotest%s.json" % tag
+        Telemetry.use_file("user://telemetry/runs%s.jsonl" % (tag if tag != "" else "_bot"))
+        if args.has("--keep-save"):
+            Progress.load_save()
+            Mastery.load_save()
+        else:
+            Progress.reset()
+            Mastery.reset()
+    elif _shot or theme_shot:
         Progress.save_path = "user://save_autotest.json"
         Progress.load_save()
     elif not Settings.flag("tutorial_done"):
@@ -91,15 +137,24 @@ func _ready() -> void:
     RenderingServer.set_default_clear_color(Art.CLEAR)
     camera = Camera2D.new()
     camera.zoom = Vector2.ONE
+    camera.position_smoothing_enabled = true
+    camera.position_smoothing_speed = 6.0
+    var bounds := _bounds().grow(WALL)
+    camera.limit_left = int(bounds.position.x)
+    camera.limit_top = int(bounds.position.y)
+    camera.limit_right = int(bounds.end.x)
+    camera.limit_bottom = int(bounds.end.y)
     add_child(camera)
     camera.make_current()
     add_child(PostFx.new())
-    _build_room()
+    _build_rooms()
     Crisp.attach(self, _draw_texts)
     MenuPad.strip_joypad_from_ui_actions()
     _build_ui()
     var pads := Input.get_connected_joypads()
     _spawn_player(0 if pads.has(0) else -1, true)
+    camera.position = players[0].position
+    camera.reset_smoothing()
     Input.joy_connection_changed.connect(_on_joy_connection_changed)
     Settings.apply()
     Music.duck(false)
@@ -110,69 +165,158 @@ func _ready() -> void:
         _theme_shot()
     elif _shot:
         _menu_shot()
+    elif _walk:
+        _hub_walk()
     elif not Settings.flag("seen_explainer"):
         _open(_explainer_center, _explainer_ok)
     elif Telemetry.consent() == "ask":
         _open(_consent_center, _consent_allow)
 
 
-# --- Room --------------------------------------------------------------------
+# --- Rooms -------------------------------------------------------------------
 
 
-## The sanctum (Themes "sanctum"): ornate mosaic floor, carved relief walls, torches on
-## the top wall and warm dust (Ambience).
-func _build_room() -> void:
-    var half := INNER / 2.0
+static func _bounds() -> Rect2:
+    var out := Rect2()
+    var first := true
+    for id in ROOMS:
+        var r: Rect2 = ROOMS[id]["rect"]
+        out = r if first else out.merge(r)
+        first = false
+    return out
+
+
+## Which room a point is in (doorways count as the nearer room), "" outside them all.
+static func room_at(pos: Vector2) -> String:
+    var best := ""
+    var best_d := INF
+    for id in ROOMS:
+        var r: Rect2 = ROOMS[id]["rect"]
+        if r.has_point(pos):
+            return String(id)
+        var d := r.get_center().distance_to(pos)
+        if d < best_d:
+            best_d = d
+            best = String(id)
+    return best
+
+
+## Whether a station is in the Hollow yet. The Keeper, the Gatewarden and the Gate are
+## always there; the Archivist once recruited; stations whose NPC is not built yet from
+## the first run on, so a fresh save starts with the Shrine and the Gate only.
+func _shown(s: Dictionary) -> bool:
+    match String(s["id"]):
+        "keeper", "gatewarden", "gate":
+            return true
+        "archivist":
+            return Progress.npc_home("archivist")
+    return _settled()
+
+
+func _settled() -> bool:
+    return Progress.stat("runs_started") > 0 or not Progress.history.is_empty()
+
+
+func _station(id: String) -> Dictionary:
+    for s in STATIONS:
+        if s["id"] == id:
+            return s
+    return {}
+
+
+func _build_rooms() -> void:
     Themes.current = "sanctum"
-    var floor_fill := Themes.floor_fill(Rect2(-half, INNER), camera.zoom.x, 4242, Color.WHITE, "sanctum")
-    floor_fill.z_index = -2
-    add_child(floor_fill)
     var body := StaticBody2D.new()
     body.collision_layer = Player.LAYER_WALLS
     body.collision_mask = 0
     add_child(body)
-    _wall(body, Vector2(0, -half.y - WALL / 2.0), Vector2(INNER.x + 2.0 * WALL, WALL))
-    _wall(body, Vector2(0, half.y + WALL / 2.0), Vector2(INNER.x + 2.0 * WALL, WALL))
-    _wall(body, Vector2(-half.x - WALL / 2.0, 0), Vector2(WALL, INNER.y))
-    _wall(body, Vector2(half.x + WALL / 2.0, 0), Vector2(WALL, INNER.y))
-    # Plinth bodies, so players walk around stations instead of through them.
+    var seed_n := 4242
+    for id in ROOMS:
+        var room: Dictionary = ROOMS[id]
+        var r: Rect2 = room["rect"]
+        var fill := Themes.floor_fill(r, camera.zoom.x, seed_n, Color.WHITE, String(room["theme"]))
+        fill.z_index = -2
+        add_child(fill)
+        seed_n += 17
+        _room_walls(body, String(id), r, String(room["theme"]))
+    for d in DOORS:
+        var at: Vector2 = d["at"]
+        var ra: Rect2 = ROOMS[d["a"]]["rect"]
+        var vertical: bool = at.y < ra.position.y or at.y > ra.end.y
+        var hall := Rect2(at - Vector2(DOOR / 2.0, WALL), Vector2(DOOR, 2.0 * WALL)) if vertical else Rect2(at - Vector2(WALL, DOOR / 2.0), Vector2(2.0 * WALL, DOOR))
+        var fill := Themes.floor_fill(hall, camera.zoom.x, seed_n, Color(0.8, 0.8, 0.8), String(ROOMS[d["a"]]["theme"]))
+        fill.z_index = -2
+        add_child(fill)
+    # Bodies for plinths and people on show, so players walk around them.
     for s in STATIONS:
-        if s["style"] != "plinth":
+        if not _shown(s) or not String(s["style"]) in ["plinth", "npc"]:
             continue
         var shape := CollisionShape2D.new()
-        var r := RectangleShape2D.new()
-        r.size = Vector2(36, 18)
-        shape.shape = r
-        shape.position = Vector2(s["pos"]) + Vector2(0, 4)
+        var rs := RectangleShape2D.new()
+        rs.size = Vector2(36, 18) if s["style"] == "plinth" else Vector2(30, 14)
+        shape.shape = rs
+        shape.position = Vector2(s["pos"]) + (Vector2(0, 4) if s["style"] == "plinth" else Vector2(0, -6))
         body.add_child(shape)
-    ambience = Ambience.new(null, "sanctum", Rect2(-half, INNER))
-    var tx := Themes.texel(camera.zoom.x)
-    for x in [-480.0, -180.0, 180.0, 480.0]:
-        ambience.add_light(Vector2(x, -half.y - 30.0), "torch")
-    # Gold statues and an altar in the top wall between the torches.
-    var decor: Array = Themes.def("sanctum")["decor"]
-    var at := 0
-    for x in [-330.0, 330.0]:
-        var spr := Sprite2D.new()
-        spr.texture = Themes.tex(String(decor[at % decor.size()]))
-        spr.scale = Vector2(tx, tx)
-        spr.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-        spr.position = (Vector2(x, -half.y - 32.0) / tx).round() * tx
-        spr.modulate = Themes.def("sanctum")["decor_tint"]
-        spr.z_index = -1
-        add_child(spr)
-        at += 2
+    ambience = Ambience.new(null, "sanctum", _bounds())
+    for id in ROOMS:
+        var r: Rect2 = ROOMS[id]["rect"]
+        for f in [0.2, 0.8]:
+            ambience.add_light(Vector2(r.position.x + r.size.x * f, r.position.y - 30.0), "torch")
+    ambience.add_light(FIRE, "brazier")
     add_child(ambience)
 
 
-func _wall(body: StaticBody2D, center: Vector2, wall_size: Vector2) -> void:
+## The four walls of a room, cut where a doorway leads out.
+func _room_walls(body: StaticBody2D, id: String, r: Rect2, theme: String) -> void:
+    var gaps := { "top": [], "bottom": [], "left": [], "right": [] }
+    for d in DOORS:
+        if d["a"] != id and d["b"] != id:
+            continue
+        var at: Vector2 = d["at"]
+        if at.y < r.position.y:
+            gaps["top"].append(at.x)
+        elif at.y > r.end.y:
+            gaps["bottom"].append(at.x)
+        elif at.x < r.position.x:
+            gaps["left"].append(at.y)
+        else:
+            gaps["right"].append(at.y)
+    var x0 := r.position.x - WALL
+    var x1 := r.end.x + WALL
+    for side in ["top", "bottom"]:
+        var y := r.position.y - WALL if side == "top" else r.end.y
+        for span in _spans(x0, x1, gaps[side]):
+            _wall(body, Rect2(span.x, y, span.y - span.x, WALL), theme)
+    for side in ["left", "right"]:
+        var x := r.position.x - WALL if side == "left" else r.end.x
+        for span in _spans(r.position.y, r.end.y, gaps[side]):
+            _wall(body, Rect2(x, span.x, WALL, span.y - span.x), theme)
+
+
+## [from, to] minus a DOOR-wide gap around each centre, as Vector2(start, end) spans.
+static func _spans(from: float, to: float, centres: Array) -> Array:
+    var out: Array = []
+    var at := from
+    var sorted := centres.duplicate()
+    sorted.sort()
+    for c in sorted:
+        var g0 := float(c) - DOOR / 2.0
+        if g0 > at:
+            out.append(Vector2(at, g0))
+        at = float(c) + DOOR / 2.0
+    if to > at:
+        out.append(Vector2(at, to))
+    return out
+
+
+func _wall(body: StaticBody2D, rect: Rect2, theme: String) -> void:
     var shape := CollisionShape2D.new()
     var r := RectangleShape2D.new()
-    r.size = wall_size
+    r.size = rect.size
     shape.shape = r
-    shape.position = center
+    shape.position = rect.get_center()
     body.add_child(shape)
-    var bricks := Themes.wall_fill(Rect2(center - wall_size / 2.0, wall_size), camera.zoom.x, Color.WHITE, "sanctum")
+    var bricks := Themes.wall_fill(rect, camera.zoom.x, Color.WHITE, theme)
     bricks.z_index = -1
     add_child(bricks)
 
@@ -220,6 +364,7 @@ func _process(delta: float) -> void:
     _time += delta
     _cooldown = maxf(0.0, _cooldown - delta)
     queue_redraw()
+    _follow_camera()
     if _hint != null:
         _hint.modulate.a = clampf((HINT_SECS - _time) / 1.5, 0.0, 1.0) if _overlay == null else 0.0
     var start := _handle_pads()
@@ -244,6 +389,8 @@ func _process(delta: float) -> void:
         var best := ""
         var best_d := INF
         for s in STATIONS:
+            if not _shown(s):
+                continue
             var d := p.global_position.distance_to(Vector2(s["pos"]))
             if d <= _range_of(s) and d < best_d:
                 best_d = d
@@ -253,18 +400,32 @@ func _process(delta: float) -> void:
             return
 
 
+## The camera follows the players' middle; the room limits keep it off the void.
+func _follow_camera() -> void:
+    if players.is_empty() or camera == null:
+        return
+    var mid := Vector2.ZERO
+    for p in players:
+        mid += p.global_position
+    camera.position = mid / float(players.size())
+
+
 func _range_of(s: Dictionary) -> float:
     match String(s["style"]):
         "wall":
             return 110.0
         "gate":
             return 80.0
+        "npc":
+            return NPC_RANGE
     return RANGE
 
 
 func _update_highlights() -> void:
     _highlight.clear()
     for s in STATIONS:
+        if not _shown(s):
+            continue
         var best: Player = null
         var best_d := INF
         for p in players:
@@ -280,24 +441,102 @@ func _use_station(id: String) -> void:
     Sfx.play("ui_open")
     Telemetry.hub_event("station", { "id": id, "players": _players_count() })
     match id:
+        "keeper", "gatewarden", "archivist":
+            _talk(id)
         "gate":
             _show_class_select()
         "armory":
-            _open(_journal_center, null)
-            _journal.set_tab(1)
+            _open_journal("armory")
         "trophies":
-            _open(_journal_center, null)
-            _journal.set_tab(0)
-        "shrine":
-            _open(_mastery_center, null)
-            _mastery.set_tab(_mastery.tab)
+            _open_journal("trophies")
         "mirror":
             _open(_names_center, _name_edits[0])
         "workshop":
             _open(_options_center, null)
-        "ledger":
-            _fill_ledger()
-            _open(_ledger_center, _ledger_back)
+
+
+## Each station opens its own part of the Journal (Journal.set_view).
+func _open_journal(which: String) -> void:
+    _open(_journal_center, null)
+    match which:
+        "armory":
+            _journal.set_view("ARMORY", [1, 2])
+            _journal.set_tab(1)
+        "trophies":
+            _journal.set_view("TROPHIES", [0])
+            _journal.set_tab(0)
+        "archivist":
+            _journal.set_view("JOURNAL", [3, 4, 5, 6])
+            _journal.set_tab(3)
+        _:
+            _journal.set_view("JOURNAL", [])
+
+
+# --- Talking -----------------------------------------------------------------
+
+
+## What each NPC offers after their line: [button label, action].
+func _services(npc: String) -> Array:
+    match npc:
+        "keeper":
+            return [["Talents", func():
+                _open(_mastery_center, null)
+                _mastery.set_tab(_mastery.tab)]]
+        "gatewarden":
+            return [["Descend", func():
+                _close_overlay()
+                _show_class_select()],
+                ["Past runs", func():
+                _fill_ledger(Progress.npc_home("archivist"))
+                _open(_ledger_center, _ledger_back)]]
+        "archivist":
+            return [["Journal", func(): _open_journal("archivist")],
+                ["Ledger", func():
+                _fill_ledger(true)
+                _open(_ledger_center, _ledger_back)]]
+    return []
+
+
+func _talk(npc: String) -> void:
+    _talking = npc
+    var line := Dialogue.say(npc, Dialogue.context({ "where": "hub" }))
+    Telemetry.hub_event("talk", { "npc": npc, "line": String(line.get("id", "")) })
+    _talk_name.text = Npc.display_name(npc)
+    _talk_name.add_theme_color_override("font_color", Npc.color(npc))
+    _talk_text.text = String(line.get("text", "..."))
+    for c in _talk_buttons.get_children():
+        _talk_buttons.remove_child(c)
+        c.queue_free()
+    var first: Button = null
+    for sv in _services(npc):
+        var b := UiTheme.button(String(sv[0]), sv[1])
+        _talk_buttons.add_child(b)
+        if first == null:
+            first = b
+    var leave := UiTheme.button("Leave", _close_overlay)
+    _talk_buttons.add_child(leave)
+    # The box goes along the bottom, or along the top when the speaker stands in the lower
+    # half of the screen (the Stair: the camera stops at the room's edge), so it never
+    # covers them.
+    var at := get_viewport().get_canvas_transform() * Vector2(_station(npc).get("pos", Vector2.ZERO))
+    _place_talk(at.y > get_viewport_rect().size.y * 0.5)
+    _open(_talk_root, first if first != null else leave)
+
+
+func _talk_button(label: String) -> Button:
+    for c in _talk_buttons.get_children():
+        if c is Button and (c as Button).text == label:
+            return c
+    return null
+
+
+func _place_talk(top: bool) -> void:
+    _talk_panel.set_anchors_preset(Control.PRESET_CENTER_TOP if top else Control.PRESET_CENTER_BOTTOM)
+    _talk_panel.offset_left = -540
+    _talk_panel.offset_right = 540
+    _talk_panel.offset_top = 28.0 if top else -230.0
+    _talk_panel.offset_bottom = 230.0 if top else -28.0
+    _talk_panel.grow_vertical = Control.GROW_DIRECTION_END if top else Control.GROW_DIRECTION_BEGIN
 
 
 # --- Overlays ----------------------------------------------------------------
@@ -307,13 +546,14 @@ func _open(c: Control, focus: Control) -> void:
     if _overlay != null and _overlay != c:
         _overlay.visible = false
     _overlay = c
-    _dim.visible = true
+    _dim.visible = c != _talk_root
     c.visible = true
     # A button still held from opening (A on the plinth) must be released first.
     for k in ["accept", "cancel", "left", "right"]:
         _pad._was[k] = true
     for p in players:
         p.set_physics_process(false)
+        p.input.force_move = Vector2.ZERO
     if focus != null:
         focus.grab_focus.call_deferred()
 
@@ -335,7 +575,7 @@ func _close_overlay() -> void:
     if f != null:
         f.release_focus()
     Sfx.play("ui_back")
-    if after_explainer and Telemetry.consent() == "ask" and not _shot:
+    if after_explainer and Telemetry.consent() == "ask" and not _shot and not _walk:
         _open(_consent_center, _consent_allow)
 
 
@@ -386,20 +626,19 @@ func _build_ui() -> void:
     _dim.set_anchors_preset(Control.PRESET_FULL_RECT)
     _dim.visible = false
     _ui.add_child(_dim)
-    _hint = UiTheme.label("Walk to a station   WASD / left stick      use it   E / A      menu   Esc / Start", 22, UiTheme.BONE)
+    _hint = UiTheme.label("Walk   WASD / left stick      talk, use   E / A      menu   Esc / Start", 22, UiTheme.BONE)
     _hint.set_anchors_preset(Control.PRESET_CENTER_TOP)
     _hint.offset_left = -500
     _hint.offset_right = 500
-    _hint.offset_top = 300   # under the trophy wall text, above the centre marker
+    _hint.offset_top = 24
     _ui.add_child(_hint)
 
     _pad.on_cancel = func():
-        if _overlay == _esc_center or _overlay == _explainer_center or _overlay == _journal_center \
-                or _overlay == _mastery_center or _overlay == _names_center or _overlay == _ledger_center:
+        if _overlay in [_esc_center, _explainer_center, _journal_center, _mastery_center, _names_center, _ledger_center, _talk_root]:
             _close_overlay()
     _pad.on_tab = func(step: int):
         if _overlay == _journal_center:
-            _journal.set_tab(_journal.tab + step)
+            _journal.step_tab(step)
         elif _overlay == _mastery_center:
             _mastery.set_tab(_mastery.tab + step)
 
@@ -417,6 +656,35 @@ func _build_ui() -> void:
     _build_explainer()
     _build_consent()
     _build_esc_menu()
+    _build_talk()
+
+
+## The talk box: along the bottom, so the speaker stays in view above it. The name in
+## the NPC's colour, the line, then their services and Leave (focus starts on the first).
+func _build_talk() -> void:
+    _talk_root = Control.new()
+    _talk_root.set_anchors_preset(Control.PRESET_FULL_RECT)
+    _talk_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    _talk_root.visible = false
+    _ui.add_child(_talk_root)
+    var panel := PanelContainer.new()
+    _talk_panel = panel
+    _place_talk(false)
+    _talk_root.add_child(panel)
+    var col := VBoxContainer.new()
+    col.add_theme_constant_override("separation", 10)
+    panel.add_child(col)
+    _talk_name = UiTheme.label("", 30)
+    _talk_name.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+    col.add_child(_talk_name)
+    _talk_text = UiTheme.label("", 28, UiTheme.BONE)
+    _talk_text.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+    _talk_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+    _talk_text.custom_minimum_size = Vector2(1040, 0)
+    col.add_child(_talk_text)
+    _talk_buttons = HBoxContainer.new()
+    _talk_buttons.add_theme_constant_override("separation", 16)
+    col.add_child(_talk_buttons)
 
 
 func _build_names() -> void:
@@ -458,7 +726,8 @@ func _build_ledger() -> void:
     var col := VBoxContainer.new()
     col.add_theme_constant_override("separation", 8)
     panel.add_child(col)
-    col.add_child(UiTheme.label("THE LEDGER", 40))
+    _ledger_title = UiTheme.label("THE LEDGER", 40)
+    col.add_child(_ledger_title)
     _ledger_body = VBoxContainer.new()
     _ledger_body.add_theme_constant_override("separation", 4)
     col.add_child(_ledger_body)
@@ -466,9 +735,12 @@ func _build_ledger() -> void:
     col.add_child(_ledger_back)
 
 
-func _fill_ledger() -> void:
+## The run history. Bare (the Gatewarden's count, before the Archivist moves in): the
+## last runs and the tally of deaths. Full (the Archivist's ledger): totals as well.
+func _fill_ledger(full: bool = true) -> void:
     for c in _ledger_body.get_children():
         c.queue_free()
+    _ledger_title.text = "THE LEDGER" if full else "PAST RUNS"
     _ledger_body.add_child(_left(UiTheme.label("Last runs", 26, UiTheme.BONE)))
     var hist: Array = Progress.history
     if hist.is_empty():
@@ -482,17 +754,22 @@ func _fill_ledger() -> void:
         var won := bool(h.get("won", false))
         var unlocks: Array = h.get("unlocks", [])
         var line := "  Run %d    floor %d    %d kills    %s" % [i + 1, int(h.get("floor", 0)), int(h.get("kills", 0)), "CLEARED" if won else "fell"]
+        if String(h.get("region", "")) != "" and not won:
+            line += " in %s" % Regions.display_name(String(h["region"]))
         if h.has("embers"):
             line += "    +%d Embers" % int(h["embers"])
         if not unlocks.is_empty():
             line += "    +%d unlock%s" % [unlocks.size(), "" if unlocks.size() == 1 else "s"]
         _ledger_body.add_child(_left(UiTheme.label(line, 22, Color(0.55, 1.0, 0.7) if won else UiTheme.BONE)))
+    if not full:
+        _ledger_body.add_child(_left(UiTheme.label("  Runs %d    cleared %d    deaths %d" % [Progress.stat("runs_started"), Progress.stat("runs_won"), Progress.deaths()], 22, UiTheme.DIM)))
+        return
     _ledger_body.add_child(_left(UiTheme.label("Totals", 26, UiTheme.BONE)))
     var totals := [
         "  Runs %d    cleared %d    floors %d    bosses %d" % [Progress.stat("runs_started"), Progress.stat("runs_won"), Progress.stat("floors"), Progress.stat("bosses")],
         "  Kills %d    elites %d    reactions %d" % [Progress.stat("kills"), Progress.stat("elites"), Progress.stat("reactions")],
         "  Achievements %d / %d    guns %d / %d" % [Progress.achievements_count(), Progress.ACHIEVEMENTS.size(), Guns.ids().size(), Guns.all_ids().size()],
-        "  Embers: %d to spend at the Shrine, %d earned in all" % [Mastery.embers, Mastery.earned],
+        "  Embers: %d to spend with the Keeper, %d earned in all" % [Mastery.embers, Mastery.earned],
         "  Shrine: %d / %d talent ranks, Last Breath %d / %d" % [Mastery.ranks_bought(), Mastery.ranks_total(), Mastery.survival, Mastery.survival_max()],
         "  Embers by source: %s" % Mastery.earned_text(),
         "  Play data: %d runs kept on this device, sharing %s (Workshop options)" % [Telemetry.stored_count(), "on" if Telemetry.consent() == "on" else "off"],
@@ -566,7 +843,7 @@ func _build_esc_menu() -> void:
     var col := VBoxContainer.new()
     col.add_theme_constant_override("separation", 10)
     panel.add_child(col)
-    col.add_child(UiTheme.label("THE HUB", 40))
+    col.add_child(UiTheme.label("THE HOLLOW", 40))
     _esc_first = UiTheme.button("Resume", _close_overlay)
     col.add_child(_esc_first)
     col.add_child(UiTheme.button("Options", func(): _open(_options_center, null)))
@@ -625,11 +902,17 @@ static func draw_goal(ci: CanvasItem, at: Vector2, g: Dictionary, width: float) 
 
 
 func _draw() -> void:
-    var half := INNER / 2.0
-    var rect := Rect2(-half, INNER)
-    draw_rect(rect.grow(-10.0), Color(0, 0, 0, 0.35), false, 20.0)
-    _draw_trophy_wall()
+    for id in ROOMS:
+        var r: Rect2 = ROOMS[id]["rect"]
+        draw_rect(r.grow(-10.0), Color(0, 0, 0, 0.35), false, 20.0)
+    _draw_library()
+    _draw_forge()
+    _draw_fire()
+    if _shown(_station("trophies")):
+        _draw_trophy_wall()
     for s in STATIONS:
+        if not _shown(s):
+            continue
         match String(s["style"]):
             "plinth":
                 _draw_plinth(s)
@@ -637,28 +920,42 @@ func _draw() -> void:
                 _draw_gate(s)
             "wall":
                 _draw_wall_marker(s)
+            "npc":
+                Npc.draw(self, String(s["npc"]), Vector2(s["pos"]), _time, _highlight.has(String(s["id"])))
 
 
-## Station names, prompts, the trophy count and goals: drawn on the Crisp layer so they
-## stay sharp above the post-process pixel grid.
+## Station names, prompts, room names, the trophy count and goals: drawn on the Crisp
+## layer so they stay sharp above the post-process pixel grid.
 func _draw_texts(cv: CanvasItem) -> void:
     _cv = cv
-    var half := INNER / 2.0
-    var n: int = Progress.ACHIEVEMENTS.size()
-    var y := -half.y + 14.0
-    _text(Vector2(0, y + 10.0), "TROPHIES   %d / %d" % [Progress.achievements_count(), n], 24, LIT, 400.0)
-    var goals := goal_rows(3)
-    if goals.is_empty():
-        _text(Vector2(0, y + 36.0), "Every achievement earned.", 20, UiTheme.BONE, 400.0)
-    for i in goals.size():
-        draw_goal(cv, Vector2(-280, y + 18.0 + float(i) * 46.0), goals[i], 560.0)
+    for id in ROOMS:
+        var r: Rect2 = ROOMS[id]["rect"]
+        if id == "chapel" and _shown(_station("trophies")):
+            continue   # the goals sit under the plaque
+        _text(Vector2(r.get_center().x, r.position.y + 34.0), String(ROOMS[id]["name"]), 22, Color(UiTheme.DIM, 0.8), 400.0)
+    if _shown(_station("trophies")):
+        var top: float = ROOMS["chapel"]["rect"].position.y
+        var n: int = Progress.ACHIEVEMENTS.size()
+        var y := top + 14.0
+        _text(Vector2(0, y + 10.0), "TROPHIES   %d / %d" % [Progress.achievements_count(), n], 24, LIT, 400.0)
+        var goals := goal_rows(3)
+        if goals.is_empty():
+            _text(Vector2(0, y + 36.0), "Every achievement earned.", 20, UiTheme.BONE, 400.0)
+        for i in goals.size():
+            draw_goal(cv, Vector2(-280, y + 18.0 + float(i) * 46.0), goals[i], 560.0)
+    if not Progress.npc_home("archivist"):
+        _text(Vector2(-985, -80), "an empty desk", 20, Color(UiTheme.DIM, 0.7))
     for s in STATIONS:
+        if not _shown(s):
+            continue
         var p: Vector2 = s["pos"]
         match String(s["style"]):
             "plinth":
                 _draw_label_and_prompt(s, p, -76.0)
             "gate":
                 _draw_label_and_prompt(s, p, -50.0)
+            "npc":
+                _draw_npc_label(s, p)
             "wall":
                 if _highlight.has(String(s["id"])):
                     var pr: Array = _highlight[s["id"]]
@@ -687,6 +984,22 @@ func _draw_label_and_prompt(s: Dictionary, base: Vector2, top: float) -> void:
         _text(base + Vector2(0, 68), String(s["verb"]), 20, Color(0.6, 1.0, 1.0))
 
 
+## An NPC's name over their head (always, so the room reads at a glance), what they do
+## under their feet, and the prompt when someone is close.
+func _draw_npc_label(s: Dictionary, base: Vector2) -> void:
+    var id := String(s["id"])
+    var npc := String(s["npc"])
+    var hl := _highlight.has(id)
+    var head := base + Vector2(0, -16.0 * Npc.SCALE - 22.0)
+    _text(head, Npc.display_name(npc), 24, Npc.color(npc).lerp(Color.WHITE, 0.35 if hl else 0.0), 320.0)
+    _text(base + Vector2(0, 26), String(s["sub"]), 20, UiTheme.BONE if hl else UiTheme.DIM, 320.0)
+    if hl:
+        var pr: Array = _highlight[id]
+        var bob := sin(_time * 5.0) * 2.0
+        Prompts.draw(_cv if _cv != null else self, head + Vector2(-24, -34.0 + bob), String(pr[0]), String(pr[1]), 24.0)
+        _text(head + Vector2(26, -26.0 + bob), String(s["verb"]), 20, Color(0.6, 1.0, 1.0), 80.0)
+
+
 func _draw_plinth(s: Dictionary) -> void:
     var p: Vector2 = s["pos"]
     var c: Color = s["tint"]
@@ -713,32 +1026,95 @@ func _draw_plinth(s: Dictionary) -> void:
         draw_texture_rect(Art.tile(s["tile"]), icon_rect, false, c)
 
 
-## The Gate: a dark arch cut into the bottom wall, stairs going down, a cold glow.
+## The Gate: a dark arch cut into the Stair's bottom wall, steps going down, a cold glow.
 func _draw_gate(s: Dictionary) -> void:
     var p: Vector2 = s["pos"]
-    var half := INNER / 2.0
+    var bottom: float = ROOMS["stair"]["rect"].end.y
     var c: Color = s["tint"]
-    var arch := Rect2(Vector2(-70, half.y - 4.0), Vector2(140, WALL + 4.0))
+    var arch := Rect2(Vector2(-70, bottom - 4.0), Vector2(140, WALL + 4.0))
     draw_rect(arch.grow(6.0), Color(0.25, 0.2, 0.22))
     draw_rect(arch, Color(0.01, 0.01, 0.02))
     for i in 4:
-        draw_rect(Rect2(Vector2(-60 + i * 6, half.y + 8.0 + i * 12.0), Vector2(120 - i * 12, 6)), Color(0.18, 0.2, 0.24, 1.0 - 0.2 * i))
+        draw_rect(Rect2(Vector2(-60 + i * 6, bottom + 8.0 + i * 12.0), Vector2(120 - i * 12, 6)), Color(0.18, 0.2, 0.24, 1.0 - 0.2 * i))
     var glow: Texture2D = Art.PARTICLES["light"]
     var g := 220.0 + sin(_time * 1.6) * 16.0
-    draw_texture_rect(glow, Rect2(Vector2(-g / 2.0, half.y - g / 2.0), Vector2(g, g)), false, Color(c, 0.18 + (0.12 if _highlight.has("gate") else 0.0)))
+    draw_texture_rect(glow, Rect2(Vector2(-g / 2.0, bottom - g / 2.0), Vector2(g, g)), false, Color(c, 0.18 + (0.12 if _highlight.has("gate") else 0.0)))
     draw_arc(p, 34.0, 0.0, TAU, 40, Color(c, 0.35 + 0.15 * sin(_time * 3.0)), 2.0)
     draw_texture_rect(Art.tile(s["tile"]), Rect2(p + Vector2(-16, -16), Vector2(32, 32)), false, Color(c, 0.85))
 
 
-## The Trophy Wall: a plaque on the top wall with one tile per achievement, the count,
-## and the next three goals with bars written on the floor under it.
+## The fire in the middle of the Hollow: a ring of stones, logs, and flames that flicker.
+func _draw_fire() -> void:
+    var glow: Texture2D = Art.PARTICLES["light"]
+    var g := 300.0 + sin(_time * 3.1) * 14.0 + sin(_time * 7.3) * 6.0
+    draw_texture_rect(glow, Rect2(FIRE - Vector2(g, g) / 2.0, Vector2(g, g)), false, Color(1.0, 0.55, 0.2, 0.30))
+    for i in 10:
+        var a := TAU * float(i) / 10.0
+        draw_circle(FIRE + Vector2(cos(a) * 30.0, sin(a) * 14.0 + 6.0), 7.0, Color(0.32, 0.29, 0.30))
+        draw_circle(FIRE + Vector2(cos(a) * 30.0, sin(a) * 14.0 + 4.0), 5.0, Color(0.46, 0.42, 0.42))
+    draw_line(FIRE + Vector2(-22, 8), FIRE + Vector2(20, -2), Color(0.30, 0.18, 0.10), 7.0)
+    draw_line(FIRE + Vector2(-18, -2), FIRE + Vector2(22, 8), Color(0.36, 0.22, 0.12), 7.0)
+    var cols := [Color(0.85, 0.22, 0.08), Color(1.0, 0.55, 0.12), Color(1.0, 0.88, 0.45)]
+    for k in 3:
+        var h := (46.0 - 13.0 * float(k)) * (1.0 + 0.12 * sin(_time * 9.0 + float(k) * 2.0))
+        var w := 20.0 - 5.0 * float(k)
+        var sway := sin(_time * 5.0 + float(k)) * 4.0
+        draw_colored_polygon(PackedVector2Array([FIRE + Vector2(-w, 2), FIRE + Vector2(w, 2), FIRE + Vector2(sway * 0.5 + w * 0.4, -h * 0.55), FIRE + Vector2(sway, -h), FIRE + Vector2(sway * 0.5 - w * 0.4, -h * 0.55)]), cols[k])
+
+
+## The Library: shelves along the top wall, a reading desk where the Archivist works.
+func _draw_library() -> void:
+    var r: Rect2 = ROOMS["library"]["rect"]
+    var spine := [Color(0.45, 0.16, 0.12), Color(0.22, 0.30, 0.20), Color(0.50, 0.40, 0.22), Color(0.20, 0.22, 0.36), Color(0.36, 0.30, 0.28)]
+    for sx in [r.position.x + 40.0, r.end.x - 260.0]:
+        var shelf := Rect2(sx, r.position.y + 6.0, 220.0, 70.0)
+        draw_rect(shelf, Color(0.20, 0.13, 0.08))
+        for row in 2:
+            var y := shelf.position.y + 6.0 + float(row) * 32.0
+            var x := shelf.position.x + 6.0
+            var k := int(sx) + row * 7
+            while x < shelf.end.x - 10.0:
+                var w := 6.0 + float(posmod(k * 13, 5))
+                draw_rect(Rect2(x, y + float(posmod(k, 3)), w, 26.0 - float(posmod(k, 3))), spine[posmod(k, spine.size())])
+                x += w + 1.0
+                k += 1
+            draw_rect(Rect2(shelf.position.x, y + 26.0, shelf.size.x, 4.0), Color(0.30, 0.20, 0.12))
+    var desk := Rect2(-1045, -150, 110, 44)
+    draw_rect(desk.grow(2.0), Color(0.08, 0.05, 0.04))
+    draw_rect(desk, Color(0.34, 0.22, 0.13))
+    draw_rect(Rect2(desk.position, Vector2(desk.size.x, 6.0)), Color(0.46, 0.31, 0.18))
+    draw_rect(Rect2(desk.position + Vector2(18, 8), Vector2(30, 22)), Color(0.86, 0.80, 0.66))
+    draw_rect(Rect2(desk.position + Vector2(52, 10), Vector2(26, 20)), Color(0.80, 0.74, 0.60))
+    var flame := desk.position + Vector2(100, -4)
+    draw_rect(Rect2(flame + Vector2(-3, 0), Vector2(6, 14)), Color(0.9, 0.86, 0.75))
+    var glow: Texture2D = Art.PARTICLES["light"]
+    var g := 90.0 + sin(_time * 6.0) * 6.0
+    draw_texture_rect(glow, Rect2(flame - Vector2(g, g) / 2.0, Vector2(g, g)), false, Color(1.0, 0.8, 0.4, 0.25))
+    draw_circle(flame + Vector2(0, -3), 3.0, Color(1.0, 0.85, 0.4))
+
+
+## The Forge: a cold hearth on the top wall and an anvil; the Smith is not home yet.
+func _draw_forge() -> void:
+    var r: Rect2 = ROOMS["forge"]["rect"]
+    var hearth := Rect2(r.get_center().x - 70.0, r.position.y + 4.0, 140.0, 70.0)
+    draw_rect(hearth.grow(4.0), Color(0.22, 0.18, 0.18))
+    draw_rect(hearth, Color(0.05, 0.03, 0.03))
+    var glow: Texture2D = Art.PARTICLES["light"]
+    draw_texture_rect(glow, Rect2(hearth.get_center() - Vector2(70, 50), Vector2(140, 100)), false, Color(0.9, 0.3, 0.1, 0.12 + 0.03 * sin(_time * 1.3)))
+    var anvil := Vector2(r.get_center().x, r.end.y - 110.0)
+    draw_colored_polygon(PackedVector2Array([anvil + Vector2(-30, -14), anvil + Vector2(34, -14), anvil + Vector2(22, -4), anvil + Vector2(-20, -4)]), Color(0.34, 0.34, 0.38))
+    draw_rect(Rect2(anvil + Vector2(-10, -4), Vector2(20, 14)), Color(0.24, 0.24, 0.28))
+    draw_rect(Rect2(anvil + Vector2(-18, 10), Vector2(36, 6)), Color(0.20, 0.20, 0.24))
+
+
+## The Trophy Wall: a plaque on the Chapel's top wall with one tile per achievement, the
+## count, and the next three goals with bars written on the floor under it.
 func _draw_trophy_wall() -> void:
-    var half := INNER / 2.0
     var n: int = Progress.ACHIEVEMENTS.size()
     var cols := maxi(1, ceili(float(n) / 2.0))
     var cell := minf(20.0, 600.0 / float(cols))
     var w := cell * float(cols)
-    var top := -half.y - WALL + 6.0
+    var top: float = ROOMS["chapel"]["rect"].position.y - WALL + 6.0
     var plaque := Rect2(Vector2(-w / 2.0 - 10.0, top - 2.0), Vector2(w + 20.0, cell * 2.0 + 10.0))
     draw_rect(plaque.grow(3.0), Color(0.35, 0.28, 0.2))
     draw_rect(plaque, Color(0.06, 0.05, 0.06))
@@ -762,7 +1138,7 @@ func _draw_wall_marker(s: Dictionary) -> void:
     draw_arc(p, 20.0, _time, _time + PI * 1.4, 16, Color(LIT, 0.3), 2.0)
 
 
-# --- Test hook ---------------------------------------------------------------
+# --- Test hooks --------------------------------------------------------------
 
 
 func _capture(path: String, wait: float) -> void:
@@ -777,9 +1153,10 @@ func _capture(path: String, wait: float) -> void:
 ## options; then quit.
 func _menu_shot() -> void:
     DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path("res://autotest"))
-    players[0].global_position = Vector2(-420, -40)
+    players[0].global_position = Vector2(-170, -40)
     await _capture("res://autotest/menu.png", 0.8)
     _open(_journal_center, null)
+    _journal.set_view("JOURNAL", [])
     for i in Journal.TABS.size():
         _journal.set_tab(i)
         await _capture("res://autotest/journal_%d.png" % i, 0.3)
@@ -806,6 +1183,160 @@ func _theme_shot() -> void:
     await _capture("res://autotest/theme_sanctum.png", 2.0)
     print("[THEME SHOT] sanctum  ambience=%d px" % (ambience.live() if ambience != null else 0))
     get_tree().quit()
+
+
+## Where a player stands to use a station: in front of it (below), or above the Gate.
+func _stand_point(s: Dictionary) -> Vector2:
+    var p: Vector2 = s["pos"]
+    match String(s["style"]):
+        "gate":
+            return p + Vector2(0, -46)
+        "wall":
+            return p + Vector2(0, 50)
+    return p + Vector2(0, 48)
+
+
+## Waypoints from room `a` to room `b` through the doorways (breadth-first), each door as
+## a point inside the room, the doorway, and a point inside the next room.
+func _route(a: String, b: String) -> Array:
+    var prev := { a: "" }
+    var queue := [a]
+    while not queue.is_empty():
+        var cur: String = queue.pop_front()
+        if cur == b:
+            break
+        for d in DOORS:
+            var n := ""
+            if d["a"] == cur:
+                n = String(d["b"])
+            elif d["b"] == cur:
+                n = String(d["a"])
+            if n == "" or prev.has(n):
+                continue
+            prev[n] = cur
+            queue.append(n)
+    var chain: Array = [b]
+    while String(prev.get(chain[0], "")) != "":
+        chain.push_front(prev[chain[0]])
+    var pts: Array = [Rect2(ROOMS[a]["rect"]).get_center()]
+    for i in range(chain.size() - 1):
+        var from: Rect2 = ROOMS[chain[i]]["rect"]
+        var to: Rect2 = ROOMS[chain[i + 1]]["rect"]
+        for d in DOORS:
+            if (d["a"] == chain[i] and d["b"] == chain[i + 1]) or (d["b"] == chain[i] and d["a"] == chain[i + 1]):
+                var at: Vector2 = d["at"]
+                var dir := to.get_center() - from.get_center()
+                dir = Vector2(signf(dir.x), 0) if absf(dir.x) > absf(dir.y) else Vector2(0, signf(dir.y))
+                pts.append(at - dir * (WALL + 50.0))
+                pts.append(at)
+                pts.append(at + dir * (WALL + 50.0))
+        pts.append(to.get_center())
+    return pts
+
+
+func _walk_to(target: Vector2) -> bool:
+    var p := players[0]
+    var pts := _route(room_at(p.global_position), room_at(target))
+    pts.append(target)
+    for wp in pts:
+        var t := 0.0
+        while p.global_position.distance_to(wp) > 10.0:
+            p.input.force_move = (Vector2(wp) - p.global_position).normalized()
+            await get_tree().physics_frame
+            t += get_physics_process_delta_time()
+            if t > 8.0:
+                p.input.force_move = Vector2.ZERO
+                print("[HUB-WALK] stuck at (%.0f, %.0f) going to (%.0f, %.0f)" % [p.global_position.x, p.global_position.y, wp.x, wp.y])
+                return false
+    p.input.force_move = Vector2.ZERO
+    return true
+
+
+## `-- --hub-walk`: walk to every station on show and use it like a player (the interact
+## press, then the NPC's service button), checking what opens. Logs [HUB] (what is on
+## show), [HUB-TALK] (each line), [HUB-STEP] per station and [HUB-WALK] PASS / FAIL.
+## `--hub-shot` (needs a window) saves autotest/hub_<station>.png and _talk captures.
+func _hub_walk() -> void:
+    var shots := OS.get_cmdline_user_args().has("--hub-shot")
+    if shots:
+        DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path("res://autotest"))
+    await get_tree().create_timer(0.5).timeout
+    var on_show: Array = []
+    for s in STATIONS:
+        if _shown(s):
+            on_show.append(s["id"])
+    print("[HUB] runs=%d archivist=%s on show: %s" % [Progress.stat("runs_started"), Progress.npc_state("archivist"), ", ".join(on_show)])
+    var fresh := Progress.stat("runs_started") == 0
+    if fresh:
+        var expect := ["keeper", "gatewarden", "gate"]
+        print("[HUB-FRESH] %s (expected %s)" % ["PASS" if on_show == expect else "FAIL", ", ".join(expect)])
+    # station, service button, what should open
+    var plan: Array = [["keeper", "Talents", _mastery_center], ["gatewarden", "Past runs", _ledger_center], ["gate", "", null]]
+    if Progress.npc_home("archivist"):
+        plan.append(["archivist", "Journal", _journal_center])
+        plan.append(["archivist", "Ledger", _ledger_center])
+    if _settled():
+        plan.append_array([["armory", "", _journal_center], ["workshop", "", _options_center], ["mirror", "", _names_center], ["trophies", "", _journal_center]])
+    plan.append(["gatewarden", "Descend", null])
+    var ok := not fresh or on_show == ["keeper", "gatewarden", "gate"]
+    var p := players[0]
+    for step in plan:
+        var id := String(step[0])
+        var s := _station(id)
+        if not await _walk_to(_stand_point(s)):
+            ok = false
+            print("[HUB-STEP] %s FAIL (could not walk there)" % id)
+            continue
+        await get_tree().create_timer(0.4).timeout
+        if shots:
+            await _capture("res://autotest/hub_%s.png" % id, 0.2)
+        p.input._edges["interact"] = true
+        await get_tree().create_timer(0.2).timeout
+        var opened := "nothing"
+        var good := false
+        if s["style"] == "npc":
+            if _overlay == _talk_root:
+                print("[HUB-TALK] %s: \"%s\"" % [id, _talk_text.text])
+                if shots:
+                    await _capture("res://autotest/hub_%s_talk.png" % id, 0.2)
+                var b := _talk_button(String(step[1]))
+                if b != null:
+                    b.pressed.emit()
+                    await get_tree().create_timer(0.2).timeout
+            if step[2] == null:
+                good = _class_select != null
+                opened = "class picker" if good else str(_overlay)
+            else:
+                good = _overlay == step[2]
+                opened = _overlay_name()
+        elif s["style"] == "gate":
+            good = _class_select != null
+            opened = "class picker" if good else _overlay_name()
+        else:
+            good = _overlay == step[2]
+            opened = _overlay_name()
+        if _overlay == _journal_center:
+            var tabs: Array = []
+            for i in (_journal.allowed if not _journal.allowed.is_empty() else range(Journal.TABS.size())):
+                tabs.append(Journal.TABS[i])
+            opened += " (%s)" % ", ".join(tabs)
+        print("[HUB-STEP] %s -> %s %s" % [id + ("/" + String(step[1]) if String(step[1]) != "" else ""), opened, "PASS" if good else "FAIL"])
+        ok = ok and good
+        if _class_select != null:
+            _close_class_select()
+        _close_overlay()
+        await get_tree().create_timer(0.4).timeout
+    print("[HUB-WALK] %s" % ("PASS" if ok else "FAIL"))
+    get_tree().quit()
+
+
+func _overlay_name() -> String:
+    if _overlay == null:
+        return "nothing"
+    for pair in [[_mastery_center, "talents"], [_ledger_center, "ledger: " + (_ledger_title.text if _ledger_title != null else "")], [_journal_center, "journal"], [_options_center, "options"], [_names_center, "names"], [_talk_root, "talk"], [_esc_center, "menu"]]:
+        if _overlay == pair[0]:
+            return String(pair[1])
+    return "?"
 
 
 func _players_count() -> int:

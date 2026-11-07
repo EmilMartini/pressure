@@ -11,6 +11,11 @@ const TABS := ["Achievements", "Arsenal", "Gear", "Reactions", "Fusions", "Catac
 
 var on_close: Callable
 var tab := 0
+## The tabs this view shows (indices into TABS); empty shows all. Each station opens its
+## own part: the trophy wall Achievements, the Armory Arsenal and Gear, and the Archivist
+## (phase 1, when recruited) Reactions, Fusions, Cataclysms and Secrets.
+var allowed: Array = []
+var _title: Label
 var _tab_labels: Array = []
 var _scroll: ScrollContainer
 var _list: VBoxContainer
@@ -28,7 +33,8 @@ func _ready() -> void:
     var v := VBoxContainer.new()
     v.add_theme_constant_override("separation", 6)
     add_child(v)
-    v.add_child(UiTheme.label("JOURNAL", 40))
+    _title = UiTheme.label("JOURNAL", 40)
+    v.add_child(_title)
     var bar := HBoxContainer.new()
     bar.alignment = BoxContainer.ALIGNMENT_CENTER
     bar.add_theme_constant_override("separation", 30)
@@ -69,9 +75,26 @@ func _input(event: InputEvent) -> void:
         return
     match (event as InputEventKey).physical_keycode:
         KEY_Q:
-            set_tab(tab - 1)
+            step_tab(-1)
         KEY_E:
-            set_tab(tab + 1)
+            step_tab(1)
+
+
+## Show only `tabs` (empty: all) under `title`.
+func set_view(title: String, tabs: Array) -> void:
+    allowed = tabs
+    if _title != null:
+        _title.text = title
+    for k in _tab_labels.size():
+        _tab_labels[k].visible = allowed.is_empty() or allowed.has(k)
+
+
+func step_tab(step: int) -> void:
+    if allowed.is_empty():
+        set_tab(tab + step)
+        return
+    var at := maxi(0, allowed.find(tab))
+    set_tab(int(allowed[wrapi(at + step, 0, allowed.size())]))
 
 
 func set_tab(i: int) -> void:
