@@ -49,6 +49,7 @@ const NAMES := {
 const HP_SHARE := {
     "pyre_lord": 0.4,
     "hive_mother": 1.5,   # her chain is quick to set up; at 1.0 to 1.2 bot fights took 14 to 33 s
+    "storm_warden": 1.5,   # at 1.0 to 1.3 the bot fights took 17 to 35 s
 }
 
 
@@ -72,6 +73,7 @@ const PHASES := {
     "pyre_lord": [0.66, 0.33],
     "brute_king": [0.66, 0.33],
     "hive_mother": [0.66, 0.33],
+    "storm_warden": [0.66, 0.33],
 }
 
 ## Body parts per boss kind. `offset` and `r` are in units of the boss radius. `innate`: an
@@ -85,7 +87,21 @@ const PHASES := {
 ## added when the part tears. `stays_off`: from this phase on a torn part never re-forms.
 ## `from_phase`: the part is hidden (not hittable) before this phase. `burrows`: hidden while
 ## the boss is underground (Enemy.burrowed). `tear_damage`: share of max health a tear deals.
+## `wear_by`: armour wear for one named product (overrides `wear`). `payoff`: product -> share
+## of max health it deals on this part, with a cataclysm's worth of stagger.
 const PARTS := {
+    # The Storm Warden: his lightning rods keep their charge. Stone on a charged rod is
+    # Grounded (three tear them, as do fusions on the glass it leaves). The bare storm core
+    # holds no charge of its own: steam it, and his own recharge strike, or your shock, sets
+    # off a Storm Cloud inside him. Phase 2 the rods burst; phase 3 they stay off.
+    "storm_warden": [
+        { "id": "rods", "name": "Lightning rods", "offset": Vector2(0.0, -0.2), "r": 1.0,
+            "innate": Element.Kind.SHOCK, "armour": true, "wear": { 2: 0.0, 3: 0.2, 4: 0.6 },
+            "wear_by": { "Grounded": 0.34 }, "tear_stagger": 0.3, "stays_off": 3, "taken": 0.7 },
+        { "id": "storm_core", "name": "Storm core", "offset": Vector2(0.0, 0.1), "r": 0.6,
+            "covered_by": "rods", "taken": 1.5, "inert": [Element.Kind.SHOCK],
+            "payoff": { "Storm Cloud": 0.03 } },
+    ],
     # The Hive Mother: her spore sacs keep re-poisoning. Fire on them makes Smog on the sacs,
     # shock on the Smog is Firedamp, which blows them off (a burst and a third of the stagger
     # bar). Shock does nothing to a sac without Smog. In phase 2 she burrows and the sacs stay
@@ -358,9 +374,15 @@ func on_product(product: String, tier: int, on_part: bool) -> void:
     if p.get("armour", false):
         var tears: Array = p.get("tears", [])
         var wear: Dictionary = p.get("wear", ARMOUR_WEAR)
-        p["integrity"] = float(p["integrity"]) - (1.0 if tears.has(product) else float(wear.get(tier, 0.0)))
+        var wear_by: Dictionary = p.get("wear_by", {})
+        var lost := 1.0 if tears.has(product) else float(wear_by.get(product, wear.get(tier, 0.0)))
+        p["integrity"] = float(p["integrity"]) - lost
         if float(p["integrity"]) <= 0.0:
             tear(cur, product)
+    elif Dictionary(p.get("payoff", {})).has(product):
+        Elements.reaction_fired.emit("OVERLOAD!", part_world(cur), Color(0.95, 0.95, 0.5))
+        add_stagger(4)
+        e.take_damage(e.max_hp * float(p["payoff"][product]), Color(0.95, 0.95, 0.5), false)
     elif product == "Obsidian" and p.get("holds", "") == "MAGMA":
         # The glassed core shatters: the payoff of the whole chain.
         Elements.reaction_fired.emit("SHATTERED!", part_world(cur), Color(0.75, 0.6, 1.0))
@@ -477,6 +499,15 @@ func on_phase(n: int) -> void:
                 Elements.reaction_fired.emit("She digs in", e.global_position + Vector2(0, -e.radius * 1.8), Color(0.75, 0.9, 0.4))
             elif n == 3:
                 Elements.reaction_fired.emit("The hive splits open", part_world(part_index("brood")), Color(0.95, 0.95, 0.5))
+        "storm_warden":
+            var rd := part_index("rods")
+            if n == 2 and rd >= 0:
+                tear(rd, "phase 2")   # the rods burst and the arena rains lightning
+            elif n == 3 and rd >= 0:
+                parts[rd]["regrow"] = INF if parts[rd]["broken"] else parts[rd]["regrow"]
+                if not parts[rd]["broken"]:
+                    tear(rd, "phase 3")
+                Elements.reaction_fired.emit("He becomes the storm", e.global_position + Vector2(0, -e.radius * 1.8), Color(0.95, 0.95, 0.5))
         "pyre_lord":
             var a := part_index("armour")
             if n == 2 and a >= 0:

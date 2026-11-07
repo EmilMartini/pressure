@@ -237,6 +237,11 @@ const BURROW_WARN := 0.8
 const BURROW_UNDER := 2.6
 const BURROW_MARK := 1.2       # the eruption circle shows this long before she bursts up
 const ERUPT_R := 72.0
+var _strikes: Array = []     # Storm Warden: [{ "pos", "warn", "flash", "self" }] lightning strikes
+var _strike_t := 1.5
+var _storm_trail := 0.0
+const STRIKE_R := 58.0
+const STRIKE_SELF_R := 1.6     # x radius: a recharge strike on himself
 var _hazards: Array = []    # [{ "pos": Vector2, "t": float }] boss fire patches that hurt players
 var _hazard_tick := 0.0
 
@@ -796,6 +801,8 @@ func _draw_hostile(cv: CanvasItem) -> void:
         _draw_brute_hostile(cv)
     elif boss_kind == "hive_mother":
         _draw_hive_hostile(cv)
+    elif boss_kind == "storm_warden":
+        _draw_warden_hostile(cv)
     if body != null and body.has_parts():
         _draw_parts(cv)
     if _mode == MODE_TELEGRAPH and emerge <= 0.0 and hp > 0.0:
@@ -1113,6 +1120,8 @@ func _speed_mult() -> float:
         m *= 1.15
     if boss_kind == "pyre_lord" and _phase >= 2:
         m *= 1.25
+    if boss_kind == "storm_warden" and _phase >= 3:
+        m *= 1.6
     return m
 
 
@@ -1290,6 +1299,8 @@ func _tick_boss_passive(delta: float) -> void:
             if not _summoned_30 and hp <= max_hp * 0.3:
                 _summoned_30 = true
                 _queue_summons("grunt", 3, 0.8)
+        "storm_warden":
+            _tick_strikes(delta)
         "pyre_lord":
             _hazard_tick -= delta
             for i in range(_hazards.size() - 1, -1, -1):
@@ -1489,6 +1500,34 @@ func _draw_parts(cv: CanvasItem) -> void:
                     cv.draw_arc(at, pr + 3.5, a0, a1, 8, Color(Hostile.RED, 0.9), 1.0)
             "hide", "hive":
                 pass   # the sprite is the body
+            "rods":
+                if p["broken"]:
+                    continue
+                # Two lightning rods over his shoulders; they lean as the grounding wears them.
+                var lean := (1.0 - float(p["integrity"])) * 0.5
+                var charged := _part_has(i, Element.Kind.SHOCK)
+                for sd in [-1.0, 1.0]:
+                    var foot := at + Vector2(sd * pr * 0.55, pr * 0.35)
+                    var tip := foot + Vector2(sd * pr * 0.25, -pr * 1.35).rotated(sd * lean)
+                    cv.draw_line(foot, tip, Hostile.DARK, 10.0)
+                    cv.draw_line(foot, tip, Color(Hostile.RED, 0.9), 7.0)
+                    cv.draw_line(foot, tip, Color(0.55, 0.58, 0.66).lerp(Color.WHITE, flash * 0.6), 5.0)
+                    var glow := Color(1.0, 0.95, 0.4) if charged else Color(0.45, 0.45, 0.5)
+                    var tr := 6.0 + (1.5 * sin(_fx_t * 14.0 + sd) if charged else 0.0)
+                    cv.draw_circle(tip, tr + 2.5, Hostile.DARK)
+                    cv.draw_circle(tip, tr, glow.lerp(Color.WHITE, flash * 0.6))
+                    cv.draw_arc(tip, tr + 2.5, 0.0, TAU, 14, Color(Hostile.RED, 0.9), 1.0)
+            "storm_core":
+                if not vis:
+                    continue
+                var steamed := (String(p["compound"]) if i != body.cur else compound) == "STEAM"
+                var cr := pr * (1.0 + 0.08 * sin(_fx_t * 9.0))
+                cv.draw_circle(at, cr + 3.0, Hostile.DARK)
+                cv.draw_arc(at, cr + 3.0, 0.0, TAU, 24, Hostile.RED, 1.5)
+                cv.draw_circle(at, cr, Color(0.55, 0.7, 1.0).lerp(Color.WHITE, flash))
+                cv.draw_circle(at, cr * 0.45, Color(1.0, 1.0, 0.7, 0.9))
+                if steamed:
+                    cv.draw_circle(at, cr * 1.35, Color(0.9, 0.9, 0.95, 0.35))
             "sacs":
                 if p["broken"]:
                     continue
@@ -1565,36 +1604,7 @@ func _think_boss(delta: float, target: Player, dir: Vector2, dist: float, mult: 
         "hive_mother":
             return _think_hive(delta, target, dir, dist, mult)
         "storm_warden":
-            _t1 -= delta
-            _t2 -= delta
-            # Bursts of shock bolts: five aimed shots; in phase two each shot is a three-way fan.
-            if _t1 <= 0.0 and _burst_left <= 0:
-                _t1 = 3.0 if _phase == 1 else 2.0
-                _burst_left = 5
-                _burst_t = 0.0
-            if _burst_left > 0:
-                _burst_t -= delta
-                if _burst_t <= 0.0:
-                    _burst_t = 0.12
-                    _burst_left -= 1
-                    var dmg := _projectile_damage(6.0)
-                    _shoot(dir, 300.0, dmg, Element.Kind.SHOCK, 3.0, 6.0)
-                    if _phase == 2:
-                        _shoot(dir.rotated(0.3), 300.0, dmg, Element.Kind.SHOCK, 3.0, 6.0)
-                        _shoot(dir.rotated(-0.3), 300.0, dmg, Element.Kind.SHOCK, 3.0, 6.0)
-            # Teleport, telegraphed by a crackling circle where it will land.
-            if _tele_warn > 0.0:
-                _tele_warn -= delta
-                if _tele_warn <= 0.0:
-                    _teleport_to(_tele_pos)
-                    Sfx.play("react_chain")
-                return Vector2.ZERO
-            if _t2 <= 0.0:
-                _t2 = 6.0 if _phase == 1 else 4.0
-                _tele_pos = _pick_point_near(target.global_position, 200.0, 340.0)
-                _tele_warn = 0.8
-                return Vector2.ZERO
-            return _keep_range(delta, dir, dist, 160.0, 280.0) * speed * mult
+            return _think_warden(delta, target, dir, dist, mult)
         "pyre_lord":
             return _think_pyre(delta, target, dir, mult)
         "void_herald":
@@ -1628,6 +1638,145 @@ func _think_boss(delta: float, target: Player, dir: Vector2, dist: float, mult: 
                 _queue_summons("wisp", 2 if _phase == 1 else 3, 0.8)
             return _keep_range(delta, dir, dist, 140.0, 240.0) * speed * mult
     return dir * speed * mult
+
+
+# --- The Storm Warden ------------------------------------------------------------
+
+
+## Part `i` holds element `kind` (the focused part's states live on the Enemy).
+func _part_has(i: int, kind: int) -> bool:
+    return (states if i == body.cur else Dictionary(body.parts[i]["states"])).has(kind)
+
+
+## Phase 1: the pylons charge. Lightning strikes on a rhythm where you stand (a marked
+## circle first), bolt bursts, a telegraphed jump. Phase 2: the rods burst and the arena
+## rains lightning, three strikes round you and a recharge strike on himself, which sets off
+## a Storm Cloud in a steamed core. Phase 3: he is a moving storm: fast, leaving charged air,
+## a strike on you every second and a recharge every few.
+func _think_warden(delta: float, target: Player, dir: Vector2, dist: float, mult: float) -> Vector2:
+    _t1 -= delta
+    _t2 -= delta
+    _strike_t -= delta
+    var dmg := _projectile_damage(6.0)
+    if _t1 <= 0.0 and _burst_left <= 0:
+        _t1 = [3.0, 2.6, 2.4][clampi(_phase - 1, 0, 2)]
+        _burst_left = 5 if _phase < 3 else 3
+        _burst_t = 0.0
+    if _burst_left > 0:
+        _burst_t -= delta
+        if _burst_t <= 0.0:
+            _burst_t = 0.12
+            _burst_left -= 1
+            _shoot(dir, 300.0, dmg, Element.Kind.SHOCK, 3.0, 6.0)
+            if _phase == 2:
+                _shoot(dir.rotated(0.3), 300.0, dmg, Element.Kind.SHOCK, 3.0, 6.0)
+                _shoot(dir.rotated(-0.3), 300.0, dmg, Element.Kind.SHOCK, 3.0, 6.0)
+    if _strike_t <= 0.0:
+        var tp := target.global_position
+        match _phase:
+            1:
+                _strike_t = 1.6
+                _add_strike(tp, 1.0, false)
+            2:
+                _strike_t = 2.6
+                for k in 3:
+                    _add_strike(_pick_point_near(tp, 0.0 if k == 0 else 70.0, 0.0 if k == 0 else 140.0), 1.2, false)
+                _add_strike(global_position, 1.2, true)
+            _:
+                _strike_t = 1.0
+                _add_strike(tp, 0.9, false)
+                _t3 -= 1.0
+                if _t3 <= 0.0:
+                    _t3 = 3.0
+                    _add_strike(global_position, 1.0, true)
+    if _phase >= 3:
+        _tele_warn = 0.0
+        # Charged air behind him: shock for your own chains (steam, water) to catch.
+        _storm_trail -= delta
+        if _storm_trail <= 0.0:
+            _storm_trail = 1.6
+            var w := _world()
+            if w != null:
+                Cloud.spawn(w, global_position, Element.Kind.SHOCK, 50.0, 2.5, 1.0, null)
+        return _keep_range(delta, dir, dist, 140.0, 220.0) * speed * mult
+    # The jump, telegraphed by a crackling circle where he will land.
+    if _tele_warn > 0.0:
+        _tele_warn -= delta
+        if _tele_warn <= 0.0:
+            _teleport_to(_tele_pos)
+            Sfx.play("react_chain")
+        return Vector2.ZERO
+    if _t2 <= 0.0:
+        _t2 = 6.0 if _phase == 1 else 5.0
+        _tele_pos = _pick_point_near(target.global_position, 200.0, 340.0)
+        _tele_warn = 0.8
+        return Vector2.ZERO
+    for sk in _strikes:
+        if sk["self"] and float(sk["warn"]) > 0.0:
+            return Vector2.ZERO   # he holds still for his own recharge
+    return _keep_range(delta, dir, dist, 160.0, 280.0) * speed * mult
+
+
+func _add_strike(at: Vector2, warn: float, on_self: bool) -> void:
+    _strikes.append({ "pos": at, "warn": warn, "warn0": warn, "flash": 0.0, "self": on_self })
+    while _strikes.size() > 12:
+        _strikes.pop_front()
+
+
+func _tick_strikes(delta: float) -> void:
+    for i in range(_strikes.size() - 1, -1, -1):
+        var sk: Dictionary = _strikes[i]
+        if float(sk["warn"]) > 0.0:
+            if sk["self"]:
+                sk["pos"] = global_position
+            sk["warn"] = float(sk["warn"]) - delta
+            if float(sk["warn"]) <= 0.0:
+                _land_strike(sk)
+        else:
+            sk["flash"] = float(sk["flash"]) - delta
+            if float(sk["flash"]) <= 0.0:
+                _strikes.remove_at(i)
+
+
+func _land_strike(sk: Dictionary) -> void:
+    sk["flash"] = 0.18
+    var at: Vector2 = sk["pos"]
+    var r := radius * STRIKE_SELF_R if sk["self"] else STRIKE_R
+    for p in get_tree().get_nodes_in_group("players"):
+        if is_instance_valid(p) and p.alive and p.global_position.distance_to(at) <= r + 10.0:
+            p.take_damage(_projectile_damage(10.0) * damage_mult, self, at)
+    Elements.nova.emit(at, r, Color(1.0, 0.95, 0.5, 0.7))
+    Sfx.play_at("react_chain", at, 0.0)
+    if sk["self"] and body != null and hp > 0.0:
+        # The recharge: a steamed core takes the bolt as a Storm Cloud inside him.
+        var c := body.part_index("storm_core")
+        if c >= 0 and body.visible(c):
+            body.focus(c)
+            apply_element(Element.Kind.SHOCK, 1.0, null)
+        if BossBody.log_enabled:
+            print("[BOSS-MOVE] t=%.1f kind=storm_warden recharge phase=%d" % [body.age, _phase])
+
+
+func _draw_warden_hostile(cv: CanvasItem) -> void:
+    for sk in _strikes:
+        var at := to_local(sk["pos"])
+        var r := radius * STRIKE_SELF_R if sk["self"] else STRIKE_R
+        if float(sk["warn"]) > 0.0:
+            var k := 1.0 - float(sk["warn"]) / float(sk["warn0"])
+            cv.draw_arc(at, r, 0.0, TAU, 32, Color(Hostile.DARK, 0.8), 6.0)
+            cv.draw_arc(at, r, 0.0, TAU, 32, Color(Hostile.RED, 0.45 + 0.5 * k), 2.5)
+            cv.draw_circle(at, r * k, Color(Hostile.RED, 0.18))
+        else:
+            # The bolt: a jagged line from the sky, black with a red core.
+            var pts := PackedVector2Array()
+            var top := at + Vector2(0, -260.0)
+            for j in 7:
+                var f := float(j) / 6.0
+                var jig := 0.0 if j == 0 or j == 6 else randf_range(-14.0, 14.0)
+                pts.append(top.lerp(at, f) + Vector2(jig, 0.0))
+            cv.draw_polyline(pts, Hostile.DARK, 7.0)
+            cv.draw_polyline(pts, Hostile.RED, 3.0)
+            cv.draw_polyline(pts, Color(1.0, 0.95, 0.8), 1.0)
 
 
 # --- The Hive Mother --------------------------------------------------------------
