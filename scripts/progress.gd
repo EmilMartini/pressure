@@ -12,6 +12,11 @@ const SAVE_PATH := "user://save.json"
 const BASE_UNLOCKS := ["gun:water_pistol", "gun:arc_rifle", "gun:flare_pistol", "gun:slick_wand", "obstacle:pool", "mark:vagrant"]
 
 ## stat: the Progress stat that counts toward it. goal: the number to reach.
+## Phase 3: the counter guns below moved to lessons (scripts/lessons.gd): oil_slinger,
+## cinder_flak, hydro_cannon, acid_flask, ember_carbine, rime_chakram, eclipse_carbine,
+## glacier_lance, napalm_lobber, void_orb, stone_sling and sun_cannon. Their achievements
+## stay as milestones (empty rewards) so saves keep their ids. The class_* entries are the
+## loadout challenges: each opens a Mark and its Kit (GDD section 11).
 const ACHIEVEMENTS := [
     # Ordered by effort. The first block teaches the basics, Risk of Rain 2 style, and
     # hands out one new element per run (report R8): every goal in it is cumulative and
@@ -53,9 +58,9 @@ const ACHIEVEMENTS := [
     { "id": "arsonist", "name": "Arsonist", "desc": "Fire 30 Infernos or Ignitions",
         "stat": "reactions_fire", "goal": 30, "rewards": ["obstacle:thicket"] },
     { "id": "kettle", "name": "Kettle", "desc": "Fire 10 Steams",
-        "stat": "reaction:Steam", "goal": 10, "rewards": ["gun:oil_slinger"] },
+        "stat": "reaction:Steam", "goal": 10, "rewards": [] },
     { "id": "sparkplug", "name": "Sparkplug", "desc": "Fire 25 Ignitions",
-        "stat": "reaction:Ignition", "goal": 25, "rewards": ["gun:cinder_flak"] },
+        "stat": "reaction:Ignition", "goal": 25, "rewards": [] },
     { "id": "class_tarsmith", "name": "Pitch Black", "desc": "Fire 30 Ignitions",
         "stat": "reaction:Ignition", "goal": 30, "rewards": ["mark:tarsmith", "kit:slick_wand"] },
     { "id": "class_stormcaller", "name": "Lightning Rod", "desc": "Fire 40 Chain Lightnings",
@@ -67,17 +72,17 @@ const ACHIEVEMENTS := [
     { "id": "class_frostbinder", "name": "Cold Hands", "desc": "Fire 15 Deep Freezes",
         "stat": "reaction:Deep Freeze", "goal": 15, "rewards": ["mark:frostbinder", "kit:frost_caster"] },
     { "id": "venter", "name": "Venter", "desc": "Vent 30 novas",
-        "stat": "vents", "goal": 30, "rewards": ["gun:hydro_cannon"] },
+        "stat": "vents", "goal": 30, "rewards": [] },
     { "id": "alchemist", "name": "Alchemist", "desc": "Fire 25 Infernos",
-        "stat": "reaction:Inferno", "goal": 25, "rewards": ["gun:acid_flask", "obstacle:rubble"] },
+        "stat": "reaction:Inferno", "goal": 25, "rewards": ["obstacle:rubble"] },
     { "id": "collector", "name": "Collector", "desc": "Equip 8 pieces of gear",
         "stat": "items_picked", "goal": 8, "rewards": ["rarity:epic"] },
     { "id": "slayer", "name": "Slayer", "desc": "Kill 12 elites",
-        "stat": "elites", "goal": 12, "rewards": ["gun:ember_carbine"] },
+        "stat": "elites", "goal": 12, "rewards": [] },
     { "id": "plasma", "name": "Plasma Physicist", "desc": "Fire 15 Plasmas",
         "stat": "reaction:Plasma", "goal": 15, "rewards": ["gun:storm_seeker"] },
     { "id": "black_ice", "name": "Black Ice", "desc": "Fire 15 Black Ices",
-        "stat": "reaction:Black Ice", "goal": 15, "rewards": ["gun:rime_chakram"] },
+        "stat": "reaction:Black Ice", "goal": 15, "rewards": [] },
     { "id": "thermal", "name": "Thermal", "desc": "Fire 20 Thermal Shocks",
         "stat": "reaction:Thermal Shock", "goal": 20, "rewards": ["gun:duality_burst"] },
     # Off-element reactions: each needs a gun of both elements, which the first block now
@@ -110,7 +115,7 @@ const ACHIEVEMENTS := [
     { "id": "class_windrunner", "name": "Rainmaker", "desc": "Fire 25 Monsoons",
         "stat": "reaction:Monsoon", "goal": 25, "rewards": ["mark:windrunner", "kit:zephyr_rang"] },
     { "id": "annihilator", "name": "Annihilator", "desc": "Fire 15 Annihilations",
-        "stat": "reaction:Annihilation", "goal": 15, "rewards": ["gun:eclipse_carbine"] },
+        "stat": "reaction:Annihilation", "goal": 15, "rewards": [] },
     # Depth, bosses and the long tail.
     { "id": "tourist", "name": "Tourist", "desc": "Clear 3 floors",
         "stat": "floors", "goal": 3, "rewards": ["gun:vein_pistol"] },
@@ -136,15 +141,15 @@ const ACHIEVEMENTS := [
     { "id": "pressure_cooker", "name": "Pressure Cooker", "desc": "Fire 75 Steams",
         "stat": "reaction:Steam", "goal": 75, "rewards": ["gun:kettle_gun"] },
     { "id": "deep_freezer", "name": "Deep Freezer", "desc": "Fire 50 Deep Freezes",
-        "stat": "reaction:Deep Freeze", "goal": 50, "rewards": ["gun:glacier_lance"] },
+        "stat": "reaction:Deep Freeze", "goal": 50, "rewards": [] },
     { "id": "pyromaniac", "name": "Pyromaniac", "desc": "Fire 90 Infernos",
-        "stat": "reaction:Inferno", "goal": 90, "rewards": ["gun:napalm_lobber"] },
+        "stat": "reaction:Inferno", "goal": 90, "rewards": [] },
     { "id": "hoarder", "name": "Hoarder", "desc": "Equip 25 pieces of gear",
         "stat": "items_picked", "goal": 25, "rewards": ["rarity:legendary"] },
     { "id": "abyss", "name": "Abyss", "desc": "Kill 6 bosses",
-        "stat": "bosses", "goal": 6, "rewards": ["gun:void_orb"] },
+        "stat": "bosses", "goal": 6, "rewards": [] },
     { "id": "mason", "name": "Mason", "desc": "Kill 50 elites",
-        "stat": "elites", "goal": 50, "rewards": ["gun:stone_sling"] },
+        "stat": "elites", "goal": 50, "rewards": [] },
     { "id": "riddler", "name": "Riddler", "desc": "Solve every kind of secret",
         "stat": "secret_kinds", "goal": 10, "rewards": ["secret:hoard"] },
     { "id": "explorer", "name": "Explorer", "desc": "Clear 20 floors",
@@ -152,7 +157,7 @@ const ACHIEVEMENTS := [
     { "id": "survivor", "name": "Survivor", "desc": "Clear the dungeon",
         "stat": "runs_won", "goal": 1, "rewards": ["gun:storm_pike", "shop:extra"] },
     { "id": "sunbreaker", "name": "Sunbreaker", "desc": "Kill 12 bosses",
-        "stat": "bosses", "goal": 12, "rewards": ["gun:sun_cannon"] },
+        "stat": "bosses", "goal": 12, "rewards": [] },
     { "id": "reaper", "name": "Reaper", "desc": "Kill 3750 enemies",
         "stat": "kills", "goal": 3750, "rewards": ["gun:railgun"] },
     { "id": "spelunker", "name": "Spelunker", "desc": "Clear 50 floors",
@@ -181,6 +186,10 @@ var loadout: Dictionary = {}
 ## for the Wellkeeper to sell them back.
 var relics: Array = []
 var well_saved: Array = []
+## Deaths per lesson key (Lessons.killer_key): the first unlocks the lesson's counters.
+var lessons: Dictionary = {}
+## The lesson the last run taught, for the payout and the Hollow ("" if none).
+var run_lesson := ""
 
 
 func _ready() -> void:
@@ -247,6 +256,9 @@ func unlock_source(unlock_id: String) -> String:
     for a in ACHIEVEMENTS:
         if a["rewards"].has(unlock_id):
             return "%s: %s" % [a["name"], a["desc"]]
+    var lesson := Lessons.source_of(unlock_id)
+    if lesson != "":
+        return "Lesson: die to %s" % Lessons.lesson_name(lesson)
     if BASE_UNLOCKS.has(unlock_id):
         return "Starting pool"
     return "Not yet obtainable"
@@ -368,8 +380,19 @@ func start_run() -> void:
     add("runs_started")
 
 
-func end_run(won: bool, floor_number: int, kills: int, embers: int = 0, region: String = "") -> void:
-    history.append({ "won": won, "floor": floor_number, "kills": kills, "unlocks": run_unlocks.duplicate(), "embers": embers, "region": region })
+func end_run(won: bool, floor_number: int, kills: int, embers: int = 0, region: String = "", killer: String = "") -> void:
+    run_lesson = ""
+    if not won and killer != "":
+        lessons[killer] = int(lessons.get(killer, 0)) + 1
+        if int(lessons[killer]) == 1 and Lessons.has_lesson(killer):
+            run_lesson = killer
+            var lname := "Lesson: %s" % Lessons.lesson_name(killer)
+            for r in Lessons.LESSONS[killer]["rewards"]:
+                if not unlocks.has(r):
+                    unlocks[r] = true
+                    run_unlocks.append(r)
+                    unlocked.emit(r, lname)
+    history.append({ "won": won, "floor": floor_number, "kills": kills, "unlocks": run_unlocks.duplicate(), "embers": embers, "region": region, "killer": killer })
     if history.size() > 50:
         history.pop_front()
     if won:
@@ -413,6 +436,7 @@ func save() -> void:
         "loadout": loadout,
         "relics": relics,
         "well_saved": well_saved,
+        "lessons": lessons,
     }
     var f := FileAccess.open(save_path, FileAccess.WRITE)
     if f == null:
@@ -432,6 +456,7 @@ func load_save() -> void:
     loadout = {}
     relics = []
     well_saved = []
+    lessons = {}
     for u in BASE_UNLOCKS:
         unlocks[u] = true
     if not FileAccess.file_exists(save_path):
@@ -460,6 +485,10 @@ func load_save() -> void:
     for a in parsed.get("achievements", []):
         achievements_done[a] = true
     history = parsed.get("history", [])
+    var saved_lessons = parsed.get("lessons", {})
+    if saved_lessons is Dictionary:
+        for k in saved_lessons.keys():
+            lessons[String(k)] = int(saved_lessons[k])
     var saved_npcs = parsed.get("npcs", {})
     if saved_npcs is Dictionary:
         npcs = saved_npcs

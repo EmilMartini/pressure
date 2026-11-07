@@ -953,6 +953,10 @@ reactions; 11 Shrine slots (22 talents, 57 ranks) and a 3-rank survival track.
 - Scrap in the run buys, repairs and rerolls. Nothing carries out except unlocks.
 
 ### Layer 1: the unlock pool (Isaac) — BUILT
+- **Lessons (World phase 3, `scripts/lessons.gd`):** the first death to a boss (in its
+  room) or to a region (anywhere else in it) unlocks that lesson's counter guns; 11
+  lessons, 12 guns moved there from achievements. The Gatewarden, or the Archivist once
+  home, names the killer and gives a hint: vague, plain from the third death.
 - Every run starts with no guns and no gear. The entrance offers each player two random
   unlocked guns on pedestals; take one. The pool of guns a run can offer
   (shops, treasure, challenge rewards), the obstacle kinds in front of hidden rooms, the
@@ -997,10 +1001,14 @@ capped (report R4 to R7). Code: `scripts/mastery.gd` (autoload `Mastery`, save
 
 **Embers (R7): pay for play quality, not only depth.** Paid once at run end:
 
-    Embers = 1 x rooms cleared + 2 x elites + 3 x reactions fired for the first time ever
-           + min(12, 4 x new fusions + 6 x new cataclysms)
-           + 3 x boss kills + 12 x bounties (first kill of a boss kind with a class)
-           + 2 x (floor reached - 1) + 10 if cleared
+    Embers = 1 x rooms cleared + min(10, elites) + 2 x reactions fired for the first time ever
+           + min(6, 2 x new fusions + 3 x new cataclysms)
+           + 3 x boss kills + 5 x bounties (first kill of a boss kind with a Mark)
+           + 3 x (floor reached - 1) + 20 if cleared
+
+Retuned in World phase 3 (2026-11-07) from 1 / 2 / 3 / cap 12 / 3 / 12 / 2 / 10, which let
+two bot wins buy the whole Shrine; measurements in the World and progression GDD, "Phase 3
+handoff". The paragraphs below describe the old values.
 
 Fusion and cataclysm discoveries pay like reactions, but there are 396 of them (1,936
 Embers uncapped, twice the whole Shrine's 928), so together they pay at most 12 a run

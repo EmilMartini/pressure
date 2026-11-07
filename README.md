@@ -590,7 +590,11 @@ that measures the progression loop). `--mastery=full` buys every Shrine rank and
 survival track (side A active, `--mastery-side=b` for B); `--mastery=N` spends N Embers
 cheapest-first. Both use a throwaway Shrine file and print a `[MASTERY]` line with the
 loadout and its power estimate. The log prints `[FLOOR]`, `[DEATH]` and `[EMBERS]` lines
-(what the run paid, or would have paid when the time cap ended it).
+(what the run paid, or would have paid when the time cap ended it), and on a death
+`[LESSON] killer=<boss:kind|region:id> deaths=N new=<first death> unlocks=...`.
+Every run with arguments after `--` uses throwaway `settings_`, `save_` and
+`mastery_autotest<_N>.json` files and `telemetry/runs<_N>.jsonl` from the first frame
+(`Main.bot_run()`), never the player's own.
 `--fusion-probe` starts with four w1 guns of four elements so compounds, fusions and
 cataclysms actually happen; the loadout rotates with `--instance` (wet/fire/shock/gale,
 oil/fire/shock/gale, wet/fire/shock/blood, oil/fire/blood/gale), or pick one with

@@ -76,9 +76,15 @@ const DURATION_TO_DMG := 0.15
 #   cataclysms  (tier 4). There are 220 and 176 of them (1,936 Embers, twice the whole
 #               Shrine), so together they pay at most FUSION_PAY_CAP a run: about one more
 #               good floor. A fusion build earns its Shrine a little faster, never a lot.
-const PAY := { "rooms": 1, "elites": 2, "discoveries": 3, "fusions": 4, "cataclysms": 6, "bosses": 3, "bounties": 12, "floors": 2, "win": 10 }
+#
+# Phase 3 retune (World and progression GDD, section 13 proposal): with the values above two
+# bot wins bought the whole Shrine (elites alone paid 336 to 362 of a win). Now rooms 1,
+# elites 1 for at most ELITE_PAY_CAP a run, first discoveries 2, the fusion ladder at most
+# FUSION_PAY_CAP a run, bosses 3, bounties 5, each floor past the first 3, a win 20.
+const PAY := { "rooms": 1, "elites": 1, "discoveries": 2, "fusions": 2, "cataclysms": 3, "bosses": 3, "bounties": 5, "floors": 3, "win": 20 }
+const ELITE_PAY_CAP := 10
 const PAY_ORDER := ["rooms", "elites", "discoveries", "fusions", "cataclysms", "bosses", "bounties", "floors", "win"]
-const FUSION_PAY_CAP := 12
+const FUSION_PAY_CAP := 6
 const PAY_WORDS := {
     "rooms": "rooms", "elites": "elites", "discoveries": "new reactions", "fusions": "new fusions",
     "cataclysms": "new cataclysms", "bosses": "bosses",
@@ -712,7 +718,7 @@ func award(floor_number: int, won: bool, class_id: String) -> Dictionary:
 func preview(floor_number: int, won: bool, class_id: String) -> Dictionary:
     var counts := {
         "rooms": Progress.run_stat("rooms"),
-        "elites": Progress.run_stat("elites"),
+        "elites": mini(Progress.run_stat("elites"), ELITE_PAY_CAP),
         "discoveries": Progress.run_discoveries.size(),
         "fusions": Progress.run_fusion_discoveries.size(),
         "cataclysms": Progress.run_cataclysm_discoveries.size(),

@@ -9,7 +9,9 @@ extends RefCounted
 ## and `<key>_max` bound a number. Keys: where ("hub" / "ossuary"), talks (lines this NPC
 ## has said before), runs, deaths, won, last ("" / "won" / "fell"), last_floor,
 ## last_region, embers, archivist (""/"met"/"recruited"), page (carrying the Torn
-## Bestiary Page this run). Text may use {deaths}, {last_floor}, {embers}, {runs}.
+## Bestiary Page this run), lesson (the last run died to something with a lesson, section
+## 10). Text may use {deaths}, {last_floor}, {embers}, {runs}, and after a lesson death
+## {killer} (its name), {killer_deaths} and {hint} (vague, plain from the third death).
 ##
 ## PLACEHOLDER: every line below is a plain, functional stand-in, written only so the
 ## systems can be built and tested. The real batch is written after the designer approves
@@ -38,6 +40,9 @@ const LINES := [
     { "npc": "gatewarden", "id": "warden_idle", "when": {}, "pri": 0, "placeholder": true,
         "text": "Gate's open." },
 
+    { "npc": "gatewarden", "id": "warden_lesson", "when": { "lesson": true, "archivist_home": false }, "pri": 4, "placeholder": true,
+        "text": "{killer}. {killer_deaths} on my count. {hint}" },
+
     # --- The Archivist, chained in the Ossuary ---
     { "npc": "archivist", "id": "archivist_meet", "when": { "where": "ossuary", "archivist": "", "page": false }, "pri": 5, "placeholder": true,
         "text": "An elite down here tore a page from my bestiary. Bring it back and I'll come up with you." },
@@ -51,6 +56,8 @@ const LINES := [
     # --- The Archivist in the Hollow (the Journal, the full ledger) ---
     { "npc": "archivist", "id": "archivist_home", "when": { "where": "hub", "archivist": "recruited" }, "pri": 9, "once": true, "placeholder": true,
         "text": "Everything you've set off down there goes in the Journal." },
+    { "npc": "archivist", "id": "archivist_lesson", "when": { "where": "hub", "lesson": true, "archivist": "recruited" }, "pri": 5, "placeholder": true,
+        "text": "{killer}, {killer_deaths} times now. {hint}" },
     { "npc": "archivist", "id": "archivist_idle", "when": { "where": "hub" }, "pri": 0, "placeholder": true,
         "text": "The Journal's open. So is the ledger." },
 ]
@@ -69,7 +76,16 @@ static func context(extra: Dictionary = {}) -> Dictionary:
         "embers": Mastery.embers,
         "archivist": Progress.npc_state("archivist"),
         "page": false,
+        "archivist_home": Progress.npc_home("archivist"),
+        "lesson": false,
     }
+    var killer := String(last.get("killer", ""))
+    if not bool(last.get("won", true)) and Lessons.has_lesson(killer):
+        var n := int(Progress.lessons.get(killer, 1))
+        ctx["lesson"] = true
+        ctx["killer"] = Lessons.lesson_name(killer)
+        ctx["killer_deaths"] = n
+        ctx["hint"] = Lessons.hint(killer, n)
     ctx.merge(extra, true)
     return ctx
 

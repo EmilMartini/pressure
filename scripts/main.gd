@@ -399,7 +399,10 @@ func _end_run(won: bool) -> void:
     Progress.keep_well_items(well_items)
     if autotest and not well_items.is_empty():
         print("[WELL] saved for the Wellkeeper: %s" % ", ".join(well_items))
-    Progress.end_run(won, floor_number, total_kills, gained, region_id)
+    var killer := "" if won else Lessons.killer_key(region_id, current != null and current.data.type == RoomData.Type.BOSS)
+    Progress.end_run(won, floor_number, total_kills, gained, region_id, killer)
+    if autotest and killer != "":
+        print("[LESSON] killer=%s deaths=%d new=%s unlocks=%s" % [killer, int(Progress.lessons.get(killer, 0)), Progress.run_lesson != "", ",".join(Progress.run_unlocks)])
     if gained > 0:
         announce("+%d Embers" % gained)
     if autotest:

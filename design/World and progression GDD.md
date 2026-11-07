@@ -584,7 +584,7 @@ Four currencies is the upper limit. **Default:** Embers are kept on death, never
 Tune Embers per run so the Shrine fills in about 25 to 40 runs, measured with bots at each stage
 (`--mastery=N` and `--mastery=full`).
 
-**Measured proposal from 2026-11-06, not built yet.** In a bot win, elites paid 336 to 362 of the
+**Measured proposal from 2026-11-06, built in phase 3 (measurements in its handoff).** In a bot win, elites paid 336 to 362 of the
 Embers (2 each for 168 to 181 elites), so two wins bought the whole 928-Ember Shrine. Proposed
 income per run:
 
@@ -1336,7 +1336,7 @@ Left:
 
 Defaults taken (listed in section 16 as AS to AZ).
 
-### Phase 3: Death teaches
+### Phase 3: Death teaches (BUILT 2026-11-07)
 
 - **Goal:** unlocks come from dying and from challenges, and the meta curve hits its targets.
 - **Scope:**
@@ -1346,6 +1346,115 @@ Defaults taken (listed in section 16 as AS to AZ).
 - **Start from:** `progress.gd`, `mastery.gd`, `telemetry.gd`.
 - **Acceptance:** a bot meta-curve check at fresh, half and full Shrine hits the targets in
   section 13, and the Shrine fills in 25 to 40 runs.
+
+#### Phase 3 handoff
+
+Commits: bfc071b (bot isolation), then the Phase 3 commit. Weekly usage 36% at the start,
+37% at the end.
+
+**Bot isolation (first).** `Main.bot_run()` (any user argument after `--`, or
+`--autotest`) is checked in the `_ready` of Progress, Mastery, Settings and Telemetry before
+their first load. Each then uses `save_`, `mastery_` or `settings_autotest<_N>.json` and
+`telemetry/runs<_N>.jsonl`. Bot settings mark the tutorial, explainer and play-data prompt
+done and keep uploads off; the gameplay keys (aim mode, hit-stop) are the defaults, the same
+as Emil's file. Proof: the real `settings.json` (17:28:31), `save.json` (18:32:32),
+`mastery.json` (2026-11-06 20:37:37) and `telemetry/runs.jsonl` (2026-11-06 20:49:23) kept
+their timestamps across a load check, an idle bot and a hub walk. Later in the evening
+(21:51) the real save, Shrine and play data changed again: those records are `bot:false`
+with Emil's device id (his own Pyromancer run on the Phase 2 build), not a bot.
+
+**Built.**
+- **Lessons** (`scripts/lessons.gd`): 11, one per built boss kind (Brute King, Hive Mother,
+  Storm Warden, Pyre Lord, Void Herald) and one per built region (Ossuary Gate, Rust Ruins,
+  Frostvault, the Forge, Chapel of Ash, the Rift). A death in a boss room counts against the
+  boss, anywhere else against the region (`Lessons.killer_key`). The first death unlocks the
+  lesson's counter guns; deaths per key are saved (`lessons` in the save, no version bump:
+  older saves load with none). Bots print `[LESSON]`.
+- **Hints:** the Gatewarden (`warden_lesson`), or the Archivist once home
+  (`archivist_lesson`), names the killer and gives the hint: vague, plain from the third
+  death. Lines and lesson texts are placeholders (`placeholder: true`).
+- **Unlocks moved:** 12 counter guns left their achievements for lessons (oil_slinger,
+  cinder_flak, hydro_cannon, acid_flask, ember_carbine, rime_chakram, eclipse_carbine,
+  glacier_lance, napalm_lobber, void_orb, stone_sling, sun_cannon). Those achievements stay
+  as milestones with no reward, so saves keep their ids; guns already unlocked stay
+  unlocked. `unlock_source` shows "Lesson: die to X". The 13 `class_*` achievements are now
+  the loadout challenges: each opens a Mark and its Kit, and the loadout screen already shows
+  the goal.
+- **Embers** (`Mastery.PAY`): the section 13 proposal. Rooms 1, elites 1 (at most 10 a
+  run), first discoveries 2, fusions 2 and cataclysms 3 (at most 6 a run together), bosses
+  3, bounties 5, each floor past the first 3, a win 20. The Shrine costs are unchanged
+  (928 in all; see the estimate below).
+
+**Meta curve, measured** (kite bot, Unmarked, `--secs=3600`, every bot starts from an empty
+save, so every reaction is a first discovery):
+
+| Stage | Runs | Result | Embers per run (first discoveries in it) |
+|---|---|---|---|
+| Fresh | 4 | 2 died on floor 1 (t=56, 40), 1 won (t=2,783), 1 hit the wall-clock limit in the Rift on floor 5 | 6 (4), 1 (0), 190 (52), none |
+| Half (`--mastery=464`, 419 spent) | 4 | 3 won, 1 died on floor 3 in the Frostvault (t=824) | 232 (94), 210 (72), 208 (70), 104 (48) |
+| Full (`--mastery=full`) | 2 | 1 won (t=2,608), 1 at the 3,600 s cap in the Rift | 266 (128), 182 at the cap (84) |
+
+Without first discoveries a win pays 138 (113 once the 5 bounties of a Mark are taken), a
+floor-3 death 56 (46), a floor-1 death 1 to 2. A floor-2 death was not measured; the
+proposal's 17 to 27 fits the floor-3 run's split.
+
+Against the locked targets in section 13:
+- **Fresh, "usually dies at depth 2": not hit by bots.** They split 2 of 4 on floor 1 and 2
+  of 4 on floor 5. The caveat holds: a bot that survives floor 2 nearly always wins.
+- **Half, "usually reaches depths 3 to 4": overshot.** 4 of 4 reached depth 3, and 3 won.
+- **Full, "can win, not reliably": hit.** 1 of 2 won, and the other was still alive in the
+  Rift at the time cap.
+The targets are unchanged. Bots can't place the fresh and half stages, and human runs are
+the reference (the 2026-11-06 humans died on floor 2 fresh).
+
+**Shrine fill estimate** (928 Embers, half at 464):
+- **At the human depths the targets describe:** about 22 to 36 runs.
+  - Fresh to half takes 14 to 26 runs. That is floor-1 deaths at about 3 and floor-2
+    deaths at about 22, so 12 to 22 a run on average. About 130 of the first-discovery
+    Embers (65 reactions at 2) and the first bounties are paid on top, mostly early.
+  - Half to full takes 8 to 10 runs at depth 3 to 4, about 46 to 60 a run.
+  This is inside 25 to 40 except at its low end.
+- **At bot depths:** about 10 runs, because bots win from a fresh Shrine. Fresh averaged
+  66 a run and half 188.
+- Doubling the costs, as section 13 floated for a 20-to-40-hour first win, would push the
+  human estimate to 44 to 72 runs, outside 25 to 40. So the costs are left alone. Re-check
+  with human runs on this build.
+
+**Section 0 checks:**
+- **Load check:** clean.
+- **Idle six-gun bot:** 4 runs, 0 script errors. 3 died in the Ossuary Gate (t=72, 49 and
+  24 s) and 1 reached floor 2 at t=246. Together with phase 2 that is 2 of 11 reaching floor
+  2. The bot settings are the same in gameplay as the file it read before, so this looks
+  like chance, but it is worth watching.
+- **Fusion probe:** 0 script errors, floor 2 reached, `[FUSION-CHECK] PASS`,
+  `[SPAWN-CHECK] PASS` close=0.
+- **Recruit probe:** freed the Archivist at t=85.
+- **Hub walks** with `--keep-save`, all PASS:
+  - After an idle-bot death the Gatewarden said "Ossuary Gate. 1 on my count. The barrels
+    down there aren't decoration."
+  - With the Archivist home, every station passed.
+- **Loadout probe:** `--class=stormcaller --vow=glass --relic=ring_fire` started at 70 HP
+  wearing the ring and paid "vow +4".
+- **Migration:** a copy of Emil's current save (version 3; he had already migrated it by
+  playing) loaded with no lessons and passed the hub walk with 9 of 13 Marks open.
+
+**Left:**
+- **Remaining achievement unlocks:** the first block (an element a run), obstacles,
+  secrets, rarities, the challenge room, the shop slots and the late gun tail are still
+  achievements. The Mark challenges are reaction counts, not run challenges such as "kill
+  the Frost Matron using only fire reactions".
+- **The Journal:** no lessons tab, no boss resistances and no best attempt per boss
+  (section 10, step 4).
+- **What counts as the killer:** the room, not the damage source. Hazard lessons are per
+  region, not per hazard (lava, gravity wells). Unbuilt regions and bosses have no
+  lessons. There are 11 against section 10's 20 to 30.
+- **Unchecked counters:** the Rift's counter, `eclipse_carbine`, is assumed to be Holy
+  (its achievement was Annihilations) and was not checked.
+- **Unmeasured Embers:** a floor-2 death, and any human run on this build.
+- **Writing:** lesson names, hints and the two NPC lines are placeholders for the
+  section 9 review.
+
+**Defaults taken:** BA to BE in section 16.
 
 ### Phase 4: Shortcuts and world state
 
@@ -1448,6 +1557,11 @@ Defaults taken (listed in section 16 as AS to AZ).
 | AX | Relic price and how long a Relic lasts | 15, 30, 45, 60 or 75 Embers by rarity; bought once, kept for every run. A Relic in the same single slot as the Mark's item replaces it |
 | AY | The first Vows | Iron (enemies +25% health) and Glass (-30 max HP), each +20% Embers on the whole run |
 | AZ | Mark names (placeholders) | "Mark of the" plus a noun per element (Pyre, Drowned, Storm, Frost, Pitch, Plague, Crucible, Vein, Void, Vigil, Gale, Stone); the Vagrant's is "Unmarked". Tide and Hollow stay free for the new Marks |
+| BA | What counts as the killer (phase 3) | The room: a death in a boss room is the boss's lesson, anywhere else the region's |
+| BB | Which lessons exist | One per built boss kind and per built region (11); unbuilt ones wait for their region |
+| BC | Lesson rewards | Counter guns moved from achievements (the boss's or region's weakness, or what tears its parts); their achievements stay as milestones |
+| BD | Fusion and cataclysm pay | 2 and 3 Embers each, at most 6 a run together (section 13 gives only the cap) |
+| BE | Shrine costs after the retune | Unchanged (928): the estimate at human depths is 22 to 36 runs; doubling would give 44 to 72 |
 
 ---
 
