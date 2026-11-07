@@ -79,6 +79,20 @@ const KIND_COLORS := {
 const AFFIXES := ["regenerating", "hasted", "trail", "volatile"]
 const BOSS_KINDS := ["brute_king", "hive_mother", "storm_warden", "pyre_lord", "void_herald"]
 
+## Spawns are telegraphed (Brotato's rule, design doc "Clarity pass"): a body emerges over
+## EMERGE_SECS under a marker on the floor, harmless and untargetable. A player who comes within
+## SPAWN_SHOVE of a marker moves it (Room.respawn_point, or another spot by the boss for its
+## summons) and its telegraph starts over, so nothing ever arrives on top of anyone.
+## The bot prints [SPAWN-MOVED] per move and [SPAWN-CHECK] at the end: no body may finish
+## emerging within SPAWN_ASSERT of a player.
+const EMERGE_SECS := 1.0
+const SPAWN_SHOVE := 80.0
+const SPAWN_ASSERT := 60.0
+static var spawn_moved := 0
+static var spawn_landed := 0
+static var spawn_close := 0
+static var spawn_log := false   # Main sets it for the bot
+
 const BOMB_DAMAGE := 18.0
 const BOMB_RADIUS := 90.0
 const BOMB_TRIGGER := 40.0
@@ -996,6 +1010,9 @@ func _teleport_to(to: Vector2) -> void:
 func _physics_process(delta: float) -> void:
     if emerge > 0.0:
         emerge -= delta
+        _guard_spawn()
+        if emerge <= 0.0:
+            _landed(global_position)
         queue_redraw()
         return
     for kind in states.keys():
@@ -1290,14 +1307,20 @@ func _tick_boss_passive(delta: float) -> void:
             _ward_t = 0.0
             Elements.reaction_fired.emit("Guard broken!", global_position, Color.WHITE)
         queue_redraw()
-    # Telegraphed summons land when their timer runs out.
+    # Telegraphed summons land when their timer runs out; a player on a marker moves it.
     for i in range(_pending.size() - 1, -1, -1):
         var s: Dictionary = _pending[i]
+        if _party_near(s["pos"], SPAWN_SHOVE):
+            var was: Vector2 = s["pos"]
+            s["pos"] = _summon_spot()
+            s["t"] = float(s.get("warn", EMERGE_SECS))
+            _moved(was, s["pos"])
         s["t"] = float(s["t"]) - delta
         if float(s["t"]) <= 0.0:
             _pending.remove_at(i)
             var spawned := _summon(String(s["type"]), s["pos"])
             if spawned != null:
+                _landed(s["pos"])
                 Elements.nova.emit(s["pos"], 30.0, Color(base_color, 0.6))
     match boss_kind:
         "brute_king":
@@ -1348,10 +1371,78 @@ func set_ward_adds(adds: Array) -> void:
 
 
 func _queue_summons(type: String, count: int, warn: float) -> void:
+    warn = maxf(warn, EMERGE_SECS)
     for i in count:
         var a := TAU * float(i) / float(count) + randf() * 0.5
         var pos := global_position + Vector2.RIGHT.rotated(a) * (radius + 60.0)
-        _pending.append({ "pos": pos, "t": warn, "type": type })
+        if _party_near(pos, SPAWN_SHOVE * 2.0):
+            pos = _summon_spot()
+        _pending.append({ "pos": pos, "t": warn, "warn": warn, "type": type })
+
+
+## True when a living player stands within `d` of `gpos`.
+func _party_near(gpos: Vector2, d: float) -> bool:
+    for p in get_tree().get_nodes_in_group("players"):
+        if is_instance_valid(p) and p.alive and p.global_position.distance_to(gpos) < d:
+            return true
+    return false
+
+
+## A summon marker's spot: around this body, clear of every player, inside the room; else
+## the room's own spawn point.
+func _summon_spot() -> Vector2:
+    var rr := _room_rect()
+    var a0 := randf() * TAU
+    for k in 10:
+        var pos := global_position + Vector2.RIGHT.rotated(a0 + TAU * float(k) / 10.0) * (radius + 60.0 + 30.0 * float(k % 3))
+        if rr.has_area() and not rr.grow(-40.0).has_point(pos):
+            continue
+        if not _party_near(pos, SPAWN_SHOVE * 2.0):
+            return pos
+    var w := _world()
+    if w != null and w.has_method("respawn_point"):
+        return w.respawn_point()
+    return global_position
+
+
+## While emerging: a player who walks onto the marker moves it, and the telegraph restarts.
+func _guard_spawn() -> void:
+    if not _party_near(global_position, SPAWN_SHOVE):
+        return
+    var w := _world()
+    if w == null or not w.has_method("respawn_point"):
+        return
+    var was := global_position
+    global_position = w.respawn_point()
+    emerge = EMERGE_SECS
+    _moved(was, global_position)
+
+
+func _moved(from: Vector2, to: Vector2) -> void:
+    spawn_moved += 1
+    if spawn_log:
+        print("[SPAWN-MOVED] %s (%.0f, %.0f) -> (%.0f, %.0f)" % [kind_name, from.x, from.y, to.x, to.y])
+
+
+## A body arrived: the bot's check that nothing lands on a player.
+func _landed(at: Vector2) -> void:
+    spawn_landed += 1
+    if _party_near(at, SPAWN_ASSERT):
+        spawn_close += 1
+        if spawn_log:
+            print("[SPAWN-CLOSE] %s landed within %.0f px of a player at (%.0f, %.0f)" % [kind_name, SPAWN_ASSERT, at.x, at.y])
+
+
+## The spawn marker (emerging bodies and boss summons): a dark disc on the floor with a red
+## rim and red pixels closing in. k: 0 just placed .. 1 arriving.
+static func draw_spawn_marker(cv: CanvasItem, at: Vector2, size: float, k: float, t: float) -> void:
+    var r := size * (2.6 - 1.6 * k)
+    cv.draw_circle(at, size * 1.6, Color(0.05, 0.0, 0.0, 0.35 + 0.2 * k))
+    cv.draw_arc(at, size * 1.6, 0.0, TAU, 28, Color(0, 0, 0, 0.8), 4.0)
+    cv.draw_arc(at, size * 1.6, 0.0, TAU, 28, Color(1.0, 0.22, 0.18, 0.75 + 0.25 * k), 2.0)
+    for i in 10:
+        var a := TAU * float(i) / 10.0 + t * 3.0
+        cv.draw_rect(Rect2(at + Vector2.RIGHT.rotated(a) * r - Vector2(2, 2), Vector2(4, 4)), Color(1.0, 0.25, 0.2, 0.6 + 0.4 * k))
 
 
 # --- The Pyre Lord (design section 6: molten core, slag armour, fire crown) -----------------
@@ -2267,12 +2358,9 @@ func _nearest_player() -> Player:
 
 func _draw() -> void:
     if emerge > 0.0:
-        # Telegraph: a red pixel ring closing in, the body faint until it arrives.
-        var k := clampf(1.0 - emerge / 0.75, 0.0, 1.0)
-        var r := radius * (2.6 - 1.6 * k)
-        for i in 10:
-            var a := TAU * float(i) / 10.0 + _fx_t * 3.0
-            draw_rect(Rect2(Vector2.RIGHT.rotated(a) * r - Vector2(1.5, 1.5), Vector2(3, 3)), Color(1.0, 0.25, 0.2, 0.5 + 0.4 * k))
+        # Telegraph: the spawn marker, the body faint until it arrives.
+        var k := clampf(1.0 - emerge / EMERGE_SECS, 0.0, 1.0)
+        draw_spawn_marker(self, Vector2.ZERO, maxf(radius, 9.0), k, _fx_t)
         if _sprite != null:
             _sprite.modulate.a = 0.25 + 0.6 * k
         _fx_t += get_process_delta_time()
@@ -2532,10 +2620,8 @@ func _draw_boss() -> void:
         draw_arc(Vector2.ZERO, radius + 16.0, 0.0, TAU, 48, Color(1, 0.2, 0.15, 0.35 + 0.25 * sin(_fx_t * 6.0)), 3.0)
     # Telegraphed summons: a closing ring where each will appear.
     for s in _pending:
-        var lp := to_local(s["pos"])
-        var k := clampf(float(s["t"]) / 0.9, 0.0, 1.0)
-        draw_arc(lp, 10.0 + 24.0 * k, 0.0, TAU, 24, Color(base_color, 0.8 - 0.5 * k), 2.0)
-        draw_circle(lp, 6.0, Color(base_color, 0.3))
+        var k := 1.0 - clampf(float(s["t"]) / float(s.get("warn", EMERGE_SECS)), 0.0, 1.0)
+        draw_spawn_marker(self, to_local(s["pos"]), 10.0, k, _fx_t)
     match boss_kind:
         "brute_king":
             # A crown.

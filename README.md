@@ -618,6 +618,13 @@ and the like for other options, nothing saved), a calm shot and fight shots with
 close-ups of the player (`gear_fight_<n>.png`, `gear_zoom_<n>.png`). `godot --path . res://scenes/main.tscn -- --themes-shot` saves
 one arena per floor theme (crypt, ruins, frozen, forge, void, ambience running 2 s) and the
 hub's sanctum as `autotest/theme_<name>.png`.
+`--seed=N` fixes the run's random seed. `--clarity-shot[=boss] --tag=name` (real window, with
+`--build=storm --start-floor=N --route=...`) stands the player in the floor's first arena (or boss
+room) from a fixed seed and saves `autotest/clarity_<region>_<tag>_<n>.png` at three moments, each
+with a `[CLARITY]` line: the share of screen pixels the player's own effects change, enemy-to-floor
+luminance contrast, and on-screen text items (design doc "Clarity pass"). Every bot run prints
+`[SPAWN-MOVED]` when a player walks onto a spawn marker and it moves, and `[SPAWN-CHECK] PASS/FAIL`
+at the end (no body finished emerging within 60 px of a player).
 A bot plays by itself for up to five minutes: explores rooms, buys from pedestals,
 clears obstacles, fights elites and the boss, takes the stairs. It saves screenshots to
 `autotest/` and prints progress and reaction counts. Use it to check a build still

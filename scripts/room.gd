@@ -591,10 +591,12 @@ func _spawn_group(out: Array = []) -> float:
             var inner := rect.grow(-60.0)
             pos = Vector2(clampf(ringp.x, inner.position.x, inner.end.x), clampf(ringp.y, inner.position.y, inner.end.y))
         group_i += 1
-        if not is_open(pos, 22.0):
+        # Clamping pulls a ring point near a wall towards a player standing there: the
+        # distance is checked after it (never on top of anyone, Brotato's rule).
+        if not is_open(pos + global_position, 22.0) or not spawn_clear(pos + global_position):
             pos = _spawn_point()
         var e := _spawn_enemy(type, pos)
-        e.emerge = 0.75
+        e.emerge = Enemy.EMERGE_SECS
         total_hp += e.max_hp
         out.append(e)
         if e.immune_to == Element.Kind.NONE and diff >= 2 and randf() < minf(0.5, 0.05 * float(diff)):
@@ -626,6 +628,7 @@ func _spawn_elite(count: int) -> void:
     var pairs := Elements.available_reactions(main.party_elements())
     for i in count:
         var e := _spawn_enemy("elite", _spawn_point())
+        e.emerge = Enemy.EMERGE_SECS
         e.set_affix(SpawnTable.elite_affix(diff))
         if not pairs.is_empty():
             e.set_shield(pairs.pick_random(), hits)
@@ -633,30 +636,62 @@ func _spawn_elite(count: int) -> void:
         Elements.reaction_fired.emit("ELITE", e.global_position, Color(1.0, 0.85, 0.3))
 
 
+## No spawn lands closer than this to a living player (checked after any clamping).
+const SPAWN_MIN := 170.0
+
+
+## True when no living player stands within `min_d` of `gpos` (global).
+func spawn_clear(gpos: Vector2, min_d: float = SPAWN_MIN) -> bool:
+    for pl in main.players:
+        if pl.alive and pl.global_position.distance_to(gpos) < min_d:
+            return false
+    return true
+
+
+## A spawn point in room space: open floor on the edge 260 px from every player, else open
+## floor inside 220 px away, else the farthest open point tried (never the nearest edge).
 func _spawn_point() -> Vector2:
+    var best := Vector2.ZERO
+    var best_d := -1.0
     for attempt in 16:
         var p := _perimeter_point()
-        if not is_open(p, 22.0):
+        if not is_open(p + global_position, 22.0):
             continue
-        var ok := true
-        for pl in main.players:
-            if pl.global_position.distance_to(p) < 260.0:
-                ok = false
-        if ok:
+        var d := _party_dist(p + global_position)
+        if d >= 260.0:
             return p
+        if d > best_d:
+            best_d = d
+            best = p
     # A layout can wall off most of the edge: any open floor away from the party.
     var inner := rect.grow(-60.0)
     for attempt in 30:
         var q := Vector2(randf_range(inner.position.x, inner.end.x), randf_range(inner.position.y, inner.end.y))
-        if not is_open(q, 22.0):
+        if not is_open(q + global_position, 22.0):
             continue
-        var far := true
-        for pl in main.players:
-            if pl.global_position.distance_to(q) < 220.0:
-                far = false
-        if far:
+        var d := _party_dist(q + global_position)
+        if d >= 220.0:
             return q
-    return nearest_open(_perimeter_point(), 22.0)
+        if d > best_d:
+            best_d = d
+            best = q
+    if best_d >= 0.0:
+        return best
+    return nearest_open(_perimeter_point() + global_position, 22.0) - global_position
+
+
+## Distance from `gpos` (global) to the nearest living player (INF with none).
+func _party_dist(gpos: Vector2) -> float:
+    var d := INF
+    for pl in main.players:
+        if pl.alive:
+            d = minf(d, pl.global_position.distance_to(gpos))
+    return d
+
+
+## A telegraphed spawn a player walked onto moves here (global): see Enemy.EMERGE_SECS.
+func respawn_point() -> Vector2:
+    return _spawn_point() + global_position
 
 
 func _perimeter_point() -> Vector2:

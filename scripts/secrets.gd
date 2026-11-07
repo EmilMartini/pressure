@@ -626,7 +626,7 @@ func _ring(b: Bit) -> void:
     var n := 4 + mini(4, _floor())
     for i in n:
         var e: Enemy = room._spawn_enemy(String(types[i % types.size()]), room._spawn_point())
-        e.emerge = 0.9
+        e.emerge = Enemy.EMERGE_SECS
         e.scrap_value = maxi(3, e.scrap_value * 4)
         e.modulate = Color(1.3, 1.1, 0.45)
         _wave.append(e)

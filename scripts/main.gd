@@ -74,6 +74,9 @@ var _fusion_counts: Dictionary = {}   # fusion / cataclysm name -> times fired t
 
 func _ready() -> void:
     randomize()
+    for a in OS.get_cmdline_user_args():
+        if a.begins_with("--seed="):
+            seed(int(a.substr(7)))   # a fixed run for before/after captures (clarity_shot.gd)
 
     fx = Fx.new()
     fx.main = self
@@ -105,6 +108,7 @@ func _ready() -> void:
 
     var args := OS.get_cmdline_user_args()
     autotest = args.has("--autotest")
+    Enemy.spawn_log = autotest   # [SPAWN-MOVED] / [SPAWN-CLOSE] lines (Enemy.EMERGE_SECS)
     old_balance = autotest and args.has("--old-balance")
     Regions.activate("")
     Regions.reset_stats()
@@ -1101,6 +1105,8 @@ func _setup_autotest() -> void:
     _apply_bot_build(_bot_build(), _bot_start_floor())
     if GearShot.wanted():
         add_child(GearShot.new(self))   # worn-gear sheets and fight close-ups (gear_shot.gd)
+    if ClarityShot.wanted():
+        add_child(ClarityShot.new(self))   # before/after readability shots and numbers (clarity_shot.gd)
     # Default: a real naked start, so the run measures the progression loop. `--arsenal`
     # hands over every gun to stress every element and effect at once.
     for a in OS.get_cmdline_user_args():
@@ -1596,3 +1602,6 @@ func _print_fusion_summary() -> void:
         "PASS" if ok else "FAIL", int(d["max_ctx"]), int(d["max_frame"]), int(d["max_depth"]), int(d["violations"])])
     if not ok:
         push_error("fusion termination check failed: %s" % str(d))
+    # Brotato's rule: nothing finishes emerging within Enemy.SPAWN_ASSERT of a player.
+    print("[SPAWN-CHECK] %s landed=%d moved=%d close=%d" % [
+        "PASS" if Enemy.spawn_close == 0 else "FAIL", Enemy.spawn_landed, Enemy.spawn_moved, Enemy.spawn_close])
