@@ -571,9 +571,16 @@ quits when the next floor starts, and
 `--old-balance` turns the late-floor tuning off (uncapped Leech, formula bosses without the
 rally, the old floor damage) for before/after comparisons. Each boss kill prints a `[BOSS]`
 line (game seconds, phase two, max health, the arena output it was sized from) and a
-`[BOSS-BODY]` line (phases reached and when, staggers, every reaction and fusion per body
-part). During the fight `[BOSS-PHASE]`, `[STAGGER]` and `[BOSS-CHAIN]` lines log phases,
-staggers, and each product on a part, plus torn and re-formed armour.
+`[BOSS-BODY]` line (max health, phases reached and when, staggers, every reaction and fusion
+per body part). During the fight `[BOSS-PHASE]`, `[STAGGER]` and `[BOSS-CHAIN]` lines log
+phases, staggers, and each product on a part, plus torn and re-formed armour; `[BOSS-MOVE]`
+logs the Hive Mother's eruptions, the Storm Warden's recharge strikes and the Void Herald's
+theft and shard volleys; `[ARENA]` logs quench vat bursts; `[MUSIC]` logs the boss music
+per phase. Real-floor boss probes (the storm build at each boss's depth):
+`--build=storm --start-floor=2 --route=ossuary_gate,rust_ruins --one-floor` (Hive Mother),
+`--start-floor=3 --route=ossuary_gate,rust_ruins,frostvault --one-floor --secs=900` (Storm
+Warden), `--start-floor=5 --route=ossuary_gate,rust_ruins,frostvault,the_forge,the_rift
+--secs=1000` (Void Herald).
 `--aim=assisted|manual|auto` sets the aim mode for the run (never saved); `--bot-aim` makes
 the bot hold fire at its own pick in fights (on a parted boss, intact armour first, then
 the part that takes most), and `--aim=manual` implies it.

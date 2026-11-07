@@ -495,6 +495,7 @@ func phase_for(f: float) -> int:
 ## A new phase began (Enemy._tick_boss_passive). Boss-specific changes to the body.
 func on_phase(n: int) -> void:
     phase_times.append(age)
+    Music.boss_phase(n)
     if log_enabled:
         print("[BOSS-PHASE] t=%.1f kind=%s phase=%d hp=%.2f" % [age, kind, n, e.hp / e.max_hp])
     match kind:

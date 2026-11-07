@@ -44,6 +44,8 @@ var _lpf: AudioEffectLowPassFilter
 var _amp: AudioEffectAmplify
 var _dip_db := 0.0        # short duck from Sfx on big moments (dip), eases back to 0
 var _dip_hold := 0.0
+var phase_cap := 1.0      # boss phase 1 holds the filter a little closed (boss_phase)
+var _pitch := 1.0
 
 
 func _ready() -> void:
@@ -64,6 +66,8 @@ func _ready() -> void:
 
 ## Switch to a mood's pool. Same mood as now: keeps the track that is playing.
 func play(mood: String, fade: float = CROSSFADE) -> void:
+    if mood != "boss" and (phase_cap < 1.0 or _pitch != 1.0):
+        boss_phase(0)   # a boss fight's layering never follows you out of it
     if not enabled or mood == current or not POOLS.has(mood):
         return
     var file := _pick(mood)
@@ -115,6 +119,35 @@ func set_volume_db(db: float) -> void:
 ## Deeper floors make the run pool prefer its later tracks.
 func set_floor(n: int) -> void:
     floor_number = maxi(1, n)
+
+
+## A music layer per boss phase (design section 6, rule 4), from what this player has: phase
+## 1 holds the filter a little closed, phase 2 crossfades to the next boss track wide open,
+## phase 3 crossfades again and lifts the pitch a touch. 0 ends the fight's layering.
+func boss_phase(n: int) -> void:
+    match n:
+        0:
+            phase_cap = 1.0
+            _set_pitch(1.0)
+        1:
+            phase_cap = 0.7
+            _set_pitch(1.0)
+        2:
+            phase_cap = 1.0
+            next(1.5)
+        _:
+            phase_cap = 1.0
+            next(1.0)
+            _set_pitch(1.06)
+    _apply_intensity()
+    if BossBody.log_enabled:
+        print("[MUSIC] boss phase=%d track=%s pitch=%.2f cap=%.2f" % [n, track, _pitch, phase_cap])
+
+
+func _set_pitch(v: float) -> void:
+    _pitch = v
+    for p in _players:
+        p.pitch_scale = v
 
 
 ## 0 = calm (filtered and a little quieter), 1 = full fight (default). Eased over ~1 s.
@@ -210,6 +243,7 @@ func _start(file: String, fade: float) -> void:
     _active = 1 - _active
     var p := _players[_active]
     p.stream = stream
+    p.pitch_scale = _pitch
     p.volume_db = SILENT_DB
     p.play()
     _fade(_active, _target_db(), fade)
@@ -291,7 +325,7 @@ func _setup_bus() -> void:
 
 
 func _apply_intensity() -> void:
-    var k := _intensity_now
+    var k := minf(_intensity_now, phase_cap)
     if _lpf != null:
         _lpf.cutoff_hz = CUTOFF_CALM * pow(CUTOFF_OPEN / CUTOFF_CALM, k)
     if _amp != null:

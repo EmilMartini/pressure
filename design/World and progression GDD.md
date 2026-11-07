@@ -777,7 +777,7 @@ Each phase ships a playable game, passes the checks in section 0, and updates `G
   Part 1 measured 99 and 92. No script errors.
 - Editor load check clean.
 
-### Phase 0b: Boss framework (parts 1 and 2 DONE 2026-11-06; part 3 left)
+### Phase 0b: Boss framework (DONE 2026-11-07)
 
 - **Goal:** bosses become multi-part elemental creatures, with aim that can target their parts.
 - **Scope:**
@@ -947,6 +947,96 @@ write-up is in `GDD.md` under "Boss framework".
 - Bot follow-up: in one of four runs, the `--fusion-probe=1` bot stood in an Ossuary Shop
   room from about t=200 to the end of the run.
 
+**Part 3 done (2026-11-07): the Hive Mother, the Storm Warden, the Void Herald, quench vats
+and a music layer per phase.** Write-up in `GDD.md` ("Boss framework"). All five bosses
+now have body parts, a chain on their bodies and three phases.
+- **The Hive Mother** (finished from last night's WIP commit `cc96eff`): spore sacs that
+  Firedamp (fire, then shock on the Smog) tears off; she burrows in phase 2 with the sacs
+  above ground and a marked eruption circle; the brood chamber opens in phase 3. Fixed: no
+  contact damage while underground.
+- **The Storm Warden:** charged lightning rods that Grounded (stone) tears; a storm core
+  where Steam plus his own recharge strike, or your shock, is a Storm Cloud inside him
+  (OVERLOAD). Rhythm strikes in phase 1, volleys plus self-recharge in phase 2, a moving
+  storm in phase 3.
+- **The Void Herald:** a ring of void shards that a Rift fusion collapses; gravity wells
+  that bend your shots (holy collapses them) in phase 1; it steals your most-used element
+  in phase 2; shards close in along marked paths in phase 3.
+- **Framework additions:** `wear_by`, `payoff`, `burrows`; HUD chips say sealed and
+  underground; `[BOSS-BODY]` prints max health; `[BOSS-MOVE]`, `[ARENA]`, `[MUSIC]` lines.
+- **Quench vats** in the Pyre Lord's room. **Music per phase** from the existing boss
+  pool: filtered, then the next track, then the next with a 6% pitch lift.
+
+**Measured (part 3).** All runs 0 script errors. Real floors, storm build at each boss's
+depth (recipes in `README.md`):
+
+| Boss | Health share | Fights (s) | Phases | The chain in the logs |
+|---|---|---|---|---|
+| Hive Mother (depth 2, Rust Ruins) | 1.0 | 20.8, 30.3, 33.1, 30.3 | 3/3 all | Firedamp tore the sacs in 1 of 4 |
+| | 1.2 | 24.1, 13.9, 29.6, 20.1 | 3/3 all | Firedamp tore the sacs in 4 of 4 |
+| | **1.5** (shipped) | 25.0, 24.9, 33.4, 33.0 | 3/3 all | Firedamp in 1 of 4; burrows in phases 2 and 3 |
+| Storm Warden (depth 3, Frostvault) | 1.0 | 24.0, 23.4, 25.4, 27.9 | 3/3 all | Grounded tore the rods in 3 of 4; Storm Cloud on the core once |
+| | 1.3 | 24.9, 31.8, 17.5, 34.6 | 3/3 all | Grounded in 2; Steam on the core in 2 |
+| | **1.5** (shipped) | 26.2, 28.4, 32.7 (a fourth run never reached the boss) | 3/3 all | Grounded tore the rods early in 3 of 3; 4 to 5 recharges a fight |
+| Void Herald (depth 5, The Rift) | 1.0, shards worn by any fusion | 13.5, 25.4, 20.7, 25.6 | 3/3 all | Shards torn by Plasma, Galvanic Rot within 2 s |
+| | 1.9, Rift fusions tear | 19.3, 25.7, 25.7 | 3/3 all | Grounded Rift once; a theft every fight |
+| | **2.3** (shipped) | 32.9, 27.1, 29.8, 24.0 | 3/3 all | Venomous Rift collapsed the ring in 2 of 4; stole Shock, Fire, Shock, Poison |
+
+- The storm build has no water gun, so the Warden's Storm Cloud on the core is rare for this
+  bot (Steam comes from fire and ice). The chains show, but a water build would use them
+  more.
+- **Aim modes re-measured on the Pyre Lord** (`--boss-only --boss-dps=2200`, Pyre loadout,
+  bot aiming at intact armour first), all 3/3 phases:
+
+  | Mode | Fights | Average |
+  |---|---|---|
+  | Auto | 81.5, 70.3 s | 75.9 s |
+  | Assisted, bot aiming | 79.5, 63.3 s | 71.4 s |
+  | Manual | 79.3, 93.4 s | 86.4 s |
+
+  Aiming at the armour first fixed the part 2 gap: assisted is now level with auto.
+- **Quench vats,** Pyre Lord `--boss-only`: 22 and 23 bursts a fight from stray shots (auto
+  fire never targets props), fights of 80.0 and 70.9 s, 3/3 phases, Obsidian on the core.
+- **Music:** `[MUSIC]` shows boss2 > boss3 > boss (pitch 1.06) across the three phases, and
+  a reset when the boss dies.
+- **First region,** with the code of each commit: the idle six-gun bot died in Ossuary Gate
+  in 7 of 10 runs (t=42, 120, 45, 154, 69, 49, 138); in the other 3 it killed the Brute King
+  in 12 to 20 s. The old code (`67284c1`) died in 4 of 4 today, and in 5 of 6 in part 2.
+  None of the part 3 code runs on that floor and runs are unseeded, so this reads as noise,
+  but it is worth watching. The fusion probe cleared Ossuary Gate in 10 of 13 runs (Brute
+  King 8.4 to 50.4 s, 3/3 phases) and never died there; the other 3 ran out the 420 s clock,
+  one confirmed standing in the Shop (the stall above, now 3 of 13).
+- **Frame rate** (real window, vsync, `--boss-only`, the storm build, against `67284c1`).
+  The first run after a code change is often slow on both versions (warm-up), so medians
+  leave it out:
+
+  | Fight | New | Old |
+  |---|---|---|
+  | Hive Mother (avg, whole run) | 95.1, 96.8 | 97.5, 85.7 |
+  | Storm Warden (avg; phase-3 trail halved after the first pair) | 92.7, 89.2 | 93.5, 91.7 |
+  | Void Herald (median fps, first 20 s) | 77, 75, 81 | 78, 76, 76 |
+  | Pyre Lord with vats (avg) | 70.1, 85.3, 87.3 | 70.4, 87.7, 85.6 |
+
+  The Rift room is slow on both versions (about 75 to 80 fps). The Herald's parts cost a
+  few fps there (79 and 82 without them); bending shots costs nothing measurable.
+- **Screenshots** (`--boss-shot`): the sacs, the eruption circle, the rods and the storm
+  core, the hollow centre, the gravity wells and the shard ring all draw with the black
+  outline and red rim; poison rings, bolts and spirals carry the red rim. Vats show a blue
+  water ring when full.
+- Editor load check clean.
+
+**Left after phase 0b** (none blocks phase 1):
+- Arena tools for the other bosses: braziers, pylons, bells (section 6, rule 5). Only the
+  Forge's quench vats exist.
+- The Brute King's fight spread (idle-bot clears at 12 to 20 s) and his early first plate
+  tear.
+- Boss rooms slow over time (render objects climb to about 18k to 24k in 30 to 45 s on old
+  and new code): Forge and Rift rooms run at 70 to 90 fps.
+- The bot stall: the fusion probe stood in the Ossuary Shop until the clock ran out in 3
+  of 13 runs, and one Frostvault run never reached the boss. Worth a bot fix before the
+  next balance phase, since it hides results.
+- Music layers are track changes, filter and pitch from the existing pool; real stems would
+  need new CC0 or CC BY music.
+
 ### Phase 1: The Hollow, part 1
 
 - **Goal:** a walkable hub with people in it, and features that arrive with them.
@@ -1088,6 +1178,12 @@ write-up is in `GDD.md` under "Boss framework".
 | AE | Brute King health on floor 1 | The old formula x2.2 (`BossBody.FLOOR1_MULT`); floor-1 bosses are not sized from arena output |
 | AG | Max-health damage on bosses | Bosses take a tenth of the decay share (`Elements.BOSS_DECAY`); parts made the shares stack |
 | AF | Brute King plates | 4% wear a reaction, 8% a fusion, torn by a Barrel Blast; tearing them fills 35% of the stagger bar; gone from phase 2 |
+| AH | Boss health shares (phase 0b part 3) | Hive Mother 1.5, Storm Warden 1.5, Void Herald 2.3 of the usual 30 s of arena output |
+| AI | Hive Mother chain | Firedamp on the sacs tears them (4% health, 30% stagger); she burrows every 6 s in phase 2 and 8 s in phase 3, taking a quarter of hits while under with no sacs |
+| AJ | Storm Warden chain | Three Grounded tear the rods; Storm Cloud on the core is an OVERLOAD (3% health, half the stagger bar); rods burst in phase 2, stay off in phase 3 |
+| AK | Void Herald chain and theft | Any Rift fusion collapses the shards; the theft is the element with the most hits by the end of phase 1, immune for phase 2 only |
+| AL | Gravity wells | 110 px, 6 s, pull 45 px/s, bend player shots; holy collapses them |
+| AM | Music per phase | Track change, filter and a 6% pitch lift from the existing boss pool; no new audio |
 
 ---
 

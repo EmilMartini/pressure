@@ -770,7 +770,7 @@ whole `route`). Bots print a `[ROUTE]` line and take `--route=a,b,c` to fix a ro
   `Elements.MAX_REACTION_DEPTH` (24) nested resolutions, an element now lands as a plain
   state instead of reacting.
 
-**Boss framework (BUILT, phase 0b part 1, 2026-11-06).** `scripts/boss_body.gd`: every boss
+**Boss framework (BUILT, phase 0b, 2026-11-06 to 2026-11-07).** `scripts/boss_body.gd`: every boss
 carries a `BossBody` (`Enemy.body`). Design: `design/World and progression GDD.md`, section 6.
 - *Stagger.* Reactions on the boss fill a bar: 1.5% a reaction, 8% a fusion, half the bar
   for a cataclysm. A product in a patch or field over the boss fills half that. A full bar
@@ -778,9 +778,15 @@ carries a `BossBody` (`Enemy.body`). Design: `design/World and progression GDD.m
   x1.5 damage and its reaction shield lets raw damage through. Afterwards the bar rests for
   5 s, and it drains after 4 s without a reaction. Stagger adds to the rallies; it does not
   replace them. HUD: a gold bar under the boss bar, "STAGGERED" in the bar.
-- *Phases.* `BossBody.PHASES` sets health fractions per kind. The Pyre Lord has three
-  (0.66, 0.33), the other four keep their two (0.5). Each new phase roars, shakes, shows
-  "PHASE n" and lights a pip beside the boss bar.
+- *Phases.* `BossBody.PHASES` sets health fractions per kind. All five bosses have three
+  (0.66, 0.33). Each new phase roars, shakes, shows "PHASE n", lights a pip beside the
+  boss bar and changes the music (below).
+- *Health.* From floor 2 a boss is sized to `BossBody.HP_SHARE` of the usual 30 s of arena
+  output: Pyre Lord 0.4, Hive Mother 1.5, Storm Warden 1.5, Void Herald 2.3 (tuned so the
+  storm-build bot kills each in 25 to 50 s on real floors).
+- *Music per phase* (`Music.boss_phase`). Phase 1 plays a boss track with the low-pass
+  held a little closed; phase 2 crossfades to the next boss track wide open; phase 3
+  crossfades again and lifts the pitch 6%. Leaving the fight, or any other music, resets it.
 - *Name card.* For the first 3.5 s of a fight a band across the screen gives the boss's name
   and region; afterwards the name sits in its health bar.
 - *Body parts* (`BossBody.PARTS`). A part has its own element states, compound and fusion
@@ -790,7 +796,10 @@ carries a `BossBody` (`Enemy.body`). Design: `design/World and progression GDD.m
   other parts' clocks. On a parted boss every compound stays on its part, Steam included,
   and part fusions skip the room-wide repeat gap, since patches round the boss used it up.
   Parts are drawn on the Crisp layer with a dark outline, so they read through the player's
-  effects. The HUD shows one chip per part with its states and compound.
+  effects. The HUD shows one chip per part with its states and compound, or "torn",
+  "covered", "sealed" (opens in a later phase) or "underground".
+  A part can also carry `wear_by` (wear for one named product) and `payoff` (a product on
+  it deals a share of max health and half the stagger bar).
 - *The Pyre Lord* is the first boss built on it (radius 34, health share 0.4 of the usual
   30 s of arena output, `BossBody.HP_SHARE`).
   - Parts:
@@ -827,8 +836,44 @@ carries a `BossBody` (`Enemy.body`). Design: `design/World and progression GDD.m
 - *Max-health damage.* Reactions that take a slice of max health (Decay, Null Acid,
   Exsanguinate, the Hollow fusions) take a tenth of the slice from a boss
   (`Elements.BOSS_DECAY`), since each body part reacts on its own.
-- The other three bosses (Hive Mother, Storm Warden, Void Herald) still use the framework
-  without parts: stagger, the name card and phase pips. Their attacks are unchanged.
+- *The Hive Mother* (phase 0b part 3, depth 2).
+  - Parts: **spore sacs** on her back keep re-poisoning. Fire on them makes Smog on the
+    sacs, and shock on the Smog is Firedamp, which tears them off (4% of her health and
+    30% of the stagger bar); shock alone does nothing to them. **Hive body** below
+    (taken x0.8). **Brood chamber**, sealed until phase 3 (taken x1.8).
+  - Phase 1: swarmers, poison rings, spore clouds (poison you can light).
+  - Phase 2: she burrows. She digs in (0.8 s ring wind-up), goes under, and bursts up
+    inside a marked circle where you stood. The sacs stay above ground; with them gone she
+    takes a quarter of every hit while under, and she deals no contact damage there.
+  - Phase 3: the hive splits open on the brood chamber; faster rings, more swarmers.
+- *The Storm Warden* (phase 0b part 3, depth 3).
+  - Parts: **lightning rods** over his shoulders keep their charge. Stone on a charged rod
+    is Grounded, and three of those tear them (fusions on the glass they leave wear them
+    20%); tearing them fills 30% of the stagger bar. **Storm core** under the rods has no
+    charge of its own: steam it, and his recharge strike or your shock sets off a Storm
+    Cloud inside him (OVERLOAD: 3% of his health and half the stagger bar).
+  - Phase 1: lightning strikes on a rhythm where you stand, each a marked circle for 1 s;
+    bolt bursts; telegraphed jumps.
+  - Phase 2: the rods burst and re-form after 12 s. Volleys of three strikes round you
+    plus a recharge strike on himself, while he holds still.
+  - Phase 3: the rods stay off. He becomes a fast moving storm that leaves charged air,
+    strikes where you stand every second and recharges every few seconds.
+- *The Void Herald* (phase 0b part 3, depth 5).
+  - Parts: a ring of **orbiting shards** keeps its void. Shock on a shard is a Singularity
+    that leaves a Rift on the ring, and any fusion of that Rift pulls the shards in on
+    themselves (other products barely wear them). **Hollow centre** under the ring
+    (taken x1.6).
+  - Phase 1: gravity wells, each a marked circle for 1 s, then 6 s of pull on you and on
+    your shots, which bend towards the centre. A holy shot collapses a well. Spirals and
+    wisps.
+  - Phase 2: it steals the element you hit it with most: it turns immune to it and its
+    spirals carry it.
+  - Phase 3: it lets go, the shards return and close in: rings of six shards fly at where
+    you stood after their paths show for 1 s.
+- *Arena tools.* The Pyre Lord's room has four **quench vats**. Shoot one and it bursts:
+  water over everything within 140 px (his burning slag steams), his fire trail and lava
+  within reach go out, and that ground stays safe for 8 s, the quenched paths through his
+  phase-3 flood. A vat refills after 9 s; a water ring shows it is full.
 
 **Raids** are the endgame: a longer co-op dungeon with multiple bosses that have WoW-style
 mechanics (split the party, soak zones, interrupt casts with a specific reaction, adds that
@@ -1159,8 +1204,8 @@ Fire orange, Holy near-white), so a green frame could mean Uncommon or Poison. T
   Treasure rooms give a free pick of one gun from three. Challenge rooms start from a sigil,
   spawn two sequence elites plus adds, and pay out scrap and a free gun pick.
 - The boss has a reaction sequence shield, re-shields with a new sequence at half health,
-  and summons adds. It staggers from reactions and has a name card; the Pyre Lord has body
-  parts and three phases (see "Boss framework"). From floor 2 its health is sized to the party's measured output and it
+  and summons adds. It staggers from reactions, has a name card, body parts and three
+  phases (see "Boss framework"). From floor 2 its health is sized to the party's measured output and it
   rallies twice (a guard held by a wave of adds). Killing it spawns the stairs. Five
   floors, then the run is won.
 - The trigger always fires along your aim even with no enemy in range, so obstacles can

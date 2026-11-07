@@ -422,6 +422,7 @@ func _begin_boss() -> void:
     main.announce("BOSS: crack the shield with its reaction")
     Sfx.play("boss")
     Music.play("boss", 1.0)
+    Music.boss_phase(1)
     main.shake(10.0)
 
 
@@ -458,6 +459,7 @@ func _tick_boss(delta: float) -> void:
             data.stock.append(FloorGen.offer("stairs", String(id), 0))
         _finish_fight(30)
         _build_pedestals()
+        Music.boss_phase(0)
         Music.play("run", 2.0)
 
 
