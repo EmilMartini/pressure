@@ -163,6 +163,11 @@ func _init(room_rect: Rect2 = Rect2(-560, -360, 1120, 720)) -> void:
     _glow.mats = self
     _glow.material = _make_draw_material(true)
     add_child(_glow)
+    # Clarity pass: fields sit back on the floor (rims full, insides faint: `fill` in the
+    # shader) instead of glowing over it; the hostile
+    # edges (on the Crisp layer, never faded) carry the danger.
+    self_modulate.a = 0.8
+    _glow.modulate.a = 0.25
     clear()
 
 
@@ -1362,6 +1367,7 @@ uniform int t = 0;
 uniform float seed = 0.0;
 uniform vec2 origin = vec2(0.0);
 uniform ivec2 grid = ivec2(1, 1);
+uniform float fill = 0.15;   // clarity pass: a field's inside, against its full rim
 const int CELL = {CELL};
 const vec4 COLS[{N}] = {COLS};
 const vec4 FIRE_COLS[3] = {FIRE_COLS};
@@ -1571,6 +1577,21 @@ void fragment() {
                     acc = over(acc, vec4(0.95, 1.0, 0.7, 0.8));
                 }
             }
+        }
+    }
+    // Clarity pass: a field reads by its rim. A cell whose four neighbours hold the same
+    // material draws at `fill`, a faint inside; the rim keeps its full colour.
+    if (m != 0) {
+        bool rim = false;
+        for (int k = 0; k < 4; k++) {
+            ivec2 n = c + ivec2(k == 0 ? -1 : (k == 1 ? 1 : 0), k == 2 ? -1 : (k == 3 ? 1 : 0));
+            if ((cell_at(n).x & 15) != m) {
+                rim = true;
+                break;
+            }
+        }
+        if (!rim) {
+            acc *= fill;
         }
     }
     // Gas of the neighbours drifts a pixel into this cell's border.

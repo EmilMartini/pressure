@@ -18,14 +18,14 @@ const DEFAULTS := {
     "hit_stop": true,
     "flashes": true,                  # full-strength screen flashes and the pulsing low-health edge
     "damage_numbers": true,
-    "own_fx": 1.0,                    # opacity of your own effects (own_fx()), 1 = full
+    "own_fx": 0.45,                   # opacity of your own effects (own_fx()), 1 = full (clarity pass: 0.45)
     "post_fx": true,
     "crt": false,                     # CRT curve, scanlines, a little aberration and grain
     "crt_intensity": 0.6,
     "bloom": true,
     "pixel_size": 3,                  # world pixel grid in screen pixels, 2..4
     "palette": true,                  # quantize the world to the palette, with dither
-    "fx_rev": 2,                      # post-fx defaults revision (FX_REV; migrations, see load)
+    "fx_rev": 3,                      # post-fx defaults revision (FX_REV; migrations, see load)
     "aim_mode": "assisted",           # "assisted", "manual" or "auto" (Player.AIM_MODES)
     "manual_fire": "hold",            # manual aim: "hold" fire, or "toggle" constant fire
     "controls_hint": false,
@@ -43,9 +43,9 @@ const DEFAULTS := {
 ## standing aberration (only the brief pulses), and a faint grain.
 const CRT_FULL := { "crt_curve": 0.1, "scanline": 0.22, "aberration": 0.6, "grain": 0.04 }
 const GRAIN_BASE := 0.012
-const BLOOM_ON := 0.85
+const BLOOM_ON := 0.35   # was 0.85; clarity pass: the player's glow no longer floods the arena
 ## Bumped when post-fx defaults change in a way old settings files should pick up.
-const FX_REV := 2
+const FX_REV := 3
 ## Numeric keys that are not 0..1, with their range.
 const RANGES := { "pixel_size": [2.0, 4.0], "fx_rev": [0.0, 1000.0] }
 
@@ -264,8 +264,13 @@ func load_settings() -> void:
         else:
             values[key] = clampf(float(d[key]), 0.0, 1.0)
     # Post-fx defaults moved to a crisp pixel look: older files drop the CRT once.
-    if int(d.get("fx_rev", 0)) < FX_REV:
-        values["crt"] = false
+    var rev := int(d.get("fx_rev", 0))
+    if rev < FX_REV:
+        if rev < 2:
+            values["crt"] = false
+        if rev < 3:
+            # Clarity pass: your own effects step back so enemies and their shots read.
+            values["own_fx"] = minf(float(values["own_fx"]), float(DEFAULTS["own_fx"]))
         values["fx_rev"] = FX_REV
         save()
 
