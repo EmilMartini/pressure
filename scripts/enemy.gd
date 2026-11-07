@@ -374,7 +374,8 @@ func _setup_sprite() -> void:
     else:
         base_color = Art.ENEMY_TINT.get(kind_name, base_color)
     var coord: Vector2i = KIND_TILES[key] if KIND_TILES.has(key) else Art.TILES.get(kind_name, Art.TILES["grunt"])
-    _sprite_scale = radius / 6.0 * float(FLYER_SCALE.get(kind_name, 1.0))
+    # Clarity pass: bodies draw 15% larger than their hit circle, with a thick dark outline.
+    _sprite_scale = radius / 6.0 * float(FLYER_SCALE.get(kind_name, 1.0)) * 1.15
     if _sprite == null:
         _sprite = Art.sprite(coord, 0.01, base_color)
         add_child(_sprite)
@@ -1436,10 +1437,10 @@ func _landed(at: Vector2) -> void:
 ## The spawn marker (emerging bodies and boss summons): a dark disc on the floor with a red
 ## rim and red pixels closing in. k: 0 just placed .. 1 arriving.
 static func draw_spawn_marker(cv: CanvasItem, at: Vector2, size: float, k: float, t: float) -> void:
-    var r := size * (2.6 - 1.6 * k)
-    cv.draw_circle(at, size * 1.6, Color(0.05, 0.0, 0.0, 0.35 + 0.2 * k))
-    cv.draw_arc(at, size * 1.6, 0.0, TAU, 28, Color(0, 0, 0, 0.8), 4.0)
-    cv.draw_arc(at, size * 1.6, 0.0, TAU, 28, Color(1.0, 0.22, 0.18, 0.75 + 0.25 * k), 2.0)
+    var r := size * (2.2 - 1.2 * k)
+    cv.draw_circle(at, size * 1.25, Color(0.05, 0.0, 0.0, 0.35 + 0.2 * k))
+    cv.draw_arc(at, size * 1.25, 0.0, TAU, 24, Color(0, 0, 0, 0.8), 4.0)
+    cv.draw_arc(at, size * 1.25, 0.0, TAU, 24, Color(1.0, 0.22, 0.18, 0.75 + 0.25 * k), 2.0)
     for i in 10:
         var a := TAU * float(i) / 10.0 + t * 3.0
         cv.draw_rect(Rect2(at + Vector2.RIGHT.rotated(a) * r - Vector2(2, 2), Vector2(4, 4)), Color(1.0, 0.25, 0.2, 0.6 + 0.4 * k))
@@ -2479,8 +2480,16 @@ func _draw() -> void:
         var w := radius * 2.2
         draw_rect(Rect2(-w / 2.0, radius + 5.0, w, 4.0), Color(0, 0, 0, 0.7))
         draw_rect(Rect2(-w / 2.0, radius + 5.0, w * maxf(0.0, hp) / max_hp, 4.0), Color(0.9, 0.2, 0.2))
-    if not Regions.active_resists.is_empty() or not Regions.active_weak.is_empty():
+    # Clarity pass: badges only where you look (the aimed enemy) and on elites and bosses.
+    if (not Regions.active_resists.is_empty() or not Regions.active_weak.is_empty())             and (is_elite or kind_name == "boss" or _aimed()):
         _draw_resist_badges()
+
+
+func _aimed() -> bool:
+    for p in get_tree().get_nodes_in_group("players"):
+        if is_instance_valid(p) and p.get("aimed") == self:
+            return true
+    return false
 
 
 ## The region's resistances as small badges under the body (design section 5): a dull
@@ -2524,6 +2533,10 @@ func _draw_resist_badges() -> void:
 ## A dark 1 px outline round the sprite (its silhouette drawn black one pixel off on
 ## each side, under it), so the tint reads against lit floors and particles; the player's
 ## rim is bright instead, which keeps the player on top of the hierarchy.
+const OUTLINE_DIRS := [Vector2(-1, 0), Vector2(1, 0), Vector2(0, -1), Vector2(0, 1),
+    Vector2(-0.7, -0.7), Vector2(0.7, -0.7), Vector2(-0.7, 0.7), Vector2(0.7, 0.7)]
+
+
 func _draw_outline() -> void:
     if _sprite == null or _sprite.texture == null:
         return
@@ -2531,9 +2544,11 @@ func _draw_outline() -> void:
     var sx := _sprite.scale.x * (-1.0 if _sprite.flip_h else 1.0)
     draw_set_transform(_sprite.position, _sprite.rotation, Vector2(sx, _sprite.scale.y))
     var o := -t.get_size() / 2.0
-    var c := Color(0.02, 0.01, 0.03, 0.85)
-    for d in [Vector2(-1, 0), Vector2(1, 0), Vector2(0, -1), Vector2(0, 1)]:
-        draw_texture(t, o + d, c)
+    # Clarity pass: 2 world px all round (8 directions), opaque, so a body reads on any floor.
+    var c := Color(0.02, 0.01, 0.03, 1.0)
+    var k := 2.0 / maxf(0.05, absf(_sprite.scale.y))
+    for d in OUTLINE_DIRS:
+        draw_texture(t, o + d * k, c)
     draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 

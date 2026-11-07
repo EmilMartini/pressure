@@ -69,6 +69,7 @@ var jewel_target := { "ring": "", "trinket": "" }   # swap pick at a pedestal (r
 var xp_total := 0.0               # all XP earned this run (bot pacing logs)
 var boon_triggers: Array = []    # level-up boons that work like gear triggers (Items.fire)
 
+var aimed: Node2D = null        # the enemy the guns are on (Enemy shows its badges for it)
 var aim_dir := Vector2.RIGHT      # where the figure faces: the nearest enemy, else movement
 var pressure := 0.0               # -limit cold .. +limit hot: vent charge, nothing more
 var pressure_limit_bonus := 0.0   # from run boons
@@ -741,8 +742,10 @@ func _physics_process(delta: float) -> void:
 
     _update_aim(delta)
     var nearest := nearest_enemy(900.0)
+    aimed = nearest
     if _aim_firing and _aim_now != Vector2.ZERO:
         aim_dir = _aim_now
+        aimed = _enemy_along(_aim_now, 900.0)
     elif nearest != null:
         aim_dir = (nearest.global_position - global_position).normalized()
     elif mv != Vector2.ZERO:
@@ -947,6 +950,28 @@ func nearest_obstacle(max_range: float) -> Node2D:
         if d < best_d:
             best_d = d
             best = ob
+    return best
+
+
+## The enemy closest to a ray along `dir` (within about 25 degrees), or null.
+func _enemy_along(dir: Vector2, max_range: float) -> Node2D:
+    var best: Node2D = null
+    var best_s := -INF
+    for e in get_tree().get_nodes_in_group("enemies"):
+        var n := e as Node2D
+        if n == null or not is_instance_valid(n) or n.is_queued_for_deletion():
+            continue
+        var to := n.global_position - global_position
+        var d := to.length()
+        if d > max_range or d < 1.0:
+            continue
+        var dot := dir.dot(to / d)
+        if dot < 0.9:
+            continue
+        var s := dot * 2.0 - d / max_range
+        if s > best_s:
+            best_s = s
+            best = n
     return best
 
 
