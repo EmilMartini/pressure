@@ -517,7 +517,12 @@ func _draw_boss_frame(b: Enemy, r: Rect2, vp: Vector2) -> void:
             if p["broken"]:
                 label += " (torn)"
             elif not bb.visible(i):
-                label += " (covered)"
+                if b._phase < int(p.get("from_phase", 0)):
+                    label += " (sealed)"
+                elif p.get("burrows", false) and b.burrowed():
+                    label += " (underground)"
+                else:
+                    label += " (covered)"
             elif cid != "":
                 label += ": " + String(Fusions.compound(cid).get("name", cid))
                 var only: Array = p.get("only", [])

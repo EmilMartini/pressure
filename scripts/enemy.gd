@@ -1077,7 +1077,7 @@ func _physics_process(delta: float) -> void:
     shove_vel = shove_vel.move_toward(Vector2.ZERO, 900.0 * delta)
     move_and_slide()
 
-    if target != null and _contact_cd <= 0.0 and is_instance_valid(target):
+    if target != null and _contact_cd <= 0.0 and is_instance_valid(target) and _burrow_state != 2:
         var reach := radius + target.radius + 2.0
         if global_position.distance_squared_to(target.global_position) <= reach * reach:
             target.take_damage(contact_damage, self)
@@ -1680,7 +1680,7 @@ func _think_hive(delta: float, target: Player, dir: Vector2, dist: float, mult: 
         if w != null:
             Cloud.spawn(w, body.part_world(body.part_index("sacs")) + Vector2(randf_range(-40.0, 40.0), randf_range(-20.0, 30.0)), Element.Kind.POISON, 70.0, 6.0, 1.0, null)
     if _phase >= 2 and _t3 <= 0.0 and _mode == MODE_CHASE:
-        _t3 = 9.0 if _phase == 2 else 7.0
+        _t3 = 6.0 if _phase == 2 else 8.0
         _burrow_state = 1
         _burrow_t = BURROW_WARN
         _squash = 1.0
@@ -1691,6 +1691,8 @@ func _think_hive(delta: float, target: Player, dir: Vector2, dist: float, mult: 
 ## She bursts up at the marked spot: players inside the circle are hurt and thrown clear.
 func _erupt() -> void:
     _burrow_state = 0
+    if BossBody.log_enabled and body != null:
+        print("[BOSS-MOVE] t=%.1f kind=hive_mother erupt phase=%d" % [body.age, _phase])
     _teleport_to(_burrow_at)
     for p in get_tree().get_nodes_in_group("players"):
         if is_instance_valid(p) and p.alive and p.global_position.distance_to(_burrow_at) <= ERUPT_R + 12.0:

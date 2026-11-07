@@ -48,6 +48,7 @@ const NAMES := {
 ## bots: 72k health took 80 to 93 s, the target is 25 to 50 s.
 const HP_SHARE := {
     "pyre_lord": 0.4,
+    "hive_mother": 1.5,   # her chain is quick to set up; at 1.0 to 1.2 bot fights took 14 to 33 s
 }
 
 
