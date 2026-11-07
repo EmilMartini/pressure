@@ -9,7 +9,7 @@ signal unlocked(unlock_id: String, achievement_name: String)
 const SAVE_PATH := "user://save.json"
 
 ## Always available, run one included.
-const BASE_UNLOCKS := ["gun:water_pistol", "gun:arc_rifle", "gun:flare_pistol", "gun:slick_wand", "obstacle:pool", "class:vagrant"]
+const BASE_UNLOCKS := ["gun:water_pistol", "gun:arc_rifle", "gun:flare_pistol", "gun:slick_wand", "obstacle:pool", "mark:vagrant"]
 
 ## stat: the Progress stat that counts toward it. goal: the number to reach.
 const ACHIEVEMENTS := [
@@ -57,15 +57,15 @@ const ACHIEVEMENTS := [
     { "id": "sparkplug", "name": "Sparkplug", "desc": "Fire 25 Ignitions",
         "stat": "reaction:Ignition", "goal": 25, "rewards": ["gun:cinder_flak"] },
     { "id": "class_tarsmith", "name": "Pitch Black", "desc": "Fire 30 Ignitions",
-        "stat": "reaction:Ignition", "goal": 30, "rewards": ["class:tarsmith"] },
+        "stat": "reaction:Ignition", "goal": 30, "rewards": ["mark:tarsmith", "kit:slick_wand"] },
     { "id": "class_stormcaller", "name": "Lightning Rod", "desc": "Fire 40 Chain Lightnings",
-        "stat": "reaction:Chain Lightning", "goal": 40, "rewards": ["class:stormcaller"] },
+        "stat": "reaction:Chain Lightning", "goal": 40, "rewards": ["mark:stormcaller", "kit:spark_needler"] },
     { "id": "class_pyromancer", "name": "Firestarter", "desc": "Fire 15 Infernos",
-        "stat": "reaction:Inferno", "goal": 15, "rewards": ["class:pyromancer"] },
+        "stat": "reaction:Inferno", "goal": 15, "rewards": ["mark:pyromancer", "kit:flare_pistol"] },
     { "id": "class_tidecaller", "name": "High Tide", "desc": "Fire 20 Steams",
-        "stat": "reaction:Steam", "goal": 20, "rewards": ["class:tidecaller"] },
+        "stat": "reaction:Steam", "goal": 20, "rewards": ["mark:tidecaller", "kit:water_pistol"] },
     { "id": "class_frostbinder", "name": "Cold Hands", "desc": "Fire 15 Deep Freezes",
-        "stat": "reaction:Deep Freeze", "goal": 15, "rewards": ["class:frostbinder"] },
+        "stat": "reaction:Deep Freeze", "goal": 15, "rewards": ["mark:frostbinder", "kit:frost_caster"] },
     { "id": "venter", "name": "Venter", "desc": "Vent 30 novas",
         "stat": "vents", "goal": 30, "rewards": ["gun:hydro_cannon"] },
     { "id": "alchemist", "name": "Alchemist", "desc": "Fire 25 Infernos",
@@ -96,19 +96,19 @@ const ACHIEVEMENTS := [
     { "id": "windbreaker", "name": "Windbreaker", "desc": "Fire 20 Monsoons",
         "stat": "reaction:Monsoon", "goal": 20, "rewards": ["gun:cyclone_flak"] },
     { "id": "class_voidwalker", "name": "Event Horizon", "desc": "Fire 20 Singularities",
-        "stat": "reaction:Singularity", "goal": 20, "rewards": ["class:voidwalker"] },
+        "stat": "reaction:Singularity", "goal": 20, "rewards": ["mark:voidwalker", "kit:null_wand"] },
     { "id": "class_alchemist", "name": "Splash Zone", "desc": "Fire 20 Caustic Splashes",
-        "stat": "reaction:Caustic Splash", "goal": 20, "rewards": ["class:alchemist"] },
+        "stat": "reaction:Caustic Splash", "goal": 20, "rewards": ["mark:alchemist", "kit:etcher_beam"] },
     { "id": "class_stonewarden", "name": "Bog Standard", "desc": "Fire 20 Muds",
-        "stat": "reaction:Mud", "goal": 20, "rewards": ["class:stonewarden"] },
+        "stat": "reaction:Mud", "goal": 20, "rewards": ["mark:stonewarden", "kit:gravel_shotgun"] },
     { "id": "class_plaguewright", "name": "Patient Zero", "desc": "Fire 25 Contaminations",
-        "stat": "reaction:Contamination", "goal": 25, "rewards": ["class:plaguewright"] },
+        "stat": "reaction:Contamination", "goal": 25, "rewards": ["mark:plaguewright", "kit:venom_spitter"] },
     { "id": "class_bloodletter", "name": "Leech", "desc": "Fire 25 Thin Bloods",
-        "stat": "reaction:Thin Blood", "goal": 25, "rewards": ["class:bloodletter"] },
+        "stat": "reaction:Thin Blood", "goal": 25, "rewards": ["mark:bloodletter", "kit:vein_pistol"] },
     { "id": "class_templar", "name": "Anointed", "desc": "Fire 25 Baptisms",
-        "stat": "reaction:Baptism", "goal": 25, "rewards": ["class:templar"] },
+        "stat": "reaction:Baptism", "goal": 25, "rewards": ["mark:templar", "kit:prayer_burst"] },
     { "id": "class_windrunner", "name": "Rainmaker", "desc": "Fire 25 Monsoons",
-        "stat": "reaction:Monsoon", "goal": 25, "rewards": ["class:windrunner"] },
+        "stat": "reaction:Monsoon", "goal": 25, "rewards": ["mark:windrunner", "kit:zephyr_rang"] },
     { "id": "annihilator", "name": "Annihilator", "desc": "Fire 15 Annihilations",
         "stat": "reaction:Annihilation", "goal": 15, "rewards": ["gun:eclipse_carbine"] },
     # Depth, bosses and the long tail.
@@ -175,10 +175,20 @@ var names: Array = ["", "", "", ""]   # player names; empty falls back to P1..P4
 ## everyone else moves in when recruited, and their station arrives with them.
 var npcs: Dictionary = {}
 var seen_lines: Dictionary = {}       # Dialogue line id -> times shown
-var chosen_class := "vagrant"         # class picked on the menu for player 1; not saved
+## Player 1's loadout at the Gate (Loadout): { kit, mark, relic, vow }, kept between runs.
+var loadout: Dictionary = {}
+## Relics owned (item ids, bought from the Wellkeeper), and items saved in a Well that wait
+## for the Wellkeeper to sell them back.
+var relics: Array = []
+var well_saved: Array = []
 
 
 func _ready() -> void:
+    # Bot and capture runs (any user argument after `--`) never read or write the player's
+    # save, not even here before main.gd or hub.gd pick their own file: loading migrates
+    # and settles, and both write.
+    if not OS.get_cmdline_user_args().is_empty():
+        save_path = "user://save_autotest%s.json" % Main._instance_tag()
     load_save()
 
 
@@ -218,8 +228,10 @@ func unlock_label(unlock_id: String) -> String:
                 "ward": "Ward obstacles", "rubble": "Rubble obstacles", "miasma": "Miasma obstacles" }.get(parts[1], parts[1])
         "room":
             return "Challenge rooms" if parts[1] == "challenge" else parts[1]
-        "class":
-            return "%s class" % Classes.get_def(parts[1]).get("name", parts[1])
+        "mark":
+            return Loadout.mark_name(parts[1])
+        "kit":
+            return "the %s Kit" % Loadout.kit_name(parts[1])
         "shop":
             return "Fourth shop slot" if parts[1] == "extra" else "Third shop item"
         "rarity":
@@ -390,7 +402,7 @@ func _grant(a: Dictionary) -> void:
 
 func save() -> void:
     var data := {
-        "version": 2,
+        "version": 3,
         "unlocks": unlocks.keys(),
         "stats": stats,
         "achievements": achievements_done.keys(),
@@ -398,6 +410,9 @@ func save() -> void:
         "names": names,
         "npcs": npcs,
         "seen_lines": seen_lines,
+        "loadout": loadout,
+        "relics": relics,
+        "well_saved": well_saved,
     }
     var f := FileAccess.open(save_path, FileAccess.WRITE)
     if f == null:
@@ -414,6 +429,9 @@ func load_save() -> void:
     history = []
     npcs = {}
     seen_lines = {}
+    loadout = {}
+    relics = []
+    well_saved = []
     for u in BASE_UNLOCKS:
         unlocks[u] = true
     if not FileAccess.file_exists(save_path):
@@ -425,8 +443,18 @@ func load_save() -> void:
     f.close()
     if not parsed is Dictionary:
         return
+    var migrated := 0
     for u in parsed.get("unlocks", []):
-        unlocks[u] = true
+        var uid := String(u)
+        if uid.begins_with("class:"):
+            # Version 2 and older: a class becomes its Mark and its Kit (Loadout).
+            var lo := Loadout.from_class(uid.substr(6))
+            unlocks["mark:" + String(lo["mark"])] = true
+            if String(lo["kit"]) != "":
+                unlocks["kit:" + String(lo["kit"])] = true
+            migrated += 1
+            continue
+        unlocks[uid] = true
     for k in parsed.get("stats", {}).keys():
         stats[k] = int(parsed["stats"][k])
     for a in parsed.get("achievements", []):
@@ -438,18 +466,30 @@ func load_save() -> void:
     var saved_seen = parsed.get("seen_lines", {})
     if saved_seen is Dictionary:
         seen_lines = saved_seen
+    var saved_loadout = parsed.get("loadout", {})
+    if saved_loadout is Dictionary:
+        loadout = saved_loadout
+    for key in ["relics", "well_saved"]:
+        var arr = parsed.get(key, [])
+        if arr is Array:
+            var clean: Array = []
+            for id in arr:
+                if not Items.get_item(String(id)).is_empty():
+                    clean.append(String(id))
+            set(key, clean)
     var saved_names: Array = parsed.get("names", [])
     for i in mini(4, saved_names.size()):
         names[i] = str(saved_names[i]).strip_edges().left(12)
-    _settle()
+    if migrated > 0:
+        print("[MIGRATE] save version %d: %d classes became Marks and Kits" % [int(parsed.get("version", 1)), migrated])
+    _settle(migrated > 0)
 
 
 ## Save migration, run on every load (version 1 saves included): an achievement that is
 ## done always has all its rewards, and one whose goal the save already meets (goals were
 ## lowered and some ids got new, easier goals in version 2) is granted quietly, with no
 ## toast and nothing added to the next run's report.
-func _settle() -> void:
-    var touched := false
+func _settle(touched := false) -> void:
     for a in ACHIEVEMENTS:
         var id := String(a["id"])
         if not achievements_done.has(id):
@@ -463,6 +503,38 @@ func _settle() -> void:
                 touched = true
     if touched:
         save()
+
+
+# --- The Well and Relics (Loadout) -----------------------------------------
+
+
+## Items dropped in a Well this run wait for the Wellkeeper, however the run ended. Her
+## station moves into the Hollow the first time something waits.
+func keep_well_items(items: Array) -> void:
+    if items.is_empty():
+        return
+    for id in items:
+        if not relics.has(id) and not well_saved.has(id):
+            well_saved.append(String(id))
+    if npc_state("wellkeeper") != "recruited":
+        npcs["wellkeeper"] = { "state": "recruited", "talks": npc_talks("wellkeeper") }
+    save()
+
+
+## Buy a saved item back as a Relic: it leaves the Well and is yours for every run.
+func buy_relic(item_id: String) -> bool:
+    if not well_saved.has(item_id):
+        return false
+    var price := Loadout.relic_price(item_id)
+    if Mastery.embers < price:
+        return false
+    Mastery.embers -= price
+    Mastery.save()
+    Mastery.changed.emit()
+    well_saved.erase(item_id)
+    relics.append(item_id)
+    save()
+    return true
 
 
 # --- Hollow NPCs -----------------------------------------------------------

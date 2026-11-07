@@ -161,15 +161,39 @@ does the same.
 ## Progression
 
 Runs start naked: no guns, no gear. The entrance offers each player a pick of two random
-unlocked guns. Achievements add guns, classes, obstacle kinds, the challenge room and
+unlocked guns. Achievements add guns, Marks and Kits, obstacle kinds, the challenge room and
 shop upgrades to the pool future runs draw from. The first ten teach the basics and hand
 out one new element per run, Risk of Rain 2 style, so every element is in the pool by
 about run 5: discover 3 reactions (ice), vent 10 times (acid), start 2 runs, clear 5
 rooms (poison), discover 6 reactions (gale), kill 3 elites (blood), start 3 runs (stone),
-fire 250 reactions (void), start 5 runs (holy). Class unlocks ask for 15 to 40 of their
-signature reaction instead of 60 to 90. Progress is saved to `user://save.json`; the
+fire 250 reactions (void), start 5 runs (holy). Mark unlocks (each with its Kit) ask for 15
+to 40 of their signature reaction instead of 60 to 90. Progress is saved to `user://save.json`; the
 run-end screen shows what you unlocked, the Embers earned and what is next. The
-self-test uses its own save file and never touches yours.
+self-test uses its own save file and never touches yours: any command-line argument after
+`--` points the save at `user://save_autotest<_N>.json` before it is first read.
+
+## Loadouts
+
+There is one descender, the Vagrant (`scripts/loadout.gd`). At the Gate (the arch or the
+Gatewarden's Descend) you pick four slots on one screen (`scripts/loadout_screen.gd`):
+up / down picks a slot, left / right or LB / RB changes it, A / Enter descends; the mouse
+clicks a slot's arrows and Descend.
+
+- **Kit**: the starting gun. Bare hands means the entrance offers a pick of two guns.
+- **Mark**: an element affinity (+20% potency, +10% damage), a quirk and a starting item,
+  shown on the figure as a glowing brand on the chest. The 13 old classes are the 13 Kits
+  and Marks: the Pyromancer is the Flare Pistol Kit with the Mark of the Pyre, with the
+  same numbers. Old saves turn each unlocked class into its Mark and its Kit (save
+  version 3), and each Mark achievement grants both.
+- **Relic**: one item carried into the run. Each region's start room has a Well: drop one
+  worn item down it and, however the run ends, it waits for the Wellkeeper. She moves into
+  the Fire room the first time something waits, and sells it back as a Relic for Embers
+  (15 to 75 by rarity). A Relic is yours for every run.
+- **Vow**: harder runs for more Embers. Vow of Iron: enemies have 25% more health. Vow of
+  Glass: -30 max HP. Each pays +20% Embers on the whole run.
+
+Mark and Vow names and texts are placeholders until the writing review (World and
+progression GDD, section 9).
 
 ## HUD
 
@@ -297,7 +321,8 @@ The game starts in the Hollow, a hub of five connected rooms (`scripts/hub.gd`):
 to a person or a station and press A or E. People talk first (a line keyed to your save,
 `scripts/dialogue.gd`), then offer their services as buttons. In the Fire, the Keeper
 opens the talent board (the Shrine). In the Stair, the Gatewarden starts a run (pick a
-class first) and shows your past runs; the Gate arch beside them starts a run directly.
+loadout first, see Loadouts) and shows your past runs; the Gate arch beside them opens the
+same loadout screen.
 The Archivist, once freed (see below), lives in the Library and opens the Journal
 (Reactions, Fusions, Cataclysms, Secrets) and the full Ledger with totals. In the Forge,
 the Armory opens the Journal's Arsenal and Gear tabs and the Workshop opens Options. In
@@ -313,7 +338,7 @@ voice sheets in `design/Voice sheets, phase 1.md` are approved. The first time y
 hub (replayable from the hub's Esc menu). A one-time explainer card states the loop:
 runs are five floors ending in bosses; dying keeps achievements, unlocks and Embers;
 runs pay Embers for rooms, elites and new reactions, and the Shrine trades them for
-swappable talents; classes change the start only. The run-over screen reports this run,
+swappable talents; the loadout changes the start only. The run-over screen reports this run,
 what you unlocked, the Embers earned with their breakdown and the next goals; the Ledger
 keeps the Embers per run and the lifetime total by source.
 
@@ -458,14 +483,15 @@ now vent charge speed (the vent fills faster), and pressure limit reads as vent 
 ## Figures are generated from your build
 
 The character is a paper doll drawn pixel by pixel (`scripts/figure_gen.gd`), not a
-fixed sprite. Your class and every item, gun and completed set add weight to themes
+fixed sprite. The Vagrant's own theme and every item, gun and completed set add weight to themes
 (the twelve elements plus plate, scout, arcane, gunslinger and merchant). The strongest
 theme picks the head and torso, the second the cape, arms and an accent, up to three
 accents come from the top three, and the palette blends all of them with a touch of your
-player colour. Close runners-up overlay a detail, so a Pyromancer in alchemist gear keeps
-the flame hood and gains goggles and a flask belt, and is named "Pyromancer-Alchemist".
+player colour. Close runners-up overlay a detail, so a Vagrant in fire gear with an
+alchemist piece keeps the flame hood and gains goggles and a flask belt. The Mark adds only
+its brand on the chest (`Player._draw_mark`).
 Each pickup nudges a part or the colour instead of swapping the figure.
-`FigureGen.debug_sheet(path)` renders every class and eight blends to one PNG.
+`FigureGen.debug_sheet(path)` renders every Mark's element theme and eight blends to one PNG.
 
 What you wear is drawn on it (`scripts/worn_gear.gd`): every head, chest, hands and feet
 item is its own hand-authored pixel piece of its kind, layered on the blended body. Hats:
@@ -619,7 +645,15 @@ XP so far), `[WAVE]` (what lay on the floor when a wave ended, lowest health),
 `[DWELL]` (seconds spent in a cleared arena) and `[SALVAGE]` lines. `godot --path . -- --menu-shot`
 screenshots the menu and codex. `--recruit-probe` (with `--autotest`, e.g. with
 `--fusion-probe --one-floor`) walks to the Torn Bestiary Page after the first elite dies,
-carries it to the chained Archivist, frees them and quits; it prints `[RECRUIT]` lines.
+carries it to the chained Archivist, frees them and quits; it prints `[RECRUIT]` lines. The
+bot's loadout: `--class=<old class>` is that class's Kit and Mark (`--class=pyromancer`),
+and `--kit=<gun>`, `--mark=<id>`, `--relic=<item>` and `--vow=iron|glass` set one slot
+each (the throwaway save opens what is asked for); every run prints `[GATE-LOADOUT]` and a
+`[LOADOUT-STATS]` line per player (max HP, carry, guns, items and every non-zero stat) for
+before/after checks. `--well-probe` drops the first worn item down the first Well and
+prints `[WELL]` lines; a `--hub-walk --keep-save` on the same instance then buys it back
+from the Wellkeeper (`[HUB-RELIC]`) and checks the Gate's slots (`[HUB-LOADOUT]`). A save
+older than version 3 prints `[MIGRATE]` when it loads.
 `godot --headless --fixed-fps 60 --path . res://scenes/hub.tscn -- --hub-walk --instance=N`
 walks the Hollow on a fresh save and uses every station on show (`[HUB]`, `[HUB-FRESH]`,
 `[HUB-TALK]`, `[HUB-STEP]`, `[HUB-WALK] PASS/FAIL`); `--keep-save` keeps the instance's
@@ -736,7 +770,8 @@ scripts/
   enemy_projectile.gd enemy shots;  spawn_table.gd  floor-gated spawn groups, affixes, bosses
   fx.gd              pixel particles, element signatures, bolts and spikes, numbers, corpses
   materials.gd       the floor material grid: oil, water, fire, ice, gas, acid, blood
-  classes.gd         starting classes;  class_select.gd  the class card screen
+  loadout.gd         Kits, Marks, Relics, Vows;  loadout_screen.gd  the Gate's loadout screen
+  well_screen.gd     the Well's pick of a worn item
   gun_pick_screen.gd pick which gun a mod goes on
   hud.gd             floor/room status, boss bar, minimap, player panels, help, banners
   art.gd             autoload `Art`: sheet lookups, particle textures, fonts, palette

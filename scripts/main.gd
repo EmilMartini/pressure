@@ -62,6 +62,10 @@ var autotest := false
 ## The Torn Bestiary Page this run: "" (none yet), "dropped", "carried" or "given".
 var page_state := ""
 var _recruit_probe := false
+## Items dropped in a Well this run (Loadout): saved for the Wellkeeper when the run ends.
+var well_items: Array = []
+var _well_probe := false
+var well_screen: WellScreen
 ## Balance probe `--old-balance`: the late-floor tuning of 2026-11-05 off (uncapped Leech,
 ## formula bosses without the rally, old floor damage), for like-for-like bot comparisons.
 static var old_balance := false
@@ -108,10 +112,13 @@ func _ready() -> void:
     add_child(levelup)
     gun_pick = GunPickScreen.new(self)
     add_child(gun_pick)
+    well_screen = WellScreen.new()
+    add_child(well_screen)
 
     var args := OS.get_cmdline_user_args()
     autotest = args.has("--autotest")
     _recruit_probe = autotest and args.has("--recruit-probe")
+    _well_probe = autotest and args.has("--well-probe")
     Enemy.spawn_log = autotest   # [SPAWN-MOVED] / [SPAWN-CLOSE] lines (Enemy.EMERGE_SECS)
     old_balance = autotest and args.has("--old-balance")
     Regions.activate("")
@@ -154,18 +161,32 @@ func _ready() -> void:
         if args.has("--veteran"):
             for gid in Guns.all_ids():
                 Progress.unlocks["gun:" + gid] = true
-            for cdef in Classes.all():
-                Progress.unlocks["class:" + str(cdef["id"])] = true
+            for m in Loadout.marks():
+                Progress.unlocks["mark:" + str(m["id"])] = true
+            for k in Loadout.KITS:
+                if String(k) != "":
+                    Progress.unlocks["kit:" + String(k)] = true
             print("[VETERAN] pool: %d guns" % Guns.ids().size())
-        # The bot plays the Vagrant unless told otherwise: `-- --autotest --class=pyromancer`.
-        Progress.chosen_class = "vagrant"
+        # The bot plays the Unmarked with a bare Kit unless told otherwise. `--class=<old
+        # class>` is that class's Kit and Mark (`-- --autotest --class=pyromancer`);
+        # `--kit=<gun>`, `--mark=<id>`, `--relic=<item>` and `--vow=<id>` set one slot.
         var build := _bot_build()
-        if not build.is_empty():
-            Progress.chosen_class = String(build["class"])
+        Progress.loadout = Loadout.from_class(String(build.get("class", "vagrant")))
         for a in args:
             if a.begins_with("--class="):
-                Progress.chosen_class = a.substr(8)
-        print("[CLASS] %s  instance=%s" % [Progress.chosen_class, _instance_tag().trim_prefix("_")])
+                Progress.loadout = Loadout.from_class(a.substr(8))
+        for a in args:
+            for slot in ["kit", "mark", "relic", "vow"]:
+                if a.begins_with("--%s=" % slot):
+                    Progress.loadout[slot] = a.substr(slot.length() + 3)
+        # The bot's throwaway save opens what it asks for (Mark and Kit unlocks feed no pool).
+        Progress.unlocks["mark:" + String(Progress.loadout.get("mark", "vagrant"))] = true
+        if String(Progress.loadout.get("kit", "")) != "":
+            Progress.unlocks["kit:" + String(Progress.loadout["kit"])] = true
+        if Progress.loadout.get("relic", "") != "" and not Progress.relics.has(Progress.loadout["relic"]):
+            Progress.relics.append(Progress.loadout["relic"])   # the bot owns the Relic it asks for
+        print("[GATE-LOADOUT] kit=%s mark=%s relic=%s vow=%s  instance=%s" % [Progress.loadout.get("kit", ""), Progress.loadout.get("mark", ""),
+            Progress.loadout.get("relic", ""), Progress.loadout.get("vow", ""), _instance_tag().trim_prefix("_")])
     var pads := Input.get_connected_joypads()
     _spawn_player(0 if pads.has(0) else -1, true)
     Input.joy_connection_changed.connect(_on_joy_connection_changed)
@@ -365,8 +386,6 @@ func _on_unlocked(unlock_id: String, achievement_name: String) -> void:
         Sfx.play("unlock")
         return
     var what := Progress.unlock_label(unlock_id)
-    if unlock_id.begins_with("class:"):
-        what = "the %s class" % String(Classes.get_def(unlock_id.substr(6)).get("name", unlock_id))
     hud.toast("%s: unlocked %s" % [achievement_name, what])
     Sfx.play("unlock")
 
@@ -374,9 +393,12 @@ func _on_unlocked(unlock_id: String, achievement_name: String) -> void:
 func _end_run(won: bool) -> void:
     # Embers first, so telemetry and the history line can carry the payout. The bot pays
     # into its throwaway Shrine file (see _ready).
-    var award: Dictionary = Mastery.award(floor_number, won, Progress.chosen_class)
+    var award: Dictionary = Mastery.award(floor_number, won, String(Loadout.current()["mark"]))
     var gained := int(award.get("total", 0))
     Telemetry.run_end(self, won, award)
+    Progress.keep_well_items(well_items)
+    if autotest and not well_items.is_empty():
+        print("[WELL] saved for the Wellkeeper: %s" % ", ".join(well_items))
     Progress.end_run(won, floor_number, total_kills, gained, region_id)
     if gained > 0:
         announce("+%d Embers" % gained)
@@ -508,6 +530,7 @@ func start_floor(n: int) -> void:
     Telemetry.floor_start(self)
     rooms = FloorGen.generate(region_id, party_luck(), players)
     _place_archivist()
+    _place_well()
     _scout_reveal()
     for p in players:
         p.pressure = 0.0
@@ -762,14 +785,18 @@ func _spawn_player(device: int, keyboard: bool) -> Player:
     p.leveled_up.connect(_on_leveled_up)
     if danger != null:
         p.hurt.connect(danger.on_hurt)
-    # Player 1 plays the class picked on the menu; later joiners get a random unlocked one.
-    var class_id: String = Progress.chosen_class
+    # Player 1 wears the loadout picked at the Gate; later joiners a random unlocked Mark
+    # with its own Kit, no Relic or Vow.
+    var lo := Loadout.current()
     if players.size() > 1:
-        class_id = String(Classes.unlocked().pick_random())
-    Classes.apply(p, class_id)
-    # A class brings its own gun. The Vagrant starts naked: the entrance offers a pick of
-    # two (the room does that for unarmed players on entry); late joiners get a random one.
-    if current != null and class_id == "vagrant":
+        var mark_id := String(Loadout.unlocked_marks().pick_random())
+        lo = Loadout.from_class(mark_id)
+        if not Loadout.kit_unlocked(String(lo["kit"])):
+            lo["kit"] = Loadout.BARE_KIT
+    Loadout.apply(p, lo)
+    # A Kit brings its gun. A bare Kit starts naked: the entrance offers a pick of two
+    # (the room does that for unarmed players on entry); late joiners get a random one.
+    if current != null and String(lo["kit"]) == Loadout.BARE_KIT:
         if current.data.type == RoomData.Type.START and floor_number == 1:
             current.add_gun_choice()
         else:
@@ -778,7 +805,30 @@ func _spawn_player(device: int, keyboard: bool) -> Player:
                 p.add_gun(pool.pick_random())
     if device >= 0:
         _joined_devices[device] = true
+    if autotest:
+        print("[LOADOUT-STATS] %s" % _loadout_stats(p))
     return p
+
+
+## One line of a fresh player's numbers, for before/after checks of starts (Phase 2:
+## every old class must play as its Mark with the same numbers).
+func _loadout_stats(p: Player) -> String:
+    var gun_ids: Array = []
+    for g in p.guns:
+        gun_ids.append(g.data.id)
+    var items: Array = p.equipment.values()
+    items.sort()
+    var keys := ["speed", "armor", "crit", "luck", "regen", "lifesteal", "scrap_gain", "state_duration"]
+    for ek in Element.NAMES.values():
+        var e := String(ek).to_lower()
+        keys.append("potency_" + e)
+        keys.append("dmg_" + e)
+    var parts: Array = []
+    for k in keys:
+        var v := p.stat(String(k))
+        if not is_zero_approx(v):
+            parts.append("%s=%.3f" % [k, v])
+    return "hp=%.0f carry=%d guns=%s items=%s %s" % [p.max_hp, p.weight_capacity, ",".join(gun_ids), ",".join(items), " ".join(parts)]
 
 
 func _on_joy_connection_changed(device: int, connected: bool) -> void:
@@ -976,6 +1026,63 @@ func talk_archivist(o: Dictionary, pl: Player) -> void:
         Sfx.play("ui_open")
         if autotest:
             print("[RECRUIT] archivist says: \"%s\"" % o["say"])
+
+
+# --- The Well (World and progression GDD, section 11) ------------------------
+
+
+## Leaving the run any other way (Return to hub, Restart, Quit) keeps the Well's items
+## too; after `_end_run` this finds nothing new.
+func _exit_tree() -> void:
+    Progress.keep_well_items(well_items)
+
+
+## Each region's start room has a Well: once per region one worn item can go down it.
+## However the run ends, the item waits for the Wellkeeper, who sells it back as a Relic.
+func _place_well() -> void:
+    for pos in rooms:
+        var r: RoomData = rooms[pos]
+        if r.type == RoomData.Type.START:
+            r.stock.append({ "kind": "well", "id": "well", "price": 0, "taken": false, "pos": Vector2(-250, -140) })
+            return
+
+
+## Worn items a player could drop in a Well (gear, not gun mods).
+func well_choices(pl: Player) -> Array:
+    var out: Array = []
+    for key in pl.equipment.keys():
+        var id := String(pl.equipment[key])
+        if not Items.get_item(id).is_empty() and not out.has(id):
+            out.append(id)
+    return out
+
+
+func use_well(o: Dictionary, pl: Player, room: Room) -> void:
+    var choices := well_choices(pl)
+    if choices.is_empty():
+        pl.say("Nothing worn to give the well")
+        Sfx.play("error")
+        return
+    if autotest:
+        _drop_in_well(o, pl, room, String(choices[0]))
+        return
+    well_screen.pick(pl, choices, func(id: String) -> void:
+        if id != "" and not o.get("taken", false) and is_instance_valid(pl):
+            _drop_in_well(o, pl, room, id))
+
+
+func _drop_in_well(o: Dictionary, pl: Player, room: Room, id: String) -> void:
+    if not pl.unequip_item(id):
+        return
+    o["taken"] = true
+    well_items.append(id)
+    Telemetry.event("well_drop", { "item": id, "floor": floor_number, "region": region_id })
+    hud.toast("%s went down the well. The Wellkeeper keeps it." % String(Items.get_item(id).get("name", id)))
+    Sfx.play("unlock")
+    if is_instance_valid(room):
+        room._build_pedestals()
+    if autotest:
+        print("[WELL] dropped %s on floor %d (%s) at t=%.0f" % [id, floor_number, region_id, _clock])
 
 
 ## Leave the run for the hub (pause menu, run-over screen).
@@ -1335,7 +1442,7 @@ func _autotest_tick(delta: float) -> void:
             limit = float(a.substr(7))
     if _clock >= limit or game_over or victory:
         if not game_over and not victory:
-            var would: Dictionary = Mastery.preview(floor_number, false, Progress.chosen_class)
+            var would: Dictionary = Mastery.preview(floor_number, false, String(Loadout.current()["mark"]))
             print("[EMBERS] time cap: a death here would pay +%d (%s)" % [int(would["total"]), Mastery.award_text(would)])
         _print_stats("END")
         get_tree().quit()
@@ -1494,6 +1601,8 @@ func _bot_wants(o: Dictionary, p: Player) -> bool:
             return true
         "page":
             return _recruit_probe
+        "well":
+            return _well_probe and not well_choices(p).is_empty()
         "archivist":
             return _recruit_probe and page_state == "carried"
         "stairs":

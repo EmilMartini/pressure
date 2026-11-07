@@ -200,11 +200,9 @@ static func profile(player: Player) -> Dictionary:
     if player == null or not is_instance_valid(player):
         out["vagrant"] = CLASS_WEIGHT
         return out
-    var cid := String(player.get_meta("class_id", "vagrant"))
-    var cdef: Dictionary = Classes.get_def(cid)
-    var cel := int(cdef.get("element", Element.Kind.NONE))
-    var cth := element_theme(cel)
-    _add(out, cth if cth != "" else "vagrant", CLASS_WEIGHT)
+    # One body, the Vagrant's (World and progression GDD, section 11); the Mark shows as an
+    # accent drawn over the figure (Player._draw_mark), not in the blend.
+    _add(out, "vagrant", CLASS_WEIGHT)
     for id in player.equipped_item_ids():
         var item_id := String(id)
         var it: Dictionary = Items.get_item(item_id)
@@ -901,7 +899,7 @@ const FONT3 := {
 ## `player_color` mixes in like in game; transparent (the default) shows pure themes.
 static func debug_sheet(path: String, player_color: Color = Color(0, 0, 0, 0)) -> Error:
     var entries: Array = []
-    for c in Classes.all():
+    for c in Loadout.marks():
         var cdef: Dictionary = c
         var cth := element_theme(int(cdef["element"]))
         if cth == "":

@@ -11,7 +11,7 @@ var _mastery_center: CenterContainer
 var _names: PanelContainer
 var _options: OptionsMenu
 var _options_center: CenterContainer
-var _class_select: ClassSelect = null
+var _class_select: LoadoutScreen = null
 var _name_edits: Array = []
 var _wipe_armed := false
 var _wipe_button: Button
@@ -249,7 +249,7 @@ func _show_class_select() -> void:
     if _class_select != null:
         return
     _root.visible = false
-    _class_select = ClassSelect.new(_on_class_picked, _close_class_select)
+    _class_select = LoadoutScreen.new(_on_class_picked, _close_class_select)
     add_child(_class_select)
 
 
@@ -260,8 +260,9 @@ func _close_class_select() -> void:
     _show_main()
 
 
-func _on_class_picked(id: String) -> void:
-    Progress.chosen_class = id
+func _on_class_picked(lo: Dictionary) -> void:
+    Progress.loadout = lo
+    Progress.save()
     get_tree().change_scene_to_file("res://scenes/main.tscn")
 
 

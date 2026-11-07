@@ -43,6 +43,7 @@ const STATIONS := [
     { "id": "gatewarden", "npc": "gatewarden", "sub": "the Gate, past runs", "pos": Vector2(-170, 690), "verb": "talk", "style": "npc", "room": "stair" },
     { "id": "gate", "name": "THE GATE", "sub": "start a run", "pos": Vector2(0, 776), "tile": Vector2i(4, 10), "tint": Color(0.55, 1.0, 1.0), "verb": "descend", "style": "gate", "room": "stair" },
     { "id": "archivist", "npc": "archivist", "sub": "journal, ledger", "pos": Vector2(-880, -50), "verb": "talk", "style": "npc", "room": "library" },
+    { "id": "wellkeeper", "npc": "wellkeeper", "sub": "relics", "pos": Vector2(230, -90), "verb": "trade", "style": "npc", "room": "hall" },
     { "id": "armory", "name": "ARMORY", "sub": "guns and gear", "pos": Vector2(760, -40), "tile": Vector2i(42, 9), "icon": "item/weapon/ranged/crossbow_2.png", "tint": Color(1.0, 0.6, 0.3), "verb": "browse", "style": "plinth", "room": "forge" },
     { "id": "workshop", "name": "WORKSHOP", "sub": "options", "pos": Vector2(1020, -40), "tile": Vector2i(41, 5), "icon": "gui/spells/earth/maxwells_silver_hammer.png", "tint": Color(0.85, 0.8, 0.7), "verb": "tinker", "style": "plinth", "room": "forge" },
     { "id": "mirror", "name": "MIRROR", "sub": "names", "pos": Vector2(250, -520), "tile": Vector2i(31, 0), "icon": "item/misc/mirror.png", "tint": Color(0.6, 0.85, 1.0), "verb": "look", "style": "plinth", "room": "chapel" },
@@ -53,7 +54,7 @@ const EXPLAINER := [
     "A run is five floors. Each floor ends in a boss.",
     "Dying keeps your achievements, unlocks and Embers.",
     "Runs pay Embers for rooms, elites and new reactions; the Keeper trades them for swappable talents.",
-    "Classes only change how a run starts.",
+    "Your loadout at the Gate (Kit, Mark, Relic, Vow) only changes how a run starts.",
 ]
 
 var players: Array[Player] = []
@@ -96,7 +97,11 @@ var _talk_name: Label
 var _talk_text: Label
 var _talk_buttons: HBoxContainer
 var _talking := ""
-var _class_select: ClassSelect = null
+var _class_select: LoadoutScreen = null
+var _relic_center: CenterContainer
+var _relic_body: VBoxContainer
+var _relic_back: Button
+const WELL_POS := Vector2(330, -60)
 var _cv: CanvasItem = null     # where _text and prompts draw (the Crisp proxy)
 var ambience: Ambience = null
 
@@ -210,6 +215,8 @@ func _shown(s: Dictionary) -> bool:
             return true
         "archivist":
             return Progress.npc_home("archivist")
+        "wellkeeper":
+            return Progress.npc_home("wellkeeper")
     return _settled()
 
 
@@ -327,6 +334,7 @@ func _wall(body: StaticBody2D, rect: Rect2, theme: String) -> void:
 func _spawn_player(device: int, keyboard: bool) -> Player:
     var p := Player.new(players.size(), PlayerInput.new(device, keyboard))
     p.position = Vector2(-40.0 + 40.0 * float(players.size()), 40.0)
+    p.set_meta("mark_id", String(Loadout.current()["mark"]))   # the Mark's accent in the Hollow too
     add_child(p)
     players.append(p)
     if device >= 0:
@@ -445,6 +453,10 @@ func _use_station(id: String) -> void:
             _talk(id)
         "gate":
             _show_class_select()
+        "wellkeeper":
+            # Silent (GDD section 9): no line, straight to her trade.
+            _fill_relics()
+            _open(_relic_center, _relic_first())
         "armory":
             _open_journal("armory")
         "trophies":
@@ -585,7 +597,7 @@ func _show_class_select() -> void:
     _dim.visible = false
     for p in players:
         p.set_physics_process(false)
-    _class_select = ClassSelect.new(_on_class_picked, _close_class_select)
+    _class_select = LoadoutScreen.new(_on_class_picked, _close_class_select)
     _ui.add_child(_class_select)
 
 
@@ -599,8 +611,9 @@ func _close_class_select() -> void:
         p.set_physics_process(true)
 
 
-func _on_class_picked(id: String) -> void:
-    Progress.chosen_class = id
+func _on_class_picked(lo: Dictionary) -> void:
+    Progress.loadout = lo
+    Progress.save()
     get_tree().change_scene_to_file("res://scenes/main.tscn")
 
 
@@ -733,6 +746,71 @@ func _build_ledger() -> void:
     col.add_child(_ledger_body)
     _ledger_back = UiTheme.button("Back", _close_overlay)
     col.add_child(_ledger_back)
+    # The Wellkeeper's trade: items saved in a Well, bought back as Relics with Embers.
+    _relic_center = _center()
+    var rpanel := PanelContainer.new()
+    rpanel.custom_minimum_size = Vector2(780, 0)
+    _relic_center.add_child(rpanel)
+    var rcol := VBoxContainer.new()
+    rcol.add_theme_constant_override("separation", 8)
+    rpanel.add_child(rcol)
+    var rtitle := UiTheme.label(Npc.display_name("wellkeeper"), 40)
+    rtitle.add_theme_color_override("font_color", Npc.color("wellkeeper"))
+    rcol.add_child(rtitle)
+    _relic_body = VBoxContainer.new()
+    _relic_body.add_theme_constant_override("separation", 6)
+    rcol.add_child(_relic_body)
+    _relic_back = UiTheme.button("Leave", _close_overlay)
+    rcol.add_child(_relic_back)
+
+
+## The Wellkeeper's stall: what waits in the Well (a button each, priced by rarity), what
+## is already yours, and the Embers in hand. Placeholder wording (section 9 review).
+func _fill_relics() -> void:
+    for c in _relic_body.get_children():
+        _relic_body.remove_child(c)
+        c.queue_free()
+    _relic_body.add_child(UiTheme.label("Embers: %d" % Mastery.embers, 22, LIT))
+    if Progress.well_saved.is_empty():
+        _relic_body.add_child(UiTheme.label("Nothing waits in the Well.", 22, UiTheme.DIM))
+    for id in Progress.well_saved:
+        var item_id := String(id)
+        var it: Dictionary = Items.get_item(item_id)
+        var price := Loadout.relic_price(item_id)
+        var label := "%s  (%s)    %d Embers" % [String(it.get("name", item_id)), Items.rarity_name(it), price]
+        var b := UiTheme.button(label, func(): _buy_relic(item_id))
+        b.icon = Items.icon(it)
+        b.custom_minimum_size = Vector2(700, 56)
+        b.add_theme_color_override("font_color", Items.rarity_text_color(it))
+        b.disabled = Mastery.embers < price
+        _relic_body.add_child(b)
+    if not Progress.relics.is_empty():
+        var names: Array = []
+        for id in Progress.relics:
+            names.append(String(Items.get_item(String(id)).get("name", id)))
+        var own := UiTheme.label("Your Relics: %s. Choose one at the Gate." % ", ".join(names), 20, UiTheme.BONE)
+        own.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+        own.custom_minimum_size = Vector2(700, 0)
+        _relic_body.add_child(own)
+
+
+func _relic_first() -> Control:
+    for c in _relic_body.get_children():
+        if c is Button and not (c as Button).disabled:
+            return c
+    return _relic_back
+
+
+func _buy_relic(item_id: String) -> void:
+    if Progress.buy_relic(item_id):
+        Sfx.play("buy")
+        Telemetry.hub_event("relic", { "item": item_id })
+        if _walk:
+            print("[HUB-RELIC] bought %s, Embers left %d" % [item_id, Mastery.embers])
+    else:
+        Sfx.play("error")
+    _fill_relics()
+    _relic_first().grab_focus.call_deferred()
 
 
 ## The run history. Bare (the Gatewarden's count, before the Archivist moves in): the
@@ -908,6 +986,8 @@ func _draw() -> void:
     _draw_library()
     _draw_forge()
     _draw_fire()
+    if _shown(_station("wellkeeper")):
+        Pedestal.draw_well(self, WELL_POS, _time, _highlight.has("wellkeeper"), not Progress.well_saved.is_empty())
     if _shown(_station("trophies")):
         _draw_trophy_wall()
     for s in STATIONS:
@@ -1149,8 +1229,9 @@ func _capture(path: String, wait: float) -> void:
         img.save_png(path)
 
 
-## `-- --menu-shot`: the hub (as menu.png), each journal tab, mastery, names, classes,
-## options; then quit.
+## `-- --menu-shot`: the hub (as menu.png), each journal tab, mastery, names, options,
+## the Gate's loadout screen (classes.png, and loadout_mark.png with a Mark and a Vow
+## picked); then quit.
 func _menu_shot() -> void:
     DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path("res://autotest"))
     players[0].global_position = Vector2(-170, -40)
@@ -1172,6 +1253,10 @@ func _menu_shot() -> void:
     _close_overlay()
     _show_class_select()
     await _capture("res://autotest/classes.png", 0.4)
+    _class_select.cycle("mark", 1)
+    _class_select.cycle("vow", 1)
+    _class_select.select_row(1)
+    await _capture("res://autotest/loadout_mark.png", 0.4)
     get_tree().quit()
 
 
@@ -1275,6 +1360,8 @@ func _hub_walk() -> void:
     if Progress.npc_home("archivist"):
         plan.append(["archivist", "Journal", _journal_center])
         plan.append(["archivist", "Ledger", _ledger_center])
+    if Progress.npc_home("wellkeeper"):
+        plan.append(["wellkeeper", "", _relic_center])
     if _settled():
         plan.append_array([["armory", "", _journal_center], ["workshop", "", _options_center], ["mirror", "", _names_center], ["trophies", "", _journal_center]])
     plan.append(["gatewarden", "Descend", null])
@@ -1305,13 +1392,13 @@ func _hub_walk() -> void:
                     await get_tree().create_timer(0.2).timeout
             if step[2] == null:
                 good = _class_select != null
-                opened = "class picker" if good else str(_overlay)
+                opened = "loadout" if good else str(_overlay)
             else:
                 good = _overlay == step[2]
                 opened = _overlay_name()
         elif s["style"] == "gate":
-            good = _class_select != null
-            opened = "class picker" if good else _overlay_name()
+            good = _class_select != null and _loadout_check()
+            opened = "loadout" if _class_select != null else _overlay_name()
         else:
             good = _overlay == step[2]
             opened = _overlay_name()
@@ -1320,6 +1407,12 @@ func _hub_walk() -> void:
             for i in (_journal.allowed if not _journal.allowed.is_empty() else range(Journal.TABS.size())):
                 tabs.append(Journal.TABS[i])
             opened += " (%s)" % ", ".join(tabs)
+        if _overlay == _relic_center:
+            var first := _relic_first()
+            if first != _relic_back:
+                (first as Button).pressed.emit()
+                await get_tree().create_timer(0.2).timeout
+            opened += " (waiting %d, relics %d)" % [Progress.well_saved.size(), Progress.relics.size()]
         print("[HUB-STEP] %s -> %s %s" % [id + ("/" + String(step[1]) if String(step[1]) != "" else ""), opened, "PASS" if good else "FAIL"])
         ok = ok and good
         if _class_select != null:
@@ -1330,10 +1423,44 @@ func _hub_walk() -> void:
     get_tree().quit()
 
 
+## The Gate's loadout screen, driven like a player: every Mark and Kit is cycled through
+## (locked ones must block Descend), a Relic is taken when one is owned, and the Vows are
+## cycled. Prints [HUB-LOADOUT]. True when the screen behaves.
+func _loadout_check() -> bool:
+    var ls := _class_select
+    var ok := true
+    var open_marks: Array = []
+    for i in Loadout.marks().size():
+        if Loadout.mark_unlocked(ls.option("mark")):
+            open_marks.append(ls.option("mark"))
+        elif ls.blocked_slot() != "mark":
+            ok = false
+        ls.cycle("mark", 1)
+    var open_kits := 0
+    for i in Loadout.KITS.size():
+        if Loadout.kit_unlocked(ls.option("kit")):
+            open_kits += 1
+        ls.cycle("kit", 1)
+    var vows: Array = []
+    for i in Loadout.VOWS.size():
+        vows.append(ls.option("vow"))
+        ls.cycle("vow", 1)
+    var relic := ""
+    if not Progress.relics.is_empty():
+        ls.cycle("relic", 1)
+        relic = ls.option("relic")
+        ok = ok and relic == String(Progress.relics[0])
+    ok = ok and ls.blocked_slot() == ""
+    print("[HUB-LOADOUT] marks open %d / %d (%s), kits open %d / %d, relic %s, vows %s, current %s %s" % [
+        open_marks.size(), Loadout.marks().size(), ",".join(open_marks), open_kits, Loadout.KITS.size(),
+        relic if relic != "" else "-", ",".join(vows), ls.current(), "PASS" if ok else "FAIL"])
+    return ok
+
+
 func _overlay_name() -> String:
     if _overlay == null:
         return "nothing"
-    for pair in [[_mastery_center, "talents"], [_ledger_center, "ledger: " + (_ledger_title.text if _ledger_title != null else "")], [_journal_center, "journal"], [_options_center, "options"], [_names_center, "names"], [_talk_root, "talk"], [_esc_center, "menu"]]:
+    for pair in [[_relic_center, "relics"], [_mastery_center, "talents"], [_ledger_center, "ledger: " + (_ledger_title.text if _ledger_title != null else "")], [_journal_center, "journal"], [_options_center, "options"], [_names_center, "names"], [_talk_root, "talk"], [_esc_center, "menu"]]:
         if _overlay == pair[0]:
             return String(pair[1])
     return "?"

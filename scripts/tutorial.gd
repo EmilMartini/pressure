@@ -71,7 +71,7 @@ func _ready() -> void:
     layer.add_child(hud)
     _build_ui()
 
-    Progress.chosen_class = "vagrant"
+    Progress.loadout = Loadout.from_class("vagrant")
     Items.new_run()
     var pads := Input.get_connected_joypads()
     _spawn_player(0 if pads.has(0) else -1, true)

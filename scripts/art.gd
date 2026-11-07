@@ -430,13 +430,15 @@ func gun_icon_upright(id: String) -> bool:
     return GUN_ICON_UPRIGHT.has(id)
 
 
-## Icon path for an achievement reward: "gun:<id>" shows the gun, "class:<id>" the class,
+## Icon path for an achievement reward: "gun:<id>" and "kit:<id>" show the gun, "mark:<id>" the Mark,
 ## anything else a book or scroll from REWARD_ICONS.
 func reward_icon_path(reward: String) -> String:
     if reward.begins_with("gun:"):
         return gun_icon_path(reward.substr(4))
-    if reward.begins_with("class:"):
-        return Classes.icon_path(Classes.get_def(reward.substr(6)))
+    if reward.begins_with("mark:"):
+        return Loadout.mark_icon_path(reward.substr(5))
+    if reward.begins_with("kit:"):
+        return gun_icon_path(reward.substr(4))
     if REWARD_ICONS.has(reward):
         return String(REWARD_ICONS[reward])
     var prefix := reward.get_slice(":", 0)
@@ -496,10 +498,10 @@ static func debug_icon_sheet(path: String) -> Error:
         up_rows.append([String(o["id"]), String(o.get("icon", "")), Color.WHITE, false])
     sections.append(["LEVEL-UPS", up_rows])
     var class_rows: Array = []
-    for c in Classes.all():
-        var cd: Dictionary = c
-        class_rows.append([String(cd["id"]), Classes.icon_path(cd), Color.WHITE, false])
-    sections.append(["CLASSES", class_rows])
+    for m in Loadout.marks():
+        var md: Dictionary = m
+        class_rows.append([String(md["id"]), String(md["icon"]), Color.WHITE, false])
+    sections.append(["MARKS", class_rows])
     var talent_rows: Array = []
     for sl in Mastery.slots():
         for s in ["a", "b"]:

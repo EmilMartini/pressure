@@ -737,6 +737,11 @@ func preview(floor_number: int, won: bool, class_id: String) -> Dictionary:
             ladder_left -= v
         parts[k] = v
         total += v
+    # A Vow pays its share on top of the whole run (Loadout.VOWS).
+    var vow_bonus := roundi(float(total) * Loadout.vow_embers())
+    if vow_bonus > 0:
+        parts["vow"] = vow_bonus
+        total += vow_bonus
     return { "total": total, "parts": parts, "counts": counts, "bounties": new_bounties, "class": class_id }
 
 
@@ -745,7 +750,7 @@ func award_text(a: Dictionary) -> String:
     var bits: Array = []
     var parts: Dictionary = a.get("parts", {})
     var counts: Dictionary = a.get("counts", {})
-    for k in PAY_ORDER:
+    for k in PAY_ORDER + ["vow"]:
         var v := int(parts.get(k, 0))
         if v <= 0:
             continue
@@ -757,6 +762,8 @@ func award_text(a: Dictionary) -> String:
                 bits.append("clear +%d" % v)
             "bounties":
                 bits.append("%d bount%s +%d" % [n, "y" if n == 1 else "ies", v])
+            "vow":
+                bits.append("vow +%d" % v)
             _:
                 var word := String(PAY_WORDS[k])
                 if n == 1:

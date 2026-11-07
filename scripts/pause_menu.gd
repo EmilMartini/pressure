@@ -267,7 +267,8 @@ func _fill_report() -> void:
         c.queue_free()
     _section("THIS RUN")
     var secs: int = (Time.get_ticks_msec() - _run_start_ms) / 1000
-    var cls := String(Classes.get_def(Progress.chosen_class).get("name", Progress.chosen_class))
+    var lo := Loadout.current()
+    var cls := Loadout.mark_name(String(lo["mark"])) + (", " + Loadout.kit_name(String(lo["kit"])) if String(lo["kit"]) != "" else "")
     var levels: Array = []
     for p in main.players:
         levels.append("%s lv %d" % [p.display_name(), p.level])

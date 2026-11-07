@@ -236,9 +236,11 @@ func run_start(main: Node) -> void:
         var key := String(k)
         if key.begins_with("gun:"):
             guns.append(key.substr(4))
-        elif key.begins_with("class:"):
-            classes.append(key.substr(6))
-    event("run_start", { "class": String(Progress.chosen_class), "embers_spent": Mastery.spent(), "embers_bank": Mastery.embers,
+        elif key.begins_with("mark:"):
+            classes.append(key.substr(5))
+    var lo := Loadout.current()
+    # "class" keeps its name for old analysis scripts: it is the Mark (old class ids).
+    event("run_start", { "class": String(lo["mark"]), "kit": String(lo["kit"]), "relic": String(lo["relic"]), "vow": String(lo["vow"]), "embers_spent": Mastery.spent(), "embers_bank": Mastery.embers,
         "talents": talents, "survival": Mastery.survival, "unlocked_guns": guns, "unlocked_classes": classes })
 
 
@@ -1064,7 +1066,7 @@ func _update_party(main: Node) -> void:
     var classes: Array = []
     var pl: Array = main.get("players")
     for p in pl:
-        classes.append(String(p.get_meta("class_id", "vagrant")))
+        classes.append(String(p.get_meta("mark_id", "vagrant")))
     _run["players"] = pl.size()
     _run["classes"] = classes
 

@@ -1227,7 +1227,7 @@ Defaults taken (listed in section 16 as AN to AR):
 - **Acceptance:** every bond level is reachable; gift tastes are readable in the UI; the writing
   review passes.
 
-### Phase 2: Loadouts
+### Phase 2: Loadouts (BUILT 2026-11-07)
 
 - **Goal:** classes become loadouts on one descender.
 - **Scope:**
@@ -1241,6 +1241,100 @@ Defaults taken (listed in section 16 as AN to AR):
   - All 13 old classes play as Marks with the same numbers.
   - Old saves migrate.
   - Bot loadout probes pass.
+
+**Phase 2 handoff (2026-11-07, built while Emil was away).**
+
+Done:
+- **Kits and Marks** (`scripts/loadout.gd`, replacing `classes.gd`): each old class is a
+  Kit (its starting gun) and a Mark (element affinity +20% potency and +10% damage, its
+  quirk, its starting item). Mark ids are the old class ids, so Shrine bounties and
+  telemetry keep their keys. 13 Kits (Bare hands, the Vagrant's pick of two, plus the 12
+  class guns) and 13 Marks (the Unmarked plus 12). Names are placeholders: Mark of the
+  Pyre, the Drowned, the Storm, the Frost, the Pitch, the Plague, the Crucible, the Vein,
+  the Void, the Vigil, the Gale, the Stone. "Tide" and "Hollow" are left free for the new
+  Marks in section 11.
+- **The Gate screen** (`scripts/loadout_screen.gd`, replacing `class_select.gd`): the
+  Vagrant on the left with the Mark's accent, four slots and Descend on the right. Pad:
+  up / down picks a slot, left / right or LB / RB changes it, A descends, B backs out.
+  Keyboard: W / S, A / D or arrows, Enter, Esc. Mouse: a slot's arrows, the wheel over a
+  slot, Descend. Locked Kits and Marks show their goal and block Descend. The Gate arch,
+  the Gatewarden's Descend and the menu's Play all open it; the loadout is saved.
+- **The Well:** every region's start room has one (`Pedestal.draw_well`, drawn in code).
+  Once per region one worn item can go down it (`scripts/well_screen.gd`: a button per
+  item and Keep them; pad, keyboard and mouse). However the run ends, the item waits for
+  the Wellkeeper.
+- **The Wellkeeper** (silent, no lines): moves into the Fire room the first time an item
+  waits, beside a drawn well. Using her opens her stall: what waits, priced by rarity,
+  and the Relics you own. A Relic is kept for every run and picked in the Relic slot.
+- **Vows:** Iron (enemies +25% health) and Glass (-30 max HP), each +20% Embers on the
+  whole run, shown as "vow +N" in the payout.
+- **One body:** the figure is always the Vagrant theme plus worn gear and guns
+  (`FigureGen.profile`); the Mark shows as a glowing brand on the chest
+  (`Player._draw_mark`), in the run and in the Hollow.
+- **Save migration** (version 3): each `class:<id>` unlock becomes `mark:<id>` and
+  `kit:<gun>`; the achievements that unlocked a class now grant its Mark and Kit. New
+  save keys: `loadout`, `relics`, `well_saved`.
+- **The real save is now safe from bots:** any command-line argument after `--` points
+  Progress at `user://save_autotest<_N>.json` before the autoload's first load. Before
+  this, the autoload loaded (and could rewrite) `user://save.json` in every bot run.
+- Bot flags: `--class=<old class>` (that Kit and Mark), `--kit=`, `--mark=`, `--relic=`,
+  `--vow=`, `--well-probe`; `[GATE-LOADOUT]`, `[LOADOUT-STATS]`, `[WELL]`, `[MIGRATE]`,
+  and in `--hub-walk` `[HUB-LOADOUT]` and `[HUB-RELIC]`.
+
+Measured:
+- **Same numbers:** all 13 old classes run as `--class=<id>` before the change (old
+  `Classes.apply`) and after (Kit + Mark), `--one-floor --secs=300`: the `[LOADOUT-STATS]`
+  line (max HP, carry, guns, items, every non-zero stat) is identical for all 13, with 0
+  script errors in all 26 runs. Run results are one run each and vary with the seed:
+  before, 4 of 13 reached floor 2; after, 1 of 13 did (plus 2 still on floor 1 at the
+  time cap). The start is identical, so the difference is RNG, but it was not re-run.
+- **Migration** on copies under `--instance`: a copy of Emil's save (version 2, 9
+  classes) migrated to 9 Marks and 9 Kits, `[HUB-LOADOUT] marks open 9 / 13`, kits 9;
+  a made-up version 2 save with all 13 classes opened 13 / 13 of both. The hub walk
+  passed on both.
+- **Loadout probes:** `--well-probe --class=pyromancer` dropped the Fire Charm at t=2
+  and saved it at death; the hub walk on that instance (Embers set to 100 in its
+  throwaway Shrine file) bought it back (`[HUB-RELIC] bought charm_fire, Embers left
+  85`). `--class=stormcaller --vow=glass --relic=ring_fire` started at 70 HP wearing the
+  ring, and paid "vow +3"; `--class=tidecaller --vow=iron` paid "vow +8". Fresh hub walk:
+  `[HUB-FRESH] PASS`, 1 / 13 Marks open, Descend works.
+- **Section 0 checks:** editor load check clean. Idle six-gun bot (7 runs): 0 script
+  errors; 6 died in the Ossuary Gate (t=140, 117, 125, 46, 27 and 58 s) and 1 reached
+  floor 2 at t=282. Its start is the Unmarked with the same stat line as the old
+  Vagrant, so this looks like chance; worth watching in the next phase's runs. Fusion
+  probe (3 runs): 0 script errors, Brute King 35.3 and 47.1 s, floor 2 reached,
+  `[FUSION-CHECK] PASS`, `[SPAWN-CHECK] PASS` close=0. A `--well-probe` run that quit
+  at floor 2 (no `_end_run`) still saved its item: Well items are kept on any exit
+  from the run scene. Phase 1: `--recruit-probe` freed the Archivist at t=58,
+  then `--hub-walk --keep-save` passed every step, Journal and Ledger included.
+- Screenshots (`--menu-shot`, 1280x720): `classes.png` (the default loadout) and
+  `loadout_mark.png` (a locked Mark with its goal, the brand on the Vagrant, Vow of Iron).
+
+Incident: before the fix above, the "after" runs migrated Emil's real `save.json` at
+startup (version 2 to 3). It was put back to version 2 by reversing exactly that change
+(`mark:` back to `class:`, the `kit:` unlocks and the three new empty keys removed);
+nothing else in it had changed, and `mastery.json` and `runs.jsonl` were untouched. The
+game will migrate it again, properly, the first time Emil runs this build.
+
+Left:
+- **New Marks** (Tide, Hollow, and rule-changing traits such as the Pyre's spreading
+  burns in section 11): not built. The 13 Marks are the old classes' numbers only.
+- **Mark and Kit unlocks by challenge or lesson** (section 11): still the old class
+  achievements. Lessons are phase 3.
+- **The Hollow Wells region** where the Wellkeeper is found (section 9): not built; she
+  arrives with the first saved item instead.
+- **Relic slots growing with the Wellkeeper's bond** (default L): bonds are phase 1b.
+  One slot for now.
+- Only two Vows; the "bosses enrage at half health" example in section 11 is not built.
+- The section 9 writing review of Mark names, Vow names and the new short texts (Well,
+  stall, Gate). All are plain and functional, marked as placeholders in code.
+- Not checked on a pad by hand or on a TV: the bots drive the screens through their own
+  calls, not through pad input.
+- Bot runs on the old code wrote `user://settings.json` once (17:28, before this phase's
+  changes); `Settings` writes on load or on some bot path. Worth a look so bots never
+  write the player's settings either.
+
+Defaults taken (listed in section 16 as AS to AZ).
 
 ### Phase 3: Death teaches
 
@@ -1346,6 +1440,14 @@ Defaults taken (listed in section 16 as AN to AR):
 | AP | Where the Archivist is chained | The Ossuary Gate's treasure room (shop if none), every run until freed |
 | AQ | Which elite drops the Torn Bestiary Page | The first elite killed in a run, any region, while the Archivist is not home |
 | AR | Placeholder lines before the voice sheets are approved | Ship plain functional lines tagged `placeholder` in `scripts/dialogue.gd` |
+| AS | Where a class's starting item goes (phase 2) | The Mark: a Mark is affinity, quirk and starting item, so the class's Kit and Mark together are the old class exactly |
+| AT | Which Kits exist and how they unlock | The 12 class guns plus Bare hands (the pick of two); a class's achievement unlocks its Mark and its Kit together. Base guns are not Kits on their own |
+| AU | Where the Wells are | One in every region's start room, one item per region |
+| AV | When a Well's item is saved | However the run ends (death, win or quitting to the Hollow) |
+| AW | Where the Wellkeeper lives before her region exists | She moves into the Fire room the first time an item waits in the Well |
+| AX | Relic price and how long a Relic lasts | 15, 30, 45, 60 or 75 Embers by rarity; bought once, kept for every run. A Relic in the same single slot as the Mark's item replaces it |
+| AY | The first Vows | Iron (enemies +25% health) and Glass (-30 max HP), each +20% Embers on the whole run |
+| AZ | Mark names (placeholders) | "Mark of the" plus a noun per element (Pyre, Drowned, Storm, Frost, Pitch, Plague, Crucible, Vein, Void, Vigil, Gale, Stone); the Vagrant's is "Unmarked". Tide and Hollow stay free for the new Marks |
 
 ---
 

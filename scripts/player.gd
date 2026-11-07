@@ -428,6 +428,18 @@ func equip(id: String, key_hint: String = "") -> String:
     return old
 
 
+## Take a worn item off (it leaves the run: the Well). False when it is not worn.
+func unequip_item(id: String) -> bool:
+    for key in equipment.keys():
+        if String(equipment[key]) == id:
+            equipment.erase(key)
+            if key == "active":
+                active_charges = 0
+            recalc_stats()
+            return true
+    return false
+
+
 ## Use the active item (Isaac's spacebar item). False when empty or out of charges.
 func use_active() -> bool:
     var used: bool = Items.use_active(self)
@@ -1165,6 +1177,7 @@ func _draw_costume() -> void:
     if not alive:
         return
     Items.draw_costume(_costume, self, _sprite.position, 2.0, _facing(), true)
+    _draw_mark()
     var n := int(stat("orbitals"))
     if n <= 0:
         return
@@ -1174,6 +1187,21 @@ func _draw_costume() -> void:
         var at := orbital_offset(i, n)
         _costume.draw_circle(at, 7.0, Color(col, 0.25))
         _costume.draw_texture_rect(tex, Rect2(at - Vector2(8, 8), Vector2(16, 16)), false, col)
+
+
+## The Mark's accent (Loadout.accent): a small brand on the chest in the Mark's element
+## colour, dark-edged, with a slow glow behind it. The body itself is always the Vagrant.
+func _draw_mark() -> void:
+    var c := Loadout.accent(String(get_meta("mark_id", "vagrant")))
+    if c.a <= 0.0:
+        return
+    var at := _sprite.position + Vector2(0, 3) * _sprite.scale.y * 0.5
+    var pulse := 0.5 + 0.5 * sin(life_t * 2.4)
+    _costume.draw_texture_rect(Art.PARTICLES["light"], Rect2(at - Vector2(11, 11), Vector2(22, 22)), false, Color(c, 0.30 + 0.20 * pulse))
+    var d := PackedVector2Array([at + Vector2(0, -4), at + Vector2(3, 0), at + Vector2(0, 4), at + Vector2(-3, 0)])
+    var edge := PackedVector2Array([at + Vector2(0, -5.5), at + Vector2(4.5, 0), at + Vector2(0, 5.5), at + Vector2(-4.5, 0)])
+    _costume.draw_colored_polygon(edge, Color(0.05, 0.04, 0.05, 0.95))
+    _costume.draw_colored_polygon(d, c.lerp(Color.WHITE, 0.15 * pulse))
 
 
 # --- Orbitals (familiars) ---------------------------------------------------

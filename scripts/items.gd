@@ -1423,7 +1423,7 @@ var _form_cache: Dictionary = {}   # player instance id -> { key, form }
 func form_for(player: Player) -> Dictionary:
     if player == null or not is_instance_valid(player):
         return _form_from(FigureGen.generate_from({ "vagrant": FigureGen.CLASS_WEIGHT }, Color(0, 0, 0, 0)), false)
-    var cid := String(player.get_meta("class_id", "vagrant"))
+    var cid := String(player.get_meta("mark_id", "vagrant"))
     var ids: Array = player.equipped_item_ids()
     var gun_els: Array = []
     for g in player.guns:

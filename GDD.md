@@ -909,9 +909,10 @@ talents, plus up to three revives per run (25 HP each) from the survival track; 
 of every slot plus the survival track is about 470 Embers (around run 20 at 20-25 Embers a
 run), everything 928.
 
-**Current counts:** 58 achievements with 64 unlock rewards (39 guns, 12 classes, 5
+**Current counts:** 58 achievements with 76 unlock rewards (39 guns, 12 Marks and 12 Kits, 5
 obstacle kinds, 2 rarity tiers, 2 shop upgrades, 1 room type, 3 secret upgrades); 43 guns;
-238 items (55 common, 65 uncommon, 63 rare, 39 epic, 16 legendary); 13 classes; 65
+238 items (55 common, 65 uncommon, 63 rare, 39 epic, 16 legendary); 13 Marks and 13 Kits
+(the old classes), 2 Vows; 65
 reactions; 11 Shrine slots (22 talents, 57 ranks) and a 3-rank survival track.
 
 ### Itemization model (Brotato tiers, Isaac pools) — BUILT
@@ -1073,7 +1074,18 @@ over-investment when it moved to A/B pairs; one old point was about a floor of p
 floor now pays about 8 (five rooms, an elite, the floor bonus). Version 2 stores Embers,
 ranks per side, active sides, survival ranks, bounties paid and lifetime Embers by source.
 
-### Layer 2: starting classes (Dark Souls, Isaac) — BUILT
+### Layer 2: loadouts (Dark Souls, Isaac, Hades) — BUILT, classes split in Phase 2
+- **Phase 2 (2026-11-07):** classes became loadouts on one descender, the Vagrant (World
+  and progression GDD, section 11; `scripts/loadout.gd`). Each class split into a **Kit**
+  (its starting gun) and a **Mark** (affinity, quirk and starting item), so the Flare
+  Pistol Kit with the Mark of the Pyre is the old Pyromancer, number for number; Kits and
+  Marks mix freely. Two new slots: a **Relic** (an item dropped in a region's Well, sold
+  back by the Wellkeeper for 15 to 75 Embers) and a **Vow** (Iron: enemies +25% health;
+  Glass: -30 max HP; each +20% Embers). All four are picked on one Gate screen. The
+  figure is always the Vagrant's body plus worn gear; the Mark shows as a glowing brand
+  on the chest. Achievements that unlocked a class unlock its Mark and Kit; old saves
+  migrate the same way (version 3). The text below describes the classes as built
+  before the split.
 - A class is only the first room. Each is a starting gun of its element, one themed
   starting item, a small permanent affinity (that element's reactions +20% potency, its
   guns +10% damage) and a quirk (the Pyromancer is frailer, the Frostbinder slower, the

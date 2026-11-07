@@ -46,7 +46,7 @@ func empty() -> bool:
 func _ready() -> void:
     if empty():
         return
-    if kind() == "archivist":
+    if kind() == "archivist" or kind() == "well":
         # Drawn by Npc.draw in _draw, chained until freed; the line he says floats above.
         _card = Crisp.attach(self, _draw_crisp, 80)
         return
@@ -105,6 +105,8 @@ func title() -> String:
             return "Challenge sigil"
         "page":
             return "Torn Bestiary Page"
+        "well":
+            return "The Well"
         "archivist":
             return Npc.display_name("archivist")
     return "?"
@@ -115,6 +117,8 @@ func price_text() -> String:
         return ""
     if kind() == "page":
         return "for the Archivist"
+    if kind() == "well":
+        return "Drop one worn item: it is kept"   # placeholder text
     if kind() == "archivist":
         return "Give: Torn Bestiary Page" if offer.get("page", false) and not offer.get("freed", false) else ""
     if offer.get("spoils", false):
@@ -167,6 +171,8 @@ func color() -> Color:
             return Color(0.8, 0.4, 1.0)
         "page":
             return Color(0.93, 0.89, 0.80)
+        "well":
+            return WELL_WATER
         "archivist":
             return Npc.color("archivist")
     return Color.WHITE
@@ -185,6 +191,9 @@ func _process(delta: float) -> void:
 
 
 func _draw() -> void:
+    if kind() == "well":
+        draw_well(self, Vector2.ZERO, _t, highlighted, not empty())
+        return
     if empty():
         # Bare plinth: shadow, shaft and top, a little dust where the item stood.
         draw_circle(Vector2(0, 18), 26.0, Color(0, 0, 0, 0.45))
@@ -220,6 +229,34 @@ func _draw() -> void:
         draw_circle(Vector2(0, -14), 10.0, Color(0, 0, 0, 0.35))
         if highlighted:
             draw_rect(Rect2(-18, -12, 36, 6), Color(c, 0.6))
+
+
+const WELL_WATER := Color(0.42, 0.68, 0.92)
+
+
+## A Well drawn in code (also the Hollow's, Hub): a ring of stones round dark water that
+## glints while it is still open; a used one is a dry ring.
+static func draw_well(ci: CanvasItem, at: Vector2, t: float, lit: bool, open: bool) -> void:
+    var glow: Texture2D = Art.PARTICLES["light"]
+    if open:
+        var g := 120.0 + sin(t * 1.6) * 8.0
+        ci.draw_texture_rect(glow, Rect2(at - Vector2(g, g) / 2.0, Vector2(g, g)), false, Color(WELL_WATER, 0.14 + (0.12 if lit else 0.0)))
+    ci.draw_set_transform(at + Vector2(0, 6), 0.0, Vector2(1.0, 0.55))
+    ci.draw_circle(Vector2.ZERO, 40.0, Color(0, 0, 0, 0.45))
+    ci.draw_circle(Vector2.ZERO, 33.0, Color(0.30, 0.27, 0.29))
+    for i in 12:
+        var a := TAU * float(i) / 12.0
+        var sp := Vector2(cos(a), sin(a)) * 29.0
+        ci.draw_circle(sp, 6.5, Color(0.42, 0.38, 0.40) if i % 2 == 0 else Color(0.36, 0.33, 0.35))
+        ci.draw_arc(sp, 6.5, 0.0, TAU, 10, Color(0.12, 0.1, 0.12), 1.2)
+    ci.draw_circle(Vector2.ZERO, 22.0, Color(0.03, 0.03, 0.05))
+    if open:
+        var w := Color(WELL_WATER, 0.55 + 0.25 * sin(t * 2.0))
+        ci.draw_arc(Vector2(-4, -2), 10.0 + sin(t * 1.3) * 2.0, PI * 1.1, PI * 1.6, 8, w, 2.0)
+        ci.draw_arc(Vector2(5, 4), 6.0, -0.4, 0.6, 6, Color(WELL_WATER, 0.4), 1.5)
+        if lit:
+            ci.draw_arc(Vector2.ZERO, 34.0, 0.0, TAU, 32, Color(WELL_WATER, 0.7), 2.0)
+    ci.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
 ## Labels, prompt and card, drawn on the Crisp layer so they stay sharp above the pixel
@@ -296,6 +333,8 @@ func _draw_labels(cv: CanvasItem) -> void:
         var verb := "begin" if kind() == "sigil" else ("descend" if kind() == "stairs" else ("equip" if kind() == "item" else "take"))
         if kind() == "archivist":
             verb = "give the page" if offer.get("page", false) and not offer.get("freed", false) else "talk"
+        elif kind() == "well":
+            verb = "drop an item"
         # The player's own device's button, floating over the item.
         Prompts.draw(cv, Vector2(0, -78.0 + sin(_t * 5.0) * 2.0), prompt_key, prompt_kind, 24.0)
         cv.draw_string(body, Vector2(-140, y + 4.0), verb, HORIZONTAL_ALIGNMENT_CENTER, 280, 20, Color(0.6, 1.0, 1.0))

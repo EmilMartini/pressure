@@ -612,7 +612,7 @@ func _spawn_enemy(type: String, pos: Vector2) -> Enemy:
     e.configure(type, main.difficulty())
     # A stronger build meets more enemies, not tankier ones: health grows at most 25%;
     # the rest of the party's power goes into the bodies budget (party_guns_factor).
-    e.max_hp *= clampf(1.0 + 0.12 * (party_power() - 1.0), 0.9, 1.25)
+    e.max_hp *= clampf(1.0 + 0.12 * (party_power() - 1.0), 0.9, 1.25) * Loadout.vow_enemy_hp()
     e.hp = e.max_hp
     e.damage_mult = floor_damage_mult(main.floor_number)
     e.contact_damage *= e.damage_mult
@@ -1206,7 +1206,7 @@ func _build_pedestals() -> void:
         if o.has("pos"):
             var ped := Pedestal.new(o)
             ped.position = o["pos"]
-            if o["kind"] == "archivist":
+            if o["kind"] == "archivist" or o["kind"] == "well":
                 ped.position = nearest_open(o["pos"], 40.0)
             add_child(ped)
             pedestals.append(ped)
@@ -1322,6 +1322,9 @@ func activate(ped: Pedestal, pl: Player) -> void:
         return
     if o["kind"] == "archivist":
         main.talk_archivist(o, pl)
+        return
+    if o["kind"] == "well":
+        main.use_well(o, pl, self)
         return
     var tel_snap: Dictionary = Telemetry.offer_snapshot(o, self)
     match o["kind"]:
