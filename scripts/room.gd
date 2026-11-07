@@ -981,6 +981,7 @@ func _dress_room() -> void:
             for i in 14:
                 var d := _prop(Vector2i(38, 11), Vector2(randf_range(-half.x + 80, half.x - 80), randf_range(-half.y + 80, half.y - 80)), 2.0, Color(0.55, 0.3, 0.3))
                 d.rotation = randf() * TAU
+                d.material = flat_floor_material()   # floor decals sit back like the tiles
             for i in 2:
                 _prop(Vector2i(13, 3), Vector2(-280.0 + float(i) * 560.0, -half.y + 90.0), 3.5, Color(0.45, 0.3, 0.3))
         RoomData.Type.CHALLENGE:
@@ -998,10 +999,43 @@ func _dress_room() -> void:
 
 ## The theme's floor tiles, one variant per tile cell from a seed fixed per room, so the
 ## floor does not shuffle on re-entry.
+## Clarity pass: the floor is a backdrop. Its tiles keep half their saturation and 60% of
+## their contrast around a dark middle, so bodies, shots and markers read on top of it
+## (tuned with --floor-flat=sat,contrast,mid: mid 0.08 beat 0.16 and 0.4 on enemy contrast,
+## design doc "Clarity pass").
+const FLAT_FLOOR := """shader_type canvas_item;
+uniform float sat = 0.5;
+uniform float contrast = 0.6;
+uniform float mid = 0.08;
+void fragment() {
+    vec4 c = COLOR;
+    float l = dot(c.rgb, vec3(0.2126, 0.7152, 0.0722));
+    c.rgb = mix(vec3(mid), mix(vec3(l), c.rgb, sat), contrast);
+    COLOR = c;
+}
+"""
+static var _flat_floor: ShaderMaterial
+
+
+static func flat_floor_material() -> ShaderMaterial:
+    if _flat_floor == null:
+        var sh := Shader.new()
+        sh.code = FLAT_FLOOR
+        _flat_floor = ShaderMaterial.new()
+        _flat_floor.shader = sh
+        for a in OS.get_cmdline_user_args():
+            if a.begins_with("--floor-flat="):   # tuning: --floor-flat=sat,contrast,mid
+                var v := a.substr(13).split(",")
+                for i in mini(3, v.size()):
+                    _flat_floor.set_shader_parameter(["sat", "contrast", "mid"][i], float(v[i]))
+    return _flat_floor
+
+
 func _build_floor() -> void:
     var floor_seed := (hash(data.pos) + main.floor_number * 7919) & 0xFFFFFF
     var floor_fill := Themes.floor_fill(rect, _zoom(), floor_seed, FLOOR_TINTS.get(data.type, Color.WHITE), theme)
     floor_fill.z_index = -2
+    floor_fill.material = flat_floor_material()
     add_child(floor_fill)
     _dress_room()
 
