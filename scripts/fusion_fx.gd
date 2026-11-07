@@ -20,6 +20,10 @@ static var _stop_ms := -100000
 
 
 ## `first`: discovered just now (first time ever on this save): the label says NEW.
+const LABEL_GAP_MS := 4000
+static var _last_label := {}   # fusion name -> real ms its label last showed
+
+
 static func play(main: Node, fusion_name: String, tier: int, pos: Vector2, reach: float, entry: Dictionary, first := false) -> void:
     if main == null:
         return
@@ -51,7 +55,17 @@ static func play(main: Node, fusion_name: String, tier: int, pos: Vector2, reach
         fx.throw_drops(lead, pos, clampf(reach * 0.7, 60.0, 200.0), 16 if cata else 10)
         var text := fusion_name.to_upper() if cata else fusion_name
         if first:
-            text = "NEW  " + text
+            # Clarity pass: a discovery is a HUD toast (held until the room is clear), not a
+            # second name in the fight.
+            var hud = main.get("hud")
+            if hud != null:
+                hud.toast("New %s: %s" % ["cataclysm" if cata else "fusion", fusion_name])
+        # Clarity pass: one name per fusion every LABEL_GAP_MS, not one per fire.
+        var now := Time.get_ticks_msec()
+        if now - int(_last_label.get(fusion_name, -100000)) < LABEL_GAP_MS:
+            text = ""
+        else:
+            _last_label[fusion_name] = now
         var lp := pos + Vector2(0, -56.0 if cata else -42.0)
         # The name is centred on lp and about len * size * 0.75 wide: if any part of it would
         # cross the character, lift it clear above them.
@@ -59,7 +73,8 @@ static func play(main: Node, fusion_name: String, tier: int, pos: Vector2, reach
         for pl in main.get("players"):
             if is_instance_valid(pl) and absf(lp.x - pl.global_position.x) < half_w + 16.0 and absf(lp.y - pl.global_position.y) < 70.0:
                 lp.y = pl.global_position.y - 100.0
-        fx.label(lp, text, col.lightened(0.35), 44 if cata else 28, 1.8 if cata else 1.2)
+        if text != "":
+            fx.label(lp, text, col.lightened(0.35), 44 if cata else 28, 1.8 if cata else 1.2)
     # Sound: the entry's layers, the first loudest.
     var sounds: Array = entry.get("sound", [])
     for i in sounds.size():

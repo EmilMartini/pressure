@@ -272,12 +272,27 @@ func _ui_gallery(v: Control, n: int, gear: Array, p: Player) -> void:
             x += 312.0
 
 
+## Clarity pass: toasts that arrive during a fight wait until the room is clear.
+var _held: Array[String] = []
+
+
 func toast(text: String) -> void:
+    if _fighting():
+        _held.append(text)
+        return
     _toasts.append({ "text": text, "t": 5.0 })
+
+
+func _fighting() -> bool:
+    return main != null and main.current != null and main.current.active
 
 
 func _process(delta: float) -> void:
     _time += delta
+    if not _held.is_empty() and not _fighting():
+        for text in _held:
+            _toasts.append({ "text": text, "t": 5.0 })
+        _held.clear()
     for i in range(_toasts.size() - 1, -1, -1):
         _toasts[i]["t"] -= delta
         if _toasts[i]["t"] <= 0.0:

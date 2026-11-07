@@ -916,8 +916,18 @@ func blast(pos: Vector2, radius: float, color: Color, _life := 0.55) -> void:
 
 
 ## A floating damage number. `big` is a crit: larger, brighter, and it lingers.
+## Clarity pass: only big hits print, crits always, any other hit at BIG_HIT x the running
+## average of hits (so the cut follows the build), at least BIG_HIT_MIN.
+const BIG_HIT := 2.5
+const BIG_HIT_MIN := 25.0
+var _hit_avg := 10.0
+
+
 func number(pos: Vector2, amount: float, color: Color, big := false, dim := false) -> void:
     if not Settings.flag("damage_numbers"):
+        return
+    _hit_avg = lerpf(_hit_avg, amount, 0.03)
+    if not big and amount < maxf(BIG_HIT_MIN, BIG_HIT * _hit_avg):
         return
     var n := maxi(1, roundi(amount))
     var text := str(n) + ("!" if big else "")
