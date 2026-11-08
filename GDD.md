@@ -1131,8 +1131,16 @@ ranks per side, active sides, survival ranks, bounties paid and lifetime Embers 
   to the save (`scripts/dialogue.gd`) and are placeholders until the voice sheets are
   approved. See the README's hub section.
 
+- **Phase 4 (2026-11-08): shortcuts and world state.** Each built region has a far-side
+  gate: barred in the start room, opened for good by walking through it from the boss
+  antechamber; later runs go entrance, antechamber, boss door, skipping the arenas between
+  (and their loot and XP), never the boss. The Cartographer moves into the Hollow's library
+  with the first opened gate and shows the world map (`scripts/world_map.gd`). Lines are
+  placeholders.
+
 ### Save file
 - Unlocks, characters, highest keystone per character, bestiary, stats and run history.
+- Version 4 (phase 4) adds `world`: the shortcuts opened, which never close.
 
 ## 5. Co-op
 - 2 to 4 players. **Couch co-op first** (one keyboard + mouse player, any number of pads;

@@ -1456,7 +1456,7 @@ the reference (the 2026-11-06 humans died on floor 2 fresh).
 
 **Defaults taken:** BA to BE in section 16.
 
-### Phase 4: Shortcuts and world state
+### Phase 4: Shortcuts and world state (BUILT 2026-11-08, gates only)
 
 - **Goal:** the world remembers what you opened.
 - **Scope:**
@@ -1467,6 +1467,117 @@ the reference (the 2026-11-06 humans died on floor 2 fresh).
   - A shortcut opened in one run persists.
   - Travel time in a known region drops measurably.
   - No shortcut skips a boss.
+
+#### Phase 4 handoff
+
+Commits: the build label, the Frostvault shot fix, the gates and world state, then the
+Cartographer and map. Weekly usage 37% at the start and 37% before the push.
+
+**Prelude 1: build label.** `Telemetry.BUILD` = `VERSION+COMMIT`, now
+`2026.11.08-p4+<hash>`. Each phase bumps `VERSION` by hand (date plus phase tag);
+`COMMIT` stays `"dev"` in the repo and is stamped with the short hash by the Pages
+workflow and `tools/export_exe.sh`. README, Telemetry, "Build label". Editor and bot runs
+say `+dev`.
+
+**Prelude 2: Frostvault enemy shots.** New `--clarity-spitters=N` on `--clarity-shot`
+adds N spitters and `[CLARITY-SHOTS]` lines: the mean luminance change over each enemy
+shot's disc, with the shot against without it, over the bare floor and over the floor
+with the player's own effects. Storm build, 8 spitters, seeds 7 and 11 (and 7 with 5
+spitters):
+
+| Where | Floor behind shots (luminance) | Shot vs floor | Shot vs own effects |
+|---|---|---|---|
+| Rust Ruins | about 0.08 | 0.33 to 0.38 | 0.28 to 0.37 |
+| Frostvault, before | about 0.25 | 0.30 to 0.34 | 0.30 to 0.37 |
+| Frostvault, after | about 0.25 | 0.39 | 0.42 |
+
+Nearly every Frostvault shot measured lower than the Rust Ruins ones: on a mid-grey floor
+the red rim and the dark outline both sit near the floor's luminance. On themes in
+`EnemyProjectile.LIGHT_FLOOR_THEMES` (frozen) the body is lifted further toward white and
+the white core grows; same size, same black outline and red rim, still on the Crisp
+layer. Spitter damage is unchanged. Captures: `autotest/clarity_frostvault_before11_2.png`
+and `clarity_frostvault_after11_2.png` (regenerate with the recipe above). Not fixed and
+worth a look: in the Frostvault the player's own effects change 54% of the screen against
+14% in the Rust Ruins (ice reactions whiten everything). That, more than the shots, may be
+what buried Emil's death there.
+
+**Built.**
+- **Far-side gates** (`scripts/shortcuts.gd`): one per built region (6). Each run lays the
+  gate between the start room and the boss antechamber (the boss room's neighbour nearest
+  the start) on a free wall of each. From the start side it is a barred chain-gate
+  (`Obstacle` kind `chain_gate`, no element opens it); walking through it from the
+  antechamber opens it for good, with a banner, a telemetry event and an immediate save.
+  Later runs go entrance, gate, antechamber (its arena still fights), boss door.
+- **World state in the save:** `Progress.world.shortcuts`, save version 4. Older saves
+  migrate with an empty world (`[MIGRATE] save version 3 -> 4`).
+- **Migration fix found by the test:** the Progress autoload loads before Items builds its
+  catalog, so the load filter dropped every Relic, and the v4 migration saves at once:
+  Emil's Ricochet Gloves would have been wiped on the first launch. The filter now waits
+  for the catalog. On a copy of Emil's save: version 4, Relic kept, every other field the
+  same apart from the hub walk's own talk counts; hub walk PASS.
+- **The Cartographer** (`Npc` "cartographer", in the library, placeholder lines tagged in
+  `scripts/dialogue.gd`) moves in when the first gate opens. Her service is the **world
+  map** (`scripts/world_map.gd`): the Descent by depth with its edges, built regions named,
+  the rest "unmapped", opened gates in gold and listed under it. The Back button holds the
+  focus, so pad, keyboard and mouse all work, and Esc and B close it like every hub screen.
+- **Boss check:** `Main.next_floor` asserts the floor's boss room is cleared and bots print
+  `[BOSS-CHECK]`. `Shortcuts.plan` asserts the gate never ends in the boss room. The stairs
+  only appear when the boss dies (`Room`), so a gate cannot reach past it.
+- **Bot flags:** `--rush`, `--open-gates`, `--shortcuts=all`, `--keep-save`; lines
+  `[SHORTCUT]`, `[TRAVEL]`, `[BOSS-CHECK]`, `[HUB-MAP]` (README, Self-test).
+
+**Acceptance, measured.**
+- **Persists:** run 1 (`--open-gates`, instance 1) opened the Ossuary gate at t=79 to 81;
+  run 2 on the same save (`--keep-save`) found it open and walked through at t=3. The hub
+  walk on that save met the Cartographer, and her map listed the gate.
+- **Travel time drops** (Ossuary Gate, `--rush --build=storm --mastery=full`, seconds from
+  floor start to the boss room):
+
+  | Seed | Gate closed | Gate open |
+  |---|---|---|
+  | 3 | 80.7 | 29.6 (persisted save, other layout) |
+  | 5 | 52.7 | 31.7 |
+  | 7 | died in an arena at t=100 | 29.6 |
+  | 9 | 141.8 | 27.5 |
+  | 11 | 80.4 | - |
+  | Mean | 88.9 (4 runs) | 29.6 (4 runs) |
+
+  About two thirds less. Deeper regions with the gate open (seed 5): Rust Ruins 37.5,
+  Frostvault 46.4, Chapel of Ash 53.2 and the Rift 63.7 s, all reaching their boss.
+- **The cost is real:** with the gate open the Ossuary bot met the Brute King at level 1
+  to 2 with almost no gear, and 3 of 4 died to him; with it closed 3 of 5 cleared floor 1.
+  That is the section 8 trade (skip the arenas, their loot and XP). Watch whether human
+  players take the gate too early.
+- **No boss skipped:** `[BOSS-CHECK]` PASS at all 10 ways down measured (6 in the Ossuary
+  and probes, then Rust Ruins, Frostvault, Chapel of Ash and the Rift), 0 FAIL; the gate
+  was laid on all 20 floors generated in this phase's final logs.
+
+**Section 0 checks.** Load check clean. Idle six-gun bot: 2 runs, 0 script errors, both
+died in the Ossuary Gate (t=213 in the boss room, t=22). Fusion probe: 0 script errors,
+floor 2 reached, `[FUSION-CHECK] PASS`, `[SPAWN-CHECK] PASS`. Recruit probe
+(`--fusion-probe --recruit-probe`): Archivist freed at t=61. Loadout probe
+(`--class=stormcaller --vow=glass --relic=ring_fire`): 70 HP, ring worn, "vow +2". Hub
+walks PASS, including the Gatewarden's lesson line after an idle death ("Ossuary Gate. 1 on
+my count. The barrels down there aren't decoration.") and the Cartographer's map. The real
+`save.json`, `settings.json`, `mastery.json` and `telemetry/runs.jsonl` kept their
+timestamps across every bot run of the phase.
+
+**Left.**
+- **Repaired lifts:** every pair of built regions one depth apart is already joined, so a
+  lift has no new edge to add until phase 5 builds the Cistern, Gardens, Mire, Abattoir or
+  Stormspire. The section 8 example (Rust Ruins to Frostvault) is an ordinary edge today.
+- **Bridges and sluices:** the example is the Drowned Cistern (not built). The save can
+  hold them (`Progress.world`); nothing reads anything but shortcuts yet.
+- **Secret edges:** both secret regions are unbuilt.
+- **A second shortcut per region:** one gate each today.
+- **The Cartographer's own recruit** (lost at the top of the Stormspire, three Map
+  Fragments) waits for the Stormspire. Her shortcut hint is one generic line.
+- **Map:** no route history, no per-region detail, and no minimap line for the gate (the
+  minimap shows only the gate's door stub). No bot walked the Forge's gate.
+- **Writing:** the gate names, the obstacle label and the Cartographer's four lines are
+  placeholders for the section 9 review.
+
+**Defaults taken:** BF to BL in section 16.
 
 ### Phase 5: New regions
 
@@ -1562,6 +1673,13 @@ the reference (the 2026-11-06 humans died on floor 2 fresh).
 | BC | Lesson rewards | Counter guns moved from achievements (the boss's or region's weakness, or what tears its parts); their achievements stay as milestones |
 | BD | Fusion and cataclysm pay | 2 and 3 Embers each, at most 6 a run together (section 13 gives only the cap) |
 | BE | Shrine costs after the retune | Unchanged (928): the estimate at human depths is 22 to 36 runs; doubling would give 44 to 72 |
+| BF | Where a far-side gate runs (phase 4) | Start room to the boss antechamber, laid each run on a free wall of each; no gate that run when the antechamber is the start room or next to it |
+| BG | How a gate opens | Walking through it from the antechamber side; no lever or button. Saved at once, so a death right after keeps it |
+| BH | The antechamber when you arrive by the gate | Still a normal room: its arena fights |
+| BI | When the Cartographer arrives | With the first opened gate; her Stormspire recruit (three Map Fragments) waits for phase 5 |
+| BJ | Lifts, sluices, secret edges | Deferred to phase 5: each needs a region that is not built |
+| BK | Enemy shots on light floors | Themes in `EnemyProjectile.LIGHT_FLOOR_THEMES` (frozen) draw a brighter body and a larger white core |
+| BL | Build label | `VERSION+COMMIT`: VERSION is the date plus phase tag, bumped each phase; COMMIT is stamped at export |
 
 ---
 

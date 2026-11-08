@@ -44,6 +44,7 @@ const STATIONS := [
     { "id": "gate", "name": "THE GATE", "sub": "start a run", "pos": Vector2(0, 776), "tile": Vector2i(4, 10), "tint": Color(0.55, 1.0, 1.0), "verb": "descend", "style": "gate", "room": "stair" },
     { "id": "archivist", "npc": "archivist", "sub": "journal, ledger", "pos": Vector2(-880, -50), "verb": "talk", "style": "npc", "room": "library" },
     { "id": "wellkeeper", "npc": "wellkeeper", "sub": "relics", "pos": Vector2(230, -90), "verb": "trade", "style": "npc", "room": "hall" },
+    { "id": "cartographer", "npc": "cartographer", "sub": "the world map", "pos": Vector2(-720, 150), "verb": "talk", "style": "npc", "room": "library" },
     { "id": "armory", "name": "ARMORY", "sub": "guns and gear", "pos": Vector2(760, -40), "tile": Vector2i(42, 9), "icon": "item/weapon/ranged/crossbow_2.png", "tint": Color(1.0, 0.6, 0.3), "verb": "browse", "style": "plinth", "room": "forge" },
     { "id": "workshop", "name": "WORKSHOP", "sub": "options", "pos": Vector2(1020, -40), "tile": Vector2i(41, 5), "icon": "gui/spells/earth/maxwells_silver_hammer.png", "tint": Color(0.85, 0.8, 0.7), "verb": "tinker", "style": "plinth", "room": "forge" },
     { "id": "mirror", "name": "MIRROR", "sub": "names", "pos": Vector2(250, -520), "tile": Vector2i(31, 0), "icon": "item/misc/mirror.png", "tint": Color(0.6, 0.85, 1.0), "verb": "look", "style": "plinth", "room": "chapel" },
@@ -101,6 +102,9 @@ var _class_select: LoadoutScreen = null
 var _relic_center: CenterContainer
 var _relic_body: VBoxContainer
 var _relic_back: Button
+var _map_center: CenterContainer
+var _map_back: Button
+var _map_list: Label
 const WELL_POS := Vector2(330, -60)
 var _cv: CanvasItem = null     # where _text and prompts draw (the Crisp proxy)
 var ambience: Ambience = null
@@ -217,6 +221,8 @@ func _shown(s: Dictionary) -> bool:
             return Progress.npc_home("archivist")
         "wellkeeper":
             return Progress.npc_home("wellkeeper")
+        "cartographer":
+            return Progress.npc_home("cartographer")
     return _settled()
 
 
@@ -449,7 +455,7 @@ func _use_station(id: String) -> void:
     Sfx.play("ui_open")
     Telemetry.hub_event("station", { "id": id, "players": _players_count() })
     match id:
-        "keeper", "gatewarden", "archivist":
+        "keeper", "gatewarden", "archivist", "cartographer":
             _talk(id)
         "gate":
             _show_class_select()
@@ -501,6 +507,8 @@ func _services(npc: String) -> Array:
                 ["Past runs", func():
                 _fill_ledger(Progress.npc_home("archivist"))
                 _open(_ledger_center, _ledger_back)]]
+        "cartographer":
+            return [["World map", func(): _open_map()]]
         "archivist":
             return [["Journal", func(): _open_journal("archivist")],
                 ["Ledger", func():
@@ -762,6 +770,23 @@ func _build_ledger() -> void:
     rcol.add_child(_relic_body)
     _relic_back = UiTheme.button("Leave", _close_overlay)
     rcol.add_child(_relic_back)
+    # The Cartographer's world map (WorldMap): the Descent and the shortcuts opened.
+    _map_center = _center()
+    var mpanel := PanelContainer.new()
+    _map_center.add_child(mpanel)
+    var mcol := VBoxContainer.new()
+    mcol.add_theme_constant_override("separation", 8)
+    mpanel.add_child(mcol)
+    var mtitle := UiTheme.label("THE DESCENT", 40)
+    mtitle.add_theme_color_override("font_color", Npc.color("cartographer"))
+    mcol.add_child(mtitle)
+    mcol.add_child(WorldMap.new())
+    _map_list = UiTheme.label("", 20, UiTheme.BONE)
+    _map_list.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+    _map_list.custom_minimum_size = Vector2(900, 0)
+    mcol.add_child(_map_list)
+    _map_back = UiTheme.button("Back", _close_overlay)
+    mcol.add_child(_map_back)
 
 
 ## The Wellkeeper's stall: what waits in the Well (a button each, priced by rarity), what
@@ -792,6 +817,17 @@ func _fill_relics() -> void:
         own.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
         own.custom_minimum_size = Vector2(700, 0)
         _relic_body.add_child(own)
+
+
+## The map, with the opened shortcuts named under it. Placeholder wording.
+func _open_map() -> void:
+    var names: Array = []
+    for id in Shortcuts.opened():
+        names.append(Shortcuts.display_name(String(id)))
+    _map_list.text = ("Shortcuts open: %s." % ", ".join(names)) if not names.is_empty() else "No shortcuts open yet."
+    _open(_map_center, _map_back)
+    if _walk:
+        print("[HUB-MAP] shortcuts open %d: %s" % [names.size(), ", ".join(names)])
 
 
 func _relic_first() -> Control:
@@ -1362,6 +1398,8 @@ func _hub_walk() -> void:
         plan.append(["archivist", "Ledger", _ledger_center])
     if Progress.npc_home("wellkeeper"):
         plan.append(["wellkeeper", "", _relic_center])
+    if Progress.npc_home("cartographer"):
+        plan.append(["cartographer", "World map", _map_center])
     if _settled():
         plan.append_array([["armory", "", _journal_center], ["workshop", "", _options_center], ["mirror", "", _names_center], ["trophies", "", _journal_center]])
     plan.append(["gatewarden", "Descend", null])
@@ -1390,6 +1428,8 @@ func _hub_walk() -> void:
                 if b != null:
                     b.pressed.emit()
                     await get_tree().create_timer(0.2).timeout
+                    if shots and step[2] != null:
+                        await _capture("res://autotest/hub_%s_open.png" % id, 0.2)
             if step[2] == null:
                 good = _class_select != null
                 opened = "loadout" if good else str(_overlay)
@@ -1460,7 +1500,7 @@ func _loadout_check() -> bool:
 func _overlay_name() -> String:
     if _overlay == null:
         return "nothing"
-    for pair in [[_relic_center, "relics"], [_mastery_center, "talents"], [_ledger_center, "ledger: " + (_ledger_title.text if _ledger_title != null else "")], [_journal_center, "journal"], [_options_center, "options"], [_names_center, "names"], [_talk_root, "talk"], [_esc_center, "menu"]]:
+    for pair in [[_relic_center, "relics"], [_map_center, "map"], [_mastery_center, "talents"], [_ledger_center, "ledger: " + (_ledger_title.text if _ledger_title != null else "")], [_journal_center, "journal"], [_options_center, "options"], [_names_center, "names"], [_talk_root, "talk"], [_esc_center, "menu"]]:
         if _overlay == pair[0]:
             return String(pair[1])
     return "?"

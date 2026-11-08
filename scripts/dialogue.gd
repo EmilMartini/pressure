@@ -60,6 +60,16 @@ const LINES := [
         "text": "{killer}, {killer_deaths} times now. {hint}" },
     { "npc": "archivist", "id": "archivist_idle", "when": { "where": "hub" }, "pri": 0, "placeholder": true,
         "text": "The Journal's open. So is the ledger." },
+
+    # --- The Cartographer (the world map; moves in when the first shortcut opens) ---
+    { "npc": "cartographer", "id": "cartographer_first", "when": { "talks": 0 }, "pri": 9, "once": true, "placeholder": true,
+        "text": "You opened a gate down there. I heard it from here. Show me where." },
+    { "npc": "cartographer", "id": "cartographer_count", "when": { "shortcuts_min": 2 }, "pri": 2, "placeholder": true,
+        "text": "{shortcuts} gates open. The map's getting shorter." },
+    { "npc": "cartographer", "id": "cartographer_hint", "when": { "gates_closed_min": 1 }, "pri": 1, "placeholder": true,
+        "text": "Every region has one. They open from the boss's side." },
+    { "npc": "cartographer", "id": "cartographer_idle", "when": {}, "pri": 0, "placeholder": true,
+        "text": "The map's on the table." },
 ]
 
 
@@ -78,6 +88,8 @@ static func context(extra: Dictionary = {}) -> Dictionary:
         "page": false,
         "archivist_home": Progress.npc_home("archivist"),
         "lesson": false,
+        "shortcuts": Shortcuts.opened().size(),
+        "gates_closed": Shortcuts.closed_built().size(),
     }
     var killer := String(last.get("killer", ""))
     if not bool(last.get("won", true)) and Lessons.has_lesson(killer):

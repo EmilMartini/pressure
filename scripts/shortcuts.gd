@@ -56,6 +56,15 @@ static func opened() -> Array:
     return out
 
 
+## Built regions whose gate is still shut (the Cartographer's hint).
+static func closed_built() -> Array:
+    var out: Array = []
+    for id in DEFS.keys():
+        if bool(Regions.get_region(String(DEFS[id]["region"]))["built"]) and not is_open(id):
+            out.append(id)
+    return out
+
+
 ## Lays this run's gate into a freshly generated floor. Returns { id, start, ante, dir,
 ## open } or {} when the floor has none.
 static func plan(rooms: Dictionary, region_id: String) -> Dictionary:

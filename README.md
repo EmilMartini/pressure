@@ -663,7 +663,15 @@ each (the throwaway save opens what is asked for); every run prints `[GATE-LOADO
 before/after checks. `--well-probe` drops the first worn item down the first Well and
 prints `[WELL]` lines; a `--hub-walk --keep-save` on the same instance then buys it back
 from the Wellkeeper (`[HUB-RELIC]`) and checks the Gate's slots (`[HUB-LOADOUT]`). A save
-older than version 3 prints `[MIGRATE]` when it loads.
+older than the current version (4) prints `[MIGRATE]` when it loads.
+Shortcuts (`scripts/shortcuts.gd`, design doc "Phase 4"): every run prints `[SHORTCUT]` (the
+floor's gate laid, skipped, opened or walked through), `[TRAVEL]` (seconds from floor start to
+the boss room, and whether the gate was open) and `[BOSS-CHECK] PASS/FAIL` at every way down.
+`--rush` walks straight for the boss room, `--open-gates` walks through a gate from the
+antechamber side to open it, `--shortcuts=all` opens every gate in the throwaway save first,
+and `--keep-save` keeps the instance's save from its last run (open a gate in one run, then
+`--keep-save` the next to see it persist). A hub walk with the Cartographer home opens the
+world map (`[HUB-MAP]`); `--hub-shot` also saves `autotest/hub_<station>_open.png`.
 `godot --headless --fixed-fps 60 --path . res://scenes/hub.tscn -- --hub-walk --instance=N`
 walks the Hollow on a fresh save and uses every station on show (`[HUB]`, `[HUB-FRESH]`,
 `[HUB-TALK]`, `[HUB-STEP]`, `[HUB-WALK] PASS/FAIL`); `--keep-save` keeps the instance's

@@ -632,6 +632,12 @@ func open_shortcut(id: String) -> bool:
     var sc: Dictionary = world.get("shortcuts", {})
     sc[id] = { "run": stat("runs_started") }
     world["shortcuts"] = sc
+    # The Cartographer moves into the Hollow with the first shortcut (her own recruit, at
+    # the top of the Stormspire, waits for that region: phase 5).
+    if npc_state("cartographer") == "":
+        var d: Dictionary = npcs.get("cartographer", {})
+        d["state"] = "recruited"
+        npcs["cartographer"] = d
     save()
     return true
 

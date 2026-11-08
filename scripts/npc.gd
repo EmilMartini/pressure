@@ -10,6 +10,7 @@ const DEFS := {
     "gatewarden": { "name": "THE GATEWARDEN", "profile": { "plate": 3.0, "stone": 1.5 }, "color": Color(0.62, 0.88, 1.0) },
     "archivist": { "name": "THE ARCHIVIST", "profile": { "arcane": 3.0, "poison": 1.5 }, "color": Color(0.78, 1.0, 0.55) },
     "wellkeeper": { "name": "THE WELLKEEPER", "profile": { "wet": 3.0, "void": 1.5 }, "color": Color(0.42, 0.68, 0.92) },
+    "cartographer": { "name": "THE CARTOGRAPHER", "profile": { "gale": 3.0, "void": 1.5 }, "color": Color(0.95, 0.80, 0.52) },
 }
 
 
