@@ -366,8 +366,8 @@ https://github.com/EmilMartini/pressure/releases/latest/download/Pressure-window
 Unzip and run `Pressure.exe`. The exe is not code-signed, so Windows SmartScreen warns on
 the first launch: "More info", then "Run anyway". The desktop build has full controller
 rumble for every pad; the browser cannot rumble some controllers (Chrome exposes no rumble
-for the DualSense). Local build: the "Windows" export preset, or
-`godot --headless --path . --export-release Windows export/windows/Pressure.exe`.
+for the DualSense). Local build: `tools/export_exe.sh` (stamps the build label), or the "Windows" export preset,
+or `godot --headless --path . --export-release Windows export/windows/Pressure.exe`.
 
 ## Play in the browser
 
@@ -392,7 +392,7 @@ play their own run.
 Anonymous, opt-in play data for balancing (`scripts/telemetry.gd`, autoload `Telemetry`).
 
 - **What.** One record per run: a random run id, a random device id (saved in settings,
-  never a name), the build (`Telemetry.VERSION`, bump it with each shared build),
+  never a name), the build label (`Telemetry.BUILD`, see "Build label" below),
   platform, party size and classes, then small events: run and floor start / end, room
   enter / clear (time, kills by kind, health lost, elites, reactions), health every 5 s
   in fights, damage taken by source (enemy kind, `projectile:<kind>`, `material:<mat>`,
@@ -425,6 +425,12 @@ Anonymous, opt-in play data for balancing (`scripts/telemetry.gd`, autoload `Tel
   `tools/telemetry_sheet.gs` (Google Apps Script appending to a Sheet; set
   `ENDPOINT_SIMPLE = true` for it, since Apps Script cannot answer the browser's CORS
   preflight).
+- **Build label.** Every record carries `Telemetry.BUILD` = `VERSION+COMMIT`, for example
+  `2026.11.08-p4+1a2b3c4`. Each phase (or any build you share) bumps `VERSION` in
+  `scripts/telemetry.gd` by hand to the date plus a phase tag. `COMMIT` stays `"dev"` in the
+  repository: the Pages and release workflow stamps the short commit hash into it before
+  exporting, and `tools/export_exe.sh` does the same for the local exe (commit first; it
+  restores `"dev"` afterwards). A run from the editor or a bot says `+dev`.
 - **Analysis.** `python tools/analyze_telemetry.py export.jsonl dump.jsonl` (standard
   library only; `--build X` to filter, `--include-bots`, `--min-seen N`). It prints runs
   and win rate, deaths by floor and room, top killers, time / level / health per floor,

@@ -55,6 +55,9 @@ jobs:
         run: |
           set -e
           mkdir -p export/web
+          # Build label: stamp the short commit into Telemetry.COMMIT (see README, Telemetry).
+          sed -i "s/^const COMMIT := \"dev\"/const COMMIT := \"${GITHUB_SHA:0:7}\"/" scripts/telemetry.gd
+          grep -n '^const COMMIT' scripts/telemetry.gd
           ~/godot/godot --headless --path . --import
           ~/godot/godot --headless --path . --export-release Web export/web/index.html
           # Cache busting: the game data gets a per-commit file name, so a reload after a
@@ -113,6 +116,9 @@ jobs:
         run: |
           set -e
           mkdir -p export/windows
+          # Build label: stamp the short commit into Telemetry.COMMIT (see README, Telemetry).
+          sed -i "s/^const COMMIT := \"dev\"/const COMMIT := \"${GITHUB_SHA:0:7}\"/" scripts/telemetry.gd
+          grep -n '^const COMMIT' scripts/telemetry.gd
           ~/godot/godot --headless --path . --import
           ~/godot/godot --headless --path . --export-release Windows export/windows/Pressure.exe
           cd export/windows

@@ -15,8 +15,13 @@ extends Node
 ## next launch. Bot runs (`main.autotest`) are flagged `bot: true` and never uploaded.
 ## Nothing here records names, addresses or free text.
 
-## Bump with each build you share, so the analysis can split results by build.
-const VERSION := "2026.11.05"
+## The build label is VERSION + "+" + COMMIT (for example "2026.11.08-p4+1a2b3c4").
+## VERSION: bump it by hand with each phase or shared build (date plus phase tag).
+## COMMIT: stays "dev" in the repository; the export steps (`.github/workflows/deploy.yml`,
+## `tools/export_exe.sh`) stamp the short commit hash into it before exporting.
+const VERSION := "2026.11.08-p4"
+const COMMIT := "dev"
+const BUILD := VERSION + "+" + COMMIT
 ## Where finished runs are POSTed (a Cloudflare Worker or Apps Script URL). Empty = local only.
 const ENDPOINT := ""
 ## True for endpoints that cannot answer a CORS preflight (Google Apps Script): the web
@@ -918,7 +923,7 @@ func export_file() -> String:
 func _new_record(kind: String) -> Dictionary:
     return {
         "kind": kind, "run_id": ("s-" if kind == "session" else "") + _hex(8), "device_id": device_id,
-        "build": VERSION, "platform": OS.get_name(), "players": 1, "classes": [],
+        "build": BUILD, "platform": OS.get_name(), "players": 1, "classes": [],
         "start_time": Time.get_datetime_string_from_system(true), "bot": false, "partial": true,
         "uploaded": false, "events": [],
     }
@@ -1030,7 +1035,7 @@ func _pump() -> void:
             headers.append("Content-Type: text/plain")
         else:
             headers.append("Content-Type: application/json")
-            headers.append("X-Build: %s" % VERSION)
+            headers.append("X-Build: %s" % BUILD)
         var err := _http.request(ENDPOINT, headers, HTTPClient.METHOD_POST, JSON.stringify(body))
         if err != OK:
             _queue.clear()   # try again next launch
