@@ -19,6 +19,11 @@ extends Node
 ##   texts     floating texts in the world (damage numbers, reaction names, labels) plus the
 ##             HUD's toasts and its centre banner
 ## then [CLARITY-AVG] and quits.
+## `--clarity-spitters=N` adds N plain spitters on a ring 300 px out (fired shots read the
+## same in any region), and every shot adds a [CLARITY-SHOTS] line: over each on-screen
+## enemy shot's disc, mean |luminance with the shot - without it|, against the bare floor
+## (own effects hidden: shot_floor) and against the floor with the player's own effects
+## (shot_own); `edge` is the share of the disc whose luminance differs by more than 0.25.
 
 const SHOT_AT := [5.0, 8.0, 11.0]
 const BOSS_SHOT_AT := [5.0, 9.0, 13.0]
@@ -26,6 +31,9 @@ const BOSS_SHOT_AT := [5.0, 9.0, 13.0]
 var main: Main
 var _boss := false
 var _tag := "now"
+var _shot_sums := [0.0, 0.0, 0.0]
+## "background luminance:contrast" per shot, for the last _disc_diff calls.
+var _per_shot: Array[String] = []
 
 
 static func wanted() -> bool:
@@ -67,6 +75,13 @@ func _ready() -> void:
             break
     p.global_position = main.current.to_global(Vector2(0, 140) if _boss else Vector2(0, 40))
     main.hud._toasts.clear()   # the throwaway save's unlock toasts
+    var spit := 0
+    for a in OS.get_cmdline_user_args():
+        if a.begins_with("--clarity-spitters="):
+            spit = int(a.substr(19))
+    for i in spit:
+        var ring := Vector2.RIGHT.rotated(TAU * float(i) / float(spit) + 0.4) * 300.0
+        main.current._spawn_enemy("spitter", p.global_position - main.current.global_position + ring)
     var boss: Enemy = main.current.boss
     if boss != null:
         boss.max_hp *= 5.0   # alive for every picture
@@ -81,6 +96,8 @@ func _ready() -> void:
         var r: Array = await _measure("clarity_%s%s_%s_%d" % [main.region_id, "_boss" if _boss else "", _tag, n])
         for i in 5:
             sums[i] += float(r[i])
+    if _shot_sums[2] > 0.0:
+        print("[CLARITY-SHOTS-AVG] region=%s tag=%s shot_floor=%.3f shot_own=%.3f" % [main.region_id, _tag, _shot_sums[0] / _shot_sums[2], _shot_sums[1] / _shot_sums[2]])
     print("[CLARITY-AVG] region=%s boss=%s tag=%s own=%.1f%% own_int=%.1f contrast=%.3f mean_contrast=%.3f texts=%.1f fps=%d" % [main.region_id, _boss, _tag, sums[0] / n, sums[3] / n, sums[1] / n, sums[4] / n, sums[2] / n, Engine.get_frames_per_second()])
     main.get_tree().quit()
 
@@ -116,9 +133,29 @@ func _measure(name_: String) -> Array:
                 ci.visible = true
             parts.append("%s=%.1f" % [cat, _intensity(full, img)])
         print("[CLARITY-PARTS] %s %s" % [name_, " ".join(parts)])
+    var shots := _shots_on_screen(full)
+    var no_shot_full: Image = null
+    if not shots.is_empty():
+        _show_shots(shots, false)
+        no_shot_full = await _frame()
+        _show_shots(shots, true)
     var hidden: Array[CanvasItem] = []
     _hide_own(main, hidden)
     var calm: Image = await _frame()
+    if not shots.is_empty():
+        _show_shots(shots, false)
+        var calm_bare: Image = await _frame()
+        _show_shots(shots, true)
+        _per_shot.clear()
+        var vf := _disc_diff(calm, calm_bare, shots)
+        print("[CLARITY-SHOT-EACH] %s floor bg:contrast %s" % [name_, " ".join(_per_shot)])
+        _per_shot.clear()
+        var vo := _disc_diff(full, no_shot_full, shots)
+        print("[CLARITY-SHOT-EACH] %s own bg:contrast %s" % [name_, " ".join(_per_shot)])
+        print("[CLARITY-SHOTS] %s shot_floor=%.3f edge_floor=%.2f shot_own=%.3f edge_own=%.2f (%d shots)" % [name_, vf.x, vf.y, vo.x, vo.y, shots.size()])
+        _shot_sums[0] += vf.x
+        _shot_sums[1] += vo.x
+        _shot_sums[2] += 1.0
     var room: Room = main.current
     room.enemies.visible = false
     var bare: Image = await _frame()
@@ -181,6 +218,65 @@ func _measure(name_: String) -> Array:
     tree.paused = false
     print("[CLARITY] %s own=%.1f%% own_int=%.1f contrast=%.3f mean_contrast=%.3f (%d enemies) texts=%d" % [name_, own, own_int, contrast, mean_c, bodies, texts])
     return [own, contrast, texts, own_int, mean_c]
+
+
+## On-screen enemy shots as [shot, screen centre, screen radius of its crisp disc].
+func _shots_on_screen(img: Image) -> Array:
+    var out := []
+    var k := Vector2(img.get_width(), img.get_height()) / get_viewport().get_visible_rect().size
+    for s in get_tree().get_nodes_in_group("enemy_projectiles"):
+        var sh := s as EnemyProjectile
+        if sh == null:
+            continue
+        var xf := sh.get_global_transform_with_canvas()
+        var sp := xf.origin * k
+        var rp := (maxf(sh.radius * 0.85, 4.0) + 3.5) * absf(xf.get_scale().x) * k.x
+        if sp.x < rp or sp.y < rp or sp.x > img.get_width() - rp or sp.y > img.get_height() - rp:
+            continue
+        out.append([sh, sp, rp])
+    return out
+
+
+## Hides or shows shots: the glow (the node) and the Crisp disc (Fx draws the group).
+func _show_shots(shots: Array, on: bool) -> void:
+    for e in shots:
+        var sh: EnemyProjectile = e[0]
+        if not is_instance_valid(sh):
+            continue
+        sh.visible = on
+        if on:
+            sh.add_to_group("enemy_projectiles")
+        else:
+            sh.remove_from_group("enemy_projectiles")
+
+
+## Mean over shots of (mean |lum a - lum b| over the disc, share of the disc above 0.25).
+func _disc_diff(a_img: Image, b_img: Image, shots: Array) -> Vector2:
+    var a := a_img.get_data()
+    var b := b_img.get_data()
+    var w := a_img.get_width()
+    var sum := Vector2.ZERO
+    for e in shots:
+        var sp: Vector2 = e[1]
+        var rp: float = e[2]
+        var diff := 0.0
+        var strong := 0
+        var px := 0
+        var bg := 0.0
+        for y in range(int(sp.y - rp), int(sp.y + rp) + 1):
+            for x in range(int(sp.x - rp), int(sp.x + rp) + 1):
+                if Vector2(x, y).distance_to(sp) > rp:
+                    continue
+                var o := (y * w + x) * 4
+                bg += _lum(b, o)
+                var d := absf(_lum(a, o) - _lum(b, o))
+                diff += d
+                if d > 0.25:
+                    strong += 1
+                px += 1
+        sum += Vector2(diff / float(maxi(1, px)), float(strong) / float(maxi(1, px)))
+        _per_shot.append("%.2f:%.3f" % [bg / float(maxi(1, px)), diff / float(maxi(1, px))])
+    return sum / float(maxi(1, shots.size()))
 
 
 static func _lum(d: PackedByteArray, o: int) -> float:

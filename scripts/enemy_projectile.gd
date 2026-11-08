@@ -5,6 +5,12 @@ extends Node2D
 
 const TRAIL_POINTS := 6
 const DEFAULT_COLOR := Color(1.0, 0.40, 0.30)
+## Themes whose floor sits at mid grey or lighter (measured: the Frostvault floor behind
+## shots is about 0.25 luminance against 0.08 in the Rust Ruins). There the red rim melts
+## into the floor and only the outline and core carry the shot, so the body is lifted
+## further toward white and the white core grows: same size, same black outline and red
+## rim, more of the disc far from the floor's luminance (design doc, Phase 4 prelude).
+const LIGHT_FLOOR_THEMES := ["frozen"]
 
 var damage := 6.0
 var speed := 240.0
@@ -114,7 +120,7 @@ func draw_crisp(cv: CanvasItem, at: Vector2) -> void:
     var n := ceili(world_d * k / ps)
     n += 1 - n % 2   # odd: a centre cell
     var hot := sin(_age * 18.0) > 0.0
-    var tex := sprite(color(), n, hot)
+    var tex := sprite(color(), n, hot, Themes.current in LIGHT_FLOOR_THEMES)
     # Top-left corner on the screen's cell grid, back in the canvas' units.
     var scr := xf * at - Vector2(n, n) * ps * 0.5
     scr = (scr / ps).round() * ps
@@ -126,15 +132,15 @@ static var _sprites: Dictionary = {}
 
 ## A shot's pixel disc, `n` cells across (one texel per cell), cached per colour, size,
 ## frame and palette setting.
-static func sprite(c: Color, n: int, hot: bool) -> Texture2D:
+static func sprite(c: Color, n: int, hot: bool, light: bool = false) -> Texture2D:
     var pal := Settings.flag("palette") and Settings.flag("post_fx")
-    var key := "%s:%d:%s:%s" % [c.to_html(false), n, hot, pal]
+    var key := "%s:%d:%s:%s:%s" % [c.to_html(false), n, hot, pal, light]
     if _sprites.has(key):
         return _sprites[key]
     var img := Image.create_empty(n, n, false, Image.FORMAT_RGBA8)
     var r := float(n) * 0.5
-    var body := c.lightened(0.3)
-    var core_r := maxf(0.75, r * (0.42 if hot else 0.3))
+    var body := c.lightened(0.62 if light else 0.3)
+    var core_r := maxf(0.75, r * ((0.55 if hot else 0.45) if light else (0.42 if hot else 0.3)))
     for y in n:
         for x in n:
             var d := Vector2(float(x) + 0.5 - r, float(y) + 0.5 - r).length()
