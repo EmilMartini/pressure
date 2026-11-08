@@ -1634,6 +1634,56 @@ timestamps across every bot run of the phase.
 - **Acceptance:** each region has its profile, hazards and boss, and bots clear it inside its
   time budget.
 
+#### Phase 5 batch 1, part 2 (2026-11-08): the Drowned Cistern
+
+Weekly usage 38% at the start and 38% before the push. `VERSION` is `2026.11.08-p5b`.
+
+**Built.** Write-up in `GDD.md` (section 3, "Drowned Cistern").
+- `drowned_cistern` is `built: true`, theme `cistern`; the dormant puddle and drain code
+  from part 1 now runs and worked first time (0 script errors). Its own edge leads on to
+  the Frostvault, so no stand-in edge was needed.
+- **The Drowned Choir** (`boss_kind` `drowned_choir`), the first new boss kind on
+  `boss_body.gd`: singers and bell parts, three phases, stagger, hostile signature on the
+  song ring, the pull and the shockwaves. It reuses the Pyre Lord's wave code for the
+  phase 3 rings.
+- Lessons `region:drowned_cistern` and `boss:drowned_choir`, gate "Cistern grate", all
+  placeholders for the section 9 review. `[HAZARD]` now also counts `zapped` water cells.
+
+**Measured** (storm build, `--start-floor=2 --route=ossuary_gate,drowned_cistern`, 0
+script errors in every run):
+
+| Run | Clear (to the boss's death) | Choir | Phases | Singers torn by | Water cells zapped |
+|---|---|---|---|---|---|
+| seed 1, health share 1.5 | 337 s | 24.1 s, 29.7k | 3/3 | Black Death | 82,200 |
+| seed 2, 1.5 | 353 s | 20.3 s, 32.7k | 3/3 | Hollow Blight | 146,251 |
+| seed 3, 1.5 | 351 s | 22.2 s, 33.4k | 3/3 | Galvanic Sea (twice) | 58,957 |
+| seed 1, 2.0 | 357 s | 40.1 s, 37.2k | 3/3 | Chain Lightning | |
+| seed 2, 2.0 | 347 s | 30.2 s, 35.6k | 3/3 | Chain Lightning | |
+| seed 3, 2.0 | 356 s | 29.6 s, 42.8k | 3/3 | Galvanic Sea | |
+| `--rush --open-gates --mastery=full`, seed 4 (opened the gate) | 143 s | 25.9 s, 24.6k | 3/3 | | |
+| same, `--keep-save`, seed 5 (no free wall for the gate that floor) | 139 s | 26.3 s, 20.9k | 3/3 | | |
+
+- At 1.5 the fights were 20 to 24 s, under the 25 to 50 s target, so the share is 2.0:
+  29.6 to 40.1 s on real floors. Clears are inside the region budget, like the Gardens.
+- `[FUSION-CHECK] PASS`, `[SPAWN-CHECK] PASS` (0 close) and `[BOSS-CHECK] PASS` (gate
+  open and closed) in every Cistern run.
+
+**Section 0 checks:** load check clean; idle six-gun bot died in the Ossuary Gate (t=49);
+fusion probe cleared the Ossuary (Brute King 28.6 s); recruit probe freed the Archivist
+(t=55) and the hub walk after it passed; loadout probe (`--class=pyromancer --vow=glass`)
+60 HP, Flare Pistol and charm; hub walk after the gate run listed "Cistern grate"; the
+real save, settings, mastery and `runs.jsonl` kept their timestamps. Frame rate was not
+measured in a real window this batch.
+
+**Left, in priority order:**
+1. **The Cistern's sluice** (section 8): a world-state shortcut that drains the Cistern in
+   later runs. Not started (budget).
+2. **Choir platforms** (BS): the design wants raised platforms to stand on while the
+   arena floods; today the flood just adds water.
+3. **The Choir fight in a real window** (fps, and a look at the bell and singers art).
+4. Items 3 to 5 of the part 1 list below still stand (Gardens > Frostvault stand-in edge,
+   region enemies, Gardens fps).
+
 #### Phase 5 batch 1 handoff (2026-11-08): the Rotting Gardens
 
 Weekly usage 37% at the start, 38% before the push. The Gardens shipped alone: the brief
@@ -1820,6 +1870,10 @@ set a stop at 39%, and the Drowned Choir (a new boss) did not fit in what was le
 | BO | Rotting Gardens lesson reward | Blowtorch (its achievement stays as a milestone) |
 | BQ | Gardens' way down until batch 2 | A stand-in edge Gardens > Frostvault; drop it when Pitch Mire or Abattoir is built |
 | BP | Batch 1 when the budget is short | The Gardens ship alone; the Cistern's theme and hazards wait dormant in the tree |
+| BR | Drowned Choir chain | Singers are innately wet: shock on them is Chain Lightning (12% wear), any fusion 15%, Galvanic Sea or Hurricane tears them at once. Health share 2.0 |
+| BS | Choir platforms | Not built: phase 2 floods the arena but there are no raised platforms yet; the player dodges the water instead |
+| BT | Choir in the floor-number boss cycle | Not added to `SpawnTable.BOSSES` (that would change which boss appears past floor 5); the region picks it through `boss_kind` |
+| BU | Cistern lesson rewards | Region: Storm Seeker. Boss: Storm Pike |
 
 ---
 

@@ -39,6 +39,7 @@ const CELL := 6
 ## like a thin oil film. Set by Regions.activate from the region's hazards.
 static var gas_ignites := false
 static var stat_gas_lit := 0   # bots: gas cells set alight ([HAZARD])
+static var stat_zapped := 0    # bots: water cells charged by shock ([HAZARD])
 const HALF := 3
 const STEPS_PER_SEC := 12.0
 const STEP_CAP := 2500
@@ -611,6 +612,7 @@ func _stamp_cell(kind: int, i: int, a: int, force: bool, lay: bool) -> void:
 
 func _zap_cell(i: int) -> void:
     if mat[i] == WATER:
+        stat_zapped += 1
         _put(i, CHARGED, amt[i], CHARGE_TICKS)
     else:
         _flag[i] = (_flag[i] | F_ZAP) & ~F_STILL

@@ -41,9 +41,9 @@ const REGIONS := {
         "layouts": ["four_pillars", "pillar_hall", "buttresses"],
         "edges": ["drowned_cistern", "rotting_gardens", "rust_ruins"] },
 
-    "drowned_cistern": { "name": "Drowned Cistern", "depth": 2, "theme": "", "built": false,
+    "drowned_cistern": { "name": "Drowned Cistern", "depth": 2, "theme": "cistern", "built": true,
         "resists": ["Wet"], "weak": ["Shock"], "hazards": ["rising water", "conductive puddles"],
-        "boss": "drowned_choir", "boss_kind": "hive_mother",
+        "boss": "drowned_choir", "boss_kind": "drowned_choir",
         "layouts": ["flooded", "channels", "moat"],
         "edges": ["frostvault", "pitch_mire"] },
     "rotting_gardens": { "name": "Rotting Gardens", "depth": 2, "theme": "garden", "built": true,

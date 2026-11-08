@@ -723,6 +723,7 @@ one per existing theme:
 | Depth | Region | Theme | Resists | Weak to | Boss fought today | Signature layouts |
 |---|---|---|---|---|---|---|
 | 1 | Ossuary Gate | crypt | - | - | Brute King | four_pillars, pillar_hall, buttresses |
+| 2 | Drowned Cistern | cistern | Wet | Shock | The Drowned Choir | flooded, channels, moat |
 | 2 | Rotting Gardens | garden | Poison | Fire | Hive Mother (her own region) | overgrown, l_shape, diagonal |
 | 2 | Rust Ruins | ruins | Stone | Acid | Hive Mother (stand-in for the Rusted Colossus) | broken, overgrown, l_shape |
 | 3 | Frostvault | frozen | Ice | Fire | Storm Warden (stand-in for the Frost Matron) | frozen, moat, flooded |
@@ -730,10 +731,28 @@ one per existing theme:
 | 4 | Chapel of Ash | sanctum | Holy | Void | Pyre Lord (stand-in for the Ashen Bishop) | pillar_hall, cross, bastions |
 | 5 | The Rift | void | Void | Holy | Void Herald | rift, pit_maze, corner_pits |
 
-The four unbuilt regions (Drowned Cistern, Pitch Mire, Abattoir, Stormspire) are in the
-graph with `built: false` and are never picked. Since phase 5 batch 1 the Ossuary Gate
-offers two doors, Rotting Gardens or Rust Ruins. The Gardens lead on to the Frostvault
+The three unbuilt regions (Pitch Mire, Abattoir, Stormspire) are in the graph with
+`built: false` and are never picked. Since phase 5 batch 1 the Ossuary Gate offers three
+doors: Drowned Cistern, Rotting Gardens or Rust Ruins. The Cistern leads on to the
+Frostvault (its own edge). The Gardens lead on to the Frostvault
 through a stand-in edge until Pitch Mire or Abattoir are built.
+
+**Drowned Cistern (BUILT, phase 5 batch 1, 2026-11-08).** Theme `cistern` (limestone
+floor, shoal and brick walls, murky water, torches; Dungeon Crawl tiles only). Hazards:
+- *Conductive puddles:* 3 to 5 standing puddles (Materials WET, 240 s) in every room.
+  Shock charges a whole connected pool, enemies and player alike.
+- *Rising water:* two wall drains (iron grates) per fight room pour water every 0.5 to
+  0.7 s while the fight runs, so the floor floods as it goes on.
+Boss: **the Drowned Choir**, a bronze bell with drowned singers fused to it (drawn in
+code). Parts: *Drowned singers* (always wet; shock on them is Chain Lightning, which
+wears them; a Galvanic Sea or Hurricane tears them off) covering the *Great bell* (takes
+1.6x). Phase 1: wet bolt fans and songs that pull (a marked ring for 1.1 s, then 1.8 s of
+pull toward the bell). Phase 2: the water rises (water lands round the arena every 0.7
+s). Phase 3: the bell cracks, the singers fall for good, and it rings in full-circle
+shockwaves (wind-up ring first; a stagger holds them). Every attack uses the hostile
+signature. Lessons `region:drowned_cistern` (Storm Seeker) and `boss:drowned_choir` (Storm
+Pike), placeholder lines. Far-side gate "Cistern grate" (placeholder name). Bots print
+`[HAZARD] ... zapped=N` (water cells charged by shock) and `[BOSS-MOVE]` song and ring lines.
 
 **Rotting Gardens (BUILT, phase 5 batch 1, 2026-11-08).** Theme `garden` (bog floor,
 slime walls, yellow trees, murky water; Dungeon Crawl tiles only). Hazards:

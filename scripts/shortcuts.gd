@@ -26,6 +26,7 @@ extends RefCounted
 const DEFS := {
     "ossuary_gate:gate": { "region": "ossuary_gate", "kind": "gate", "name": "Ossuary chain-gate", "placeholder": true },
     "rust_ruins:gate": { "region": "rust_ruins", "kind": "gate", "name": "Rust Ruins floodgate", "placeholder": true },
+    "drowned_cistern:gate": { "region": "drowned_cistern", "kind": "gate", "name": "Cistern grate", "placeholder": true },
     "rotting_gardens:gate": { "region": "rotting_gardens", "kind": "gate", "name": "Gardens trellis gate", "placeholder": true },
     "frostvault:gate": { "region": "frostvault", "kind": "gate", "name": "Frostvault portcullis", "placeholder": true },
     "the_forge:gate": { "region": "the_forge", "kind": "gate", "name": "Forge blast door", "placeholder": true },

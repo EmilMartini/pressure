@@ -53,6 +53,7 @@ const KIND_TILES := {
     "storm_warden": Vector2i(24, 8),
     "pyre_lord": Vector2i(25, 9),
     "void_herald": Vector2i(31, 9),
+    "drowned_choir": Vector2i(27, 6),
 }
 
 const KIND_COLORS := {
@@ -74,10 +75,11 @@ const KIND_COLORS := {
     "storm_warden": Color(0.95, 0.90, 0.40),
     "pyre_lord": Color(1.00, 0.50, 0.20),
     "void_herald": Color(0.65, 0.35, 0.95),
+    "drowned_choir": Color(0.45, 0.68, 0.88),
 }
 
 const AFFIXES := ["regenerating", "hasted", "trail", "volatile"]
-const BOSS_KINDS := ["brute_king", "hive_mother", "storm_warden", "pyre_lord", "void_herald"]
+const BOSS_KINDS := ["brute_king", "hive_mother", "storm_warden", "pyre_lord", "void_herald", "drowned_choir"]
 
 ## Spawns are telegraphed (Brotato's rule, design doc "Clarity pass"): a body emerges over
 ## EMERGE_SECS under a marker on the floor, harmless and untargetable. A player who comes within
@@ -340,6 +342,12 @@ func set_boss(kind: String) -> void:
             _reshield_at = [0.66, 0.33]
             _t1 = 2.0
             _t2 = 5.0
+        "drowned_choir":
+            speed = 55.0
+            radius = 34.0
+            _t1 = 2.5
+            _t2 = 4.0
+            _t3 = 2.0
     body = BossBody.new(self, boss_kind) if kind_name == "boss" else null
     if _shape != null:
         _shape.radius = radius
@@ -832,6 +840,8 @@ func _draw_hostile(cv: CanvasItem) -> void:
         _draw_warden_hostile(cv)
     elif boss_kind == "void_herald":
         _draw_herald_hostile(cv)
+    elif boss_kind == "drowned_choir":
+        _draw_choir_hostile(cv)
     if body != null and body.has_parts():
         _draw_parts(cv)
     if _mode == MODE_TELEGRAPH and emerge <= 0.0 and hp > 0.0:
@@ -1341,6 +1351,8 @@ func _tick_boss_passive(delta: float) -> void:
             _tick_strikes(delta)
         "void_herald":
             _tick_herald(delta)
+        "drowned_choir":
+            _tick_choir(delta)
         "pyre_lord":
             _hazard_tick -= delta
             for i in range(_hazards.size() - 1, -1, -1):
@@ -1637,8 +1649,23 @@ func _draw_parts(cv: CanvasItem) -> void:
                     cv.draw_arc(at, pr, a0, a1, 8, Hostile.DARK, 11.0)
                     cv.draw_arc(at, pr, a0, a1, 8, Color(0.86, 0.82, 0.70).lerp(Color.WHITE, flash * 0.6), 6.0)
                     cv.draw_arc(at, pr + 3.5, a0, a1, 8, Color(Hostile.RED, 0.9), 1.0)
-            "hide", "hive":
-                pass   # the sprite is the body
+            "hide", "hive", "bell":
+                pass   # the sprite is the body (the Choir's bell is drawn in _draw_boss)
+            "singers":
+                if p["broken"]:
+                    continue
+                # Drowned singers fused round the bell: one drops away per fifth of wear.
+                var heads := ceili(float(p["integrity"]) * 5.0)
+                var wet := _part_has(i, Element.Kind.WET)
+                for k in heads:
+                    var a := PI * 0.15 + float(k) * PI * 0.175 + 0.05 * sin(_fx_t * 2.0 + float(k))
+                    var hp0 := at + Vector2(cos(a), sin(a) * 0.6) * pr
+                    var mouth := 0.5 + 0.5 * absf(sin(_fx_t * 3.0 + float(k)))
+                    cv.draw_circle(hp0, 9.0, Hostile.DARK)
+                    cv.draw_arc(hp0, 9.0, 0.0, TAU, 14, Color(Hostile.RED, 0.9), 1.0)
+                    var skin := Color(0.50, 0.66, 0.70) if wet else Color(0.62, 0.62, 0.58)
+                    cv.draw_circle(hp0, 7.0, skin.lerp(Color.WHITE, flash * 0.6))
+                    cv.draw_circle(hp0 + Vector2(0, 2.0), 2.0 + mouth, Hostile.DARK)
             "rods":
                 if p["broken"]:
                     continue
@@ -1766,6 +1793,8 @@ func _think_boss(delta: float, target: Player, dir: Vector2, dist: float, mult: 
             return _think_pyre(delta, target, dir, mult)
         "void_herald":
             return _think_herald(delta, target, dir, dist, mult)
+        "drowned_choir":
+            return _think_choir(delta, target, dir, dist, mult)
     return dir * speed * mult
 
 
@@ -1906,6 +1935,91 @@ func _draw_warden_hostile(cv: CanvasItem) -> void:
             cv.draw_polyline(pts, Hostile.DARK, 7.0)
             cv.draw_polyline(pts, Hostile.RED, 3.0)
             cv.draw_polyline(pts, Color(1.0, 0.95, 0.8), 1.0)
+
+
+# --- The Drowned Choir (phase 5, the Drowned Cistern) -------------------------------
+
+
+## A great bell with drowned singers fused to it. Wet bolts throughout. Phases 1 and 2:
+## songs that pull (a marked ring first, then a pull toward the bell). Phase 2: the arena
+## floods (water lands round the room, conductive for your shock and its). Phase 3: the bell
+## cracks and rings in shockwaves (full rings that wind up first; a stagger holds them).
+const SONG_WARN := 1.1
+const SONG_SECS := 1.8
+const SONG_R := 330.0
+const SONG_PULL := 70.0
+var _song_warn := 0.0
+var _song_t := 0.0
+var _flood_t := 0.0
+
+
+func _think_choir(delta: float, target: Player, dir: Vector2, dist: float, mult: float) -> Vector2:
+    _t1 -= delta
+    _t2 -= delta
+    _t3 -= delta
+    if _t1 <= 0.0:
+        _t1 = [2.8, 2.6, 3.0][clampi(_phase - 1, 0, 2)]
+        var n := 3 if _phase == 1 else 5
+        for k in n:
+            var a := (float(k) - float(n - 1) * 0.5) * 0.22
+            _shoot(dir.rotated(a), 210.0, _projectile_damage(5.0), Element.Kind.WET, 3.5, 7.0)
+    if _phase < 3 and _t2 <= 0.0 and _song_warn <= 0.0 and _song_t <= 0.0:
+        _t2 = 6.5 if _phase == 1 else 5.5
+        _song_warn = SONG_WARN
+        if BossBody.log_enabled and body != null:
+            print("[BOSS-MOVE] t=%.1f kind=drowned_choir song phase=%d" % [body.age, _phase])
+    if _phase >= 3 and _t3 <= 0.0:
+        _t3 = 3.2
+        _add_wave(0.0, PI, 190.0)
+        if BossBody.log_enabled and body != null:
+            print("[BOSS-MOVE] t=%.1f kind=drowned_choir ring phase=%d" % [body.age, _phase])
+    if _song_warn > 0.0 or _song_t > 0.0:
+        return Vector2.ZERO   # it holds still to sing
+    return _keep_range(delta, dir, dist, 150.0, 260.0) * speed * mult
+
+
+func _tick_choir(delta: float) -> void:
+    _tick_flame_waves(delta)
+    if _song_warn > 0.0:
+        if not (body != null and body.staggered()):
+            _song_warn -= delta
+        if _song_warn <= 0.0:
+            _song_t = SONG_SECS
+            Sfx.play_at("react_chain", global_position, -6.0)
+    elif _song_t > 0.0:
+        _song_t -= delta
+        if body != null and body.staggered():
+            _song_t = 0.0
+        for p in get_tree().get_nodes_in_group("players"):
+            if is_instance_valid(p) and p.alive and p is CharacterBody2D:
+                var to: Vector2 = global_position - p.global_position
+                if to.length() <= SONG_R and to.length() > radius + 30.0:
+                    (p as CharacterBody2D).move_and_collide(to.normalized() * SONG_PULL * delta)
+    if _phase == 2:
+        _flood_t -= delta
+        if _flood_t <= 0.0:
+            _flood_t = 0.7
+            var m := Materials.find(self)
+            if m != null:
+                m.stamp(Element.Kind.WET, _pick_point_near(global_position, 60.0, 320.0), 45.0, 130)
+
+
+func _draw_choir_hostile(cv: CanvasItem) -> void:
+    if _song_warn > 0.0:
+        var k := 0.5 + 0.5 * absf(sin(_fx_t * 12.0))
+        Hostile.dash_ring(cv, Vector2.ZERO, SONG_R, 0.5 + 0.4 * k, 3.0)
+    elif _song_t > 0.0:
+        for j in 3:
+            var f := fmod(_fx_t * 0.9 + float(j) / 3.0, 1.0)
+            Hostile.dash_ring(cv, Vector2.ZERO, lerpf(SONG_R, radius + 30.0, f), 0.7 * (1.0 - f) + 0.2, 2.5)
+    for wv in _waves:
+        var o := to_local(wv["o"])
+        if float(wv["warn"]) > 0.0:
+            var k := 0.5 + 0.5 * absf(sin(_fx_t * 14.0))
+            _hostile_arc(cv, o, radius + 22.0, 0.0, PI, 6.0, k)
+            _hostile_arc(cv, o, WAVE_REACH, 0.0, PI, 3.0, 0.35 * k)
+        else:
+            _hostile_arc(cv, o, float(wv["r"]), 0.0, PI, WAVE_BAND, 1.0)
 
 
 # --- The Void Herald --------------------------------------------------------------
@@ -2671,6 +2785,20 @@ func _draw_boss() -> void:
                 var lava := bool(hz.get("lava", false))
                 draw_circle(to_local(hz["pos"]), float(hz.get("r", 55.0)), Color(1.0, 0.35 if lava else 0.35, 0.1, (0.28 if lava and float(hz.get("warn", 0.0)) <= 0.0 else 0.10) * clampf(float(hz["t"]), 0.0, 1.0)))
             _draw_pixel_flame(Vector2(0, -radius * 0.5), radius * 1.6, radius * 2.2, 14 if _phase >= 2 else 10)
+        "drowned_choir":
+            # The great bell: a bronze bell over the body; it cracks in phase 3.
+            var top := -radius * 1.55
+            var bell := PackedVector2Array([Vector2(-8, top), Vector2(8, top), Vector2(16, top + 14), Vector2(22, top + 34), Vector2(30, top + 42), Vector2(-30, top + 42), Vector2(-22, top + 34), Vector2(-16, top + 14)])
+            var tone := Color(0.62, 0.50, 0.30)
+            if _phase >= 3 and _t3 < 0.5:
+                tone = tone.lerp(Color(1.0, 0.95, 0.6), 1.0 - maxf(_t3, 0.0) / 0.5)
+            draw_colored_polygon(bell, tone)
+            var rim := bell.duplicate()
+            rim.append(bell[0])
+            draw_polyline(rim, Color(0.15, 0.12, 0.08), 2.0)
+            draw_circle(Vector2(0, top + 44), 5.0, Color(0.35, 0.30, 0.2))
+            if _phase >= 3:
+                draw_polyline(PackedVector2Array([Vector2(-4, top + 4), Vector2(3, top + 16), Vector2(-5, top + 26), Vector2(4, top + 40)]), Color(0.1, 0.08, 0.05), 2.0)
         "void_herald":
             var pull_r := 260.0 if _phase == 1 else 320.0
             var c: Color = Element.COLORS[Element.Kind.VOID]
