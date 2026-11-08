@@ -208,10 +208,10 @@ const DUCK := {
 }
 
 ## Footstep surface and reverb per floor theme (Themes ids).
-const STEP := { "crypt": "step_stone", "ruins": "step_moss", "frozen": "step_snow", "forge": "step_ash", "void": "step_glass", "sanctum": "step_stone" }
+const STEP := { "crypt": "step_stone", "ruins": "step_moss", "frozen": "step_snow", "forge": "step_ash", "void": "step_glass", "sanctum": "step_stone", "garden": "step_moss", "cistern": "step_stone" }
 const REVERB := {
     "crypt": [0.62, 0.14], "ruins": [0.45, 0.1], "frozen": [0.55, 0.12], "forge": [0.4, 0.08],
-    "void": [0.85, 0.2], "sanctum": [0.6, 0.12],
+    "void": [0.85, 0.2], "sanctum": [0.6, 0.12], "garden": [0.45, 0.1], "cistern": [0.8, 0.18],
 }
 const STRIDE := 46.0
 const AMB_DB := -9.0

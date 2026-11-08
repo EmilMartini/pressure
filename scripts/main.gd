@@ -534,6 +534,9 @@ func is_device_joined(device: int) -> bool:
 
 
 func start_floor(n: int) -> void:
+    if autotest and floor_number > 0:
+        print("[HAZARD] region=%s gas_lit=%d" % [region_id, Materials.stat_gas_lit])
+        Materials.stat_gas_lit = 0
     if autotest and OS.get_cmdline_user_args().has("--one-floor") and floor_number > 0 and n > floor_number:
         # Balance probe: one floor per instance, so late floors can be measured in parallel.
         print("[FLOOR] %d (%s) reached at t=%.0f hp=%.0f/%.0f level=%d: --one-floor stops here" % [n, _next_region(n), _clock, players[0].hp, players[0].max_hp, players[0].level])
@@ -1810,6 +1813,8 @@ func _screenshot(path: String) -> void:
 
 
 func _print_stats(label: String) -> void:
+    if label == "END":
+        print("[HAZARD] region=%s gas_lit=%d" % [region_id, Materials.stat_gas_lit])
     var p := players[0]
     var visited := 0
     for r in rooms.values():

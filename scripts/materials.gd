@@ -35,6 +35,10 @@ enum { NONE, OIL, WATER, FIRE, ICE, POISON, ACID, BLOOD, STEAM, CHARGED, ASH, DR
 const MAT_COUNT := 13
 
 const CELL := 6
+## Rotting Gardens (phase 5, "gas that ignites"): fire lights poison gas, which then burns
+## like a thin oil film. Set by Regions.activate from the region's hazards.
+static var gas_ignites := false
+static var stat_gas_lit := 0   # bots: gas cells set alight ([HAZARD])
 const HALF := 3
 const STEPS_PER_SEC := 12.0
 const STEP_CAP := 2500
@@ -489,6 +493,8 @@ func _fx_ok(n: int) -> bool:
 
 func _ignite_cell(i: int) -> void:
     var was := int(mat[i])
+    if was == POISON:
+        stat_gas_lit += 1
     var fuel := int(amt[i]) if was == OIL else 0
     _put(i, FIRE, 255 if was == OIL else 128, clampi(10 + fuel / 5, 10, 60))
     _flag[i] = _flag[i] | F_FRONT
@@ -544,7 +550,7 @@ func _stamp_cell(kind: int, i: int, a: int, force: bool, lay: bool) -> void:
                 _put(i, OIL, a, OIL_LIFE)
                 _wake(i)
         Element.Kind.FIRE:
-            if m == OIL:
+            if m == OIL or (m == POISON and gas_ignites):
                 _ignite_cell(i)
             elif m == FIRE:
                 life[i] = maxi(int(life[i]), 12)
@@ -830,8 +836,8 @@ func _step_fire(i: int) -> void:
         if j < 0:
             continue
         var m := int(mat[j])
-        if m == OIL:
-            _ignite_cell(j)   # one cell per step along the oil
+        if m == OIL or (m == POISON and gas_ignites):
+            _ignite_cell(j)   # one cell per step along the oil (or the Gardens' gas)
         elif m == WATER or m == CHARGED or m == TOXIC:
             doused = true
             var left := int(amt[j]) - 24

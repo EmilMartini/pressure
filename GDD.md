@@ -723,15 +723,30 @@ one per existing theme:
 | Depth | Region | Theme | Resists | Weak to | Boss fought today | Signature layouts |
 |---|---|---|---|---|---|---|
 | 1 | Ossuary Gate | crypt | - | - | Brute King | four_pillars, pillar_hall, buttresses |
+| 2 | Rotting Gardens | garden | Poison | Fire | Hive Mother (her own region) | overgrown, l_shape, diagonal |
 | 2 | Rust Ruins | ruins | Stone | Acid | Hive Mother (stand-in for the Rusted Colossus) | broken, overgrown, l_shape |
 | 3 | Frostvault | frozen | Ice | Fire | Storm Warden (stand-in for the Frost Matron) | frozen, moat, flooded |
 | 4 | The Forge | forge | Fire | Wet, Ice | Pyre Lord | refinery, channels, broken |
 | 4 | Chapel of Ash | sanctum | Holy | Void | Pyre Lord (stand-in for the Ashen Bishop) | pillar_hall, cross, bastions |
 | 5 | The Rift | void | Void | Holy | Void Herald | rift, pit_maze, corner_pits |
 
-The five unbuilt regions (Drowned Cistern, Rotting Gardens, Pitch Mire, Abattoir,
-Stormspire) are in the graph with `built: false` and are never picked, so today every
-route is Ossuary Gate > Rust Ruins > Frostvault > The Forge or Chapel of Ash > The Rift.
+The four unbuilt regions (Drowned Cistern, Pitch Mire, Abattoir, Stormspire) are in the
+graph with `built: false` and are never picked. Since phase 5 batch 1 the Ossuary Gate
+offers two doors, Rotting Gardens or Rust Ruins. The Gardens lead on to the Frostvault
+through a stand-in edge until Pitch Mire or Abattoir are built.
+
+**Rotting Gardens (BUILT, phase 5 batch 1, 2026-11-08).** Theme `garden` (bog floor,
+slime walls, yellow trees, murky water; Dungeon Crawl tiles only). Hazards:
+- *Spore pods:* 2 to 3 per fight room, drawn in code (dark rim, green body). Every 3.5 to
+  5.5 s each puffs poison gas into the Materials grid; the gas drifts and poisons enemies
+  (resisted here) and never hurts the player on its own.
+- *Gas that ignites:* while the region is active (`Materials.gas_ignites`, set by
+  `Regions.activate` from the hazard list) fire lights poison gas and burns along it like
+  oil. Burning gas is an ordinary fire floor: it hurts the player (hostile edges and all)
+  and enemies alike, so the play is to light the cloud under them.
+- Dry moss as in the Rust Ruins.
+Boss: the Hive Mother on her own floor. Lesson `region:rotting_gardens` (reward
+Blowtorch, placeholder lines). Far-side gate "Gardens trellis gate" (placeholder name).
 The HUD banner names the region, and every `[FLOOR]`, `[DEATH]`, `[END]` log
 line and every telemetry event with a `floor` also carries the region (`run_end` adds the
 whole `route`). Bots print a `[ROUTE]` line and take `--route=a,b,c` to fix a route.

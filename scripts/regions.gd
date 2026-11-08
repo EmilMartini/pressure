@@ -46,11 +46,12 @@ const REGIONS := {
         "boss": "drowned_choir", "boss_kind": "hive_mother",
         "layouts": ["flooded", "channels", "moat"],
         "edges": ["frostvault", "pitch_mire"] },
-    "rotting_gardens": { "name": "Rotting Gardens", "depth": 2, "theme": "", "built": false,
+    "rotting_gardens": { "name": "Rotting Gardens", "depth": 2, "theme": "garden", "built": true,
         "resists": ["Poison"], "weak": ["Fire"], "hazards": ["spore clouds", "gas that ignites"],
         "boss": "hive_mother", "boss_kind": "hive_mother",
-        "layouts": ["overgrown", "l_shape"],
-        "edges": ["pitch_mire", "abattoir"] },
+        "layouts": ["overgrown", "l_shape", "diagonal"],
+        # frostvault: a stand-in way down until Pitch Mire or Abattoir is built (default BQ)
+        "edges": ["pitch_mire", "abattoir", "frostvault"] },
     "rust_ruins": { "name": "Rust Ruins", "depth": 2, "theme": "ruins", "built": true,
         "resists": ["Stone"], "weak": ["Acid"], "hazards": ["collapsing floors", "rust dust"],
         "boss": "rusted_colossus", "boss_kind": "hive_mother",
@@ -113,6 +114,7 @@ static func depth_of(id: String) -> int:
 static func activate(id: String) -> void:
     active_resists = kinds(get_region(id)["resists"]) if id != "" else []
     active_weak = kinds(get_region(id)["weak"]) if id != "" else []
+    Materials.gas_ignites = id != "" and (get_region(id)["hazards"] as Array).has("gas that ignites")
 
 
 ## Element names -> Element.Kind values.

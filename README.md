@@ -667,6 +667,9 @@ older than the current version (4) prints `[MIGRATE]` when it loads.
 Shortcuts (`scripts/shortcuts.gd`, design doc "Phase 4"): every run prints `[SHORTCUT]` (the
 floor's gate laid, skipped, opened or walked through), `[TRAVEL]` (seconds from floor start to
 the boss room, and whether the gate was open) and `[BOSS-CHECK] PASS/FAIL` at every way down.
+`[HAZARD] region=... gas_lit=N` (each new floor and at the end) counts gas cells set alight
+in the Rotting Gardens (phase 5). Gardens probe: `--build=storm --start-floor=2
+--route=ossuary_gate,rotting_gardens --one-floor --secs=700`.
 `--rush` walks straight for the boss room, `--open-gates` walks through a gate from the
 antechamber side to open it, `--shortcuts=all` opens every gate in the throwaway save first,
 and `--keep-save` keeps the instance's save from its last run (open a gate in one run, then

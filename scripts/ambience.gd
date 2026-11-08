@@ -35,6 +35,7 @@ var room: Room = null
 var lights: Array = []          # [pos, kind] kind: "torch" / "brazier"
 var lava: Array[Rect2] = []
 var rifts: Array[Vector2] = []
+var vents: Array = []           # [pos, kind] kind: "spore" (garden gas pod) / "drain" (cistern water)
 
 var _tx := 2.3                  # one texel / screen cell in world units
 var _k := 1.0                   # count scale
@@ -126,6 +127,10 @@ func add_lava(r: Rect2) -> void:
 
 func add_rift(pos: Vector2) -> void:
     rifts.append(pos)
+
+
+func add_vent(pos: Vector2, kind: String) -> void:
+    vents.append([pos, kind])
 
 
 func _make_static() -> void:
@@ -231,7 +236,7 @@ func _process(delta: float) -> void:
     _tick_world(delta)
     queue_redraw()
     _glow.queue_redraw()
-    if not lava.is_empty() or not lights.is_empty() or not rifts.is_empty() or not _cracks.is_empty():
+    if not lava.is_empty() or not lights.is_empty() or not rifts.is_empty() or not _cracks.is_empty() or not vents.is_empty():
         _floor_fix.queue_redraw()
         _wall_fix.queue_redraw()
 
@@ -341,8 +346,10 @@ func _land_drip(at: Vector2) -> void:
         room.materials.stamp(Element.Kind.WET, at, 7.0, 40)
 
 
-## Things that touch the world: drips, breath, heat, lava fire, rifts.
+## Things that touch the world: drips, breath, heat, lava fire, rifts, gas pods, drains.
 func _tick_world(delta: float) -> void:
+    if not vents.is_empty() and room != null and room.materials != null:
+        _tick_vents(delta)
     match theme:
         "ruins":
             if _every("drip", 1.1, 2.4, delta):
@@ -371,6 +378,22 @@ func _tick_world(delta: float) -> void:
             if Settings.flag("post_fx"):
                 for i in mini(2, rifts.size()):
                     PostFx.set_rift(i, global_position + rifts[i], 70.0, 0.32 + 0.08 * sin(_t * 1.3 + float(i)))
+
+
+## Spore pods puff a gas cloud every few seconds; drains pour water while a fight runs
+## (the Cistern's rising water).
+func _tick_vents(delta: float) -> void:
+    if _every("spore", 3.5, 5.5, delta):
+        for v in vents:
+            if String(v[1]) == "spore":
+                room.materials.stamp(Element.Kind.POISON, v[0], 30.0, 150)
+                for s in 3:
+                    _spawn(K_PUFF, v[0] + Vector2(_rng.randf_range(-6, 6), -6), Vector2(_rng.randf_range(-16, 16), _rng.randf_range(-24, -10)), _rng.randf_range(0.8, 1.2), Color(0.72, 0.90, 0.36, 0.5), false)
+    if room.active and _every("drain", 0.5, 0.7, delta):
+        for v in vents:
+            if String(v[1]) == "drain":
+                var inward := Vector2(-signf((v[0] as Vector2).x), 0.0) * 14.0
+                room.materials.stamp(Element.Kind.WET, v[0] + inward, 20.0, 90)
 
 
 func _players() -> Array:
@@ -448,6 +471,24 @@ func _draw_floor_fix(ci: CanvasItem) -> void:
         var pulse := 0.5 + 0.5 * sin(_t * 2.0)
         ci.draw_circle(r, 11.0, Color(0.02, 0.0, 0.05))
         ci.draw_arc(r, 11.0 + pulse * 2.0, 0.0, TAU, 20, Color(0.62, 0.34, 0.95, 0.8), _tx)
+
+
+    for v in vents:
+        var p: Vector2 = v[0]
+        if String(v[1]) == "spore":
+            # A swollen pod: dark rim, sick green body, a pale cap that swells before a puff.
+            var swell := 1.0 + 0.12 * sin(_t * 3.0 + p.x)
+            ci.draw_circle(p, 10.0 * swell + _tx, Color(0.04, 0.05, 0.02))
+            ci.draw_circle(p, 10.0 * swell, Color(0.36, 0.46, 0.16))
+            ci.draw_circle(p + Vector2(-2, -3), 4.0 * swell, Color(0.74, 0.86, 0.40))
+        else:
+            # A wall drain: an iron grate over a dark mouth.
+            var r := Rect2(p - Vector2(10, 14), Vector2(20, 28))
+            ci.draw_rect(r.grow(_tx), Color(0.02, 0.03, 0.05))
+            ci.draw_rect(r, Color(0.10, 0.16, 0.22))
+            for k in 4:
+                var y := r.position.y + 4.0 + float(k) * 6.5
+                ci.draw_line(Vector2(r.position.x, y), Vector2(r.end.x, y), Color(0.42, 0.50, 0.56), _tx)
 
 
 func _draw_wall_fix(ci: CanvasItem) -> void:

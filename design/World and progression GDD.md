@@ -1588,6 +1588,95 @@ timestamps across every bot run of the phase.
 - **Acceptance:** each region has its profile, hazards and boss, and bots clear it inside its
   time budget.
 
+#### Phase 5 batch 1 handoff (2026-11-08): the Rotting Gardens
+
+Weekly usage 37% at the start, 38% before the push. The Gardens shipped alone: the brief
+set a stop at 39%, and the Drowned Choir (a new boss) did not fit in what was left.
+`VERSION` is `2026.11.08-p5a`.
+
+**Built.** Write-up in `GDD.md` (section 3, "Rotting Gardens").
+- **Region:** `rotting_gardens` is `built: true`, theme `garden`, resists Poison, weak to
+  Fire, layouts overgrown, l_shape and diagonal. The Ossuary Gate now shows two route doors
+  (Rotting Gardens, Rust Ruins).
+- **Theme `garden`** in `scripts/themes.gd`: bog floor, slime walls, yellow trees, a snail
+  statue and murky water, from the Dungeon Crawl tiles already in the repo. Footsteps and
+  reverb in `sfx.gd`.
+- **Spore pods** (`Ambience.add_vent(..., "spore")`, placed by `Room`): 2 to 3 per fight
+  room, drawn in code. Every 3.5 to 5.5 s each puffs poison gas into the Materials grid.
+- **Gas that ignites:** `Materials.gas_ignites`, set by `Regions.activate` from the region's
+  hazards. While it is on, fire lights poison gas and burns along it like oil. Burning gas
+  is an ordinary fire floor, so it already has the hostile signature and the floor damage
+  rules (halved for a player carrying fire).
+- **Boss:** the Hive Mother, now in her own region (her sacs, burrowing and Firedamp chain
+  are unchanged).
+- **Lesson** `region:rotting_gardens` (reward Blowtorch) and the far-side gate "Gardens
+  trellis gate", both placeholders for the section 9 review.
+- **Bot line** `[HAZARD] region=... gas_lit=N`.
+
+**Measured** (all 0 script errors):
+
+| Run | Clear (to the boss's death) | Hive Mother | Phases | Gas cells lit |
+|---|---|---|---|---|
+| Storm build, depth 2, seed 1 | 348 s | 33.4 s, 38.0k health | 3/3 | not counted yet |
+| seed 2 | 341 s | 27.5 s, 34.1k | 3/3 | not counted yet |
+| seed 3 | 347 s | 31.9 s, 32.6k | 3/3 | not counted yet |
+| seed 4, after the Frostvault edge (walked on into the Frostvault) | 340 s | 19.8 s, 31.9k | 3/3 | 36,546 |
+| seed 5, random doors from depth 2 (took the Frostvault door) | 349 s | 27.6 s, 27.4k | 3/3 | 18,157 |
+| `--rush --open-gates --mastery=full` (opened the gate) | boss room at 164.7 s | 25.7 s, 20.9k | 3/3 | 24,189 |
+| same, `--keep-save` (gate already open) | boss room at 73.6 s | 26.2 s, 14.6k | 3/3 | 3,170 |
+
+- All clears are inside the 7 to 9 minute region budget (section 3). Six of the seven
+  Hive Mother fights are inside 25 to 50 s; one took 19.8 s, as some did in the Rust Ruins
+  in phase 0b. Her health share (1.5) is unchanged.
+- The first three runs predate the `[HAZARD]` line and the Frostvault edge; their
+  `[ROUTE]` line read "graph INVALID: rotting_gardens has no built way down", which led to
+  the stand-in edge (BQ).
+- `[FUSION-CHECK] PASS` and `[SPAWN-CHECK] PASS` in all three Gardens runs
+  (max depth 5 to 6, spawns landed 2,081 to 2,269, 0 close).
+- `[BOSS-CHECK] PASS` on every Gardens floor, with the gate open and closed.
+- **Frame rate** (real window, vsync, storm build in the Gardens, `--perf`, 200 s): average
+  97 fps over 87 samples with 10 or more enemies, min 81, 0 script errors. The Gardens
+  boss fight itself was not sampled in a real window this batch.
+
+**Section 0 checks:**
+- Load check clean.
+- Idle six-gun bot died in the Ossuary Gate (t=109, 2 rooms cleared).
+- The fusion probe cleared the Ossuary (Brute King 56.2 s) and took the Rust Ruins door
+  from the two offered.
+- Recruit probe: the Archivist was freed at t=86, and the hub walk on that save found him
+  and the Journal.
+- Loadout probe: 70 HP, Ring of Fire worn.
+- Hub walk after the idle death gave the Gatewarden's lesson line. A hub walk after the
+  Gardens gate opened listed "Gardens trellis gate" on the map.
+- The real `save.json`, `settings.json`, `mastery.json` and `telemetry/runs.jsonl` kept
+  their timestamps.
+
+**Left, in priority order:**
+1. **Drowned Cistern.** Groundwork is in the tree but dormant (the region is still
+   `built: false`, so nothing runs it):
+   - theme `cistern` (limestone floor, shoal and brick walls, murky water, torches);
+   - `Room` lays 3 to 5 standing puddles (240 s) in every room;
+   - `Ambience` drains ("drain" vents, iron grates) pour water every 0.5 to 0.7 s while
+     a fight runs, so the floor floods: rising water, conductive by the existing grid.
+   Untested. To finish it:
+   - set `drowned_cistern` to `built: true, theme: "cistern"`;
+   - add its lesson and gate;
+   - build **the Drowned Choir** on `boss_body.gd`: a bell part and singer parts.
+     Galvanic Sea on the floodwater tears the singers. Phase 2 floods the arena, so stand
+     on platforms; phase 3 cracks the bell into shockwaves. Use the hostile signature,
+     add it to `NAMES`, `PHASES`, `PARTS`, `HP_SHARE` and `SpawnTable`, and measure on
+     real floors.
+2. **The Cistern's sluice** (section 8), once the Cistern exists.
+3. **Gardens > Frostvault is a stand-in edge.** The Gardens' own edges are Pitch Mire and
+   Abattoir, both unbuilt, so this batch added `frostvault` to the Gardens' edges (a
+   crossing to the cold side) so a Gardens run has a door at its boss. Drop it when
+   batch 2 builds either. `Regions.validate()` is clean with it.
+4. **Gardens enemies:** none of their own yet; they use the depth's usual spawn table.
+5. **The Gardens' Hive Mother fight** in a real window (fps), and a gas-count comparison
+   with fire and without.
+
+**Defaults taken:** BM to BQ in section 16.
+
 ### Phase 6: Living world
 
 - **Goal:** the four locked ideas from section 12.
@@ -1680,6 +1769,11 @@ timestamps across every bot run of the phase.
 | BJ | Lifts, sluices, secret edges | Deferred to phase 5: each needs a region that is not built |
 | BK | Enemy shots on light floors | Themes in `EnemyProjectile.LIGHT_FLOOR_THEMES` (frozen) draw a brighter body and a larger white core |
 | BL | Build label | `VERSION+COMMIT`: VERSION is the date plus phase tag, bumped each phase; COMMIT is stamped at export |
+| BM | Where poison gas can burn (phase 5) | Only in a region with the hazard "gas that ignites" (the Rotting Gardens); elsewhere gas never burns as before |
+| BN | Spore pods | 2 to 3 per Gardens fight room, a 30 px puff every 3.5 to 5.5 s; the gas itself never hurts the player, burning gas is a fire floor |
+| BO | Rotting Gardens lesson reward | Blowtorch (its achievement stays as a milestone) |
+| BQ | Gardens' way down until batch 2 | A stand-in edge Gardens > Frostvault; drop it when Pitch Mire or Abattoir is built |
+| BP | Batch 1 when the budget is short | The Gardens ship alone; the Cistern's theme and hazards wait dormant in the tree |
 
 ---
 

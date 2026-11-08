@@ -1088,6 +1088,32 @@ func _dress_theme() -> void:
     match theme:
         "ruins":
             _moss_patches(rng)
+        "garden":
+            # Rotting Gardens (phase 5): spore pods puff poison gas that drifts; in this
+            # region gas ignites (Materials.gas_ignites), so fire turns a cloud into a
+            # burning floor. Dry moss as in the ruins.
+            _moss_patches(rng)
+            if fight:
+                for i in rng.randi_range(2, 3):
+                    var at := _free_spot(rng, 40.0)
+                    if at != Vector2.INF:
+                        ambience.add_vent(at, "spore")
+                        reserve(at, 26.0)
+        "cistern":
+            # Drowned Cistern (phase 5): standing puddles in every room (conductive: shock
+            # charges the whole pool) and, in fights, drains that pour water in: the floor
+            # floods as the fight goes on.
+            if materials != null:
+                for i in rng.randi_range(3, 5):
+                    var at := _free_spot(rng, 50.0)
+                    if at != Vector2.INF:
+                        var sz := Vector2(rng.randf_range(60, 130), rng.randf_range(40, 90))
+                        materials.fill_rect(Element.Kind.WET, Rect2(at - sz / 2.0, sz), 140, 240)
+            if fight:
+                for sx in [-1.0, 1.0]:
+                    var at := Vector2(sx * (rect.size.x * 0.5 - 30.0), rng.randf_range(-0.3, 0.3) * rect.size.y)
+                    if spot_ok(at, 14.0):
+                        ambience.add_vent(at, "drain")
         "frozen":
             if data.type != RoomData.Type.START and rng.randf() < 0.5:
                 _ice_patch(rng)
