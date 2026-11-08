@@ -672,7 +672,9 @@ the boss room, and whether the gate was open) and `[BOSS-CHECK] PASS/FAIL` at ev
 in the Rotting Gardens (phase 5). Gardens probe: `--build=storm --start-floor=2
 --route=ossuary_gate,rotting_gardens --one-floor --secs=700`.
 `--rush` walks straight for the boss room, `--open-gates` walks through a gate from the
-antechamber side to open it, `--shortcuts=all` opens every gate in the throwaway save first,
+antechamber side to open it (and turns the Cistern's sluice wheel after the Choir dies:
+`[SLUICE] opened`; every Cistern floor prints `[SLUICE] ... drained=true/false`),
+`--shortcuts=all` opens every gate and the sluice in the throwaway save first,
 and `--keep-save` keeps the instance's save from its last run (open a gate in one run, then
 `--keep-save` the next to see it persist). A hub walk with the Cartographer home opens the
 world map (`[HUB-MAP]`); `--hub-shot` also saves `autotest/hub_<station>_open.png`.

@@ -561,6 +561,8 @@ func start_floor(n: int) -> void:
     _place_archivist()
     _place_well()
     gate = Shortcuts.plan(rooms, region_id)
+    if autotest and region_id == String(Shortcuts.DEFS[Shortcuts.SLUICE]["region"]):
+        print("[SLUICE] floor=%d region=%s drained=%s" % [floor_number, region_id, str(Shortcuts.drained(region_id))])
     _floor_t0 = _clock
     _boss_room_at = -1.0
     _scout_reveal()
@@ -1675,6 +1677,8 @@ func _bot_wants(o: Dictionary, p: Player) -> bool:
             return _well_probe and not well_choices(p).is_empty()
         "archivist":
             return _recruit_probe and page_state == "carried"
+        "sluice":
+            return _open_gates
         "stairs":
             # Like a player: see the whole floor (shop, treasure) before going down, then
             # take the door the route plans (or a random one).

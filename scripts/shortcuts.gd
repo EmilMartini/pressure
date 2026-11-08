@@ -32,7 +32,17 @@ const DEFS := {
     "the_forge:gate": { "region": "the_forge", "kind": "gate", "name": "Forge blast door", "placeholder": true },
     "chapel_of_ash:gate": { "region": "chapel_of_ash", "kind": "gate", "name": "Chapel grille", "placeholder": true },
     "the_rift:gate": { "region": "the_rift", "kind": "gate", "name": "Rift seam", "placeholder": true },
+    "drowned_cistern:sluice": { "region": "drowned_cistern", "kind": "sluice", "name": "Cistern sluice", "placeholder": true },
 }
+
+## The Cistern's sluice (section 8, "bridge or sluice"): a wheel in the Choir's arena,
+## offered only once the Choir is dead, so it can never skip the boss. Turned by hand, it
+## stays open (Progress.world, saved at once). In later runs the Cistern is drained: no
+## standing puddles, no drains, the layout's deep pools dry, and enemies in the open are
+## tougher (DRAINED_HP, DRAINED_DMG). The Choir still floods its own arena.
+const SLUICE := "drowned_cistern:sluice"
+const DRAINED_HP := 1.3
+const DRAINED_DMG := 1.15
 
 const OBSTACLE := "chain_gate"
 
@@ -47,6 +57,11 @@ static func display_name(id: String) -> String:
 
 static func is_open(id: String) -> bool:
     return Progress.shortcut_open(id)
+
+
+## True when `region_id` is the Cistern and its sluice is open (a drained Cistern).
+static func drained(region_id: String) -> bool:
+    return region_id == String(DEFS[SLUICE]["region"]) and is_open(SLUICE)
 
 
 ## Every shortcut opened so far, in DEFS order (the Cartographer's map).

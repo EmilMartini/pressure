@@ -98,6 +98,8 @@ func title() -> String:
             return "Carry capacity +%d" % offer["amount"]
         "repair":
             return "Repair +%d HP" % offer["amount"]
+        "sluice":
+            return "Turn the sluice wheel"   # placeholder
         "stairs":
             # A route-choice door names the region it leads to (Regions).
             return "Down to %s" % Regions.display_name(String(offer["id"])) if String(offer["id"]) != "" else "Stairs down"
@@ -115,6 +117,8 @@ func title() -> String:
 func price_text() -> String:
     if kind() in ["stairs", "sigil"]:
         return ""
+    if kind() == "sluice":
+        return "Drains the Cistern for good. Harder fights in the open"   # placeholder
     if kind() == "page":
         return "for the Archivist"
     if kind() == "well":
@@ -167,6 +171,8 @@ func color() -> Color:
             return Color(0.4, 0.9, 0.5)
         "stairs":
             return Color(0.7, 0.7, 0.7)
+        "sluice":
+            return Color(0.45, 0.68, 0.88)
         "sigil":
             return Color(0.8, 0.4, 1.0)
         "page":
@@ -217,6 +223,17 @@ func _draw() -> void:
         draw_arc(Vector2.ZERO, 30.0, 0.0, TAU, 6, Color(c, 0.8), 2.0)
     elif kind() == "stairs":
         draw_circle(Vector2(0, 12), 22.0, Color(0, 0, 0, 0.45))
+    elif kind() == "sluice":
+        # An iron wheel on a post (drawn in code, placeholder art).
+        draw_circle(Vector2(0, 18), 26.0, Color(0, 0, 0, 0.45))
+        draw_rect(Rect2(-5, -10, 10, 28), Color(0.22, 0.2, 0.22))
+        var a := _t * (2.0 if highlighted else 0.4)
+        draw_arc(Vector2(0, -16), 22.0, 0.0, TAU, 32, Color(0.05, 0.05, 0.06), 7.0)
+        draw_arc(Vector2(0, -16), 22.0, 0.0, TAU, 32, Color(0.55, 0.5, 0.45), 4.0)
+        for k in 4:
+            var d := Vector2.RIGHT.rotated(a + float(k) * PI / 4.0) * 22.0
+            draw_line(Vector2(0, -16) - d, Vector2(0, -16) + d, Color(0.55, 0.5, 0.45), 3.0)
+        draw_circle(Vector2(0, -16), 5.0, c)
     else:
         # A stone plinth: shadow, shaft, lit top; the item hovers above it.
         draw_circle(Vector2(0, 18), 26.0, Color(0, 0, 0, 0.45))

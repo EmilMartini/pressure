@@ -454,6 +454,9 @@ func _tick_boss(delta: float) -> void:
         # The route choice: one stairs door per built region one edge down (design
         # section 4), or a single way out at the bottom.
         var ways: Array = Regions.next_options(main.region_id) if main.floor_number < Main.FLOORS else []
+        var sluice_region := String(Shortcuts.DEFS[Shortcuts.SLUICE]["region"])
+        if main.region_id == sluice_region and not Shortcuts.is_open(Shortcuts.SLUICE):
+            data.stock.append(FloorGen.offer("sluice", Shortcuts.SLUICE, 0))
         if ways.is_empty():
             data.stock.append(FloorGen.offer("stairs", "", 0))
         for id in ways:
@@ -616,6 +619,11 @@ func _spawn_enemy(type: String, pos: Vector2) -> Enemy:
     e.max_hp *= clampf(1.0 + 0.12 * (party_power() - 1.0), 0.9, 1.25) * Loadout.vow_enemy_hp()
     e.hp = e.max_hp
     e.damage_mult = floor_damage_mult(main.floor_number)
+    if type != "boss" and Shortcuts.drained(main.region_id):
+        # The drained Cistern: nowhere wet to chain them through, and they hit harder.
+        e.max_hp *= Shortcuts.DRAINED_HP
+        e.hp = e.max_hp
+        e.damage_mult *= Shortcuts.DRAINED_DMG
     e.contact_damage *= e.damage_mult
     e.position = pos
     e.died.connect(_on_enemy_died)
@@ -1104,13 +1112,15 @@ func _dress_theme() -> void:
             # Drowned Cistern (phase 5): standing puddles in every room (conductive: shock
             # charges the whole pool) and, in fights, drains that pour water in: the floor
             # floods as the fight goes on.
-            if materials != null:
+            if Shortcuts.drained(main.region_id):
+                pass   # drained by the sluice: no standing water, no drains pouring in
+            elif materials != null:
                 for i in rng.randi_range(3, 5):
                     var at := _free_spot(rng, 50.0)
                     if at != Vector2.INF:
                         var sz := Vector2(rng.randf_range(60, 130), rng.randf_range(40, 90))
                         materials.fill_rect(Element.Kind.WET, Rect2(at - sz / 2.0, sz), 140, 240)
-            if fight:
+            if fight and not Shortcuts.drained(main.region_id):
                 for sx in [-1.0, 1.0]:
                     var at := Vector2(sx * (rect.size.x * 0.5 - 30.0), rng.randf_range(-0.3, 0.3) * rect.size.y)
                     if spot_ok(at, 14.0):
@@ -1546,6 +1556,16 @@ func activate(ped: Pedestal, pl: Player) -> void:
             Sfx.play("stairs")
             main.next_floor(String(o["id"]))
             return
+        "sluice":
+            o["taken"] = true
+            var sid := String(o["id"])
+            if Progress.open_shortcut(sid):
+                main.announce("Shortcut opened: %s" % Shortcuts.display_name(sid))
+                Sfx.play("confirm")
+                main.shake(6.0)
+                Telemetry.event("shortcut_opened", { "id": sid, "floor": main.floor_number })
+                if main.autotest:
+                    print("[SLUICE] opened %s at t=%.0f" % [sid, main._clock])
         "sigil":
             o["taken"] = true
             Sfx.play("confirm")
@@ -1645,6 +1665,8 @@ func _build_layout() -> void:
     _deep_rects.clear()
     _deep_idx = PackedInt32Array()
     for r in RoomLayouts.rects_of(terrain, nav_w, nav_h, RoomLayouts.T_DEEP):
+        if Shortcuts.drained(main.region_id if main != null else ""):
+            break   # the sluice drained the Cistern: the basins stand dry
         _deep_rects.append(_cell_rect(r))
     if materials != null:
         for wr in _deep_rects:

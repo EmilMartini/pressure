@@ -758,6 +758,11 @@ Pike), placeholder lines. Far-side gate "Cistern grate" (placeholder name). Bots
 `[HAZARD] ... zapped=N` (water cells charged by shock), `[BOSS-MOVE]` song and ring lines,
 `[CHOIR-LEDGES]` (where the ledges went) and `[CHOIR-FLOOD]` (phase 2 seconds, on a
 ledge, on charged water).
+*The sluice* (placeholder name "Cistern sluice"): once the Choir is dead, an iron wheel
+stands in its arena beside the stairs. Turn it (interact) and the Cistern is drained for
+good: later runs have no standing puddles, no drains and dry pool basins, but enemies in
+the open (not the Choir) have 30% more health and hit 15% harder. The Choir still floods
+its own arena. Saved in the world state with the gates; the Cartographer's map marks it.
 
 **Rotting Gardens (BUILT, phase 5 batch 1, 2026-11-08).** Theme `garden` (bog floor,
 slime walls, yellow trees, murky water; Dungeon Crawl tiles only). Hazards:

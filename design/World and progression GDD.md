@@ -1634,9 +1634,10 @@ timestamps across every bot run of the phase.
 - **Acceptance:** each region has its profile, hazards and boss, and bots clear it inside its
   time budget.
 
-#### Phase 5 batch 1, part 3 (2026-11-08): Choir ledges and fps
+#### Phase 5 batch 1, part 3 (2026-11-08): Choir ledges, fps and the Cistern's sluice
 
-Weekly usage 38% at the start and 38% before the push. `VERSION` is `2026.11.08-p5c`.
+Weekly usage 38% at the start and 38% before each push. `VERSION` is `2026.11.08-p5c`.
+Commits: the ledges and fps notes (05e2c9e), then the sluice.
 
 **Built: the Choir's ledges** (BS). Three raised stone ledges, 96 x 72 px, in the
 Choir's arena (`Room._build_choir_platforms`), placed near the corners and kept 170 px
@@ -1681,8 +1682,45 @@ Choir problem. Worth a dedicated pass (particle cap per build, chain lightning d
 script errors in every log; the real save, settings, mastery and `runs.jsonl` kept their
 timestamps.
 
-**Left:** the Cistern's sluice (section 8), not started (budget); the late-build effects
-fps pass above; a bot that uses the ledges.
+**Built: the Cistern's sluice** (section 8, "bridge or sluice"; `Shortcuts.SLUICE`).
+- *Opened by hand:* once the Choir is dead, an iron wheel (pedestal kind `sluice`, drawn
+  in code) stands in its arena before the stairs. Interact turns it: banner, telemetry
+  `shortcut_opened`, and `Progress.open_shortcut`, which saves at once. It only exists
+  after the boss dies, so it can't skip the Choir.
+- *Stored* in `Progress.world.shortcuts` beside the gates (`drowned_cistern:sluice`). The
+  save format is unchanged (version 4). On a copy of Emil's real save (still version 3):
+  `[MIGRATE] save version 3 -> 4` (0 shortcuts), relic kept, and every field the same
+  apart from version, the empty world and the hub walk's own talk counts. Hub walk PASS.
+- *Drained in later runs* (`Shortcuts.drained`): no standing puddles, no drains, and the
+  layout's deep pools stand dry (no wading); enemies other than the Choir get 1.3x health
+  and 1.15x damage. The Choir still floods its own arena.
+- *Map:* the hub list reads "Shortcuts open: Cistern grate, Cistern sluice", and the
+  Cartographer's map draws gold waves beside the Cistern.
+- Bots: `--open-gates` turns the wheel (`[SLUICE] opened`); each Cistern floor prints
+  `[SLUICE] ... drained=`; `--shortcuts=all` opens it too.
+
+**Measured** (storm build, `--start-floor=2 --route=ossuary_gate,drowned_cistern`):
+
+| Run | Drained | Cistern clear | Choir | Water cells zapped | Boss check |
+|---|---|---|---|---|---|
+| seed 4, `--open-gates` (opened gate and sluice, sluice at t=350) | no | 351 s | 27.3 s | | PASS |
+| seed 5, fresh save | no | 358 s | 34.4 s | | PASS |
+| seed 5, `--keep-save` after the seed 4 run | yes | 382 s | 28.5 s | 6,957 (the Choir's flood only) | PASS |
+
+Fewer water hazards (zapped cells 7k against 58k to 146k in wet runs) and a slower clear
+(+24 s on the same seed) from the tougher enemies, which is the section 8 trade. One run
+each, so the size of that trade is a first reading.
+
+**Section 0 checks after the sluice:** load check clean; idle six-gun bot died in the
+Ossuary Gate (t=20); fusion probe: 0 script errors and both checks PASS twice (one run
+died to the Brute King at t=192, the re-run cleared him in 34.1 s and reached floor 2);
+hub walks PASS; the real save, settings, mastery and `runs.jsonl` kept their timestamps.
+
+**Left:** the late-build effects fps pass above; a bot that uses the ledges; a drained
+look for the Cistern (dry basins draw as the layout's pools without water; no new rooms
+yet); a screenshot of the wheel and the map; the sluice name, wheel label and hint are
+placeholders for the section 9 review. Repaired lifts and secret edges still wait for
+their regions.
 
 #### Phase 5 batch 1, part 2 (2026-11-08): the Drowned Cistern
 
@@ -1922,6 +1960,7 @@ set a stop at 39%, and the Drowned Choir (a new boss) did not fit in what was le
 | BP | Batch 1 when the budget is short | The Gardens ship alone; the Cistern's theme and hazards wait dormant in the tree |
 | BR | Drowned Choir chain | Singers are innately wet: shock on them is Chain Lightning (12% wear), any fusion 15%, Galvanic Sea or Hurricane tears them at once. Health share 2.0 |
 | BS | Choir platforms | Three 96 x 72 px raised ledges near the corners, 170 px off the doors; nothing lands or flows on them; the song can pull you off |
+| BW | Cistern sluice | A wheel in the Choir's arena after the kill; drained Cistern: no puddles, drains or deep pools, non-boss enemies 1.3x health and 1.15x damage; the Choir's own flood stays |
 | BV | Late-build fps | Accepted for now: boss fights with the floor-2 storm build run about 81 to 83 fps (Choir and Hive Mother alike); the arenas alone hold 100 |
 | BT | Choir in the floor-number boss cycle | Not added to `SpawnTable.BOSSES` (that would change which boss appears past floor 5); the region picks it through `boss_kind` |
 | BU | Cistern lesson rewards | Region: Storm Seeker. Boss: Storm Pike |

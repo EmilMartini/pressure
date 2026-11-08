@@ -59,4 +59,10 @@ func _draw() -> void:
             draw_line(g + Vector2(6, -9), g + Vector2(6, 9), GATE, 3.0)
             draw_line(g + Vector2(-6, -3), g + Vector2(6, -3), GATE, 2.0)
             draw_line(g + Vector2(-6, 3), g + Vector2(6, 3), GATE, 2.0)
-    draw_string(font, Vector2(0, custom_minimum_size.y - 8), "Depth 1 at the top, the Rift at the bottom. Gold: a gate you opened.", HORIZONTAL_ALIGNMENT_CENTER, custom_minimum_size.x, 16, Color(0.7, 0.66, 0.6))
+        if built and id == String(Shortcuts.DEFS[Shortcuts.SLUICE]["region"]) and Shortcuts.is_open(Shortcuts.SLUICE):
+            # The sluice: three falling waves on the region's other side.
+            var s := at + Vector2(-100, 0)
+            for k in 3:
+                var y := -7.0 + 7.0 * float(k)
+                draw_polyline(PackedVector2Array([s + Vector2(-8, y), s + Vector2(-3, y - 3), s + Vector2(2, y), s + Vector2(7, y - 3)]), GATE, 2.0)
+    draw_string(font, Vector2(0, custom_minimum_size.y - 8), "Depth 1 at the top, the Rift at the bottom. Gold: a gate or sluice you opened.", HORIZONTAL_ALIGNMENT_CENTER, custom_minimum_size.x, 16, Color(0.7, 0.66, 0.6))
