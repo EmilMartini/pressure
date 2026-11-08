@@ -25,6 +25,13 @@ var region_id := ""
 var route: Array = []          # region ids this run has entered, top first
 var _planned_route: Array = [] # bots: --route=a,b,c, or the random way down to --start-floor
 var _door_choice := ""          # the region behind the stairs door the party took (Room "stairs")
+## This floor's shortcut gate (Shortcuts.plan), {} if none.
+var gate: Dictionary = {}
+var _floor_t0 := 0.0            # _clock at floor start ([TRAVEL] lines)
+var _boss_room_at := -1.0       # _clock when the party first entered this floor's boss room
+var _rush := false              # bots: --rush walks straight for the boss room
+var _open_gates := false        # bots: --open-gates walks through a shortcut gate from its far side
+var _gate_entry := Vector2i.ZERO  # the side a gate brings the party in by (enter_room)
 var _bot_doors := {}            # bots: depth -> the door picked for it
 var rooms: Dictionary = {}          # Vector2i -> RoomData
 var current: Room = null
@@ -119,6 +126,8 @@ func _ready() -> void:
     autotest = args.has("--autotest")
     _recruit_probe = autotest and args.has("--recruit-probe")
     _well_probe = autotest and args.has("--well-probe")
+    _rush = autotest and args.has("--rush")
+    _open_gates = autotest and args.has("--open-gates")
     Enemy.spawn_log = autotest   # [SPAWN-MOVED] / [SPAWN-CLOSE] lines (Enemy.EMERGE_SECS)
     old_balance = autotest and args.has("--old-balance")
     Regions.activate("")
@@ -131,7 +140,13 @@ func _ready() -> void:
         # Bots never write the player's own records: a separate file per instance (or
         # runs_bot.jsonl without --instance), loaded fresh so no human runs are copied in.
         Telemetry.use_file("user://telemetry/runs%s.jsonl" % (_instance_tag() if _instance_tag() != "" else "_bot"))
-        Progress.reset()
+        if args.has("--keep-save"):
+            Progress.load_save()   # this instance's save from its last run (shortcut persistence)
+        else:
+            Progress.reset()
+        if args.has("--shortcuts=all"):
+            for sid in Shortcuts.DEFS.keys():
+                Progress.open_shortcut(String(sid))
         # The bot never uses the player's real Shrine: a throwaway file, empty unless
         # --mastery=N or --mastery=full buys ranks on it. Runs still pay Embers into it,
         # so the [EMBERS] line measures income.
@@ -541,6 +556,9 @@ func start_floor(n: int) -> void:
     rooms = FloorGen.generate(region_id, party_luck(), players)
     _place_archivist()
     _place_well()
+    gate = Shortcuts.plan(rooms, region_id)
+    _floor_t0 = _clock
+    _boss_room_at = -1.0
     _scout_reveal()
     for p in players:
         p.pressure = 0.0
@@ -626,6 +644,10 @@ func enter_room(pos: Vector2i, moved: Vector2i) -> void:
             c.queue_free()
 
     current_pos = pos
+    if _boss_room_at < 0.0 and rooms.has(pos) and rooms[pos].type == RoomData.Type.BOSS:
+        _boss_room_at = _clock
+        if autotest:
+            print("[TRAVEL] floor=%d region=%s boss_room_after=%.1f gate=%s" % [floor_number, region_id, _clock - _floor_t0, "open" if not gate.is_empty() and Shortcuts.is_open(String(gate["id"])) else ("closed" if not gate.is_empty() else "none")])
     Elements.room_reset()
     if autotest and not players.is_empty():
         _arena_snap = [_clock, players[0].hp, players[0].hurt_total, players[0].healed_total, players[0].healed_leech, players[0].healed_regen]
@@ -637,8 +659,11 @@ func enter_room(pos: Vector2i, moved: Vector2i) -> void:
     if autotest and _perf_probe:
         print("[ROOM] %s layout=%s size=%s" % [pos, current.layout_name, current.room_size])
 
-    var base := Vector2.ZERO if moved == Vector2i.ZERO else current.entry_position(-moved)
-    var across := Vector2(moved).orthogonal() if moved != Vector2i.ZERO else Vector2.RIGHT
+    # Through a gate the party comes in by the gate's own wall, not the opposite one.
+    var side := _gate_entry if _gate_entry != Vector2i.ZERO else -moved
+    _gate_entry = Vector2i.ZERO
+    var base := Vector2.ZERO if moved == Vector2i.ZERO else current.entry_position(side)
+    var across := Vector2(side).orthogonal() if moved != Vector2i.ZERO else Vector2.RIGHT
     for i in players.size():
         players[i].global_position = base + across * (float(i) - float(players.size() - 1) / 2.0) * 40.0
         players[i].invuln = maxf(players[i].invuln, 0.8)   # a breath after a door, never a cheap hit
@@ -661,7 +686,29 @@ func _on_door_entered(dir: Vector2i) -> void:
             print("[DOOR] ignored a door event %d ms after entering the room" % (Time.get_ticks_msec() - _room_entered_ms))
         return
     _transitioning = true
-    call_deferred("enter_room", current_pos + dir, dir)
+    call_deferred("enter_room", door_target(dir), dir)
+
+
+## The room behind this room's door on side `dir`. A shortcut gate (Shortcuts) leads to a
+## room that is not next door; walking through one from the far side opens it for good.
+func door_target(dir: Vector2i) -> Vector2i:
+    var door: Dictionary = rooms[current_pos].doors.get(dir, {})
+    var to: Vector2i = door.get("to", current_pos + dir)
+    if door.has("gate") and rooms.has(to):
+        _gate_entry = door.get("back", -dir)
+        var back: Dictionary = rooms[to].doors.get(_gate_entry, {})
+        if String(back.get("obstacle", "")) == Shortcuts.OBSTACLE:
+            back["obstacle"] = ""
+            var id := String(door["gate"])
+            if Progress.open_shortcut(id):
+                announce("Shortcut opened: %s" % Shortcuts.display_name(id))
+                Sfx.play("confirm")
+                Telemetry.event("shortcut_opened", { "id": id, "floor": floor_number })
+                if autotest:
+                    print("[SHORTCUT] opened %s at t=%.0f" % [id, _clock])
+        elif autotest:
+            print("[SHORTCUT] through %s at t=%.0f" % [String(door["gate"]), _clock])
+    return to
 
 
 ## Bots: health at room entry, then lost and healed since ([ARENA] lines at clear and death).
@@ -689,6 +736,15 @@ func on_room_cleared(_room: Room) -> void:
 
 ## Down the stairs; `to` is the region behind the door taken ("" at the bottom).
 func next_floor(to: String = "") -> void:
+    # Shortcuts never skip bosses (design section 8): the way down only exists once this
+    # floor's boss room is cleared.
+    var boss_done := false
+    for rp in rooms.keys():
+        if (rooms[rp] as RoomData).type == RoomData.Type.BOSS:
+            boss_done = (rooms[rp] as RoomData).cleared
+    if autotest:
+        print("[BOSS-CHECK] %s floor=%d region=%s gate=%s" % ["PASS" if boss_done else "FAIL", floor_number, region_id, "open" if not gate.is_empty() and Shortcuts.is_open(String(gate["id"])) else "-"])
+    assert(boss_done, "left a floor with its boss room not cleared")
     _door_choice = to
     Progress.add("floors")
     if floor_number >= FLOORS or Regions.next_options(region_id).is_empty():
@@ -1560,7 +1616,7 @@ func _bot_navigate(p: Player) -> void:
     # a hidden room is only used once someone opened it.
     for dir in room.data.doors.keys():
         var ob: String = room.data.doors[dir]["obstacle"]
-        if ob == "" or not Obstacle.KINDS.has(ob) or _bot_skip.has([current_pos, dir]):
+        if ob == "" or not Obstacle.KINDS.has(ob) or Obstacle.KINDS[ob].get("locked", false) or _bot_skip.has([current_pos, dir]):
             continue
         _bot_obstacle_time += get_process_delta_time()
         if _bot_obstacle_time > 25.0:
@@ -1596,7 +1652,7 @@ func _bot_navigate(p: Player) -> void:
     if _bot_idle > 12.0:
         _print_stats("STUCK, teleporting")
         _bot_idle = 0.0
-        enter_room(current_pos + dir, dir)
+        enter_room(door_target(dir), dir)
         return
     p.input.force_move = room.path_dir(p.global_position, room.door_world_position(dir))
 
@@ -1676,6 +1732,16 @@ const NO_STEP := Vector2i(99, 99)   # BFS sentinel: a real step can be (-1, 0)
 
 func _bot_next_dir() -> Vector2i:
     var goal := NO_STEP
+    if _open_gates and not gate.is_empty() and current_pos == gate["ante"] and not Shortcuts.is_open(String(gate["id"])):
+        # --open-gates: from the antechamber, through the gate to open it from the far side.
+        return Vector2i(gate["back"])
+    if _rush:
+        # --rush: straight for the boss door the way a player who knows the way walks.
+        if rooms[current_pos].type == RoomData.Type.BOSS:
+            return Vector2i.ZERO
+        goal = _bot_bfs(func(r: RoomData) -> bool: return r.type == RoomData.Type.BOSS)
+        if goal != NO_STEP:
+            return goal
     if _recruit_probe and page_state == "carried":
         goal = _bot_bfs(func(r: RoomData) -> bool:
             for o in r.stock:
@@ -1713,6 +1779,7 @@ func _bot_next_dir() -> Vector2i:
 func _bot_bfs(pred: Callable) -> Vector2i:
     var start := current_pos
     var prev: Dictionary = { start: start }
+    var via: Dictionary = {}
     var queue: Array = [start]
     while not queue.is_empty():
         var cur: Vector2i = queue.pop_front()
@@ -1721,7 +1788,7 @@ func _bot_bfs(pred: Callable) -> Vector2i:
             var step := cur
             while prev[step] != start:
                 step = prev[step]
-            return step - start
+            return via[step]   # the door taken out of this room (a gate is not next door)
         for d in r.doors.keys():
             if r.doors[d]["obstacle"] != "":
                 continue
@@ -1729,6 +1796,8 @@ func _bot_bfs(pred: Callable) -> Vector2i:
             if prev.has(n):
                 continue
             prev[n] = cur
+            if cur == start:
+                via[n] = d
             queue.append(n)
     return NO_STEP
 

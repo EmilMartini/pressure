@@ -38,6 +38,15 @@ const KINDS := {
         "reaction": "",
         "color": Color(0.40, 0.36, 0.30),
     },
+    # A shortcut gate (Shortcuts), barred from this side: no element opens it; walking
+    # through from the far side does.
+    "chain_gate": {
+        "label": "A chain-gate, barred from the other side.",   # placeholder
+        "element": Element.Kind.NONE,
+        "reaction": "",
+        "color": Color(0.16, 0.15, 0.17),
+        "locked": true,
+    },
     "miasma": {
         "label": "Choking miasma. Blow it away with a gale.",
         "element": Element.Kind.GALE,
@@ -103,6 +112,8 @@ func _ready() -> void:
 
 func apply_element(element: int, _potency: float) -> void:
     var spec: Dictionary = KINDS[kind]
+    if spec.get("locked", false):
+        return
     if spec["reaction"] != "":
         for existing in states.keys():
             if existing != element and Elements.reaction_name(existing, element) == spec["reaction"]:
@@ -148,6 +159,19 @@ func _draw() -> void:
         for i in 3:
             var off := across * (float(i) - 1.0) * (minf(size.x, size.y) / 3.5)
             draw_line(off - along * len * 0.35, off + along * len * 0.35, Color(0.45, 0.7, 1.0, 0.5), 2.0)
+    if spec.get("locked", false):
+        # Iron bars and a chain across them; no element badge.
+        var along := Vector2(1, 0) if size.x > size.y else Vector2(0, 1)
+        var across := along.orthogonal()
+        var len := maxf(size.x, size.y)
+        var wid := minf(size.x, size.y)
+        for i in 7:
+            var o := along * (float(i) - 3.0) * (len / 7.5)
+            draw_line(o - across * wid * 0.5, o + across * wid * 0.5, Color(0.42, 0.40, 0.44), 4.0)
+        for i in 5:
+            var o := along * (float(i) - 2.0) * (len / 5.5)
+            draw_arc(o, 7.0, 0.0, TAU, 10, Color(0.62, 0.58, 0.50), 2.5)
+        return
     # Required element badge and label on the room side of the door.
     var badge_pos := inward * (size.length() * 0.5 + 22.0)
     if spec["reaction"] != "":

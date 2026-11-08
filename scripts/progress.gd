@@ -190,6 +190,11 @@ var well_saved: Array = []
 var lessons: Dictionary = {}
 ## The lesson the last run taught, for the payout and the Hollow ("" if none).
 var run_lesson := ""
+## World state (Shortcuts, phase 4): { "shortcuts": { id: { "run": runs started when it
+## opened } } }. Opened shortcuts never close. Version 4 of the save; older saves load
+## with an empty world.
+var world: Dictionary = {}
+const SAVE_VERSION := 4
 
 
 func _ready() -> void:
@@ -425,7 +430,7 @@ func _grant(a: Dictionary) -> void:
 
 func save() -> void:
     var data := {
-        "version": 3,
+        "version": SAVE_VERSION,
         "unlocks": unlocks.keys(),
         "stats": stats,
         "achievements": achievements_done.keys(),
@@ -437,6 +442,7 @@ func save() -> void:
         "relics": relics,
         "well_saved": well_saved,
         "lessons": lessons,
+        "world": world,
     }
     var f := FileAccess.open(save_path, FileAccess.WRITE)
     if f == null:
@@ -457,6 +463,7 @@ func load_save() -> void:
     relics = []
     well_saved = []
     lessons = {}
+    world = {}
     for u in BASE_UNLOCKS:
         unlocks[u] = true
     if not FileAccess.file_exists(save_path):
@@ -489,6 +496,14 @@ func load_save() -> void:
     if saved_lessons is Dictionary:
         for k in saved_lessons.keys():
             lessons[String(k)] = int(saved_lessons[k])
+    var saved_world = parsed.get("world", {})
+    if saved_world is Dictionary:
+        world = saved_world
+    if int(parsed.get("version", 1)) < SAVE_VERSION:
+        # Version 3 and older had no world state: nothing opened yet. Written back at once
+        # so the file says version 4.
+        print("[MIGRATE] save version %d -> %d: world state added (%d shortcuts)" % [int(parsed.get("version", 1)), SAVE_VERSION, (world.get("shortcuts", {}) as Dictionary).size()])
+        migrated += 1
     var saved_npcs = parsed.get("npcs", {})
     if saved_npcs is Dictionary:
         npcs = saved_npcs
@@ -503,13 +518,16 @@ func load_save() -> void:
         if arr is Array:
             var clean: Array = []
             for id in arr:
-                if not Items.get_item(String(id)).is_empty():
+                # The Progress autoload loads before Items has built its catalog: only drop
+                # unknown ids once the catalog exists, or a load that saves at once (a
+                # migration) would wipe every Relic.
+                if Items.catalog.is_empty() or not Items.get_item(String(id)).is_empty():
                     clean.append(String(id))
             set(key, clean)
     var saved_names: Array = parsed.get("names", [])
     for i in mini(4, saved_names.size()):
         names[i] = str(saved_names[i]).strip_edges().left(12)
-    if migrated > 0:
+    if migrated > 0 and int(parsed.get("version", 1)) < 3:
         print("[MIGRATE] save version %d: %d classes became Marks and Kits" % [int(parsed.get("version", 1)), migrated])
     _settle(migrated > 0)
 
@@ -600,6 +618,22 @@ func note_line(npc: String, line_id: String) -> void:
     npcs[npc] = d
     seen_lines[line_id] = int(seen_lines.get(line_id, 0)) + 1
     save()
+
+
+## Shortcuts (Shortcuts): opened for good, saved at once.
+func shortcut_open(id: String) -> bool:
+    return (world.get("shortcuts", {}) as Dictionary).has(id)
+
+
+## Opens `id`; true if it was closed until now.
+func open_shortcut(id: String) -> bool:
+    if shortcut_open(id):
+        return false
+    var sc: Dictionary = world.get("shortcuts", {})
+    sc[id] = { "run": stat("runs_started") }
+    world["shortcuts"] = sc
+    save()
+    return true
 
 
 ## Runs that did not end at the bottom (abandoned runs count): the Gatewarden's tally.
