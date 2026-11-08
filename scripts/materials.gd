@@ -83,6 +83,8 @@ var amt := PackedByteArray()
 var life := PackedByteArray()
 var _flag := PackedByteArray()
 var _char := PackedByteArray()     # permanent scorch level 0..3 under everything
+var _raised := PackedByteArray()   # raised dry ground (the Choir's platforms): nothing lands or flows here
+var _has_raised := false
 var _queue := PackedInt32Array()   # active cells, FIFO; _head is the next to step
 var _head := 0
 var _drawn := PackedInt32Array()   # every cell that may be non-empty
@@ -144,6 +146,7 @@ func _init(room_rect: Rect2 = Rect2(-560, -360, 1120, 720)) -> void:
     life.resize(_n)
     _flag.resize(_n)
     _char.resize(_n)
+    _raised.resize(_n)
     _cols.resize(MAT_COUNT)
     _cols[NONE] = Color(0, 0, 0, 0)
     _cols[OIL] = Color(Element.COLORS[Element.Kind.OIL].darkened(0.45), 0.66)
@@ -372,7 +375,7 @@ func lay_still(kind: int, idx: PackedInt32Array, from: int, count: int, amount: 
                 _dirty = true
         elif c == TOXIC and m == WATER:
             life[i] = 255
-        elif _open(c):
+        elif _open(c) and _raised[i] == 0:
             mat[i] = m
             amt[i] = a
             life[i] = 255
@@ -411,18 +414,44 @@ func _cell_world(i: int) -> Vector2:
     return global_position + _origin + Vector2(float((i % _w) * CELL + HALF), float((i / _w) * CELL + HALF))
 
 
-## Neighbour in direction d (0 left, 1 right, 2 up, 3 down), or -1 at the edge.
+## Neighbour in direction d (0 left, 1 right, 2 up, 3 down), or -1 at the edge (a raised
+## cell is an edge too: liquids, gas and fire stop at a platform's lip).
 func _nb(i: int, d: int) -> int:
+    var j := -1
     if d == 0:
-        return i - 1 if i % _w != 0 else -1
-    if d == 1:
-        return i + 1 if i % _w != _w - 1 else -1
-    if d == 2:
-        return i - _w if i >= _w else -1
-    return i + _w if i + _w < _n else -1
+        j = i - 1 if i % _w != 0 else -1
+    elif d == 1:
+        j = i + 1 if i % _w != _w - 1 else -1
+    elif d == 2:
+        j = i - _w if i >= _w else -1
+    else:
+        j = i + _w if i + _w < _n else -1
+    if _has_raised and j >= 0 and _raised[j] != 0:
+        return -1
+    return j
+
+
+## Raised dry ground over a world rect (cells whose centre is inside): wiped now and never
+## covered again. Stamps, flows, surges and fire all skip it (see _nb and _put).
+func raise_rect(world_rect: Rect2) -> void:
+    for i in indices_in(world_rect):
+        _put(i, NONE, 0, 0)
+        _raised[i] = 1
+        _has_raised = true
+    _dirty = true
+
+
+## True on raised dry ground.
+func is_raised(pos: Vector2) -> bool:
+    if not _has_raised:
+        return false
+    var i := _index_at(pos)
+    return i >= 0 and _raised[i] != 0
 
 
 func _put(i: int, m: int, a: int, l: int) -> void:
+    if m != NONE and _has_raised and _raised[i] != 0:
+        return
     mat[i] = m
     amt[i] = clampi(a, 0, 255)
     life[i] = clampi(l, 0, 255)

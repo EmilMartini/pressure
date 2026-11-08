@@ -132,6 +132,7 @@ func _ready() -> void:
     Props.dress(self)   # crates, barrels, fountains, braziers... that react to every element
     ambience = Ambience.new(self, theme)
     _dress_theme()      # wall decor, lights and the floor's own extras (moss, ice, lava)
+    _build_choir_platforms()
     add_child(ambience)
     Crisp.attach(self, _draw_crisp)
 
@@ -1131,6 +1132,61 @@ func _dress_theme() -> void:
                 if at != Vector2.INF:
                     ambience.add_rift(at)
                     reserve(at, 30.0)
+
+
+## The Drowned Choir's arena (section 6): raised stone ledges that stay dry while phase 2
+## floods the floor. Shock on the flood (a Galvanic Sea against the singers) charges the
+## water you stand in too; from a ledge it only reaches them. The song still pulls you
+## off. Laid on the first visit's plan, so a revisit puts them back in the same place.
+const CHOIR_LEDGE := Vector2(96, 72)
+var platforms: Array[Rect2] = []
+
+
+func _build_choir_platforms() -> void:
+    if data.type != RoomData.Type.BOSS or main == null or materials == null:
+        return
+    if String(Regions.get_region(main.region_id).get("boss_kind", "")) != "drowned_choir":
+        return
+    var hw := rect.size.x * 0.5
+    var hh := rect.size.y * 0.5
+    var want: Array[Vector2] = [Vector2(-0.55 * hw, -0.48 * hh), Vector2(0.55 * hw, -0.48 * hh),
+            Vector2(-0.55 * hw, 0.48 * hh), Vector2(0.55 * hw, 0.48 * hh), Vector2(0.0, -0.55 * hh), Vector2(0.0, 0.55 * hh)]
+    for c in want:
+        if platforms.size() >= 3:
+            break
+        var at := nearest_open(c, 56.0)
+        if at.distance_to(c) > 90.0 or _near_door(at, 170.0):
+            continue
+        # On the 6 px material grid, so the dry edge is exactly the drawn lip.
+        var tl := rect.position + ((at - CHOIR_LEDGE / 2.0 - rect.position) / float(Materials.CELL)).round() * float(Materials.CELL)
+        var r := Rect2(tl, CHOIR_LEDGE)
+        var clash := false
+        for o in platforms:
+            if o.grow(60.0).intersects(r):
+                clash = true
+        if clash:
+            continue
+        platforms.append(r)
+        materials.raise_rect(Rect2(global_position + r.position, r.size))
+        reserve(r.get_center(), 60.0)
+    if platforms.is_empty():
+        return
+    var layer := LedgeLayer.new()
+    layer.rects = platforms
+    layer.name = "ChoirLedges"
+    layer.z_index = -1   # over the material layer (an earlier sibling), under bodies
+    add_child(layer)
+    if main.autotest:
+        print("[CHOIR-LEDGES] %d ledges %s" % [platforms.size(), str(platforms.map(func(q): return q.get_center().round()))])
+
+
+## True on one of the Choir's ledges.
+func on_platform(pos: Vector2) -> bool:
+    var lp := pos - global_position
+    for r in platforms:
+        if r.has_point(lp):
+            return true
+    return false
 
 
 ## A random open spot clear of doors, keep zones, puzzle pieces and props, or INF.
@@ -2166,6 +2222,31 @@ class IceSheet extends Sprite2D:
         _cursor = 0 if end >= idx.size() else end
         if changed:
             tex.update(img)
+
+
+## The Choir's ledges: pale dressed stone with a dark front face and a cast shadow, so they
+## read as raised and dry against the dark floodwater (placeholder art drawn in code).
+class LedgeLayer extends Node2D:
+    var rects: Array[Rect2] = []
+
+    func _draw() -> void:
+        var top := Color(0.56, 0.60, 0.60)
+        var face := Color(0.24, 0.27, 0.29)
+        var seam := Color(0.40, 0.44, 0.45)
+        for r in rects:
+            draw_rect(Rect2(r.position + Vector2(6, 14), r.size), Color(0, 0, 0, 0.45))   # shadow on the water
+            draw_rect(Rect2(r.position.x, r.end.y - 12.0, r.size.x, 12.0), face)            # front face
+            var t := Rect2(r.position, Vector2(r.size.x, r.size.y - 12.0))
+            draw_rect(t, top)
+            # Dressed blocks: two courses, offset joints.
+            var mid := t.position.y + t.size.y * 0.5
+            draw_line(Vector2(t.position.x, mid), Vector2(t.end.x, mid), seam, 2.0)
+            for k in [0.33, 0.66]:
+                var x: float = t.position.x + t.size.x * float(k)
+                draw_line(Vector2(x, t.position.y), Vector2(x, mid), seam, 2.0)
+            draw_line(Vector2(t.position.x + t.size.x * 0.5, mid), Vector2(t.position.x + t.size.x * 0.5, t.end.y), seam, 2.0)
+            draw_line(t.position + Vector2(2, 2), Vector2(t.end.x - 2, t.position.y + 2), Color(0.78, 0.82, 0.80), 2.0)   # lit top edge
+            draw_rect(r, Color(0.05, 0.06, 0.07), false, 2.0)
 
 
 ## Dry grass: tufts over a thin oil film. A tuft whose oil is gone (burnt, eaten) is char.

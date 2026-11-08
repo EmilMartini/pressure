@@ -748,11 +748,16 @@ code). Parts: *Drowned singers* (always wet; shock on them is Chain Lightning, w
 wears them; a Galvanic Sea or Hurricane tears them off) covering the *Great bell* (takes
 1.6x). Phase 1: wet bolt fans and songs that pull (a marked ring for 1.1 s, then 1.8 s of
 pull toward the bell). Phase 2: the water rises (water lands round the arena every 0.7
-s). Phase 3: the bell cracks, the singers fall for good, and it rings in full-circle
+s). Three raised stone ledges (96 x 72 px, near the corners, off the doors) stay dry the
+whole fight: no material lands or flows onto them, so the player can shock the flood into
+a Galvanic Sea from a ledge without standing in it, but the song still pulls them off.
+Phase 3: the bell cracks, the singers fall for good, and it rings in full-circle
 shockwaves (wind-up ring first; a stagger holds them). Every attack uses the hostile
 signature. Lessons `region:drowned_cistern` (Storm Seeker) and `boss:drowned_choir` (Storm
 Pike), placeholder lines. Far-side gate "Cistern grate" (placeholder name). Bots print
-`[HAZARD] ... zapped=N` (water cells charged by shock) and `[BOSS-MOVE]` song and ring lines.
+`[HAZARD] ... zapped=N` (water cells charged by shock), `[BOSS-MOVE]` song and ring lines,
+`[CHOIR-LEDGES]` (where the ledges went) and `[CHOIR-FLOOD]` (phase 2 seconds, on a
+ledge, on charged water).
 
 **Rotting Gardens (BUILT, phase 5 batch 1, 2026-11-08).** Theme `garden` (bog floor,
 slime walls, yellow trees, murky water; Dungeon Crawl tiles only). Hazards:

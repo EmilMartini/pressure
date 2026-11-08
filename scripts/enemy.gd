@@ -1951,6 +1951,8 @@ const SONG_PULL := 70.0
 var _song_warn := 0.0
 var _song_t := 0.0
 var _flood_t := 0.0
+var _flood_log := Vector3.ZERO   # bots: phase 2 seconds, on a ledge, on charged water
+var _flood_logged := false
 
 
 func _think_choir(delta: float, target: Player, dir: Vector2, dist: float, mult: float) -> Vector2:
@@ -1995,6 +1997,20 @@ func _tick_choir(delta: float) -> void:
                 var to: Vector2 = global_position - p.global_position
                 if to.length() <= SONG_R and to.length() > radius + 30.0:
                     (p as CharacterBody2D).move_and_collide(to.normalized() * SONG_PULL * delta)
+    if BossBody.log_enabled and not _flood_logged:
+        if _phase == 2:
+            var rm := Room.here
+            for p in get_tree().get_nodes_in_group("players"):
+                if is_instance_valid(p) and p.alive and p is Player:
+                    _flood_log.x += delta
+                    if rm != null and is_instance_valid(rm) and rm.on_platform(p.global_position):
+                        _flood_log.y += delta
+                    if (p as Player).hazard_mat == Materials.CHARGED:
+                        _flood_log.z += delta
+                    break
+        elif _phase >= 3 and _flood_log.x > 0.0:
+            _flood_logged = true
+            print("[CHOIR-FLOOD] phase2=%.1fs on_ledge=%.1fs on_charged=%.1fs" % [_flood_log.x, _flood_log.y, _flood_log.z])
     if _phase == 2:
         _flood_t -= delta
         if _flood_t <= 0.0:

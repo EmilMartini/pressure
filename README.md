@@ -623,7 +623,8 @@ line (game seconds, phase two, max health, the arena output it was sized from) a
 per body part). During the fight `[BOSS-PHASE]`, `[STAGGER]` and `[BOSS-CHAIN]` lines log
 phases, staggers, and each product on a part, plus torn and re-formed armour; `[BOSS-MOVE]`
 logs the Hive Mother's eruptions, the Storm Warden's recharge strikes and the Void Herald's
-theft and shard volleys; `[ARENA]` logs quench vat bursts; `[MUSIC]` logs the boss music
+theft and shard volleys; `[CHOIR-LEDGES]` and `[CHOIR-FLOOD]` log the Drowned Choir's dry
+ledges and the player's phase 2 seconds on a ledge and on charged water; `[ARENA]` logs quench vat bursts; `[MUSIC]` logs the boss music
 per phase. Real-floor boss probes (the storm build at each boss's depth):
 `--build=storm --start-floor=2 --route=ossuary_gate,rust_ruins --one-floor` (Hive Mother),
 `--start-floor=3 --route=ossuary_gate,rust_ruins,frostvault --one-floor --secs=900` (Storm

@@ -1634,6 +1634,56 @@ timestamps across every bot run of the phase.
 - **Acceptance:** each region has its profile, hazards and boss, and bots clear it inside its
   time budget.
 
+#### Phase 5 batch 1, part 3 (2026-11-08): Choir ledges and fps
+
+Weekly usage 38% at the start and 38% before the push. `VERSION` is `2026.11.08-p5c`.
+
+**Built: the Choir's ledges** (BS). Three raised stone ledges, 96 x 72 px, in the
+Choir's arena (`Room._build_choir_platforms`), placed near the corners and kept 170 px
+off the doors; drawn in code as pale dressed stone with a dark front face and a cast
+shadow (placeholder art). `Materials.raise_rect` marks their cells: `_put` refuses any
+material there and `_nb` treats them as an edge, so water, gas, fire and charge never
+land on or flow onto them. The flood still matters: shocking it charges the water you
+stand in (4/s, half with your own shock), and the song still pulls you off a ledge.
+Bots print `[CHOIR-LEDGES]` and `[CHOIR-FLOOD]` (phase 2 seconds, on a ledge, on charged
+water).
+
+**Fight length on real floors** (storm build, `--start-floor=2
+--route=ossuary_gate,drowned_cistern --one-floor --secs=900`, health share 2.0):
+
+| Seed | Choir | Phase 2 | On a ledge | On charged water | Clear checks |
+|---|---|---|---|---|---|
+| 1 | 29.4 s | 11.9 s | 0.0 s | 0.0 s | boss, fusion, spawn PASS |
+| 2 | 44.2 s | 19.6 s | 0.9 s | 1.1 s | boss (gate open), fusion, spawn PASS |
+| 3 | 30.0 s | 11.7 s | 0.0 s | 0.5 s | boss, fusion, spawn PASS |
+
+Inside the 25 to 50 s target (it was 29.6 to 40.1 s). The bot doesn't seek the ledges,
+so these numbers say the fight still works, not that humans will use the ledges.
+
+**Frame rate, real window** (nothing else of ours running; `--perf`, means of the
+per-second lines):
+
+| Run | Mean fps | Min | Draw calls |
+|---|---|---|---|
+| Section 0 command (`--short --arsenal --gear`) | 97.5 | 85 | 470 |
+| Choir, `--boss-only`, storm build, seed 2 | 83.3 | 56 | 1,870 |
+| Hive Mother, same flags | 81.2 | 55 | 1,850 |
+| Choir, `--boss-only`, no build (bot barely fires) | 99.7 | 98 | 1,660 |
+
+The Choir is no worse than the Hive Mother. The arena alone, bell, singers and ledges
+included, holds 100 fps; the drop comes with the floor-2 storm build firing: effect
+particles sit at the 1,000 cap, primitives reach 25k to 35k and process time doubles
+(10 to 20 to 36 ms). That's a late-build effects budget question for every boss, not a
+Choir problem. Worth a dedicated pass (particle cap per build, chain lightning draws).
+
+**Section 0 checks:** load check clean; idle six-gun bot died in the Ossuary Gate
+(t=39); fusion probe cleared the Ossuary (Brute King 17.4 s) and reached floor 2; 0
+script errors in every log; the real save, settings, mastery and `runs.jsonl` kept their
+timestamps.
+
+**Left:** the Cistern's sluice (section 8), not started (budget); the late-build effects
+fps pass above; a bot that uses the ledges.
+
 #### Phase 5 batch 1, part 2 (2026-11-08): the Drowned Cistern
 
 Weekly usage 38% at the start and 38% before the push. `VERSION` is `2026.11.08-p5b`.
@@ -1871,7 +1921,8 @@ set a stop at 39%, and the Drowned Choir (a new boss) did not fit in what was le
 | BQ | Gardens' way down until batch 2 | A stand-in edge Gardens > Frostvault; drop it when Pitch Mire or Abattoir is built |
 | BP | Batch 1 when the budget is short | The Gardens ship alone; the Cistern's theme and hazards wait dormant in the tree |
 | BR | Drowned Choir chain | Singers are innately wet: shock on them is Chain Lightning (12% wear), any fusion 15%, Galvanic Sea or Hurricane tears them at once. Health share 2.0 |
-| BS | Choir platforms | Not built: phase 2 floods the arena but there are no raised platforms yet; the player dodges the water instead |
+| BS | Choir platforms | Three 96 x 72 px raised ledges near the corners, 170 px off the doors; nothing lands or flows on them; the song can pull you off |
+| BV | Late-build fps | Accepted for now: boss fights with the floor-2 storm build run about 81 to 83 fps (Choir and Hive Mother alike); the arenas alone hold 100 |
 | BT | Choir in the floor-number boss cycle | Not added to `SpawnTable.BOSSES` (that would change which boss appears past floor 5); the region picks it through `boss_kind` |
 | BU | Cistern lesson rewards | Region: Storm Seeker. Boss: Storm Pike |
 
