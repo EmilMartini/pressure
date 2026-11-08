@@ -699,7 +699,8 @@ room) from a fixed seed and saves `autotest/clarity_<region>_<tag>_<n>.png` at t
 with a `[CLARITY]` line: the share of screen pixels the player's own effects change, enemy-to-floor
 luminance contrast, and on-screen text items (design doc "Clarity pass"). `--clarity-spitters=N` adds N spitters and
 `[CLARITY-SHOTS]` lines (enemy shot contrast against the floor and against own effects). `--clarity-parts` adds a
-`[CLARITY-PARTS]` line (each kind of own effect hidden alone); `--floor-flat=sat,contrast,mid`
+`[CLARITY-PARTS]` line (each kind of own effect hidden alone, plus `noise=`: what moves with nothing
+hidden), a `[CLARITY-CELLS]` line (cells per floor material) and `<shot>_mask.png` (red: own effects, blue: noise); `--floor-flat=sat,contrast,mid`
 tries other floor flattening values. Every bot run prints
 `[SPAWN-MOVED]` when a player walks onto a spawn marker and it moves, and `[SPAWN-CHECK] PASS/FAIL`
 at the end (no body finished emerging within 60 px of a player).

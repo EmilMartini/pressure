@@ -1374,6 +1374,7 @@ uniform float seed = 0.0;
 uniform vec2 origin = vec2(0.0);
 uniform ivec2 grid = ivec2(1, 1);
 uniform float fill = 0.15;   // clarity pass: a field's inside, against its full rim
+uniform float ice_fill = 0.15;   // ice's inside: 0 on light floors, where an ice sheet already shows it
 const int CELL = {CELL};
 const vec4 COLS[{N}] = {COLS};
 const vec4 FIRE_COLS[3] = {FIRE_COLS};
@@ -1405,6 +1406,17 @@ bool in_rect(ivec2 p, int x, int y, int w, int h) {
 
 vec4 over(vec4 acc, vec4 c) {
     return vec4(c.rgb * c.a + acc.rgb * (1.0 - c.a), c.a + acc.a * (1.0 - c.a));
+}
+
+// An ice cell with a neighbour that is not ice: the edge of a sheet.
+bool ice_rim(ivec2 c) {
+    for (int k = 0; k < 4; k++) {
+        ivec2 n = c + ivec2(k == 0 ? -1 : (k == 1 ? 1 : 0), k == 2 ? -1 : (k == 3 ? 1 : 0));
+        if ((cell_at(n).x & 15) != {ICE}) {
+            return true;
+        }
+    }
+    return false;
 }
 
 bool liquid(int m) {
@@ -1486,7 +1498,10 @@ void fragment() {
                 sum += vec3(0.4, 0.62, 0.1) * 0.08;
             }
         } else if (m == {ICE}) {
-            if ((nd.x & 32) != 0) {
+            // Frostvault clarity: one shock charges a whole ice sheet (thousands of cells),
+            // and a soft glow on every one of them whitened the pale floor. Charged ice
+            // glows only on its own cell, at the sheet's rim and a sparse twinkle inside.
+            if ((nd.x & 32) != 0 && own && ((h & 15) == 0 || ice_rim(n))) {
                 sum += vec3(0.8, 0.9, 1.0) * 0.16;
             }
         }
@@ -1539,7 +1554,9 @@ void fragment() {
         } else if (m == {CHARGED}) {
             acc = over(acc, (t + h) % 3 == 0 ? vec4(1.0, 1.0, 1.0, 0.7) : col);
         } else if (m == {ICE}) {
-            if ((d.x & 32) != 0) {
+            // Charged ice strobes at the sheet's rim and in a sparse twinkle inside (a shock
+            // charges whole sheets; see the glow layer).
+            if ((d.x & 32) != 0 && ((h & 15) == 0 || ice_rim(c))) {
                 acc = over(acc, (t + h) % 2 == 0 ? vec4(1.0, 1.0, 0.8, 0.75) : col);
             } else {
                 acc = over(acc, col);
@@ -1597,7 +1614,7 @@ void fragment() {
             }
         }
         if (!rim) {
-            acc *= fill;
+            acc *= m == {ICE} ? ice_fill : fill;
         }
     }
     // Gas of the neighbours drifts a pixel into this cell's border.
@@ -1652,6 +1669,10 @@ func _make_draw_material(glow: bool) -> ShaderMaterial:
     m.set_shader_parameter("data", _ttex)
     m.set_shader_parameter("origin", _origin)
     m.set_shader_parameter("grid", Vector2i(_w, _h))
+    if Themes.current in EnemyProjectile.LIGHT_FLOOR_THEMES:
+        # Frostvault clarity: the frozen floor's ice sheets already draw their insides; the
+        # grid adds only the rims of ice, so a shocked or frosted sheet is not drawn twice.
+        m.set_shader_parameter("ice_fill", 0.0)
     return m
 
 

@@ -122,9 +122,12 @@ func _measure(name_: String) -> Array:
     tree.paused = true
     var full: Image = await _frame()
     full.save_png("res://autotest/%s.png" % name_)
+    var again: Image = null
     if OS.get_cmdline_user_args().has("--clarity-parts"):
         # Which of the own effects carries the change: each category hidden alone.
         var parts := []
+        again = await _frame()   # nothing hidden: what moves while paused
+        parts.append("noise=%.1f" % _intensity(full, again))
         for cat in ["materials", "fx", "clouds", "shots"]:
             var only: Array[CanvasItem] = []
             _hide_own(main, only, cat)
@@ -133,6 +136,15 @@ func _measure(name_: String) -> Array:
                 ci.visible = true
             parts.append("%s=%.1f" % [cat, _intensity(full, img)])
         print("[CLARITY-PARTS] %s %s" % [name_, " ".join(parts)])
+        # Which floor materials are down: cells per material, and how many of them are rim.
+        var mats := main.current.materials
+        var names := ["none", "oil", "water", "fire", "ice", "poison", "acid", "blood", "steam", "charged", "ash", "dry_blood", "toxic"]
+        var cells := {}
+        for i in mats._n:
+            var m := int(mats.mat[i])
+            if m != 0:
+                cells[names[m]] = int(cells.get(names[m], 0)) + 1
+        print("[CLARITY-CELLS] %s %s" % [name_, cells])
     var shots := _shots_on_screen(full)
     var no_shot_full: Image = null
     if not shots.is_empty():
@@ -162,6 +174,8 @@ func _measure(name_: String) -> Array:
     room.enemies.visible = true
     for c in hidden:
         c.visible = true
+    if again != null:
+        _mask(full, calm, again).save_png("res://autotest/%s_mask.png" % name_)
     # Own effects: pixels that change by more than 0.1 in any channel (every 2nd pixel).
     var a := full.get_data()
     var b := calm.get_data()
@@ -277,6 +291,24 @@ func _disc_diff(a_img: Image, b_img: Image, shots: Array) -> Vector2:
         sum += Vector2(diff / float(maxi(1, px)), float(strong) / float(maxi(1, px)))
         _per_shot.append("%.2f:%.3f" % [bg / float(maxi(1, px)), diff / float(maxi(1, px))])
     return sum / float(maxi(1, shots.size()))
+
+
+## Red: pixels the own effects change by more than 0.1; blue: pixels that move with nothing hidden.
+static func _mask(full: Image, calm: Image, again: Image) -> Image:
+    var w := full.get_width()
+    var h := full.get_height()
+    var out := Image.create(w, h, false, Image.FORMAT_RGBA8)
+    var a := full.get_data()
+    var b := calm.get_data()
+    var c := again.get_data()
+    for y in h:
+        for x in w:
+            var o := (y * w + x) * 4
+            var own := maxi(absi(a[o] - b[o]), maxi(absi(a[o + 1] - b[o + 1]), absi(a[o + 2] - b[o + 2]))) > 25
+            var mv := maxi(absi(a[o] - c[o]), maxi(absi(a[o + 1] - c[o + 1]), absi(a[o + 2] - c[o + 2]))) > 25
+            var g := a[o + 1] / 4
+            out.set_pixel(x, y, Color8(255 if own else g, g, 255 if mv else g))
+    return out
 
 
 static func _lum(d: PackedByteArray, o: int) -> float:

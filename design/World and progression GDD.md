@@ -1120,6 +1120,52 @@ Left:
 - Not measured: whether text and badges are now too sparse for a new player (for example, an
   unaimed enemy's resistances can't be seen at a glance).
 
+#### Frostvault clarity (2026-11-08)
+
+Phase 4 measured own effects on 54% of the Frostvault screen against 14% in the Rust Ruins.
+**Cause:** the frozen floor is one big ice sheet on the Materials grid (about 30,000 cells,
+drawn by `Room.IceSheet` while still). One shock charges up to 2,500 connected ice cells at a
+time. Each charged cell then (a) strobed near-white and added a soft glow into its
+neighbours (the glow layer, which the 15% inside never touched), and (b) lost its "still"
+flag for good, so the grid drew the whole sheet a second time over the sheet's own texture.
+With the storm build the sheet was almost always charged, and the field layer changed a whole
+rectangle of floor. Steam and gas were small next to it (`[CLARITY-CELLS]`).
+
+**Fix (drawing only, gameplay unchanged):**
+- Charged ice strobes and glows only on its own cell, at the sheet's rim and on 1 cell in 16
+  inside (a sparse twinkle). The charge, its spread and its damage are unchanged.
+- On light floors (`EnemyProjectile.LIGHT_FLOOR_THEMES`, so frozen) the grid draws only the
+  rim of ice (`ice_fill` 0 in the Materials shader). The sheet's texture already shows the
+  inside. Other floors keep the 15% inside.
+
+**Measured** with `--clarity-shot --clarity-spitters=8 --clarity-parts`, storm build, seeds 7
+and 11, two runs each (the same seed varies from run to run in a real window): 12 frames
+before, 12 after.
+
+| Scene | Own effects, % of screen | Own effects, mean change | Enemy contrast, per pixel / means | Spitter shot vs floor / vs own effects |
+|---|---|---|---|---|
+| Frostvault | 60.3 -> 25.0 | 18.6 -> 6.5 | 0.291 / 0.192 -> 0.275 / 0.183 | 0.408 / 0.408 -> 0.386 / 0.381 |
+| Rust Ruins | 8.4 -> 7.1 | 4.4 -> 3.8 | 0.257 / 0.251 -> 0.324 / 0.316 | 0.371 / 0.367 -> 0.365 / 0.349 |
+| Rotting Gardens | 12.1 -> 11.2 | 5.7 -> 5.4 | 0.336 / 0.331 -> 0.326 / 0.319 | 0.402 / 0.389 -> 0.379 / 0.365 |
+
+Rust Ruins and Gardens "before" are seed 7 only (3 frames). Enemy and shot contrast are
+measured against the floor with own effects hidden. The fix can't change them, so their
+movement is frame noise (which enemies and shots are on screen, over which part of the floor).
+Shots still read about the same against own effects as against bare floor.
+The glow fix alone took Frostvault to 52.5% and a mean change of 12.6; the rim-only ice took
+it the rest of the way. One shot caught as it despawned (contrast 0.02) is left out of the
+shot averages. fps, real window, Frostvault storm run, 90 s, alternating: old 67.9 and 69.1
+(min 39/30), new 67.8 and 67.9 (min 35/38).
+
+`--clarity-parts` now also prints `noise=` (the change between two frames with nothing hidden:
+GPU particles and shader time keep moving while paused) and `[CLARITY-CELLS]` (cells per
+floor material), and saves `<shot>_mask.png` (red: changed by own effects, blue: moves
+anyway). Noise ran 0.1 to 7.6 in Frostvault. It inflates every own-effects number a little,
+and the per-category `fx`, `clouds` and `shots` numbers there are mostly noise. About a
+quarter of the screen is left, mostly real effects (lightning, clouds, particles) plus that
+noise. Captures: `autotest/clarity_frostvault_before7_3.png`, `clarity_frostvault_after27_3.png`
+and their masks.
+
 ### Phase 1: The Hollow, part 1 (BUILT 2026-11-07, lines wait for approval)
 
 - **Goal:** a walkable hub with people in it, and features that arrive with them.
