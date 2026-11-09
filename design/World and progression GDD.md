@@ -1721,6 +1721,147 @@ kept their timestamps; real-window runs never took focus.
 - `--perf-hide` (hide one group of canvas items per second, render CPU and draw calls
   each) was a one-off. The patch is in the session notes folder if a later pass needs it.
 
+#### Art direction (2026-11-09): the art pass showcase
+
+Emil found the game flat (route doors are holes, the Hollow is empty rooms). This pass
+shows what engine work alone does with the existing art, in two places: Rust Ruins rooms
+(theme `ruins`) and the Gatewarden's room in the Hollow (the Stair). Isaac and Ori are the
+bar for principles only (light, depth, dressed rooms), never their look. Code:
+`scripts/art_pass.gd` (`ArtPass`), hooks in `post_fx.gd`, `room.gd` and `hub.gd`. Off with
+the Options "Lighting" toggle (Settings `lighting`) or `--no-art`. Weekly usage 42% at the
+start and 43% before the push. `VERSION` 2026.11.09-art1.
+
+**What it does.**
+- **Lighting in PostFx, not Light2D.** The PostFx pass multiplies the world layer by an
+  ambient colour plus up to 16 point lights (`ArtPass.Light` nodes in group `art_lights`
+  and one per player), capped at `cap`. Each light also adds a faint `scatter` of its colour
+  so pools show on the dark floor. Lights flicker on game time (they pause with the tree).
+  This beats Light2D here: one pass and no extra draw calls, it runs in the Compatibility
+  renderer and WebGL2 (checked in a local Web export: the hub lit, no console errors), and
+  the Crisp layer (hostile shots, hostile edges, world text) sits above PostFx, so the
+  hostile signature is never lit, darkened or graded.
+- **Rest mood, fight clarity.** `ArtPass.fight` eases from 0 to 1 in about a second while
+  the Room's fight runs. At rest the room is dark, tinted and graded, the floor gets its
+  colour back (`rest_floor` lifts `Room.FLAT_FLOOR` saturation), and the sun beams show.
+  In a fight the ambient goes to 1, the light cap to 1, grade, vignette and floor go back to
+  the clarity-pass values, and the scatter and beams fade out. Fights read as before. Rooms
+  still look dressed (walls, doorways, clutter).
+- **Walls:** the top wall shows a dark front face under a lit lip. The floor darkens towards
+  every wall (contact shadow).
+- **Doorways:** stone jambs either side and a lintel shadow. Light spills through: a soft
+  fan in the region's spill colour when open, a dim red one when locked, and a light node in
+  the opening.
+- **Props by rule** (`RoomDressing.plan`): about one cluster per 70 px of wall, in a band 14
+  to 74 px from the wall, weighted to the corners (rubble 42%, bones 16%, moss 24%, stains
+  18%). Plus 3 to 5 big floor stains and 4 to 7 cracks. Nothing on a doorway, a reserved
+  spot or a blocker (`Room.spot_ok_loose`). Broken DCSS columns stand in 3 of 4 corners.
+  Floor clutter draws under the materials grid, so own effects still draw over it.
+- **Ruins extras:** wall torches between the decor slots and on the side walls. Up to 3
+  sun shafts through the broken ceiling: a light pool, grass in it, a faint additive beam
+  with dust.
+- **Foreground:** roots hang over the top wall and dark pillars rise over the bottom
+  corners, above bodies, with 12% parallax.
+- **The Stair (Gatewarden's room):** the Gate as a building (stone towers with cold lamps, a
+  lintel with a keystone, a raised portcullis, cold light rising out of the stairwell), a
+  hearth brazier with a stone ring and firewood, a records table with the open ledger,
+  books and a candle, a weapon rack (DCSS weapon icons), banners, a runner to the Gate,
+  barrels, crates and a lantern. The hearth, table and towers have collision. The whole hub
+  uses the `hollow` light recipe.
+
+**Recipe per region** (`ArtPass.RECIPES`; ruins values):
+
+| Key | Ruins | Meaning |
+|---|---|---|
+| `ambient` | 0.42, 0.54, 0.58 | light outside any lamp at rest (cool, teal) |
+| `cap` | 1.5 | brightest a lamp can make a pixel at rest (1.0 in a fight) |
+| `lift` / `gain` | +0.035 blue-green in the shadows / 1.07, 1.0, 0.86 | grade at rest |
+| `vignette` | 1.05 | rest (0.75 in a fight) |
+| `player` / `player_fight` | warm, 340 px, 0.8, scatter 0.04 / 540 px, flat | the light the player carries |
+| `fire` / `spill` / `shafts` | orange / green-cyan / amber | torches and braziers, doorways, sun pools |
+| `rest_floor` | 0.95, 0.9, 0.10 | FLAT_FLOOR sat, contrast, mid at rest |
+| `moss`, `stone`, `bone`, `stain`, `root` | | clutter colours |
+
+**Measured** (`--clarity-shot --clarity-spitters=8 --clarity-parts --clarity-ab`, storm
+build, Rust Ruins arena, seeds 7, 11 and 23). `--clarity-ab` measures the same paused frame
+twice, with the pass on and with it off (`ArtPass.suppress`), so the pair differs only by
+the pass. Unpaired runs were useless here: the same seed gave enemy contrast 0.23 one run and
+0.29 the next. The first capture after the pause reads higher on own effects (GPU particles
+and grain still moving), so both orders were run (`--clarity-ab-off-first`): 6 runs, 18
+frame pairs.
+
+| | Pass on | Pass off |
+|---|---|---|
+| Own effects, % of screen | 7.95 | 8.30 |
+| Own effects, mean change | 3.63 | 3.88 |
+| Enemy contrast, per pixel / means | 0.254 / 0.243 | 0.255 / 0.244 |
+| Shot contrast vs floor / vs own effects | 0.390 / 0.370 | 0.392 / 0.373 |
+
+The scatter then fades out in fights too. Two more pairs: shots 0.436 / 0.418 against
+0.438 / 0.419, and enemy contrast 0.276 / 0.337 against 0.254 / 0.328.
+
+fps, real window (`tools/bot_window.sh`), the section 0 perf command in the Rust Ruins
+(`--start-floor=2 --route=ossuary_gate,rust_ruins --seed=2`), alternating: pass on 98.1 and
+96.9 mean fps (1% low 42.7 and 39.2), pass off 98.2 and 97.2 (42.3 and 36.5). That's the
+same within noise. The pass adds no draw calls in a fight beyond a few static nodes per room.
+
+**What didn't work** (each tried in the paired test):
+- A dark ambient in fights lowered enemy contrast by about 9%: darkness multiplies a body's
+  contrast with the floor.
+- Lights above 1 (cap 1.7) amplified own effects in their pools: own effects went from 7%
+  to 11% of the screen, even with no darkness at all.
+- Keeping saturated bright pixels at full light ("emissive") made own fire and sparks stand
+  out more against a darker floor.
+- Any grade tint in a fight added 1 to 3 points of own effects: palette flips at the
+  ENDESGA boundaries.
+- A stronger vignette multiplies the screen edges, where enemies are.
+- Real-time flicker made whole palette bands flip between two captures of a paused frame.
+
+Hence: mood at rest, clarity values in a fight.
+
+**Camera and scale** (not shipped, numbers only): the run camera at zoom 1.3 shows 985 x 554
+world px at 1280 x 720. That is 68% of a normal room (1120 x 720) and 44% of a large one. At
+1.6, characters are 23% bigger (about 32 instead of 26 screen px), but the view is 800 x 450:
+45% of a normal room and 29% of a large one. The vertical half-view is 225 px, so spitters on
+their usual 300 px ring and most ranged enemies would fire from off screen. That changes the
+game, so it needs a design call and a bot run before it ships.
+
+**Screenshots** (`autotest/`, local):
+- Rust Ruins at rest, old code: `clarity_rust_ruins_artbefore_rest.png`.
+- Rust Ruins at rest, this build: `clarity_rust_ruins_before_rest.png` (`--no-art`) and
+  `clarity_rust_ruins_after_rest.png`.
+- By the top wall and doorway: `clarity_rust_ruins_before_rest_wall.png` and
+  `clarity_rust_ruins_after_rest_wall.png`.
+- Fight, the same paused frame: `clarity_rust_ruins_fin7_2_noart.png` and
+  `clarity_rust_ruins_fin7_2.png`. Old-code fight: `clarity_rust_ruins_artbefore_1..3.png`.
+- The Gatewarden's room: `hub_gatewarden_artbefore.png` and `hub_gatewarden_artafter.png`.
+  The Gate: `hub_gate_artbefore.png` and `hub_gate_artafter.png`.
+
+**Rolling it out to every region:**
+1. Add a recipe to `ArtPass.RECIPES` under the theme key (crypt, frozen, forge, void,
+   garden, cistern, sanctum). Start from `ruins` and change only the colours: a cool or warm
+   `ambient` (0.4 to 0.55 in its darkest channel), `fire` and `spill` from the theme's
+   light, and `lift` / `gain` towards the region's complement. Keep `player_fight` and the
+   fight rules as they are.
+2. Themes with their own wall lights (crypt, cistern torches; forge braziers) already get
+   light nodes in `light_room`. Set `torches` false for them. Give lava, rifts and drains
+   lights there too (forge: lava pools as `fire` lights; void: rifts in violet).
+3. Per-region extras go where the ruins shafts are: frozen gets cold glints and pale
+   skylights, forge gets ember glow from floor cracks, void gets violet rift pools, garden
+   gets spore-pod glows, cistern gets drain spill.
+4. Light floors (Frostvault) need a lower `rest_floor` contrast: the clarity pass's
+   light-floor rule still holds in fights.
+5. For each region, run the paired test (`--clarity-ab`, both orders, 3 seeds) and the
+   perf command in that region. A recipe ships only if its fight numbers match the pass
+   off.
+6. Doorway structures are generic (`RoomDressing._draw_jambs`). Boss stairs and the route
+   doors at a floor's end should get the same treatment as the Gate (towers, lintel, spill).
+   That is the next art-pass task.
+
+**Left:** stairs and route doors at a floor's end are still the old icons. Characters have
+no squash or stretch (NPCs already breathe). Only the Stair room in the Hollow is dressed;
+the rest of the hub only gets the light. A cohesive art pack (`design/Art pack research.md`)
+would multiply all of this.
+
 #### Phase 5 batch 1, part 3 (2026-11-08): Choir ledges, fps and the Cistern's sluice
 
 Weekly usage 38% at the start and 38% before each push. `VERSION` is `2026.11.08-p5c`.

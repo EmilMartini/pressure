@@ -68,6 +68,17 @@ uniform float heat = 0.0;
 // Small lens rifts: xy = screen UV, z = radius in screen heights, w = strength (0 = off).
 uniform vec4 rift0 = vec4(0.0);
 uniform vec4 rift1 = vec4(0.0);
+// Art pass lighting (ArtPass): the world times ambient + point lights, a faint additive
+// scatter inside each light, saturated bright pixels kept (emissive), then a grade.
+uniform float light_on = 0.0;
+uniform vec3 ambient = vec3(1.0);
+uniform vec4 light_p[16];   // xy screen uv, z radius in screen heights, w energy
+uniform vec4 light_c[16];   // rgb colour, a scatter
+uniform float light_k[16];  // falloff power: (1 - x^k)^2, 2 = soft pool, 4+ = flat with an edge
+uniform vec3 grade_lift = vec3(0.0);
+uniform float emit_k = 0.0;
+uniform float light_cap = 1.0;   // lights reveal the dark; above 1 they would amplify own effects
+uniform vec3 grade_gain = vec3(1.0);
 
 // The centre of the grid cell holding `uv`.
 vec2 cell_of(vec2 uv, vec2 cell) {
@@ -133,6 +144,31 @@ void fragment() {
     } else {
         col = texture(screen_tex, cuv).rgb;
     }
+    if (light_on > 0.5) {
+        vec3 lit = ambient;
+        vec3 add = vec3(0.0);
+        for (int i = 0; i < 16; i++) {
+            vec4 lp = light_p[i];
+            if (lp.z <= 0.0) {
+                continue;
+            }
+            vec2 ld = (cuv - lp.xy) * aspect;
+            float x = clamp(length(ld) / lp.z, 0.0, 1.0);
+            float f = 1.0 - pow(x, max(light_k[i], 1.0));
+            f *= f;
+            lit += light_c[i].rgb * lp.w * f;
+            add += light_c[i].rgb * light_c[i].a * f;
+        }
+        // Emissive pixels (saturated and bright) keep at least full light. Off by default:
+        // it made the player's own fire and sparks stand out more against a darker floor.
+        if (emit_k > 0.0) {
+            float mx = max(col.r, max(col.g, col.b));
+            float mn = min(col.r, min(col.g, col.b));
+            float emit = smoothstep(0.78, 0.95, mx) * smoothstep(0.25, 0.5, mx - mn) * emit_k;
+            lit = mix(lit, max(lit, vec3(1.0)), emit);
+        }
+        col = col * min(lit, vec3(light_cap)) + add;
+    }
     // Bloom from taps on the cell centres around this cell: the glow is made of pixels.
     float bk = bloom_strength * bloom_gain + bloom_boost;
     if (bk > 0.001) {
@@ -154,6 +190,9 @@ void fragment() {
     float l = dot(col, vec3(0.299, 0.587, 0.114));
     col = mix(vec3(l), col, saturation);
     col = (col - 0.5) * contrast + 0.5;
+    if (light_on > 0.5) {
+        col = col * grade_gain + grade_lift * (1.0 - clamp(col, 0.0, 1.0));
+    }
     vec2 d = cuv - vec2(0.5);
     col *= 1.0 - smoothstep(0.35, 1.0, length(d * vec2(1.0, 1.25)) * 1.25) * vignette;
     col += (hash(cid + vec2(floor(TIME * 12.0) * 7.0, 0.0)) - 0.5) * grain;
@@ -327,6 +366,7 @@ func _process(_delta: float) -> void:
             _view = size
             _mat.set_shader_parameter("view_size", size)
         _update_rifts(vp, size)
+        _update_lights(vp, size)
     # Real time, unaffected by Engine.time_scale (hit-stop).
     var now := Time.get_ticks_usec()
     var dt := minf(float(now - _last_us) / 1000000.0, 0.1)
@@ -347,6 +387,32 @@ func _process(_delta: float) -> void:
     if _heat_t > 0.0:
         _heat_t = maxf(0.0, _heat_t - dt)
         _mat.set_shader_parameter("heat", _heat_amt * _heat_t / _heat_life)
+
+
+## Art pass lighting: the uniforms ArtPass hands over this frame, or lights off (and the
+## default vignette back) when no room or hub in the tree uses it.
+var _lights_on := false
+var _light_t := 0.0
+var _base_vignette := -1.0
+
+
+func _update_lights(vp: Viewport, size: Vector2) -> void:
+    if _base_vignette < 0.0:
+        var v: Variant = _mat.get_shader_parameter("vignette")
+        _base_vignette = 0.75 if v == null else float(v)
+    # Flicker runs on game time: it stops with the tree (pause, clarity captures).
+    if not get_tree().paused:
+        _light_t += get_process_delta_time() * Engine.time_scale
+    var u := ArtPass.frame_uniforms(get_tree(), vp, size, _light_t)
+    if u.is_empty():
+        if _lights_on:
+            _lights_on = false
+            _mat.set_shader_parameter("light_on", 0.0)
+            _mat.set_shader_parameter("vignette", _base_vignette)
+        return
+    _lights_on = true
+    for k in u:
+        _mat.set_shader_parameter(k, u[k])
 
 
 func _update_rifts(vp: Viewport, size: Vector2) -> void:

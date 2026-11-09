@@ -276,6 +276,8 @@ func _build_rooms() -> void:
         for f in [0.2, 0.8]:
             ambience.add_light(Vector2(r.position.x + r.size.x * f, r.position.y - 30.0), "torch")
     ambience.add_light(FIRE, "brazier")
+    # Art pass (art_pass.gd): light, grade and the Gatewarden's gatehouse.
+    ArtPass.dress_hub(self, ambience, ROOMS["stair"]["rect"], _station("gate")["pos"], FIRE, Player.LAYER_WALLS)
     add_child(ambience)
 
 

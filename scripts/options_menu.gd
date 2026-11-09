@@ -22,6 +22,7 @@ const ROWS := [
     { "key": "crt", "label": "CRT effect", "type": "bool" },
     { "key": "crt_intensity", "label": "CRT intensity", "type": "slider" },
     { "key": "bloom", "label": "Bloom", "type": "bool" },
+    { "key": "lighting", "label": "Lighting", "type": "bool" },
     { "key": "aim_mode", "label": "Aiming", "type": "pick", "options": ["assisted", "manual", "auto"],
         "names": ["ASSISTED", "MANUAL", "AUTO"] },
     { "key": "manual_fire", "label": "Manual fire", "type": "pick", "options": ["hold", "toggle"],

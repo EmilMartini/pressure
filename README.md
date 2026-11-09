@@ -74,6 +74,17 @@ chromatic aberration and grain) that runs on the Compatibility renderer so the w
 keeps it. Tweak the uniforms at the top of `scripts/post_fx.gd`; set `crt_curve`,
 `scanline`, `aberration` and `grain` to 0 for a clean picture.
 
+The same pass also lights the world (`scripts/art_pass.gd`, design doc "Art direction"):
+ambient times up to 16 point lights (torches, braziers, doorways, sun pools, one on each
+player) plus a region grade. It is on in the Rust Ruins and the Hollow; a fight lifts the
+darkness so it reads as before, and the mood returns when the room is clear. Options
+"Lighting" (Settings `lighting`) or `--no-art` turns it off with its room dressing (wall
+faces, doorway jambs and spill, clutter, roots, the Gatewarden's gatehouse). Bot captures:
+`--clarity-rest` (the clarity room already cleared: `_rest.png` and `_rest_wall.png`),
+`--clarity-ab` (each clarity frame measured again with the pass off, `[CLARITY-AB-NOART]`),
+`--clarity-ab-off-first` (the off capture first), and tuning overrides `--art-amb=v`,
+`--art-pl=energy`, `--art-cap=v`, `--art-grade=0`.
+
 ## Music
 
 Synthwave by Alex McCulloch (Pro Sensory), CC0 from OpenGameArt, see

@@ -69,11 +69,30 @@ func _ready() -> void:
     var want := RoomData.Type.BOSS if _boss else RoomData.Type.ARENA
     var p: Player = main.players[0]
     seed(4242)
+    # --clarity-rest: the same room already cleared (doors open, no fight), one picture
+    # at rest, autotest/clarity_<region>[_boss]_<tag>_rest.png, then quit (art pass).
+    var rest := OS.get_cmdline_user_args().has("--clarity-rest")
     for pos in main.rooms.keys():
         if main.rooms[pos].type == want:
+            if rest:
+                main.rooms[pos].cleared = true
             main.enter_room(pos, Vector2i.ZERO)
             break
     p.global_position = main.current.to_global(Vector2(0, 140) if _boss else Vector2(0, 40))
+    if rest:
+        main.hud._toasts.clear()
+        await _wait(2.5)
+        var img := await _frame()
+        img.save_png("res://autotest/clarity_%s%s_%s_rest.png" % [main.region_id, "_boss" if _boss else "", _tag])
+        # And by the top wall's doorway (or its middle): the wall face, torches, doorway.
+        var half: Vector2 = main.current.room_size / 2.0
+        p.global_position = main.current.to_global(Vector2(0, -half.y + 150.0))
+        await _wait(2.0)
+        img = await _frame()
+        img.save_png("res://autotest/clarity_%s%s_%s_rest_wall.png" % [main.region_id, "_boss" if _boss else "", _tag])
+        print("[CLARITY-REST] saved")
+        main.get_tree().quit()
+        return
     main.hud._toasts.clear()   # the throwaway save's unlock toasts
     var spit := 0
     for a in OS.get_cmdline_user_args():
@@ -88,17 +107,51 @@ func _ready() -> void:
         boss.hp = boss.max_hp
     var t := 0.0
     var sums := [0.0, 0.0, 0.0, 0.0, 0.0]
+    var ab_sums := [0.0, 0.0, 0.0, 0.0, 0.0]
+    var ab_shots := [0.0, 0.0, 0.0]
     var n := 0
     for at in (BOSS_SHOT_AT if _boss else SHOT_AT):
         await _wait(float(at) - t)
         t = float(at)
         n += 1
-        var r: Array = await _measure("clarity_%s%s_%s_%d" % [main.region_id, "_boss" if _boss else "", _tag, n])
+        # --clarity-ab (art pass): the same paused moment measured again with ArtPass off
+        # (lighting, grade and its dressing hidden), so the pair differs only by the pass.
+        var ab := OS.get_cmdline_user_args().has("--clarity-ab")
+        if ab:
+            main.get_tree().paused = true
+        # --clarity-ab-off-first: the no-art capture first (checks capture-order bias).
+        var off_first := ab and OS.get_cmdline_user_args().has("--clarity-ab-off-first")
+        var k0 := _shot_sums.duplicate()
+        if off_first:
+            ArtPass.suppress(true)
+        var r: Array = await _measure("clarity_%s%s_%s_%d%s" % [main.region_id, "_boss" if _boss else "", _tag, n, "_noart" if off_first else ""])
+        ArtPass.suppress(false)
+        if off_first:
+            for i in 5:
+                ab_sums[i] += float(r[i])
+            for i in 3:
+                ab_shots[i] += _shot_sums[i] - k0[i]
+                _shot_sums[i] = k0[i]
+            main.get_tree().paused = true
+            r = await _measure("clarity_%s%s_%s_%d" % [main.region_id, "_boss" if _boss else "", _tag, n])
         for i in 5:
             sums[i] += float(r[i])
+        if ab and not off_first:
+            var keep := _shot_sums.duplicate()
+            ArtPass.suppress(true)
+            main.get_tree().paused = true
+            var r2: Array = await _measure("clarity_%s%s_%s_%d_noart" % [main.region_id, "_boss" if _boss else "", _tag, n])
+            ArtPass.suppress(false)
+            for i in 5:
+                ab_sums[i] += float(r2[i])
+            for i in 3:
+                ab_shots[i] += _shot_sums[i] - keep[i]
+                _shot_sums[i] = keep[i]
     if _shot_sums[2] > 0.0:
         print("[CLARITY-SHOTS-AVG] region=%s tag=%s shot_floor=%.3f shot_own=%.3f" % [main.region_id, _tag, _shot_sums[0] / _shot_sums[2], _shot_sums[1] / _shot_sums[2]])
     print("[CLARITY-AVG] region=%s boss=%s tag=%s own=%.1f%% own_int=%.1f contrast=%.3f mean_contrast=%.3f texts=%.1f fps=%d" % [main.region_id, _boss, _tag, sums[0] / n, sums[3] / n, sums[1] / n, sums[4] / n, sums[2] / n, Engine.get_frames_per_second()])
+    if ab_shots[2] > 0.0 or ab_sums[0] > 0.0:
+        print("[CLARITY-AB-NOART] region=%s tag=%s own=%.1f%% own_int=%.1f contrast=%.3f mean_contrast=%.3f shot_floor=%.3f shot_own=%.3f" % [main.region_id, _tag, ab_sums[0] / n, ab_sums[3] / n, ab_sums[1] / n, ab_sums[4] / n, ab_shots[0] / maxf(1.0, ab_shots[2]), ab_shots[1] / maxf(1.0, ab_shots[2])])
     main.get_tree().quit()
 
 

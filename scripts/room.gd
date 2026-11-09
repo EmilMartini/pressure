@@ -131,7 +131,9 @@ func _ready() -> void:
         add_child(secrets)
     Props.dress(self)   # crates, barrels, fountains, braziers... that react to every element
     ambience = Ambience.new(self, theme)
+    ArtPass.dress_room(self)   # art pass: wall depth, doorways, clutter, foreground (art_pass.gd)
     _dress_theme()      # wall decor, lights and the floor's own extras (moss, ice, lava)
+    ArtPass.light_room(self)
     _build_choir_platforms()
     add_child(ambience)
     Crisp.attach(self, _draw_crisp)
