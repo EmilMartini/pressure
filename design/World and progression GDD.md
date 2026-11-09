@@ -1737,7 +1737,8 @@ shows what engine work alone does with the existing art, in two places: Rust Rui
 bar for principles only (light, depth, dressed rooms), never their look. Code:
 `scripts/art_pass.gd` (`ArtPass`), hooks in `post_fx.gd`, `room.gd` and `hub.gd`. Off with
 the Options "Lighting" toggle (Settings `lighting`) or `--no-art`. Weekly usage 42% at the
-start and 43% before the push. `VERSION` 2026.11.09-art1.
+start and 43% before the push (44% before the living-dressing push). `VERSION` 2026.11.09-art1, then
+-art2.
 
 **What it does.**
 - **Lighting in PostFx, not Light2D.** The PostFx pass multiplies the world layer by an
@@ -1843,6 +1844,59 @@ game, so it needs a design call and a bot run before it ships.
   `clarity_rust_ruins_fin7_2.png`. Old-code fight: `clarity_rust_ruins_artbefore_1..3.png`.
 - The Gatewarden's room: `hub_gatewarden_artbefore.png` and `hub_gatewarden_artafter.png`.
   The Gate: `hub_gate_artbefore.png` and `hub_gate_artafter.png`.
+
+**Living dressing** (second commit, after Emil's first look: "a bit of a difference in the
+right direction"; dress the whole room, not just the edges, and add things that move).
+Rules from `design/Living world visuals research.md` sections 2.6 and Part 4:
+- **Islands, not scatter.** Each room gets 3 to 5 islands on its thirds, 200 px or more apart,
+  and the sun pools count as islands too. An island is a moss mat, 16 to 24 grass tufts, 3 to
+  5 ferns, leaf litter and pebbles. The first island holds the room's **landmark**: a sunken
+  ring of old flagstones with an offering and three candles (one small light). Ferns and
+  tufts also grow along the walls. A faint wear layer (litter texels, hairline cracks, about
+  one per 9,000 px²) covers the rest of the off-lane floor.
+- **Lanes stay clear.** Nothing interior goes within 56 px of a line from any doorway to the
+  room centre, or within 110 px of the centre (`ArtPass.in_lane`). Decals stay within about
+  10% of the floor's value; only plants and the landmark rise above it.
+- **Motion.** Plants sway in whole texels, 8 steps a second, each with its own phase. Moths
+  circle the wall lights, and leaves drift down the sun shafts (single dim texels, never round,
+  glowing or red). The candles flicker. In a fight, sway halves, moths dim, and the living
+  layer fades to 45%.
+- **Hook for reactions** (not wired yet): every plant and candle is a registry entry
+  `{k, p, s, ph, st, t}` on the room's `Living` node. `ArtPass.pieces_near(room, pos, r)`
+  finds them. `ArtPass.react(room, pos, r, element, dir)` sets the look: FIRE chars, ICE
+  frosts, WET darkens, SHOCK flashes for 0.6 s, GALE leans the plants downwind. Drawing
+  already reads the state. The reactions pass calls `react` from the Materials grid or
+  `Elements`, and adds the oil film and regrowth from the research note.
+
+Measured again on the final code (`--clarity-ab`, both orders, seeds 7, 11 and 23):
+- Enemy contrast: 0.316 on and 0.316 off, every pair within 0.001.
+- Shot contrast: 0.377 against 0.377 (floor), 0.349 against 0.349 (own effects).
+- Own effects, 16 clean frame pairs: 8.88% against 8.68% of the screen, mean change 4.07
+  against 4.13. Two pairs with noise above 3 (a flash during the capture) are left out.
+
+Before the fight fade went from 70% to 45%, enemy contrast was 0.3145 against 0.3163; the
+deeper fade closed that gap. Building the dressing costs 1 to 6 ms on room entry (125 to 136
+pieces, `--art-time`).
+
+**fps against the 60 target** (Rust Ruins storm run, `--fps-cap`, real window, 4 pairs in
+alternating order):
+- Mean fps: 59.7 to 59.9 with the pass and 59.8 to 59.9 without.
+- 1% low: 29.6, 33.4, 32.9, 32.9 with the pass; 37.2, 35.5, 34.1, 32.2 without.
+- Per frame, the pass costs about 0.3 ms of GPU, 0.3 ms of render CPU and 0.06 ms of
+  script.
+
+Neither side meets the 1% low target of 55. The slowest 1% is a handful of 80 to 160 ms
+hitches that are there with the pass off too, so the next fps task is those hitches.
+Uncapped, the pass was 98.1 and 96.9 fps against 98.2 and 97.2.
+
+**Renderer:** stays `gl_compatibility`. The lighting is a PostFx pass, not Light2D, so
+Forward+ adds nothing to this look. Switching would only put the clarity and fps baselines
+at risk. Worth revisiting only for real Light2D shadows.
+
+Screenshots for the living dressing:
+- At rest: `clarity_rust_ruins_after2_rest.png` and `clarity_rust_ruins_after2_rest_wall.png`.
+- Fight, same frame: `clarity_rust_ruins_liv2a7_2_noart.png` and
+  `clarity_rust_ruins_liv2a7_2.png`.
 
 **Rolling it out to every region:**
 1. Add a recipe to `ArtPass.RECIPES` under the theme key (crypt, frozen, forge, void,

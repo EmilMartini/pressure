@@ -31,7 +31,7 @@ const RECIPES := {
         "cap": 1.5,
         "rest_floor": [0.95, 0.9, 0.10],   # Room.FLAT_FLOOR sat, contrast, mid at rest
         "vignette": 1.05,
-        "player": [Color(1.0, 0.88, 0.70), 340.0, 0.80, 0.04, 2.0],
+        "player": [Color(1.0, 0.88, 0.70), 430.0, 0.80, 0.04, 2.5],
         "player_fight": [Color(1.0, 0.92, 0.80), 540.0, 0.70, 0.0, 6.0],
         "shafts": Color(1.0, 0.82, 0.50),
         "fire": Color(1.0, 0.60, 0.28),
@@ -66,6 +66,7 @@ const RECIPES := {
 ## while the owner is in the tree, so menus and other scenes stay unlit.
 static var recipe: Dictionary = {}
 static var owner_ref: WeakRef = null
+static var critters_ref: WeakRef = null
 
 
 static func enabled() -> bool:
@@ -160,6 +161,7 @@ static func add_light(parent: Node, pos: Vector2, radius: float, col: Color, ene
 static func dress_room(room: Room) -> void:
     if not use(room.theme, room):
         return
+    var t0 := Time.get_ticks_usec()
     var r := recipe
     var tx := Themes.texel(room._zoom())
     var rng := RandomNumberGenerator.new()
@@ -219,12 +221,32 @@ static func dress_room(room: Room) -> void:
         sh.col = r["shafts"]
         sh.tx = tx
         room.add_child(sh)
+    # Living dressing: interior islands off the lanes, plants that sway, a landmark, the
+    # piece registry reactions will use (ArtPass.pieces_near / react); small critters.
+    var lv := Living.new()
+    lv.room = room
+    lv.recipe = r
+    lv.tx = tx
+    lv.plan(rng, layer.pools)
+    room.add_child(lv)
+    room.move_child(lv, 1)
+    for pc in lv.pieces:
+        if pc["k"] == "candle":
+            add_light(room, pc["p"], 90.0, Color(1.0, 0.76, 0.40), 0.5, 0.03, 0.8)
+            break
+    var cr := Critters.new()
+    cr.tx = tx
+    cr.pools = layer.pools
+    room.add_child(cr)
+    critters_ref = weakref(cr)
     var fg := Foreground.new()
     fg.room = room
     fg.recipe = r
     fg.tx = tx
     fg.plan(rng)
     room.add_child(fg)
+    if OS.get_cmdline_user_args().has("--art-time"):
+        print("[ART-DRESS] ms=%.2f pieces=%d" % [float(Time.get_ticks_usec() - t0) / 1000.0, lv.pieces.size()])
 
 
 ## After Room._dress_theme: a light on every wall torch and brazier, lit props, doorways.
@@ -235,6 +257,10 @@ static func light_room(room: Room) -> void:
     for l in room.ambience.lights:
         var big := String(l[1]) != "torch"
         add_light(room, (l[0] as Vector2) + Vector2(0, 10), 260.0 if big else 210.0, r["fire"], 1.0 if big else 0.85, 0.04, 0.6)
+    if critters_ref != null and critters_ref.get_ref() != null:
+        var cr: Critters = critters_ref.get_ref()
+        for l in room.ambience.lights:
+            cr.lamps.append((l[0] as Vector2) + Vector2(0, 6))
     for c in room.find_children("*", "Prop", true, false):
         if (c as Prop).kind == "brazier":
             add_light(c, Vector2(0, -6), 230.0, r["fire"], 0.9, 0.03, 0.6)
@@ -610,6 +636,349 @@ class Foreground extends Node2D:
             draw_rect(r, Color(0.02, 0.025, 0.02, 0.92))
             draw_rect(Rect2(r.position + Vector2(sx * -1.0 if sx < 0 else 0.0, 0), Vector2(tx, h)), Color(recipe["stone"], 0.6))
             draw_rect(Rect2(r.position, Vector2(w, tx * 2.0)), Color(recipe["stone"], 0.8))
+
+
+# --- Living dressing: interior islands, plants that move, a registry for reactions -------
+
+## Lanes the interior keeps clear (design/Living world visuals research.md, 2.6): a band
+## LANE wide from every doorway to the room centre, and a clearing CLEAR round the centre.
+const LANE := 56.0
+const CLEAR := 110.0
+
+
+static func in_lane(room: Room, p: Vector2, r: float) -> bool:
+    if p.length() < CLEAR + r:
+        return true
+    var half := room.room_size / 2.0
+    for d in room.data.doors.keys():
+        var a := Vector2(d) * half
+        if Geometry2D.get_closest_point_to_segment(p, a, Vector2.ZERO).distance_to(p) < LANE + r:
+            return true
+    return false
+
+
+## Every living piece in `room` within `radius` of `pos` (room-local), as the registry
+## dictionaries: { k: kind, p: pos, s: size, ph: sway phase, st: state, t: state time }.
+## Kinds: "grass", "fern", "moss" (plants, react), "candle" (lit). States: "live", "burnt",
+## "frozen", "wet", "charged".
+static func pieces_near(room: Room, pos: Vector2, radius: float) -> Array:
+    var out: Array = []
+    var lv := room.get_node_or_null("Living") as Living
+    if lv == null:
+        return out
+    for pc in lv.pieces:
+        if (pc["p"] as Vector2).distance_to(pos) <= radius + float(pc["s"]):
+            out.append(pc)
+    return out
+
+
+## The hook for element reactions (not wired yet; the reactions pass will call it from the
+## Materials grid or from Elements): plants in the radius take the element's look. FIRE
+## chars them, ICE frosts them, WET darkens them, SHOCK lights them for a moment, GALE
+## leans them downwind for a moment (`dir`). Returns how many pieces changed.
+static func react(room: Room, pos: Vector2, radius: float, element: int, dir := Vector2.ZERO) -> int:
+    var lv := room.get_node_or_null("Living") as Living
+    if lv == null:
+        return 0
+    var n := 0
+    for pc in pieces_near(room, pos, radius):
+        if not String(pc["k"]) in ["grass", "fern", "moss"]:
+            continue
+        match element:
+            Element.Kind.FIRE:
+                pc["st"] = "burnt"
+            Element.Kind.ICE:
+                if pc["st"] != "burnt":
+                    pc["st"] = "frozen"
+            Element.Kind.WET:
+                if pc["st"] == "live":
+                    pc["st"] = "wet"
+            Element.Kind.SHOCK:
+                pc["st"] = "charged"
+                pc["t"] = 0.6
+            Element.Kind.GALE:
+                lv.gust = dir.normalized()
+                lv.gust_t = 1.2
+            _:
+                continue
+        n += 1
+    lv.queue_redraw()
+    return n
+
+
+## Interior islands and every plant in the room, under the bodies (z -1). Plants sway in
+## steps of a texel (8 steps a second), half as much in a fight.
+## Decals stay within about 10% of the floor's brightness; only the plants
+## and the landmark rise above it (research note, Part 4). In a fight the layer fades to 45%.
+class Living extends Node2D:
+    func _enter_tree() -> void:
+        add_to_group("art_dressing")
+
+    var room: Room
+    var recipe: Dictionary
+    var tx := 2.3
+    var pieces: Array = []      # the registry (see ArtPass.pieces_near)
+    var mats: Array = []        # [pos, radii]: moss mats under the islands
+    var litter: Array = []      # [pos, colour]: leaf litter texels
+    var pebbles: Array = []     # [pos, size texels]
+    var cracks: Array = []      # hairline wear cracks
+    var landmark := Vector2.INF
+    var gust := Vector2.ZERO
+    var gust_t := 0.0
+    var _t := 0.0
+    var _step := -1
+
+    func _init() -> void:
+        name = "Living"
+        z_index = -1
+
+    func _snap(p: Vector2) -> Vector2:
+        return (p / tx).round() * tx
+
+    func _ok(p: Vector2, r: float) -> bool:
+        return room.spot_ok_loose(p, r) and not ArtPass.in_lane(room, p, r)
+
+    func _add(k: String, p: Vector2, s: float, rng: RandomNumberGenerator) -> void:
+        pieces.append({ "k": k, "p": _snap(p), "s": s, "ph": rng.randf() * TAU, "st": "live", "t": 0.0 })
+
+    ## 2 to 4 islands on the room's thirds (plus the sun pools, which already are islands),
+    ## the first one with the landmark; ferns and grass along the walls.
+    func plan(rng: RandomNumberGenerator, pools: Array) -> void:
+        var half := room.room_size / 2.0
+        var want := clampi(int(room.room_size.x * room.room_size.y / 180000.0), 3, 5)
+        var spots: Array = []
+        for fx in [-0.74, -0.44, -0.15, 0.15, 0.44, 0.74]:
+            for fy in [-0.6, -0.2, 0.2, 0.6]:
+                spots.append(Vector2(fx * half.x, fy * half.y) + Vector2(rng.randf_range(-30, 30), rng.randf_range(-24, 24)))
+        # Shuffle with the room's rng (stable per room).
+        for i in range(spots.size() - 1, 0, -1):
+            var j := rng.randi() % (i + 1)
+            var tmp: Vector2 = spots[i]
+            spots[i] = spots[j]
+            spots[j] = tmp
+        var islands: Array = []
+        for s in spots:
+            if islands.size() >= want:
+                break
+            if not _ok(s, 46.0):
+                continue
+            var far := true
+            for q in islands + pools:
+                far = far and (s as Vector2).distance_to(q) > 200.0
+            if far:
+                islands.append(s)
+        for i in islands.size():
+            var c: Vector2 = islands[i]
+            if i == 0:
+                landmark = _snap(c)
+                for k in 3:
+                    var a := -0.6 + float(k) * 0.55
+                    pieces.append({ "k": "candle", "p": _snap(c + Vector2(cos(a), sin(a) * 0.6) * 34.0 + Vector2(0, -6)), "s": 4.0, "ph": rng.randf() * TAU, "st": "live", "t": 0.0 })
+            mats.append([_snap(c), Vector2(rng.randf_range(70, 96), rng.randf_range(40, 56))])
+            for k in rng.randi_range(16, 24):
+                var a := rng.randf() * TAU
+                var d := rng.randf_range(0.3, 1.0)
+                var p := c + Vector2(cos(a) * 84.0, sin(a) * 50.0) * d
+                if i == 0 and p.distance_to(c) < 42.0:
+                    continue   # the landmark's ring stays clear
+                if _ok(p, 6.0):
+                    _add("grass", p, 6.0, rng)
+            for k in rng.randi_range(3, 5):
+                var a := rng.randf() * TAU
+                var p := c + Vector2(cos(a) * 70.0, sin(a) * 38.0)
+                if _ok(p, 10.0):
+                    _add("fern", p, 10.0, rng)
+            for k in rng.randi_range(6, 10):
+                var p := c + Vector2(rng.randf_range(-70, 70), rng.randf_range(-40, 40))
+                litter.append([_snap(p), rng.randi() % 3])
+            for k in rng.randi_range(3, 6):
+                var p := c + Vector2(rng.randf_range(-60, 60), rng.randf_range(-34, 34))
+                if _ok(p, 4.0):
+                    pebbles.append([_snap(p), float(rng.randi_range(1, 3))])
+            pieces.append({ "k": "moss", "p": _snap(c), "s": 60.0, "ph": 0.0, "st": "live", "t": 0.0 })
+        # Wear over the rest of the off-lane floor: litter texels and hairline cracks, about
+        # one per 9,000 px², all within the floor's value band.
+        var wear := int(room.room_size.x * room.room_size.y / 9000.0)
+        for i in wear:
+            var p := Vector2(rng.randf_range(-half.x + 30, half.x - 30), rng.randf_range(-half.y + 30, half.y - 30))
+            if not _ok(p, 6.0):
+                continue
+            if rng.randf() < 0.6:
+                for k in rng.randi_range(1, 3):
+                    litter.append([_snap(p + Vector2(rng.randf_range(-8, 8), rng.randf_range(-5, 5))), rng.randi() % 3])
+            else:
+                var pts := PackedVector2Array()
+                var dir := Vector2.RIGHT.rotated(rng.randf() * TAU)
+                var q := p
+                for k in rng.randi_range(3, 5):
+                    pts.append(_snap(q))
+                    dir = dir.rotated(rng.randf_range(-0.9, 0.9))
+                    q += dir * rng.randf_range(6.0, 11.0)
+                cracks.append(pts)
+        # The sun pools: grass already drawn by RoomDressing; ferns at their rim.
+        for p0 in pools:
+            for k in 2:
+                var p: Vector2 = p0 + Vector2(rng.randf_range(-70, 70), rng.randf_range(-40, 40))
+                if _ok(p, 10.0):
+                    _add("fern", p, 10.0, rng)
+        # Wall-foot plants: a fern or a tuft every ~110 px of wall, off doorways.
+        var per := int((room.room_size.x + room.room_size.y) * 2.0 / 110.0)
+        for i in per:
+            var side := rng.randi() % 4
+            var along := rng.randf_range(-0.95, 0.95)
+            var depth := rng.randf_range(12.0, 30.0)
+            var p: Vector2
+            match side:
+                0: p = Vector2(along * half.x, -half.y + depth)
+                1: p = Vector2(along * half.x, half.y - depth)
+                2: p = Vector2(-half.x + depth, along * half.y)
+                _: p = Vector2(half.x - depth, along * half.y)
+            if room.spot_ok_loose(p, 8.0):
+                _add("fern" if rng.randf() < 0.4 else "grass", p, 8.0, rng)
+
+    func _process(delta: float) -> void:
+        _t += delta
+        modulate.a = 1.0 - 0.55 * ArtPass.fight
+        if gust_t > 0.0:
+            gust_t = maxf(0.0, gust_t - delta)
+        var dirty := false
+        for pc in pieces:
+            if pc["st"] == "charged":
+                pc["t"] = float(pc["t"]) - delta
+                if float(pc["t"]) <= 0.0:
+                    pc["st"] = "live"
+                    dirty = true
+        var step := int(_t * 8.0)
+        if step != _step or dirty:
+            _step = step
+            queue_redraw()
+
+    ## Sway in whole texels at the tip: a slow wave with a per-piece phase, stepped.
+    func _sway(pc: Dictionary) -> float:
+        var amp := 1.0 - 0.5 * ArtPass.fight
+        var s := sin(float(_step) / 8.0 * 1.6 + float(pc["ph"])) * amp
+        if gust_t > 0.0:
+            s += gust.x * 2.0 * gust_t / 1.2
+        return roundf(s)
+
+    func _tint(st: String, c: Color) -> Color:
+        match st:
+            "burnt":
+                return Color(0.10, 0.08, 0.07)
+            "frozen":
+                return c.lerp(Color(0.70, 0.85, 1.0), 0.6)
+            "wet":
+                return c.darkened(0.3)
+            "charged":
+                return c.lerp(Color(0.85, 0.95, 1.0), 0.7)
+        return c
+
+    func _draw() -> void:
+        var lt: Texture2D = Art.PARTICLES["light"]
+        var mc: Color = recipe["moss"]
+        # Moss mats: a low veil, close to the floor's value.
+        for m in mats:
+            var p: Vector2 = m[0]
+            var r: Vector2 = m[1]
+            draw_texture_rect(lt, Rect2(p - r, r * 2.0), false, Color(mc, 0.45))
+        # Leaf litter and pebbles: single texels, dim.
+        var leaf := [Color(0.30, 0.26, 0.12), Color(0.24, 0.30, 0.12), Color(0.34, 0.22, 0.10)]
+        for l in litter:
+            draw_rect(Rect2(l[0], Vector2(tx * 2.0, tx)), Color(leaf[int(l[1])], 0.8))
+        for c in cracks:
+            draw_polyline(c, Color(0.0, 0.0, 0.0, 0.35), tx)
+        var sc: Color = recipe["stone"]
+        for pb in pebbles:
+            var s: float = float(pb[1]) * tx
+            draw_rect(Rect2(pb[0] - Vector2(tx, tx) * 0.5, Vector2(s + tx, s)), Color(0.02, 0.02, 0.02, 0.7))
+            draw_rect(Rect2(pb[0], Vector2(s, s - tx * 0.5)), sc.darkened(0.15))
+        # The landmark: a sunken ring of old flagstones with an offering in the middle.
+        if landmark != Vector2.INF:
+            var c := landmark
+            for i in 14:
+                var a := TAU * float(i) / 14.0
+                var q := _snap(c + Vector2(cos(a) * 30.0, sin(a) * 18.0))
+                draw_rect(Rect2(q - Vector2(3, 2) * tx, Vector2(6, 4) * tx), Color(0.03, 0.03, 0.03, 0.8))
+                draw_rect(Rect2(q - Vector2(2, 2) * tx, Vector2(5, 3) * tx), sc.darkened(0.1))
+                draw_rect(Rect2(q - Vector2(2, 2) * tx, Vector2(5, 1) * tx), sc.lightened(0.15))
+            draw_texture_rect(lt, Rect2(c - Vector2(24, 14), Vector2(48, 28)), false, Color(0, 0, 0, 0.45))
+            # A cracked bowl and a skull: the offering.
+            var bc: Color = recipe["bone"]
+            draw_rect(Rect2(_snap(c) - Vector2(4, 2) * tx, Vector2(8, 3) * tx), Color(0.03, 0.02, 0.02))
+            draw_rect(Rect2(_snap(c) - Vector2(3, 2) * tx, Vector2(6, 2) * tx), Color(0.40, 0.30, 0.20))
+            draw_rect(Rect2(_snap(c) + Vector2(-1, -4) * tx, Vector2(3, 2) * tx), bc.darkened(0.15))
+        # Plants.
+        for pc in pieces:
+            var k := String(pc["k"])
+            var p: Vector2 = pc["p"]
+            var st := String(pc["st"])
+            if k == "grass":
+                var sw := _sway(pc)
+                var base := _tint(st, mc.lightened(0.10))
+                var tip := _tint(st, mc.lightened(0.42))
+                for b in 3:
+                    var bx := p.x + float(b - 1) * tx * 1.0
+                    var h := 2 + (b % 2) + (1 if st == "live" else 0)
+                    if st == "burnt":
+                        h = 1
+                    draw_rect(Rect2(bx, p.y - float(h) * tx, tx, float(h) * tx), base)
+                    draw_rect(Rect2(bx + sw * tx * float(b % 2 + 1) * 0.5, p.y - float(h + 1) * tx, tx, tx), tip)
+            elif k == "fern":
+                var sw := _sway(pc)
+                var base := _tint(st, mc.lightened(0.05))
+                var tip := _tint(st, mc.lightened(0.30))
+                draw_rect(Rect2(p - Vector2(3, 0) * tx, Vector2(7, 1) * tx), Color(0, 0, 0, 0.35))
+                for f in 5:
+                    var dirx := float(f - 2)
+                    var q := p
+                    var segs := 3 if st != "burnt" else 1
+                    for sgm in segs:
+                        q += Vector2(dirx * 0.8 + (sw * 0.5 if sgm == segs - 1 else 0.0), -1.0) * tx
+                        draw_rect(Rect2(_snap(q), Vector2(tx, tx)), base if sgm < segs - 1 else tip)
+            elif k == "candle":
+                var fl := 1 if sin(_t * 11.0 + float(pc["ph"])) > 0.3 else 0
+                draw_rect(Rect2(p, Vector2(tx, tx * 3.0)), Color(0.80, 0.76, 0.64))
+                draw_rect(Rect2(p - Vector2(0, tx * float(1 + fl)), Vector2(tx, tx * float(1 + fl))), Color(1.0, 0.80, 0.36))
+
+
+## Small life over the floor (z 26, under the foreground): moths circling the wall lights,
+## leaves drifting down the sun shafts. Single dim texels moving slowly, never round,
+## glowing or red, so nothing reads as a shot.
+class Critters extends Node2D:
+    func _enter_tree() -> void:
+        add_to_group("art_dressing")
+
+    var lamps: Array = []
+    var pools: Array = []
+    var tx := 2.3
+    var _t := 0.0
+
+    func _init() -> void:
+        name = "Critters"
+        z_index = 26
+        z_as_relative = false
+
+    func _process(delta: float) -> void:
+        _t += delta
+        if Engine.get_process_frames() % 3 == 0:
+            queue_redraw()
+
+    func _draw() -> void:
+        var a := 0.75 * (1.0 - 0.5 * ArtPass.fight)
+        for i in lamps.size():
+            var c: Vector2 = lamps[i]
+            for m in 2:
+                var ph := float(i) * 2.1 + float(m) * 3.3
+                var q := c + Vector2(cos(_t * 1.7 + ph) * 18.0, sin(_t * 2.3 + ph) * 12.0 + 14.0)
+                var flap := 1.0 if int(_t * 10.0 + ph) % 2 == 0 else 2.0
+                draw_rect(Rect2((q / tx).round() * tx, Vector2(tx * flap, tx)), Color(0.86, 0.80, 0.66, a))
+        for i in pools.size():
+            var c: Vector2 = pools[i]
+            for m in 2:
+                var f := fmod(_t * 0.07 + float(m) * 0.5 + float(i) * 0.31, 1.0)
+                var q := c + Vector2(-0.38, -1.0).normalized() * (1.0 - f) * 190.0 + Vector2(sin(_t * 1.3 + float(m) * 2.0) * 10.0, 0)
+                var col := Color(0.62, 0.50, 0.20, a * sin(PI * f))
+                draw_rect(Rect2((q / tx).round() * tx, Vector2(tx * 2.0, tx)), col)
 
 
 # --- PostFx ---------------------------------------------------------------------

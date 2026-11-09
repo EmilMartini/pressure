@@ -84,7 +84,9 @@ faces, doorway jambs and spill, clutter, roots, the Gatewarden's gatehouse). Bot
 `--clarity-rest` (the clarity room already cleared: `_rest.png` and `_rest_wall.png`),
 `--clarity-ab` (each clarity frame measured again with the pass off, `[CLARITY-AB-NOART]`),
 `--clarity-ab-off-first` (the off capture first), and tuning overrides `--art-amb=v`,
-`--art-pl=energy`, `--art-cap=v`, `--art-grade=0`.
+`--art-pl=energy`, `--art-cap=v`, `--art-grade=0`; `--art-time` prints `[ART-DRESS]` (ms to
+dress each room). The room's plants are a registry for element reactions (`ArtPass.pieces_near`,
+`ArtPass.react`).
 
 ## Music
 
