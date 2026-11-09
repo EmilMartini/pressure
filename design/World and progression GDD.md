@@ -625,6 +625,24 @@ Shrine costs roughly doubled. Phase 3 builds and measures this.
 Caveat: bots play far better than humans past the second floor, so they can't place the meta
 curve on their own. Human runs are the reference for the fresh-save target.
 
+**Pressure targets (default, difficulty pass 2026-11-09).** Dying is not the only measure:
+a build that comes online must still be pushed. Per floor, from the `pressure` readout
+(README, "Pressure readout"), for a strong build with half or full Shrine:
+
+| Measure | Floors 2 to 5 target | Why | Bots after the pass (floors 2 / 3 / 4 / 5) |
+|---|---|---|---|
+| Time under 50% health | Doesn't fall with depth; at least 0.10 from floor 3 | Hades' deep floors are fought on half a bar; 0.00 means the floor never mattered | 0.24 / 0.13 / 0.20 / 0.32 |
+| Healing per minute | At most 0.9x damage per minute from floor 3 | At 1.0x nothing that hits you stays; the baseline sat at 0.97 to 1.01 | 0.94x / 0.53x / 0.84x / 0.71x |
+| Close calls (under 20%, survived) | About 1 a floor or more from floor 4 | Felt danger the player escapes; deaths alone are too rare a signal | 0 / 0.3 / 1.5 / 1.8 |
+| Damage per minute (share of max health) | Doesn't fall with depth | A floor that stops hurting you has stopped pressing | 0.48 / 1.98 / 1.15 / 1.47 |
+| Clean rooms (no health lost) | A minority (under 40%) past floor 2 | A clean room should be an achievement, not the norm | 0% / 5% / 3% / 0% |
+| Worst 3 s outside boss contact | At most 0.5 of max health; worst 1 s at most 0.35 | Section 0's fairness rule: no sudden bursts. The burst guard trips at 0.25 in 3 s under half health | Storm and full-Shrine runs: 0.47 at worst. Once 0.61: four melee hits on a no-Shrine fire build in a Frostvault opener (0.46 before the pass). Boss contact: 0.71, Pyre Lord |
+
+The fresh-save stage targets above are unchanged; the pass only adds pressure from floor 2
+(flankers) and mid floor 2 (fans). Bots play differently from humans (they kite at range,
+never seek cover and dodge late), so bots and Emil's runs are reported separately; the
+human targets are checked on his next runs, which record the readout.
+
 ---
 
 ## 14. Scale
@@ -2060,6 +2078,199 @@ completely in a fight (`ArtPass.fight_fade`).
   material arrives.
 - Critters and chains for the other regions and the rest of the Hollow.
 
+#### Difficulty pass (2026-11-09): pressure after the build comes online
+
+Emil: "the game is too easy. It's no challenge once you have a single healing item or a few
+weapons. You only measure TTK but it's not engaging or challenging." His best recent run, a
+Stormcaller, ended floor 1 at 92% health and floor 2 at 100%, then died in the Frostvault to
+spitter shots. Weekly usage 45% at the start.
+
+**1. Measuring pressure, not kill time.** `scripts/pressure_meter.gd` writes one readout per
+floor (player 1): a `[PRESSURE]` line in bot logs and a `pressure` telemetry event in every
+run, so Emil's next runs carry it too. The fields are listed in the README ("Pressure
+readout"). In short:
+- time under 50% and 25% health, as shares of fight time (a room with enemies up);
+- damage taken and health healed per fight minute, as shares of max health, with healing
+  split by source (`Player.heal` now takes a source);
+- close calls: drops under 20% that the player survived;
+- threat: time with an enemy shot within 150 px or an enemy body within 70 px. Moving:
+  the share of that time spent moving. Near misses: enemy shots per minute that passed
+  within 24 px of a hit;
+- clean rooms: fights cleared without losing health;
+- the worst 1 s and 3 s of damage, as shares of max health.
+
+`tools/pressure_report.py` reads it from telemetry, and rebuilds older human runs roughly
+(max health estimated from the hits, time under 50% from the 5 s `wave_hp` samples).
+Bot telemetry timestamps are wall-clock and compress under `--fixed-fps`, so bot bursts
+come from the meter (game time), never from telemetry.
+
+**2. Where pressure collapsed, and why** (baseline, main at 12e539d).
+
+Storm build (`--build=storm --start-floor=N`, no Shrine), one floor each:
+
+| Floor | Under 50% | Damage / min | Healing / min (Leech share) | Close calls | Near misses / min | Clean rooms | Worst 1 s / 3 s |
+|---|---|---|---|---|---|---|---|
+| 2 | 0.00 | 0.53 | 0.53 (72%) | 0 | 9.0 | 0/8 | 0.17 / 0.23 |
+| 3 | 0.00 | 1.44 | 1.41 (74%) | 0 | 12.1 | 0/10 | 0.32 / 0.43 |
+| 4 | 0.00 | 0.91 | 0.91 (70%) | 0 | 14.5 | 0/12 | 0.21 / 0.31 |
+| 5 | 0.04 | 1.45 | 1.45 (65%) | 0 | 13.6 | 0/14 | 0.34 / 0.60 |
+
+Full Shrine (kite bot, whole runs) was the same on floors 3 and 4: 0.00 under half, healing
+1.12 and 0.98 for damage 1.12 and 0.98. A fire build (storm gear, six tier-3 fire and oil
+guns) healed 2.07 of 2.11 on floor 3.
+
+The causes, in order:
+1. **Sustain erased everything.** Healing matched damage to the hundredth on every floor
+   past the first. Leech (3 HP/s per point, already capped in an earlier pass) was 65 to
+   74% of it, and regen most of the rest. Bots took plenty of hits (no clean rooms at
+   all), but nothing they took stayed taken. That is Emil's "a single healing item".
+2. **One kind of enemy made all the pressure.** Spitter shots were 40 to 80% of all damage
+   taken on floors 2 to 5. Melee (grunts, runners, swarmers, splitters) walked straight
+   down the guns and died; only bombers added much. A spitter fired one straight shot every
+   1.6 s at where you were.
+3. **Elites died before their modifier mattered.** A full-Shrine storm build dealt 4,100
+   a second in floor-5 arenas; an elite (about 1,400 health) lasted a third of a second.
+4. Density was not the problem: the crowd target already grows with the build
+   (`Room.crowd_target`), and there were hundreds of kills per floor.
+
+Emil's real runs, rebuilt from telemetry (2026-11-06 to 11-08 builds, no `pressure` event yet):
+
+| Run | Floor | Fight s | Under 50% | Damage / min | Healing / min | Close calls | Clean | Worst 3 s | End |
+|---|---|---|---|---|---|---|---|---|---|
+| Stormcaller 11-07 | 1 | 113 | 0.21 | 0.47 | 0.43 | 1 | 3/6 | 0.17 | 92% |
+| | 2 | 253 | 0.04 | 0.57 | 0.88 | 0 | 0/8 | 0.29 | 100% |
+| | 3 Frostvault | 92 | 0.31 | 1.22 | 0.40 | 0 | 0/2 | 0.38 | died |
+| Stormcaller 11-08 | 1 | 107 | 0.00 | 0.49 | 0.35 | 0 | 3/6 | 0.14 | 100% |
+| | 2 | 62 | 0.00 | 1.58 | 1.15 | 0 | 0/2 | 0.48 | quit |
+| Pyromancer 11-06 | 1 | 137 | 0.29 | 0.96 | 0.89 | 1 | 1/6 | 0.28 | 100% |
+| | 2 | 228 | 0.00 | 2.03 | 1.34 | 0 | 1/8 | 0.42 | 100% |
+| Pyromancer 11-07 | 1 | 76 | 0.31 | 0.63 | 0.55 | 1 | 1/4 | 0.17 | 58% |
+| | 2 | 23 | 0.67 | 1.54 | 0.18 | 0 | 1/1 | 0.21 | died |
+| Voidwalker 11-06 | 1 | 114 | 0.30 | 0.56 | 0.40 | 1 | 2/6 | 0.23 | 68% |
+| | 2 | 88 | 0.53 | 1.09 | 0.44 | 0 | 0/2 | 0.28 | died |
+
+The human pattern is binary. A floor the build can sustain ends at 100% with no time under
+half. A floor it can't sustain kills within one or two rooms, before healing catches up.
+On the floors that pressed, the human healed about as fast as he was hit. The winning
+Stormcaller of 2026-11-05 (before the Leech cap) spent no time under half on floors 2 to 5.
+Clean rooms were already a minority for humans past floor 1 (0 or 1 of 8).
+
+**3. Changes** (all off with `--old-balance`):
+- **Mending fades** (`Player.heal`, `MEND_SOFT` 0.2). Passive healing (Leech, regen,
+  on-kill and on-hurt item heals, fusion heals) slows within one fight. It heals at
+  1 / (1 + used / 0.2) of its rate, where `used` is the share of max health it has already
+  restored this fight, and it refills when the next fight starts. A small sustain is
+  barely touched. A stack that would restore a whole bar per fight restores about half.
+  Chosen heals stay whole: actives, pickups, altars, shrines, the stairs, repairs and Last
+  Breath. The figure says "Mending fades" the first time the rate drops under half on a
+  floor.
+  Tried and measured: 0.25 left healing at 97% of damage (no change in feel); 0.15 killed
+  both full-Shrine runs on floors 4 and 5 in their 3rd to 5th room. 0.2 is the middle (below).
+- **Flankers** (difficulty 6, floor 2): runners swing up to about 60 degrees off the line and
+  close in from the side.
+- **Spitter fan** (difficulty 8, mid floor 2). Three shots 0.22 rad apart, every 2 s
+  instead of 1.6. Each shot does 0.7x the old one, so the fan makes you move rather than
+  out-damaging the old shot. It is aimed half-way ahead of a moving target, which catches
+  running in a straight line or a circle, but not a change of direction. The first fan
+  leaves 0.25 s after the emerge marker ends ("arrive shooting"), so a build that melts a
+  crowd on landing still has shots to step out of.
+- **Lobbed shells** (difficulty 14, floor 4): every third spitter volley is a lob. A ring
+  with the hostile signature marks the landing spot for 1 s and fills in, then 56 px bursts
+  for 1.4x a shot. Killing the spitter cancels its shells and their rings together.
+- **Barrage elites** (difficulty 10, floor 3; weighted double in the affix roll): a ring
+  of ten slow shots (165 px/s) every 3.4 s after a 0.6 s red glow.
+- **Elites sized to the build** (floor 2+): an elite holds at least 2 s of the floor's
+  measured arena output (`main.floor_arena_dps`, the number that already sizes bosses).
+  The first arena of a floor has no measurement yet and keeps the formula.
+- Fix on the way: elites take their affix after entering the tree, so the hostile overlay
+  was never attached for volatile elites and their blast ring never drew.
+  `Enemy._ensure_crisp` now attaches it from `set_affix` too.
+
+**4. After** (final settings; one floor per row unless noted):
+
+| Floor | Floors measured | Under 50% | Under 25% | Damage / min | Healing / min | Close calls | Under threat | Near misses / min | Clean rooms | Worst 1 s / 3 s | Died |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| 2 | before 2 / after 3 | 0.09 / 0.24 | 0.01 / 0.19 | 0.74 / 0.48 | 0.81 / 0.45 | 0.5 / 0 | 0.29 / 0.39 | 6.9 / 15.9 | 0/16 / 0/17 | 0.22, 0.34 / 0.17, 0.22 | 0 / 1 |
+| 3 | 3 / 3 | 0.01 / 0.13 | 0.00 / 0.07 | 1.56 / 1.98 | 1.53 / 1.05 | 0 / 0.3 | 0.38 / 0.59 | 12.8 / 40.4 | 1/30 / 1/20 | 0.41, 0.59 / 0.32, 0.47 | 0 / 1 |
+| 4 | 2 / 4 | 0.00 / 0.20 | 0.00 / 0.09 | 0.95 / 1.15 | 0.95 / 0.97 | 0 / 1.5 | 0.30 / 0.56 | 9.3 / 28.2 | 0/18 / 1/38 | 0.35, 0.38 / 0.59, 0.71 | 0 / 1 |
+| 5 | 2 / 5 | 0.04 / 0.32 | 0.01 / 0.11 | 1.71 / 1.47 | 1.56 / 1.05 | 0 / 1.8 | 0.50 / 0.62 | 20.9 / 42.0 | 0/17 / 0/53 | 0.34, 0.60 / 0.21, 0.34 | 1 / 2 |
+
+(All bot floors from floor 2 in the before and after batches, every stage and build pooled;
+"before / after" in each cell.)
+
+The target stage, full Shrine with the storm build on floors 4 and 5 (2 runs each), on its
+own:
+
+| Floor | Under 50% | Under 25% | Damage / min | Healing / min | Close calls | Near misses / min | Worst 1 s / 3 s | Result |
+|---|---|---|---|---|---|---|---|---|
+| 4 Chapel of Ash | 0.21 | 0.07 | 1.16 | 1.08 | 4 | 26.4 | 0.32 / 0.47 | cleared, Pyre Lord ended at 1% at the lowest |
+| 4 the Forge | 0.31 | 0.09 | 0.92 | 0.84 | 2 | 26.8 | 0.16 / 0.29 | cleared, Pyre Lord low 23% |
+| 5 the Rift | 0.53 | 0.15 | 1.14 | 1.04 | 3 | 36.3 | 0.19 / 0.31 | died in the 11th room |
+| 5 the Rift | 0.45 | 0.09 | 1.05 | 0.99 | 4 | 32.5 | 0.17 / 0.33 | won, Void Herald low 21% |
+
+Close calls on these four floors: 3 per floor on average. Before this pass the same stage
+spent 0.00 under half on floors 3 and 4.
+
+Read with care:
+- **Sample size.** Each cell is one to five floors. The direction is consistent (pressure
+  now rises with depth instead of falling), but the exact numbers are noisy.
+- **Damage taken per minute barely moved.** The changes don't hit harder on average.
+  They make you move (threat 0.3 to 0.4 rising to about 0.6, near misses up 2 to 3x) and
+  stop healing from erasing it (healing under damage by 15 to 50% on floors 3 to 5,
+  was 0 to 3%).
+- **The worst 3 s.** 0.71 on floor 4 is the Pyre Lord's contact hit: two hits of about 48
+  (30% of max health each) one invulnerability window apart, in a half-Shrine run. Boss
+  tuning is untouched by this pass, and the baseline had 0.59 and 0.60 elsewhere. Outside
+  boss contact the after worst is 0.47, against 0.60 before. No new source shows up in the
+  bursts: a shell is at most 1.4x a shot, and a fan hits a still target with one shot.
+- **Short-range builds pay most.** The fire build (storm gear, six tier-3 fire and oil
+  guns) takes about twice the storm build's damage, because its guns make it stand in
+  the crowd. Healing used to cover it: 2.07 of 2.11 a minute on floor 3. Now:
+  - without the Shrine it died in the first arena of the Frostvault 3 times out of 3, and
+    in the first room of the Rift. That was 25 to 76 s of fighting, mostly melee contact
+    (brute 26, charger 20, bomber 24, splitter 15);
+  - with the full Shrine it cleared floor 3 once (0.14 under half) and died in floor 3's
+    5th room once. On floor 5 it died in the first or second room twice, even with
+    Last Breath.
+
+  The bursts stayed inside the fairness line, at 0.33 to 0.49 of max health in 3 s. The
+  one exception was 0.61 in a no-Shrine Frostvault opener: four melee hits in a crowd,
+  against 0.46 for the same build before. This is what Mending does by design: it stops
+  face-tanking. But it means a short-range player now has to move like a ranged one, and
+  the bots don't. **Open for Emil:** if that is too harsh, the knob is `MEND_SOFT`
+  (0.25 gave the storm build its old 97% healing back), or Leech could be exempt within
+  about 100 px of the target.
+- **Stage outcomes** (the Phase 3 meta-curve check, kite bot, `--secs=3600`):
+
+| Stage | Before | After |
+|---|---|---|
+| Fresh (2 runs each) | 2 died on floor 1 (t=48, 23) | 2 died on floor 1 (t=19, 25) |
+| Half, `--mastery=464` (4 after) | 2 died at the Brute King, floor 1 | Died on floor 1, floor 2 (Drowned Cistern) and floor 3 (Frostvault, after 739 s), and 1 won. Two of four reached depth 3 or more (target: usually 3 to 4). The floor-3 run came through the Brute King at 14% and the Drowned Choir at 18% at their lowest |
+| Full, `--mastery=full` | 1 died on floor 1, 1 at the time cap on floor 4 | 2 died on floor 1 (my changes don't reach floor 1 except Mending, which floor 1 barely uses) |
+
+  Bots still die on floor 1 about half the time at every stage, before and after. That is
+  the kite bot, as Phase 3 found (fresh 2 of 4 on floor 1), so floor 1 can't place the
+  stages. Past floor 1 the full-Shrine bots now spend real time under half health.
+- **Boss lengths** (sizing untouched): after, Brute King 20 to 57 s, Hive Mother 24 to 54,
+  Storm Warden 23 to 59, Pyre Lord 17 to 32, Void Herald 23 to 27; before, 17 to 31, 26 to
+  27, 18 to 62, 18 to 27, 24 to 27. The same spread as before; the Pyre Lord and Void
+  Herald sit under the 25 to 50 s mark in some runs, as they did before this pass.
+
+**5. What only Emil can confirm** (bots dodge differently; human numbers come from the
+next runs on this build, which record the `pressure` event):
+- Does the fan read as "move" and not as noise? Is the lob ring readable in a crowd of
+  his own effects? The ring follows the hostile signature, but it was not screenshot-checked
+  in this pass.
+- Does "Mending fades" feel like a rule he understands, or like healing broke? It is one
+  line over the figure, once per floor. If it is missed, the HUD could show the rate.
+- Do floors 2 and 3 still feel too easy with a strong build? For a strong build the bot
+  spends little time under half there.
+- His rebuilt numbers say he dies in one or two rooms when a floor outpaces him. Watch
+  whether the new floors 3 to 5 make him drift down over a floor instead (the goal), or
+  still kill in a rush.
+
+Defaults taken: BX to CB in section 16. Weekly usage 45% at the start, 45% at the end.
+
 #### Phase 5 batch 1, part 3 (2026-11-08): Choir ledges, fps and the Cistern's sluice
 
 Weekly usage 38% at the start and 38% before each push. `VERSION` is `2026.11.08-p5c`.
@@ -2390,6 +2601,11 @@ set a stop at 39%, and the Drowned Choir (a new boss) did not fit in what was le
 | BV | Late-build fps | Fixed 2026-11-09 ("Late-build fps"): floor-2 storm-build boss fights run 98 to 99 fps in a real window (were 82 to 97), with the same gameplay and pixels; the grid step frame is what is left |
 | BT | Choir in the floor-number boss cycle | Not added to `SpawnTable.BOSSES` (that would change which boss appears past floor 5); the region picks it through `boss_kind` |
 | BU | Cistern lesson rewards | Region: Storm Seeker. Boss: Storm Pike |
+| BX | Pressure targets | Section 13 "Pressure targets": time under half not falling with depth (at least 0.10 from floor 3), healing at most 0.9x damage from floor 3, about 1 close call a floor from floor 4, clean rooms a minority past floor 2, worst 3 s at most 0.5 of max health outside boss contact |
+| BY | Sustain | Mending fades (`MEND_SOFT` 0.2): passive heals (Leech, regen, item triggers, fusion) slow within a fight at 1 / (1 + used / 0.2); chosen heals (actives, pickups, altars, shrines, stairs, repairs, revives) stay whole. One "Mending fades" line a floor, no HUD meter yet |
+| BZ | Ranged pressure by depth | Spitter fan with half-way lead at 0.7x a shot every 2 s from difficulty 8, arriving shooting; a lob every third volley from difficulty 14 (1 s hostile ring, 56 px, 1.4x a shot) |
+| CA | Flankers and elites | Runners flank from difficulty 6. Barrage affix from difficulty 10 (weighted double). Elites hold at least 2 s of the floor's arena output from floor 2 |
+| CB | What is left as it was | Floor 1, boss tuning (the Pyre Lord's 30%-per-hit contact is the largest burst measured), stairs healing (60% / 40%), the Leech cap, the crowd target, enemy damage numbers |
 
 ---
 
