@@ -62,6 +62,12 @@ func _ready() -> void:
             _sprite = Art.icon_sprite(Art.icon(String(BOON_ICONS.get(offer["id"], "item/gold/gold_pile_25.png"))), ICON_SCALE)
         "gunsmith", "reroll", "carry", "repair", "page":
             _sprite = Art.icon_sprite(Art.icon(String(KIND_ICONS[kind()])), ICON_SCALE)
+        "stairs" when ArtPass.enabled():
+            # A stairwell built in code (see _draw_stairwell) instead of the 1-bit tile.
+            _card = Crisp.attach(self, _draw_crisp, 80)
+            if ArtPass.active():
+                ArtPass.add_light(self, Vector2(0, -16), 190.0, stair_accent(), 0.85, 0.06, 0.15)
+            return
         _:
             _sprite = Art.sprite(Art.TILES.get(kind(), Art.TILES["cog"]), 2.5, color())
     _sprite.position = Vector2(0, -36)
@@ -222,7 +228,10 @@ func _draw() -> void:
         draw_arc(Vector2.ZERO, 44.0, 0.0, TAU, 48, Color(c, 0.6), 3.0)
         draw_arc(Vector2.ZERO, 30.0, 0.0, TAU, 6, Color(c, 0.8), 2.0)
     elif kind() == "stairs":
-        draw_circle(Vector2(0, 12), 22.0, Color(0, 0, 0, 0.45))
+        if ArtPass.enabled():
+            _draw_stairwell()
+        else:
+            draw_circle(Vector2(0, 12), 22.0, Color(0, 0, 0, 0.45))
     elif kind() == "sluice":
         # An iron wheel on a post (drawn in code, placeholder art).
         draw_circle(Vector2(0, 18), 26.0, Color(0, 0, 0, 0.45))
@@ -249,6 +258,99 @@ func _draw() -> void:
 
 
 const WELL_WATER := Color(0.42, 0.68, 0.92)
+
+## Each region's light, rising out of the stairwell that leads there (living world).
+const STAIR_ACCENTS := {
+    "crypt": Color(0.70, 0.90, 0.62), "cistern": Color(0.45, 0.82, 0.95), "garden": Color(0.74, 0.92, 0.40),
+    "ruins": Color(0.98, 0.74, 0.42), "frozen": Color(0.72, 0.90, 1.0), "forge": Color(1.0, 0.60, 0.26),
+    "sanctum": Color(1.0, 0.88, 0.52), "void": Color(0.72, 0.48, 1.0),
+}
+
+
+## The light colour of the region these stairs lead to (plain stairs: a pale stone light).
+func stair_accent() -> Color:
+    var id := String(offer.get("id", ""))
+    if id == "":
+        return Color(0.86, 0.84, 0.74)
+    var th := String(Regions.get_region(id).get("theme", ""))
+    return STAIR_ACCENTS.get(th, Color(0.86, 0.84, 0.74))
+
+
+## A route door as a real threshold: steps going down into the dark with the next region's
+## light spilling up them, stone walls either side, an arch over the far end with a lit
+## keystone, two lamps and a line of runes across the top step that wakes as you come near.
+func _draw_stairwell() -> void:
+    var tx := Themes.texel(1.3)
+    var acc := stair_accent()
+    var lt: Texture2D = Art.PARTICLES["light"]
+    var stone := Color(0.34, 0.32, 0.30)
+    var dark := Color(0.03, 0.03, 0.035)
+    var breathe := 0.85 + 0.15 * sin(_t * 1.5)
+    var near := 1.0 if highlighted else 0.0
+    var w := 38.0
+    var top := -40.0
+    var bot := 26.0
+    # Ground shadow and the well's mouth.
+    draw_texture_rect(lt, Rect2(Vector2(-70, bot - 26), Vector2(140, 60)), false, Color(0, 0, 0, 0.55))
+    draw_rect(Rect2(-w - tx * 2.0, top - tx, w * 2.0 + tx * 4.0, bot - top + tx * 2.0), dark)
+    # Steps: the near one lit, each further one darker, a lit lip and a dark riser each.
+    var steps := 7
+    var sh := (bot - top) / float(steps)
+    for k in steps:
+        var y := bot - float(k + 1) * sh
+        var f := float(k) / float(steps - 1)
+        var c := stone.lerp(dark, f * 0.85)
+        c = c.lerp(acc.darkened(0.55), f * 0.35)
+        draw_rect(Rect2(-w, y, w * 2.0, sh), c)
+        draw_rect(Rect2(-w, y, w * 2.0, tx), c.lightened(0.28 * (1.0 - f)))
+        draw_rect(Rect2(-w, y + sh - tx, w * 2.0, tx), Color(0, 0, 0, 0.45))
+    # The next region's light rising up the steps.
+    draw_texture_rect(lt, Rect2(Vector2(-w * 1.4, top - 30.0), Vector2(w * 2.8, 70.0)), false, Color(acc, 0.42 * breathe + 0.15 * near))
+    draw_texture_rect(lt, Rect2(Vector2(-w, top - 12.0), Vector2(w * 2.0, 34.0)), false, Color(acc.lightened(0.3), 0.30 * breathe))
+    for i in 6:
+        var f2 := fmod(_t * 0.35 + float(i) * 0.167, 1.0)
+        var q := Vector2(sin(_t * 0.9 + float(i) * 2.1) * w * 0.7, top + 6.0 - f2 * 60.0)
+        draw_rect(Rect2((q / tx).round() * tx, Vector2(tx, tx)), Color(acc.lightened(0.4), sin(PI * f2) * 0.8))
+    # Side walls of the well.
+    for sx in [-1.0, 1.0]:
+        var r := Rect2(sx * w - (tx * 4.0 if sx < 0 else 0.0), top - tx, tx * 4.0, bot - top + tx)
+        draw_rect(r.grow(tx * 0.5), Color(0.02, 0.02, 0.02))
+        draw_rect(r, stone.darkened(0.1))
+        draw_rect(Rect2(r.position, Vector2(r.size.x, tx)), stone.lightened(0.3))
+        var inner := r.position.x + (r.size.x - tx if sx < 0 else 0.0)
+        draw_rect(Rect2(inner, r.position.y, tx, r.size.y), Color(acc, 0.35 * breathe))
+    # The arch over the far end: two pillars, a lintel, a keystone lit in the region's colour.
+    for sx in [-1.0, 1.0]:
+        var pr := Rect2(sx * (w + tx * 2.0) - tx * 4.0, top - 50.0, tx * 8.0, 50.0)
+        draw_rect(pr.grow(tx), Color(0.02, 0.02, 0.02))
+        draw_rect(pr, stone)
+        draw_rect(Rect2(pr.position, Vector2(tx * 2.0, pr.size.y)), stone.lightened(0.18))
+        draw_rect(Rect2(pr.end.x - tx * 2.0, pr.position.y, tx * 2.0, pr.size.y), stone.darkened(0.35))
+        for k in 3:
+            draw_rect(Rect2(pr.position.x, pr.position.y + 12.0 + float(k) * 13.0, pr.size.x, tx * 0.6), Color(0, 0, 0, 0.4))
+    var lin := Rect2(-w - tx * 8.0, top - 62.0, w * 2.0 + tx * 16.0, 14.0)
+    draw_rect(lin.grow(tx), Color(0.02, 0.02, 0.02))
+    draw_rect(lin, stone.darkened(0.05))
+    draw_rect(Rect2(lin.position, Vector2(lin.size.x, tx)), stone.lightened(0.35))
+    draw_rect(Rect2(lin.position.x, lin.end.y - tx, lin.size.x, tx), Color(0, 0, 0, 0.5))
+    var key := Rect2(-tx * 4.0, top - 66.0, tx * 8.0, 20.0)
+    draw_rect(key.grow(tx), Color(0.02, 0.02, 0.02))
+    draw_rect(key, stone.lightened(0.08))
+    draw_texture_rect(lt, Rect2(key.get_center() - Vector2(18, 18), Vector2(36, 36)), false, Color(acc, 0.5 * breathe + 0.3 * near))
+    draw_rect(Rect2(key.get_center() - Vector2(tx, tx * 1.5), Vector2(tx * 2.0, tx * 3.0)), acc.lightened(0.2))
+    # Lamps on the pillar tops.
+    for sx in [-1.0, 1.0]:
+        var lp := Vector2(sx * (w + tx * 2.0), top - 56.0)
+        draw_texture_rect(lt, Rect2(lp - Vector2(16, 16), Vector2(32, 32)), false, Color(acc, 0.35 * breathe))
+        draw_rect(Rect2((lp / tx).round() * tx - Vector2(tx, tx * 2.0), Vector2(tx * 2.0, tx * 2.0)), acc.lightened(0.35))
+    # The threshold: runes across the top step that wake as a player comes near.
+    var n := 9
+    for i in n:
+        var x := -w + tx * 2.0 + float(i) * (w * 2.0 - tx * 4.0) / float(n - 1)
+        var on := 0.35 + 0.65 * near * (0.6 + 0.4 * sin(_t * 4.0 + float(i)))
+        var g := ((Vector2(x, bot + tx * 2.0)) / tx).round() * tx
+        draw_rect(Rect2(g, Vector2(tx, tx * (2.0 if i % 2 == 0 else 1.0))), Color(acc, on))
+    draw_rect(Rect2(-w - tx * 2.0, bot, w * 2.0 + tx * 4.0, tx), stone.lightened(0.25))
 
 
 ## A Well drawn in code (also the Hollow's, Hub): a ring of stones round dark water that

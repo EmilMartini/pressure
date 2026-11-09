@@ -88,6 +88,23 @@ faces, doorway jambs and spill, clutter, roots, the Gatewarden's gatehouse). Bot
 dress each room). The room's plants are a registry for element reactions (`ArtPass.pieces_near`,
 `ArtPass.react`).
 
+**Living world** (`scripts/living_world.gd`, the reactions in `ArtPass.Living`; design doc "Art
+direction", living world). Same switch (`lighting`, `--no-art`). Plants read the Materials grid
+four times a second and answer shots and bodies: fire spreads plant to plant (show only, no floor
+fire), ice freezes them and a hit shatters them, poison and acid wilt them, shock makes them
+crackle, gales and blasts lean them, void pulls them, and they grow back out of a fight. Vines,
+banners, cobwebs and chains on the top wall are point chains that swing and burn segment by
+segment. Deep water draws as a river (a flow map from the layout's river lines, foam, depth,
+ripples and wakes; ice stops it, shock crackles over it, fire boils it); the `stream` layout
+(Cistern, Gardens and Rust Ruins arenas) winds a river across the room. Critters flee, steam vents
+puff, a gust crosses the room now and then, and all of it rests in a fight. Lasting floor marks
+(`Materials.MARK_*`: frost rims, acid etching, dried blood, rubble, plus scorch) stay for the
+floor (`RoomData` meta `floor_marks`). Route doors and stairs are stairwells with the next
+region's light rising up them. Setting `river_carry` (off; `--river-carry` for a bot) lets
+rivers carry oil, blood, poisoned water and ash downstream: a gameplay change, Emil's call.
+Captures: `--alive-shot=river|react|route [--alive-layout=name] --tag=x` (real window, see
+`scripts/alive_shot.gd`) saves `autotest/alive_<region>_<kind>_<tag>_*.png`.
+
 ## Music
 
 Synthwave by Alex McCulloch (Pro Sensory), CC0 from OpenGameArt, see

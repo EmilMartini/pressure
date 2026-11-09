@@ -49,7 +49,10 @@ const BOSS := ["open", "four_pillars", "pillar_hall", "channels", "broken"]
 ## Every layout name, for the debug capture.
 const ALL := ["open", "four_pillars", "pillar_hall", "cross", "l_shape", "ring", "moat", "rift",
     "flooded", "channels", "refinery", "frozen", "broken", "twin", "diagonal", "pit_maze",
-    "overgrown", "buttresses", "bastions", "corner_pits", "colonnade", "spring"]
+    "overgrown", "buttresses", "bastions", "corner_pits", "colonnade", "spring", "stream"]
+## Region-only arena layouts: picked through a region's signature list (Regions "layouts"),
+## never from the shared ARENA pool, so other regions' rooms are unchanged.
+const REGIONAL := ["stream"]
 ## Smallest size class a layout fits in (0 small, 1 normal, 2 large).
 const MIN_SIZE := { "ring": 1, "moat": 1 }
 
@@ -66,7 +69,7 @@ static func pick(type: int, size_class: int, rng: RandomNumberGenerator, favour:
         RoomData.Type.ARENA, RoomData.Type.CHALLENGE:
             pool = ARENA
             if not favour.is_empty() and rng.randf() < FAVOUR_SHARE:
-                var fav: Array = favour.filter(func(n): return ARENA.has(n) and size_class >= int(MIN_SIZE.get(n, 0)))
+                var fav: Array = favour.filter(func(n): return (ARENA.has(n) or REGIONAL.has(n)) and size_class >= int(MIN_SIZE.get(n, 0)))
                 if not fav.is_empty():
                     pool = fav
         RoomData.Type.SHOP, RoomData.Type.TREASURE:
@@ -100,6 +103,7 @@ class Plan:
     var props: Array = []          # { "kind": String, "pos": Vector2 }
     var alcove: Dictionary = {}    # { "front": Rect2, "inner": Rect2, "out": Vector2 }
     var avoid: Array = []          # [Vector2, float]: spots props stay away from
+    var rivers: Array = []         # PackedVector2Array centrelines of flowing water (the river shader)
     var rng := RandomNumberGenerator.new()
 
     func _init(p_size: Vector2, p_seed: int) -> void:
@@ -296,6 +300,8 @@ static func _generate(p: Plan) -> void:
             _colonnade(p)
         "spring":
             _spring(p)
+        "stream":
+            _stream(p)
 
 
 # --- Generators (room-local px, origin at the centre) --------------------------
@@ -402,6 +408,33 @@ static func _channels(p: Plan) -> void:
     var d := 70.0
     for s in [-1.0, 1.0]:
         p.paint(Rect2(-p.half.x, s * y - d / 2.0, p.size.x, d), T_DEEP)
+        p.rivers.append(PackedVector2Array([Vector2(-p.half.x - 40.0, s * y), Vector2(p.half.x + 40.0, s * y)]))
+
+
+## A river that winds across the room from wall to wall (living world): deep water 60 to
+## 80 px wide on a meandering line through the room's upper or lower third, with a dry ford
+## where it passes the middle. Its centreline drives the river shader's flow.
+static func _stream(p: Plan) -> void:
+    var vertical := p.rng.randf() < 0.3
+    var side := 1.0 if p.rng.randf() < 0.5 else -1.0
+    var along := p.size.y if vertical else p.size.x
+    var across := (p.half.x if vertical else p.half.y) * p.rng.randf_range(0.42, 0.55) * side
+    var amp := p.rng.randf_range(30.0, 55.0)
+    var ph := p.rng.randf() * TAU
+    var waves := p.rng.randf_range(1.2, 2.0)
+    var line := PackedVector2Array()
+    var n := 28
+    for k in n + 1:
+        var u := -along / 2.0 - 40.0 + (along + 80.0) * float(k) / float(n)
+        var v := across + sin(ph + float(k) / float(n) * TAU * waves) * amp
+        line.append(Vector2(v, u) if vertical else Vector2(u, v))
+    p.rivers.append(line)
+    var wid := p.rng.randf_range(30.0, 40.0)
+    for k in line.size() - 1:
+        var a: Vector2 = line[k]
+        var b: Vector2 = line[k + 1]
+        for t in 4:
+            p.paint_circle(a.lerp(b, float(t) / 4.0), wid, T_DEEP)
 
 
 static func _refinery(p: Plan) -> void:

@@ -1919,10 +1919,146 @@ Screenshots for the living dressing:
    doors at a floor's end should get the same treatment as the Gate (towers, lintel, spill).
    That is the next art-pass task.
 
-**Left:** stairs and route doors at a floor's end are still the old icons. Characters have
-no squash or stretch (NPCs already breathe). Only the Stair room in the Hollow is dressed;
-the rest of the hub only gets the light. A cohesive art pack (`design/Art pack research.md`)
-would multiply all of this.
+**Left (after the showcase):** stairs and route doors were still the old icons (done below,
+living world). Characters have no squash or stretch (NPCs already breathe). Only the Stair room
+in the Hollow is dressed; the rest of the hub only gets the light. A cohesive art pack
+(`design/Art pack research.md`) would multiply all of this.
+
+#### Living world (2026-11-09): the world answers the elements
+
+Emil's asks: vines and props affected by the elements, dressing across the whole room, a
+flowing river instead of water blocks, animated things, and route doors that are not holes in
+the floor. Research: `design/Living world visuals research.md` (its Web notes no longer apply).
+Code: `scripts/living_world.gd` (`LivingWorld`: River, Chains, Critters, Vents), the reactions
+in `ArtPass.Living` (`scripts/art_pass.gd`), floor marks in `scripts/materials.gd`, the
+stairwell in `scripts/pedestal.gd`, the `stream` layout in `scripts/room_layouts.gd`, captures
+in `scripts/alive_shot.gd`. Off with the same switch as the art pass (Options "Lighting",
+`--no-art`). Weekly usage 44% at the start, 45% before the push. `VERSION` 2026.11.09-alive1.
+
+**What is built.**
+1. **Reactions wired to the grid.** Every plant reads `Materials.material_at` four times a
+   second and answers shots, bodies, gales (`Materials.on_force`) and novas (`Elements.nova`):
+   - Fire sets a plant burning (stepped flame tips, embers, no floor glow) and spreads to its
+     neighbours within 22 px (moss mats 70 px), then leaves a burnt stub and a scorch mark.
+     This is show only: no oil film is laid, so fire does not travel further than before.
+   - Ice freezes plants stiff and pale; any shot or body then shatters them (white chips).
+   - Poison and acid wilt them (olive, drooping, half sway); water darkens them.
+   - Shock makes them crackle (a one-texel jitter at 15 Hz and a flash).
+   - Gale and blasts lean them away, void pulls them in, bodies and shots part them.
+   - Candles go out in water, ice or a gale and relight from fire.
+   - Burnt, shattered and wilted plants grow back after about 16 to 26 s, out of a fight only
+     (stub, sprout, tuft). Their state is kept for the floor (`living_state`), so a revisit
+     shows what burned.
+   - Props answer every hit: one white frame, a one-texel shake for three frames, a little dust.
+   - Point chains (Verlet, 30 Hz): vines every 60 to 130 px along the top wall, banners between
+     the torch slots, iron chains, cobwebs in the top corners. They swing in the breeze, the room
+     gust, gales and blasts, and when the player or a shot brushes them. Fire under a hanging end
+     or a fire shot burns them segment by segment; the burnt part falls as embers and grows back
+     out of a fight. Ice stiffens them (a hit then snaps them), shock lights them.
+2. **River.** Every deep pool in every theme now draws as water with a flow map: the layout's
+   river lines (`Plan.rivers`) give the direction (pools without one circle slowly along their
+   banks), a breadth-first search from the bank gives depth. Two noise layers stretched along
+   the flow are cross-faded (Vlachos' two-phase trick) and stepped at 12 Hz. The river has bank
+   foam, depth shading, light streaks, and ripples from wading bodies, shots and ceiling drips
+   (12 slots). It reads the Materials texture: ice stops the flow and shows a cracked sheet,
+   shock crackles across it, fire and steam boil it, poisoned water tints it. `channels` now
+   flows. The new `stream` layout winds a 60 to 80 px river across an arena's upper or lower
+   third, with a dry ford wherever a door or the centre keeps the floor clear. It is in the
+   signature list of the Drowned Cistern, the Rotting Gardens and the Rust Ruins only
+   (`RoomLayouts.REGIONAL`), so other regions' rooms are unchanged.
+   **River carrying is Emil's call**: setting `river_carry` (off by default, `--river-carry` for
+   a bot) moves oil, blood, poisoned water and ash one cell downstream every 0.25 s, a third of
+   the river per tick. With it on, an oil slick poured upstream reaches enemies downstream.
+3. **Damage that stays.** `Materials._mark` holds lasting marks drawn by the grid shader (no
+   extra draw call): frost rims where ice melted, acid etching, dried blood soaked in, rubble
+   where a prop broke, plus the existing scorch. Room keeps `_char` and `_mark` in RoomData
+   (`floor_marks`) when the party leaves and puts them back on a revisit.
+4. **Stairs and route doors.** A route door is a stairwell: seven steps going down into the
+   dark, the next region's light rising up them (`Pedestal.STAIR_ACCENTS`, with motes), stone
+   walls either side, an arch with a keystone lit in that colour, lamps on the pillars, and a
+   line of runes across the top step that wakes as a player comes near, plus an ArtPass light.
+   Room doorways keep the showcase's jambs, spill and gate tiles (no change).
+5. **Ambient life.** Beetles and rats (up to 8 a room) near the walls and islands hop, flee
+   from players and bangs (never towards a player), burn into a puff, freeze, scatter from shock
+   and tumble in a gale; dark browns and greys only, no outline, no collision. Steam vents in
+   Cistern and Ruins rooms puff every 3 to 6 s (a small puff first as a tell), harder beside
+   fire, and ice caps them. Steam is Fx pixels only. A gust crosses the room every 14 to 24 s at
+   rest and leans plants and chains as it passes. Combat dim: Ambience's decorative spawners
+   halve while a fight runs, critters hide, vents rest, the gust stops.
+6. **The Gatewarden's room** gets a lived-in corner (a cot with a bedroll, a chest, a shelf of
+   ledgers, straw), two lanterns on iron chains that swing when the player walks under them
+   (with lights), cobwebs in the top corners and moths round the hearth and the lanterns.
+
+The plants, river, chains, critters and vents are in the Rust Ruins, the Rotting Gardens and the
+Drowned Cistern (`ArtPass.LIVING_THEMES`). The river shader is on every theme's deep water.
+
+**Readability rules found.** First measurements: a white flash and full-alpha crackle on plants
+in a fight, and the river's streaks and foam in a fight, cost enemy contrast (Cistern -0.012, mean
+contrast -0.05). So the art pass's rule extends: mood at rest, clarity in a fight. In a fight
+the plant answers stay small (no white flash, a faint crackle), the plants fade to 30%, the
+chains to 25%, critters hide, vents rest, and the river fades back to the room's own water
+tiles. In the Gardens and the Cistern (no light recipe yet) the living layers fade out
+completely in a fight (`ArtPass.fight_fade`).
+
+**Measured.**
+- Clarity, paired (`--clarity-shot --clarity-spitters=8 --clarity-parts --clarity-ab`, storm
+  build, both orders, same paused frame with the pass on and off):
+
+| Region, pairs | Enemy contrast on / off | Mean contrast on / off | Shot vs floor on / off | Shot vs own on / off |
+|---|---|---|---|---|
+| Rust Ruins, seeds 7, 11, 23, 18 pairs | 0.3062 / 0.3058 | 0.2917 / 0.2919 | 0.3867 / 0.3871 | 0.3721 / 0.3724 |
+| Drowned Cistern, seeds 7, 11, 12 pairs | 0.2537 / 0.2532 | 0.2043 / 0.2042 | 0.3641 / 0.3646 | 0.3349 / 0.3365 |
+| Rotting Gardens, seed 7, 6 pairs (before the full fight fade) | 0.2947 / 0.2945 | 0.2808 / 0.2818 | 0.3882 / 0.3877 | 0.3760 / 0.3770 |
+
+  Own effects: Ruins 9.2% / 8.3%, Cistern 20.8% / 22.2% (the first capture after the pause reads
+  high, so the orders cancel only roughly). The worst single enemy pair is -0.003 in the Ruins and
+  -0.007 in the Cistern, against pair spreads of the same size in both directions.
+- fps at the 60 cap (real window, `--perf --fps-cap`, seed 2, `--short --arsenal --gear`):
+  Rust Ruins pass on 59.9 and 59.8 mean (1% low 34.0, 32.7), off 59.9 and 59.9 (34.8, 35.5);
+  Drowned Cistern on 59.8 (33.2), off 59.8 (34.4). Frames over 50 ms: 4, 4 on against 4, 3 off
+  (Ruins), 4 against 4 (Cistern). The 1% low is still the known 80 to 160 ms hitches, with or
+  without this work.
+- Gameplay: fusion probe `[FUSION-CHECK] PASS`, Brute King cleared at t=247 s (new) against 226 s
+  (old, same seed 5), 0 script errors. Idle six-gun bot, five runs each (seeds 5 to 9): the old
+  code died at t=111, 59, 89 and 55 and cleared the floor once (t=230); the new code died at 50,
+  24 and 188, cleared the floor once (t=225) and survived to the 420 s limit once. Same-seed runs
+  diverge (wall-clock reads), so this is the usual spread, not a change; it still dies in the
+  first region in most runs.
+
+**Screenshots** (`autotest/`, local; "before" is 5a4e4a8 in a worktree with the same capture):
+- Rust Ruins at rest and after fire and ice on two islands, then a revisit 11 s later:
+  `alive_rust_ruins_react_before_rest.png` / `_after_rest.png`, `_before_react.png` /
+  `_after_react.png`, `_before_revisit.png` / `_after_revisit.png` (frost rim and char stay).
+- Rust Ruins fight, the same paused frame: `clarity_rust_ruins_alive7_2_noart.png` and
+  `clarity_rust_ruins_alive7_2.png`.
+- Drowned Cistern river (`channels`): `alive_drowned_cistern_river_before_rest.png` /
+  `_after_rest.png`, frozen and boiled `_before_react.png` / `_after_react.png`, shocked
+  `_before_shock.png` / `_after_shock.png`. The new `stream` layout:
+  `alive_drowned_cistern_river_afterstream_*.png` and `alive_rotting_gardens_river_afterstream_*.png`.
+- Route door threshold: `alive_rust_ruins_route_before.png` / `alive_rust_ruins_route_after.png`.
+- The Gatewarden's room: `hub_gatewarden_alivebefore.png` / `hub_gatewarden_aliveafter.png`
+  (the Gate: `hub_gate_alivebefore.png` / `hub_gate_aliveafter.png`).
+
+**Rollout status per region.**
+
+| Region (theme) | Light recipe | Plants, chains, critters | River | Stairwell | Fight numbers |
+|---|---|---|---|---|---|
+| Rust Ruins (ruins) | yes | yes, vents too | `stream`, any deep pool | yes | at parity |
+| Drowned Cistern (cistern) | no | yes, vents too | `stream`, `channels`, `flooded`, `moat` | yes | at parity |
+| Rotting Gardens (garden) | no | yes | `stream` | yes | at parity (one seed) |
+| Ossuary Gate, Frostvault, Forge, Chapel of Ash, Rift | no | no | river shader on any deep pool | yes | not measured (river fades in a fight) |
+| The Hollow | yes | Stair room: lanterns, cobwebs, moths, a lived-in corner | none | the Gate as before | not measured (no fights) |
+
+**Left.**
+- Light recipes for the Gardens and the Cistern (then their living layers can stay at 30% in a
+  fight like the Ruins, after a paired test).
+- Fake reflections on the river (torch streaks), fog in PostFx, event grading, prop crack
+  overlays and arcs (research items 11, 12, 15, 17).
+- Room doorways as arches over the top wall (the Door node draws over the wall band, so it
+  needs the door drawing changed).
+- River carrying (Emil's decision above); when on, it could also ripple where the carried
+  material arrives.
+- Critters and chains for the other regions and the rest of the Hollow.
 
 #### Phase 5 batch 1, part 3 (2026-11-08): Choir ledges, fps and the Cistern's sluice
 

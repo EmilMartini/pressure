@@ -75,6 +75,17 @@ const F_FRONT := 4               # a fire cell lit this step: the bright leading
 const F_ZAP := 8                 # ice carrying a shock
 const F_STILL := 16              # laid by a room layout and drawn by the room until it changes
 
+## Lasting floor marks (design doc "Art direction", damage that stays): what melted, ate in,
+## dried or broke leaves a mark that outlives the material and the visit (Room keeps them
+## per floor, `save_marks` / `load_marks`). Drawing only: nothing reads them for play.
+const MARK_FROST := 1     # ice melted here: a pale frost rim
+const MARK_ACID := 2      # acid ate the floor: dark pitting
+const MARK_BLOOD := 3     # dried blood soaked in: a dark stain
+const MARK_RUBBLE := 4    # a prop broke here: grit and chips
+## Living world (ArtPass): called with (materials, world pos, radius, element) when a gale
+## blows over the grid, so plants, vines and critters answer it. Empty when no pass runs.
+static var on_force: Callable = Callable()
+
 # 8 directions for surge tendrils, clockwise from +x (y down).
 const DX := [1, 1, 0, -1, -1, -1, 0, 1]
 const DY := [0, 1, 1, 1, 0, -1, -1, -1]
@@ -84,6 +95,7 @@ var amt := PackedByteArray()
 var life := PackedByteArray()
 var _flag := PackedByteArray()
 var _char := PackedByteArray()     # permanent scorch level 0..3 under everything
+var _mark := PackedByteArray()     # lasting floor marks (MARK_*), drawn under everything; show only
 var _raised := PackedByteArray()   # raised dry ground (the Choir's platforms): nothing lands or flows here
 var _has_raised := false
 var _nbt := PackedInt32Array()     # neighbour of cell i in direction d at d * _n + i (see _nb)
@@ -148,6 +160,7 @@ func _init(room_rect: Rect2 = Rect2(-560, -360, 1120, 720)) -> void:
     life.resize(_n)
     _flag.resize(_n)
     _char.resize(_n)
+    _mark.resize(_n)
     _raised.resize(_n)
     _build_nbt()
     _cols.resize(MAT_COUNT)
@@ -204,6 +217,7 @@ func clear() -> void:
     life.fill(0)
     _flag.fill(0)
     _char.fill(0)
+    _mark.fill(0)
     _tdata.fill(0)
     _tmark.fill(0)
     _tlist = PackedInt32Array()
@@ -226,6 +240,8 @@ func stamp(kind: int, pos: Vector2, radius: float, amount: int, force: bool = fa
     var r := clampf(radius, 6.0, 240.0)
     if kind == Element.Kind.GALE:
         _gale(local, minf(r, 120.0))
+        if on_force.is_valid():
+            on_force.call(self, pos, r, kind)
         return
     if not (kind in [Element.Kind.WET, Element.Kind.OIL, Element.Kind.FIRE, Element.Kind.ICE, Element.Kind.POISON,
             Element.Kind.ACID, Element.Kind.BLOOD, Element.Kind.SHOCK]):
@@ -299,6 +315,57 @@ func material_at(pos: Vector2) -> int:
 
 func is_slippery(pos: Vector2) -> bool:
     return material_at(pos) == ICE
+
+
+## A lasting mark (MARK_*) over a disc; marks are drawn only (see MARK_FROST).
+func mark_area(pos: Vector2, radius: float, kind: int) -> void:
+    var local := pos - global_position - _origin
+    var ccx := floori(local.x / float(CELL))
+    var ccy := floori(local.y / float(CELL))
+    var rc := ceili(radius / float(CELL))
+    for cy in range(maxi(0, ccy - rc), mini(_h, ccy + rc + 1)):
+        for cx in range(maxi(0, ccx - rc), mini(_w, ccx + rc + 1)):
+            var dx := float(cx * CELL + HALF) - local.x
+            var dy := float(cy * CELL + HALF) - local.y
+            if dx * dx + dy * dy > radius * radius:
+                continue
+            var i := cy * _w + cx
+            if ((i * 2654435761) >> 9) % 3 == 0:
+                continue   # ragged
+            _mark[i] = kind
+            if _tmark[i] == 0:   # _touch
+                _tmark[i] = 1
+                _tlist.append(i)
+    _dirty = true
+
+
+## A scorch mark (char level 1..3) at one spot, as fire leaves: burnt plants, vines.
+func scorch(pos: Vector2, level: int) -> void:
+    var i := _index_at(pos)
+    if i >= 0:
+        _char_mark(i, clampi(level, 1, 3))
+        _dirty = true
+
+
+## The floor's lasting record (char and marks) for RoomData, or [] when it is bare.
+func save_marks() -> Array:
+    if _char.count(0) == _n and _mark.count(0) == _n:
+        return []
+    return [_char.duplicate(), _mark.duplicate()]
+
+
+## Puts a saved record back (a revisit): what burned, melted, ate in and broke is still there.
+func load_marks(rec: Array) -> void:
+    if rec.size() != 2 or (rec[0] as PackedByteArray).size() != _n:
+        return
+    _char = (rec[0] as PackedByteArray).duplicate()
+    _mark = (rec[1] as PackedByteArray).duplicate()
+    for i in _n:
+        if _char[i] != 0 or _mark[i] != 0:
+            if _tmark[i] == 0:   # _touch
+                _tmark[i] = 1
+                _tlist.append(i)
+    _dirty = true
 
 
 ## Lays still terrain (a room layout's pools, slicks, ice sheets, grass) over every cell
@@ -480,6 +547,14 @@ func is_raised(pos: Vector2) -> bool:
 func _put(i: int, m: int, a: int, l: int) -> void:
     if m != NONE and _has_raised and _raised[i] != 0:
         return
+    var was := int(mat[i])
+    if was != m and (was == ICE or was == ACID or was == DRY_BLOOD) and _mark[i] != MARK_RUBBLE:
+        if was == ICE:
+            _mark[i] = MARK_FROST
+        elif was == ACID:
+            _mark[i] = MARK_ACID
+        elif m == NONE:
+            _mark[i] = MARK_BLOOD
     mat[i] = m
     amt[i] = a if a >= 0 and a <= 255 else clampi(a, 0, 255)
     life[i] = l if l >= 0 and l <= 255 else clampi(l, 0, 255)
@@ -1591,7 +1666,7 @@ bool inside(ivec2 c) {
     return c.x >= 0 && c.y >= 0 && c.x < grid.x && c.y < grid.y;
 }
 
-// x: material | 16 front | 32 zap | 64 still, y: amount, z: life, w: char level.
+// x: material | 16 front | 32 zap | 64 still, y: amount, z: life, w: char level | mark << 2.
 ivec4 cell_at(ivec2 c) {
     if (!inside(c)) {
         return ivec4(0);
@@ -1716,16 +1791,59 @@ void fragment() {
 #else
     vec4 acc = vec4(0.0);
     int h = hash16(c);
+    int chr = d.w & 3;
+    int mk = d.w >> 2;
+    // Lasting marks (MARK_*), under everything, never on a still pool or the river.
+    if (mk > 0 && (d.x & 64) == 0) {
+        if (mk == 1) {
+            // Frost rim: a pale band on the mark's outer cells, sparse white specks inside.
+            bool edge = false;
+            for (int k = 0; k < 4; k++) {
+                ivec2 n = c + ivec2(k == 0 ? -1 : (k == 1 ? 1 : 0), k == 2 ? -1 : (k == 3 ? 1 : 0));
+                if ((cell_at(n).w >> 2) != 1) {
+                    edge = true;
+                    if ((k == 0 && sp.x < 2) || (k == 1 && sp.x >= CELL - 2) || (k == 2 && sp.y < 2) || (k == 3 && sp.y >= CELL - 2)) {
+                        acc = over(acc, vec4(0.78, 0.90, 1.0, 0.42));
+                    }
+                }
+            }
+            if (!edge && (h & 7) == 0 && in_rect(sp, h % 5, (h >> 3) % 5, 1, 1)) {
+                acc = over(acc, vec4(0.85, 0.95, 1.0, 0.5));
+            }
+        } else if (mk == 2) {
+            // Acid etching: an olive stain with dark pits.
+            acc = over(acc, vec4(0.20, 0.24, 0.06, 0.16));
+            if (in_rect(sp, h % 4, (h >> 2) % 4, 1, 1) || in_rect(sp, (h >> 5) % 5, (h >> 8) % 5, 1, 1)) {
+                acc = over(acc, vec4(0.03, 0.04, 0.01, 0.6));
+            }
+        } else if (mk == 3) {
+            // Blood soaked in: a dark brown stain, ragged.
+            acc = ragged(acc, sp, h, vec4(0.18, 0.05, 0.04, 0.32), (h & 3) == 0);
+        } else if (mk == 4) {
+            // Rubble: grit and a chip of stone with its shadow.
+            if ((h & 3) == 0) {
+                ivec2 o = ivec2(h % 4, (h >> 2) % 4);
+                if (in_rect(sp, o.x, o.y + 1, 2, 1)) {
+                    acc = over(acc, vec4(0.02, 0.02, 0.02, 0.6));
+                }
+                if (in_rect(sp, o.x, o.y, 2, 1)) {
+                    acc = over(acc, vec4(0.42, 0.40, 0.36, 0.85));
+                }
+            } else if (in_rect(sp, (h >> 4) % 6, (h >> 7) % 6, 1, 1)) {
+                acc = over(acc, vec4(0.30, 0.29, 0.26, 0.55));
+            }
+        }
+    }
     // Char marks: near-black dots, a darker patch where oil burned hard. Under everything.
-    if (d.w > 0) {
-        vec4 cc = vec4(0.03, 0.025, 0.02, 0.3 + 0.12 * float(d.w));
-        if (d.w >= 3) {
+    if (chr > 0) {
+        vec4 cc = vec4(0.03, 0.025, 0.02, 0.3 + 0.12 * float(chr));
+        if (chr >= 3) {
             acc = over(acc, vec4(0.03, 0.025, 0.02, 0.26));
         }
         if (in_rect(sp, h % 4, (h >> 2) % 4, 2, 2)) {
             acc = over(acc, cc);
         }
-        if (d.w >= 2 && in_rect(sp, (h >> 4) % 5, (h >> 7) % 5, 1, 1)) {
+        if (chr >= 2 && in_rect(sp, (h >> 4) % 5, (h >> 7) % 5, 1, 1)) {
             acc = over(acc, cc);
         }
     }
@@ -1900,7 +2018,7 @@ func _flush_texels() -> void:
         _tdata[o] = int(mat[i]) | ((int(_flag[i]) & (F_FRONT | F_ZAP | F_STILL)) << 2)
         _tdata[o + 1] = amt[i]
         _tdata[o + 2] = life[i]
-        _tdata[o + 3] = _char[i]
+        _tdata[o + 3] = int(_char[i]) | (int(_mark[i]) << 2)
     _tlist.clear()
     _timg.set_data(_w, _h, false, Image.FORMAT_RGBA8, _tdata)
     _ttex.update(_timg)

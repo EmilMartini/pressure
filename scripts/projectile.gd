@@ -69,6 +69,7 @@ static var live := 0   # shots in the tree (the bot's --perf probe prints it)
 func _ready() -> void:
     modulate.a = Settings.own_fx()   # "Your effects" (friend or foe, see Hostile)
     live += 1
+    add_to_group(&"player_shots")   # the living world reads them (plants part, rivers ripple)
     body_entered.connect(_on_body_entered)
     z_index = 5
     _life0 = maxf(0.01, lifetime)

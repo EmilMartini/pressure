@@ -67,6 +67,7 @@ var _gone := false
 var _sprite: Sprite2D
 var _over: Node2D
 var _flash := 0.0
+var _shake := 0                   # frames of the one-texel hit shake left (every hit answers)
 var _char := 0.0                  # 0..1 scorched look
 var _tick := 0.0
 var _fx_t := 0.0
@@ -165,7 +166,18 @@ func apply_element(element: int, _potency: float = 1.0, dir: Vector2 = Vector2.Z
     if used:
         _flash = 0.1
         Telemetry.prop(self, element)
+        _hit_answer()
     return used
+
+
+## Every hit answers, even one that does nothing (research note 2.3): one frame of white,
+## a one-texel shake for three frames and a little dust.
+func _hit_answer() -> void:
+    _shake = 3
+    _flash = maxf(_flash, 0.02)
+    var f := Engine.get_process_frames()
+    if f % 5 < 3:   # no gameplay rolls spent on show
+        _fxc("pixels", [Element.Kind.STONE, global_position + Vector2(float(f % 7 - 3) * size.x * 0.1, size.y * 0.4), 2, 30.0, 4.0])
 
 
 ## A plain hit (no element, or one that does nothing here). Crates, barrels, pots, vats,
@@ -174,6 +186,7 @@ func take_damage(_amount: float) -> void:
     if _gone:
         return
     _flash = 0.12
+    _hit_answer()
     match kind:
         "crate":
             if states.has("frozen"):
@@ -931,6 +944,9 @@ func _break(scrap: int) -> void:
         "wind_chime":
             _fxc("shards", [gp, 5, 14.0, Element.Kind.GALE])
     _remember_gone()
+    var mm := _mats()
+    if mm != null:
+        mm.mark_area(gp, maxf(size.x, size.y) * 0.7, Materials.MARK_RUBBLE)   # the wreck stays
     broke.emit(gp, scrap)
     if DROP_SCRAP_DIRECTLY and scrap > 0 and room != null and room.has_method("_drop_scrap"):
         room.call_deferred("_drop_scrap", gp, scrap, scrap)
@@ -1134,6 +1150,14 @@ func _update_sprite() -> void:
                 c = c.lerp(Element.COLORS[Element.Kind.ACID], 0.25 * (1.0 - float(_timers["erode"]) / 8.0) + 0.1)
     if _flash > 0.0:
         c = c.lerp(Color(1, 1, 1), 0.6)
+    if _shake == 3:
+        c = Color(1.6, 1.6, 1.6, c.a)   # the first frame of a hit: white
+    var base_y := -8.0 if kind == "stone_pillar" or kind == "lightning_rod" else 0.0
+    if _shake > 0:
+        _sprite.position = Vector2(Themes.texel(1.3) * (1.0 if _shake % 2 == 1 else -1.0), base_y)
+        _shake -= 1
+    elif _sprite.position.x != 0.0:
+        _sprite.position = Vector2(0, base_y)
     _sprite.modulate = c
 
 

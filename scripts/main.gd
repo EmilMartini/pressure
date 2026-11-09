@@ -1365,6 +1365,8 @@ func _setup_autotest() -> void:
         add_child(GearShot.new(self))   # worn-gear sheets and fight close-ups (gear_shot.gd)
     if ClarityShot.wanted():
         add_child(ClarityShot.new(self))   # before/after readability shots and numbers (clarity_shot.gd)
+    if AliveShot.wanted():
+        add_child(AliveShot.new(self))   # living-world captures: river, reactions, route doors (alive_shot.gd)
     # Default: a real naked start, so the run measures the progression loop. `--arsenal`
     # hands over every gun to stress every element and effect at once.
     for a in OS.get_cmdline_user_args():

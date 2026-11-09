@@ -80,6 +80,7 @@ var reserved: Array = []     # [pos, radius]: spots puzzle pieces hold
 var _keep: Array = []        # [pos, radius]: spots the layout keeps open
 var _walls_body: StaticBody2D
 var _deep_rects: Array[Rect2] = []
+var rivers: Array = []               # flowing water centrelines from the layout (LivingWorld.River)
 var _deep_idx := PackedInt32Array()   # Materials cells of the deep pools
 var _deep_cursor := 0
 var _deep_t := 0.0
@@ -107,6 +108,12 @@ func _enter_tree() -> void:
 func _exit_tree() -> void:
     if here == self:
         here = null
+    # Damage that stays (design doc "Art direction"): scorch, frost rims, acid etching,
+    # dried blood and rubble are still on the floor when the party comes back.
+    if materials != null and is_instance_valid(materials):
+        var rec := materials.save_marks()
+        if not rec.is_empty():
+            data.set_meta("floor_marks", rec)
 
 
 func _ready() -> void:
@@ -126,6 +133,8 @@ func _ready() -> void:
     _build_doors()
     _build_pedestals()
     _build_layout()     # interior walls, chasms, pools, slicks, ice, grass; the nav grid
+    if data.has_meta("floor_marks"):
+        materials.load_marks(data.get_meta("floor_marks"))
     if data.secret != "":
         secrets = Secrets.new(self)
         add_child(secrets)
@@ -134,6 +143,7 @@ func _ready() -> void:
     ArtPass.dress_room(self)   # art pass: wall depth, doorways, clutter, foreground (art_pass.gd)
     _dress_theme()      # wall decor, lights and the floor's own extras (moss, ice, lava)
     ArtPass.light_room(self)
+    ArtPass.dress_living(self)   # living world: river, plants that react, vines, critters (living_world.gd)
     _build_choir_platforms()
     add_child(ambience)
     Crisp.attach(self, _draw_crisp)
@@ -1614,6 +1624,7 @@ func _build_layout() -> void:
         door_pts.append(Vector2(d) * (room_size / 2.0 + Vector2(WALL / 2.0, WALL / 2.0)))
     var plan := RoomLayouts.build(data.layout, data.layout_seed, room_size, _keep, door_pts, data.alcove)
     layout_name = plan.name
+    rivers = plan.rivers
     nav_w = plan.w
     nav_h = plan.h
     cells = plan.cells

@@ -198,7 +198,9 @@ func _kill(i: int) -> void:
 
 ## `rate` per second, scaled; calls `f` once per whole spawn due.
 func _emit(key: String, rate: float, delta: float, f: Callable) -> void:
-    var acc: float = _acc.get(key, 0.0) + rate * _k * delta
+    # Combat dim (living world): decorative life halves while a fight runs.
+    var dim := 0.5 if room != null and room.active else 1.0
+    var acc: float = _acc.get(key, 0.0) + rate * _k * delta * dim
     while acc >= 1.0:
         acc -= 1.0
         f.call()

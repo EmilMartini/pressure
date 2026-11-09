@@ -27,6 +27,7 @@ const DEFAULTS := {
     "pixel_size": 3,                  # world pixel grid in screen pixels, 2..4
     "palette": true,                  # quantize the world to the palette, with dither
     "lighting": true,                 # art pass: region light, grade and dressing (ArtPass)
+    "river_carry": false,             # rivers carry oil, blood, poisoned water, ash downstream (gameplay; Emil's call)
     "fx_rev": 3,                      # post-fx defaults revision (FX_REV; migrations, see load)
     "aim_mode": "assisted",           # "assisted", "manual" or "auto" (Player.AIM_MODES)
     "manual_fire": "hold",            # manual aim: "hold" fire, or "toggle" constant fire

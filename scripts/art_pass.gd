@@ -105,6 +105,34 @@ static func use(key: String, owner: Node) -> bool:
 ## fade, so fights read exactly as before (design doc "Art direction": the paired
 ## clarity test). Eases over about a second each way.
 static var fight := 0.0
+
+
+## The fight weight for a room's living layers: ArtPass.fight where the recipe pass runs,
+## else 1 while the room's fight runs.
+static func fight_of(room: Node) -> float:
+    if active() and owner_ref.get_ref() == room:
+        return fight
+    # Rooms without a light recipe: the same one-second ease, kept per room.
+    var want := 1.0 if room is Room and (room as Room).active else 0.0
+    var id := room.get_instance_id()
+    var now_ms := Time.get_ticks_msec()
+    var rec: Array = _nf.get(id, [want, now_ms])
+    var v := move_toward(float(rec[0]), want, float(now_ms - int(rec[1])) / 1000.0 * 1.2)
+    _nf[id] = [v, now_ms]
+    if _nf.size() > 8:
+        _nf.clear()
+        _nf[id] = [v, now_ms]
+    return v
+
+static var _nf: Dictionary = {}
+
+
+## How far the living layers fade in a fight: to 30% where a light recipe was measured at
+## parity (ruins), all the way out in the regions that have no recipe yet (garden, cistern),
+## so their fights read exactly as before (design doc "Art direction", living world).
+static func fight_fade(room: Node, measured: float) -> float:
+    var th := String(room.get("theme")) if room != null and "theme" in room else ""
+    return measured if RECIPES.has(th) else 1.0
 static var _last_t := -1.0
 
 
@@ -232,7 +260,7 @@ static func dress_room(room: Room) -> void:
     room.move_child(lv, 1)
     for pc in lv.pieces:
         if pc["k"] == "candle":
-            add_light(room, pc["p"], 90.0, Color(1.0, 0.76, 0.40), 0.5, 0.03, 0.8)
+            lv.candle_light = add_light(room, pc["p"], 90.0, Color(1.0, 0.76, 0.40), 0.5, 0.03, 0.8)
             break
     var cr := Critters.new()
     cr.tx = tx
@@ -672,38 +700,132 @@ static func pieces_near(room: Room, pos: Vector2, radius: float) -> Array:
     return out
 
 
-## The hook for element reactions (not wired yet; the reactions pass will call it from the
-## Materials grid or from Elements): plants in the radius take the element's look. FIRE
-## chars them, ICE frosts them, WET darkens them, SHOCK lights them for a moment, GALE
-## leans them downwind for a moment (`dir`). Returns how many pieces changed.
+## Element reactions on the living dressing (wired: the Living node reads the Materials grid
+## four times a second, answers shots and bodies, gales and novas). This entry point lets
+## other code react a spot directly: FIRE sets plants burning (fire spreads plant to plant,
+## show only), ICE freezes them (a hit shatters them), POISON and ACID wilt them, WET soaks
+## them, SHOCK makes them crackle, GALE leans them away from `pos`, VOID pulls them in.
+## Returns how many pieces changed.
 static func react(room: Room, pos: Vector2, radius: float, element: int, dir := Vector2.ZERO) -> int:
     var lv := room.get_node_or_null("Living") as Living
     if lv == null:
         return 0
-    var n := 0
-    for pc in pieces_near(room, pos, radius):
-        if not String(pc["k"]) in ["grass", "fern", "moss"]:
+    return lv.react_at(pos, radius, element, dir)
+
+
+## A clock for the living-world shaders (seconds, wrapped so floats stay exact).
+static func now() -> float:
+    return fmod(float(Time.get_ticks_msec()) / 1000.0, 900.0)
+
+
+## Materials.on_force: a gale on the grid reaches plants, chains and critters.
+static func force_at(m: Materials, pos: Vector2, r: float, kind: int) -> void:
+    var room := m.get_parent() as Room
+    if room == null:
+        return
+    var lv := room.get_node_or_null("Living") as Living
+    if lv != null:
+        lv.react_at(pos - room.global_position, r * 1.3, kind)
+    var ch := room.get_node_or_null("Chains") as LivingWorld.Chains
+    if ch != null:
+        ch.force(pos, r * 1.5, 6.0)
+    var cr := room.get_node_or_null("GroundCritters") as LivingWorld.Critters
+    if cr != null:
+        cr.gale(pos, r)
+
+
+## The living world beyond the recipe regions (design doc "Art direction", living world):
+## the river on every theme's deep water; vines, banners, cobwebs, critters and steam vents in
+## the river regions (ruins, garden, cistern). Off with the "lighting" option or --no-art.
+const LIVING_THEMES := ["ruins", "garden", "cistern"]
+
+
+static func dress_living(room: Room) -> void:
+    if not enabled():
+        return
+    Materials.on_force = func(m: Materials, p: Vector2, r: float, k: int) -> void: ArtPass.force_at(m, p, r, k)
+    var tx := Themes.texel(room._zoom())
+    if not room._deep_rects.is_empty():
+        var rv := LivingWorld.River.new()
+        rv.tx = tx
+        room.add_child(rv)
+        var under := room.get_node_or_null("LayoutUnder")
+        if under != null:
+            room.move_child(rv, under.get_index() + 1)
+        rv.build(room, room._deep_rects)
+    if not room.theme in LIVING_THEMES:
+        return
+    var rng := RandomNumberGenerator.new()
+    rng.seed = hash(room.data.pos) * 13 + room.main.floor_number * 7 + 5
+    if room.get_node_or_null("Living") == null:
+        # The river regions without a light recipe still get the islands and plants.
+        var lr: Dictionary = RECIPES["ruins"].duplicate()
+        lr["moss"] = Color(0.26, 0.34, 0.12) if room.theme == "garden" else Color(0.14, 0.30, 0.26)
+        lr["stone"] = Color(0.30, 0.31, 0.32) if room.theme == "cistern" else Color(0.32, 0.31, 0.24)
+        var nl := Living.new()
+        nl.room = room
+        nl.recipe = lr
+        nl.tx = Themes.texel(room._zoom())
+        nl.plan(rng, [])
+        room.add_child(nl)
+        room.move_child(nl, 1)
+    var half := room.room_size / 2.0
+    var r: Dictionary = RECIPES.get(room.theme, RECIPES["ruins"])
+    var moss: Color = r["moss"]
+    var ch := LivingWorld.Chains.new()
+    ch.room = room
+    ch.mats = room.materials
+    ch.tx = tx
+    var top := -half.y - 16.0
+    var x := -half.x + rng.randf_range(20.0, 70.0)
+    while x < half.x - 20.0:
+        if not (room.data.doors.has(Vector2i.UP) and absf(x) < Room.GAP * 0.65):
+            ch.add("vine", Vector2(x, top), rng.randi_range(5, 12), tx * 2.2, moss.lightened(0.12))
+        x += rng.randf_range(60.0, 130.0)
+    # Banners between the torch slots, cobwebs in the top corners, a chain or two.
+    var cloth := [Color(0.42, 0.14, 0.12), Color(0.16, 0.28, 0.32), Color(0.34, 0.30, 0.14)]
+    var n := maxi(2, int(room.room_size.x / 200.0))
+    for i in n:
+        var bx := -half.x + room.room_size.x * (float(i) + 0.5) / float(n)
+        if room.data.doors.has(Vector2i.UP) and absf(bx) < Room.GAP * 0.7:
             continue
-        match element:
-            Element.Kind.FIRE:
-                pc["st"] = "burnt"
-            Element.Kind.ICE:
-                if pc["st"] != "burnt":
-                    pc["st"] = "frozen"
-            Element.Kind.WET:
-                if pc["st"] == "live":
-                    pc["st"] = "wet"
-            Element.Kind.SHOCK:
-                pc["st"] = "charged"
-                pc["t"] = 0.6
-            Element.Kind.GALE:
-                lv.gust = dir.normalized()
-                lv.gust_t = 1.2
-            _:
-                continue
-        n += 1
-    lv.queue_redraw()
-    return n
+        if rng.randf() < 0.55:
+            ch.add("banner", Vector2(bx, top - 6.0), rng.randi_range(6, 9), tx * 2.0, cloth[rng.randi() % cloth.size()].darkened(0.1), 6.0)
+        elif rng.randf() < 0.5:
+            ch.add("chain", Vector2(bx, top - 4.0), rng.randi_range(6, 10), tx * 1.8, Color(0.34, 0.34, 0.36))
+    for sx in [-1.0, 1.0]:
+        var c := Vector2(sx * (half.x - 2.0), -half.y + 2.0)
+        for k in 4:
+            var dir := Vector2(-sx, 0.0).rotated(sx * (0.25 + float(k) * 0.42))
+            ch.add("web", c, 2, 18.0 + float(k % 2) * 8.0, Color(0.80, 0.80, 0.76))
+            ch.chains[-1]["pts"][1] = c + dir * (18.0 + float(k % 2) * 8.0)
+            ch.chains[-1]["old"][1] = ch.chains[-1]["pts"][1]
+    room.add_child(ch)
+    # Critters near the walls and the islands; vents in the wet and ruined rooms.
+    var homes: Array = []
+    for i in 9:
+        var side := rng.randi() % 4
+        var along := rng.randf_range(-0.9, 0.9)
+        var p: Vector2
+        match side:
+            0: p = Vector2(along * half.x, -half.y + 18.0)
+            1: p = Vector2(along * half.x, half.y - 18.0)
+            2: p = Vector2(-half.x + 18.0, along * half.y)
+            _: p = Vector2(half.x - 18.0, along * half.y)
+        homes.append(p)
+    var lv := room.get_node_or_null("Living") as Living
+    if lv != null:
+        for m in lv.mats:
+            homes.append((m[0] as Vector2) + Vector2(rng.randf_range(-40, 40), rng.randf_range(-20, 20)))
+    var cr := LivingWorld.Critters.new()
+    cr.tx = tx
+    room.add_child(cr)
+    cr.plan(room, homes.slice(0, 8))
+    if room.theme in ["cistern", "ruins"]:
+        var vt := LivingWorld.Vents.new()
+        vt.tx = tx
+        vt.plan(room, rng)
+        room.add_child(vt)
 
 
 ## Interior islands and every plant in the room, under the bodies (z -1). Plants sway in
@@ -836,51 +958,412 @@ class Living extends Node2D:
             if room.spot_ok_loose(p, 8.0):
                 _add("fern" if rng.randf() < 0.4 else "grass", p, 8.0, rng)
 
+    # --- Reactions (wired to the Materials grid, shots, bodies, gales and novas) ---------
+
+    const PLANTS := ["grass", "fern", "moss"]
+    var _buckets: Dictionary = {}   # Vector2i(32 px cell) -> piece indices (plants)
+    var _busy: Dictionary = {}      # piece index -> true while it has a state to tick
+    var _poll := 0.0
+    var _touch_t := 0.0
+    var _dirty := false
+    var _last_draw := 0.0
+    var _wave_t := 9.0
+    var _fx_ref: Fx = null
+    var candle_light: Node2D = null
+
+    func _ready() -> void:
+        for i in pieces.size():
+            var pc: Dictionary = pieces[i]
+            pc["lean"] = 0.0
+            pc["rg"] = 0.0
+            pc["fl"] = 0
+            pc["sp"] = false
+            pc["nb"] = []
+            if String(pc["k"]) in PLANTS and pc["k"] != "moss":
+                var key := Vector2i(floori((pc["p"] as Vector2).x / 32.0), floori((pc["p"] as Vector2).y / 32.0))
+                if not _buckets.has(key):
+                    _buckets[key] = []
+                _buckets[key].append(i)
+        # Neighbours for fire spreading plant to plant (within 22 px; moss mats reach further).
+        for i in pieces.size():
+            var a: Dictionary = pieces[i]
+            if not String(a["k"]) in PLANTS:
+                continue
+            for j in range(i + 1, pieces.size()):
+                var b: Dictionary = pieces[j]
+                if not String(b["k"]) in PLANTS:
+                    continue
+                var reach := 22.0 if a["k"] != "moss" and b["k"] != "moss" else 70.0
+                if (a["p"] as Vector2).distance_to(b["p"]) < reach:
+                    (a["nb"] as Array).append(j)
+                    (b["nb"] as Array).append(i)
+        # What burned or broke here before is still burnt (a revisit).
+        var saved: Variant = room.data.get_meta("living_state") if room.data.has_meta("living_state") else null
+        if saved is Array and (saved as Array).size() == pieces.size():
+            for i in pieces.size():
+                var s: Array = saved[i]
+                if String(s[0]) in ["burnt", "shattered", "wilted"]:
+                    pieces[i]["st"] = s[0]
+                    pieces[i]["rg"] = float(s[1])
+                    pieces[i]["t"] = float(s[1])
+                    _busy[i] = true
+        if not Elements.nova.is_connected(_on_nova):
+            Elements.nova.connect(_on_nova)
+
+    func _exit_tree() -> void:
+        if Elements.nova.is_connected(_on_nova):
+            Elements.nova.disconnect(_on_nova)
+        var out: Array = []
+        for pc in pieces:
+            var st := String(pc["st"])
+            var keep := st in ["burnt", "shattered", "wilted", "burning"]
+            out.append(["burnt" if st == "burning" else (st if keep else "live"), maxf(float(pc["rg"]), float(pc["t"])) if keep else 0.0])
+        room.data.set_meta("living_state", out)
+
+    func _fx() -> Fx:
+        if _fx_ref != null and is_instance_valid(_fx_ref):
+            return _fx_ref
+        var scene := get_tree().current_scene
+        if scene != null and "fx" in scene:
+            _fx_ref = scene.get("fx") as Fx
+        return _fx_ref
+
+    func _put_state(i: int, st: String, t: float) -> void:
+        var pc: Dictionary = pieces[i]
+        pc["st"] = st
+        pc["t"] = t
+        pc["sp"] = false
+        _busy[i] = true
+        _dirty = true
+
+    func _burnable(st: String) -> bool:
+        return st == "live" or st == "wilted" or st == "sprout"
+
+    ## Plants within `radius` of `pos` (room-local) take the element's answer.
+    func react_at(pos: Vector2, radius: float, element: int, _dir := Vector2.ZERO) -> int:
+        var n := 0
+        for i in pieces.size():
+            var pc: Dictionary = pieces[i]
+            if (pc["p"] as Vector2).distance_to(pos) > radius + float(pc["s"]):
+                continue
+            if _hit(i, element, (pc["p"] as Vector2) - pos, 3.0):
+                n += 1
+        return n
+
+    func _lean(pc: Dictionary, off: Vector2, amount: float) -> void:
+        pc["lean"] = clampf(signf(off.x if absf(off.x) > 0.5 else 1.0) * amount, -3.0, 3.0)
+
+    ## One element (or a plain touch, NONE) reaching piece i from offset `off`.
+    func _hit(i: int, element: int, off: Vector2, push: float) -> bool:
+        var pc: Dictionary = pieces[i]
+        var k := String(pc["k"])
+        var st := String(pc["st"])
+        if k == "candle":
+            if (element == Element.Kind.WET or element == Element.Kind.ICE or element == Element.Kind.GALE) and st == "live":
+                _put_state(i, "out", 12.0 if element != Element.Kind.GALE else 3.0)
+                return true
+            if element == Element.Kind.FIRE and st == "out":
+                _put_state(i, "live", 0.0)
+                return true
+            return false
+        if not k in PLANTS:
+            return false
+        if element == Element.Kind.FIRE:
+            if _burnable(st):
+                _put_state(i, "burning", 0.9 if k != "moss" else 1.6)
+                return true
+            if st == "frozen":
+                _put_state(i, "wet", 5.0)
+                return true
+        elif element == Element.Kind.ICE:
+            if st != "burnt" and st != "shattered" and st != "burning" and st != "frozen":
+                _put_state(i, "frozen", 6.0)
+                return true
+        elif element == Element.Kind.POISON or element == Element.Kind.ACID:
+            if st == "live" or st == "wet" or st == "sprout":
+                _put_state(i, "wilted", 14.0)
+                return true
+        elif element == Element.Kind.WET:
+            if st == "live":
+                _put_state(i, "wet", 6.0)
+                return true
+            if st == "burning":
+                _put_state(i, "burnt", 0.0)
+                pc["rg"] = 18.0
+                return true
+        elif element == Element.Kind.SHOCK:
+            if st != "burnt" and st != "shattered" and not pc.has("zap"):
+                pc["fl"] = 1
+                pc["zap"] = 0.6
+                _busy[i] = true
+                _dirty = true
+                return true
+        elif element == Element.Kind.VOID:
+            _lean(pc, off, -push)
+            _busy[i] = true
+            _dirty = true
+            return true
+        else:
+            # Gale, stone, a plain hit: a frozen plant shatters, others lean away and flash.
+            if st == "frozen":
+                _shatter(i)
+                return true
+            if k == "moss":
+                return false
+            _lean(pc, off, push)
+            if element != Element.Kind.GALE:
+                pc["fl"] = 1
+            _busy[i] = true
+            _dirty = true
+            return true
+        return false
+
+    func _shatter(i: int) -> void:
+        _put_state(i, "shattered", 0.0)
+        pieces[i]["rg"] = 16.0 + float(i % 7)
+        var fx := _fx()
+        if fx != null:
+            fx.pixels(Element.Kind.ICE, global_position + (pieces[i]["p"] as Vector2), 3, 45.0, 3.0)
+
+    func _on_nova(pos: Vector2, r: float, c: Color) -> void:
+        var local := pos - global_position
+        var pull := c.b > c.g + 0.3   # Elements' pull novas are violet
+        for i in pieces.size():
+            var pc: Dictionary = pieces[i]
+            var off: Vector2 = (pc["p"] as Vector2) - local
+            if off.length() < r and String(pc["k"]) in PLANTS and pc["k"] != "moss":
+                _lean(pc, off, -3.0 if pull else 3.0)
+                _busy[i] = true
+                _dirty = true
+        var ch := room.get_node_or_null("Chains")
+        if ch != null and ch.has_method("force"):
+            ch.force(pos, r * 1.2, -4.0 if pull else 4.0)
+
+    ## Four times a second: what lies on the floor under each plant.
+    func _read_floor() -> void:
+        var m := room.materials
+        if m == null:
+            return
+        var gp := global_position
+        for i in pieces.size():
+            var pc: Dictionary = pieces[i]
+            var k := String(pc["k"])
+            var st := String(pc["st"])
+            var mat := m.material_at(gp + (pc["p"] as Vector2))
+            if mat == Materials.NONE:
+                continue
+            if k == "candle":
+                if mat == Materials.WATER or mat == Materials.ICE:
+                    _hit(i, Element.Kind.WET, Vector2.ZERO, 0.0)
+                continue
+            if st == "burnt" or st == "shattered" or st == "burning":
+                continue
+            if mat == Materials.FIRE or mat == Materials.ASH:
+                _hit(i, Element.Kind.FIRE, Vector2.ZERO, 0.0)
+            elif mat == Materials.ICE:
+                if st != "frozen":
+                    _hit(i, Element.Kind.ICE, Vector2.ZERO, 0.0)
+                else:
+                    pc["t"] = maxf(float(pc["t"]), 2.0)
+            elif mat == Materials.POISON or mat == Materials.ACID:
+                _hit(i, Element.Kind.POISON, Vector2.ZERO, 0.0)
+            elif mat == Materials.CHARGED:
+                _hit(i, Element.Kind.SHOCK, Vector2.ZERO, 0.0)
+            elif mat == Materials.WATER:
+                _hit(i, Element.Kind.WET, Vector2.ZERO, 0.0)
+
+    ## Twenty times a second: shots and bodies passing through the plants part them; a fire,
+    ## ice or shock shot leaves its element; a frozen plant shatters under any hit.
+    func _touch_bodies() -> void:
+        if _buckets.is_empty():
+            return
+        var tree := get_tree()
+        var list: Array = []
+        for p in tree.get_nodes_in_group("players"):
+            list.append([(p as Node2D).global_position, -1])
+        for s in tree.get_nodes_in_group("player_shots"):
+            var sp := s as Node2D
+            if sp != null:
+                list.append([sp.global_position, int(sp.get("element"))])
+        var en: Array = EnemyGrid.nodes(tree, &"enemies")
+        for k in mini(en.size(), 30):
+            if is_instance_valid(en[k]):
+                list.append([(en[k] as Node2D).global_position, -1])
+        var gp := global_position
+        for it in list:
+            var at: Vector2 = (it[0] as Vector2) - gp
+            var key := Vector2i(floori(at.x / 32.0), floori(at.y / 32.0))
+            for oy in [-1, 0, 1]:
+                for ox in [-1, 0, 1]:
+                    var b: Variant = _buckets.get(key + Vector2i(ox, oy))
+                    if b == null:
+                        continue
+                    for i: int in b:
+                        var off: Vector2 = (pieces[i]["p"] as Vector2) - at
+                        if off.length_squared() > 144.0:
+                            continue
+                        var el: int = it[1]
+                        if el < 0:
+                            # A body brushing through: lean away; a frozen plant cracks.
+                            if pieces[i]["st"] == "frozen":
+                                _shatter(i)
+                            elif absf(float(pieces[i]["lean"])) < 1.5:
+                                _lean(pieces[i], off, 2.0)
+                                _busy[i] = true
+                                _dirty = true
+                        else:
+                            _hit(i, el, off, 2.0)
+
+    func _tick(delta: float, calm: bool) -> void:
+        var done: Array = []
+        var fx := _fx()
+        for i: int in _busy.keys():
+            var pc: Dictionary = pieces[i]
+            var st := String(pc["st"])
+            var t := float(pc["t"]) - delta
+            pc["t"] = t
+            if int(pc["fl"]) > 0:
+                pc["fl"] = int(pc["fl"]) - 1
+                _dirty = true
+            var lean := float(pc["lean"])
+            if lean != 0.0:
+                var nl := move_toward(lean, 0.0, delta * 2.5)
+                pc["lean"] = nl
+                if roundf(nl) != roundf(lean):
+                    _dirty = true
+            if pc.has("zap"):
+                pc["zap"] = float(pc["zap"]) - delta
+                if float(pc["zap"]) <= 0.0:
+                    pc.erase("zap")
+                _dirty = true
+            if st == "burning":
+                if not pc["sp"] and t < (0.55 if pc["k"] != "moss" else 1.0):
+                    pc["sp"] = true
+                    for j: int in pc["nb"]:
+                        if _burnable(String(pieces[j]["st"])):
+                            _put_state(j, "burning", 0.9 if pieces[j]["k"] != "moss" else 1.6)
+                if fx != null and (i + Engine.get_process_frames()) % 9 == 0:
+                    fx.ember(global_position + (pc["p"] as Vector2) + Vector2(0, -4))
+                _dirty = true
+                if t <= 0.0:
+                    pc["st"] = "burnt"
+                    pc["rg"] = 18.0 + float(i % 9)
+                    var mm := room.materials
+                    if mm != null:
+                        mm.scorch(global_position + (pc["p"] as Vector2), 2 if pc["k"] == "moss" else 1)
+                        if pc["k"] == "moss":
+                            for k in 6:
+                                mm.scorch(global_position + (pc["p"] as Vector2) + Vector2.RIGHT.rotated(float(k)) * 30.0, 1)
+                    if fx != null:
+                        fx.smoke(global_position + (pc["p"] as Vector2), 1, 4.0)
+            elif st == "burnt" or st == "shattered":
+                if calm:
+                    pc["rg"] = float(pc["rg"]) - delta
+                    if float(pc["rg"]) <= 0.0:
+                        pc["st"] = "sprout"
+                        pc["t"] = 1.6
+                        _dirty = true
+            elif st == "sprout" or st == "frozen" or st == "wilted" or st == "wet" or st == "out":
+                if t <= 0.0:
+                    pc["st"] = "wet" if st == "frozen" else "live"
+                    pc["t"] = 3.0
+                    _dirty = true
+            elif st == "live":
+                if float(pc["lean"]) == 0.0 and int(pc["fl"]) == 0 and not pc.has("zap"):
+                    done.append(i)
+        for i in done:
+            _busy.erase(i)
+
     func _process(delta: float) -> void:
         _t += delta
-        modulate.a = 1.0 - 0.55 * ArtPass.fight
+        var fight := ArtPass.fight_of(room)
+        modulate.a = 1.0 - ArtPass.fight_fade(room, 0.7) * fight
+        var calm := fight < 0.5 and not room.active
         if gust_t > 0.0:
             gust_t = maxf(0.0, gust_t - delta)
-        var dirty := false
-        for pc in pieces:
-            if pc["st"] == "charged":
-                pc["t"] = float(pc["t"]) - delta
-                if float(pc["t"]) <= 0.0:
-                    pc["st"] = "live"
-                    dirty = true
+        _poll -= delta
+        if _poll <= 0.0:
+            _poll = 0.25
+            _read_floor()
+        _touch_t -= delta
+        if _touch_t <= 0.0:
+            _touch_t = 0.05
+            _touch_bodies()
+        if not _busy.is_empty():
+            _tick(delta, calm)
+        # The room-wide gust: a wave of wind crosses the room now and then, at rest only.
+        _wave_t -= delta
+        if LivingWorld.gust_x != INF:
+            LivingWorld.gust_x += LivingWorld.gust_dir * 260.0 * delta
+            if absf(LivingWorld.gust_x) > room.room_size.x * 0.5 + 200.0:
+                LivingWorld.gust_x = INF
+        elif _wave_t <= 0.0:
+            _wave_t = 14.0 + float(int(_t * 7.0) % 10)
+            if calm:
+                LivingWorld.gust_dir = 1.0 if int(_t) % 2 == 0 else -1.0
+                LivingWorld.gust_x = -LivingWorld.gust_dir * (room.room_size.x * 0.5 + 150.0)
+        if candle_light != null:
+            var lit := false
+            for pc in pieces:
+                lit = lit or (pc["k"] == "candle" and pc["st"] == "live")
+            candle_light.visible = lit
         var step := int(_t * 8.0)
-        if step != _step or dirty:
+        var gusting := LivingWorld.gust_x != INF
+        if step != _step or (_dirty and _t - _last_draw > 1.0 / 20.0) or (gusting and _t - _last_draw > 1.0 / 12.0):
             _step = step
+            _dirty = false
+            _last_draw = _t
             queue_redraw()
 
-    ## Sway in whole texels at the tip: a slow wave with a per-piece phase, stepped.
+    ## Sway in whole texels at the tip: a slow wave with a per-piece phase, stepped; plus a
+    ## lean (contact, gale, blasts, void) and the room gust passing.
     func _sway(pc: Dictionary) -> float:
-        var amp := 1.0 - 0.5 * ArtPass.fight
+        var st := String(pc["st"])
+        if st == "frozen" or st == "shattered" or st == "burnt":
+            return 0.0
+        var fight := ArtPass.fight_of(room)
+        var amp := (1.0 - 0.5 * fight) * (0.5 if st == "wilted" else 1.0)
         var s := sin(float(_step) / 8.0 * 1.6 + float(pc["ph"])) * amp
         if gust_t > 0.0:
             s += gust.x * 2.0 * gust_t / 1.2
-        return roundf(s)
+        s += float(pc.get("lean", 0.0))
+        s += LivingWorld.gust_at((pc["p"] as Vector2).x) * 2.0 * (1.0 - fight)
+        if pc.has("zap"):
+            s += 1.0 if int(_t * 15.0) % 2 == 0 else -1.0
+        return roundf(clampf(s, -3.0, 3.0))
 
-    func _tint(st: String, c: Color) -> Color:
-        match st:
+    func _tint(pc: Dictionary, c: Color) -> Color:
+        # In a fight the answers stay small (readability): no white flash, a faint crackle.
+        var quiet := ArtPass.fight_of(room) > 0.5
+        if int(pc.get("fl", 0)) > 0 and not quiet:
+            return Color(1.0, 1.0, 1.0)
+        if pc.has("zap"):
+            var k := (0.7 if int(_t * 15.0) % 2 == 0 else 0.3) * (0.35 if quiet else 1.0)
+            return c.lerp(Color(0.85, 0.95, 1.0), k)
+        match String(pc["st"]):
             "burnt":
                 return Color(0.10, 0.08, 0.07)
-            "frozen":
+            "frozen", "shattered":
                 return c.lerp(Color(0.70, 0.85, 1.0), 0.6)
             "wet":
                 return c.darkened(0.3)
-            "charged":
-                return c.lerp(Color(0.85, 0.95, 1.0), 0.7)
+            "wilted":
+                return c.lerp(Color(0.36, 0.30, 0.12), 0.65)
+            "sprout":
+                return c.lightened(0.15)
         return c
 
     func _draw() -> void:
         var lt: Texture2D = Art.PARTICLES["light"]
         var mc: Color = recipe["moss"]
-        # Moss mats: a low veil, close to the floor's value.
-        for m in mats:
-            var p: Vector2 = m[0]
-            var r: Vector2 = m[1]
-            draw_texture_rect(lt, Rect2(p - r, r * 2.0), false, Color(mc, 0.45))
+        # Moss mats: a low veil, close to the floor's value; a burnt mat is a dark patch.
+        for pc in pieces:
+            if pc["k"] == "moss":
+                var p: Vector2 = pc["p"]
+                var r := Vector2(84, 48)
+                var st := String(pc["st"])
+                var c := mc if st == "live" or st == "sprout" else _tint(pc, mc)
+                draw_texture_rect(lt, Rect2(p - r, r * 2.0), false, Color(c, 0.45 if st != "burnt" else 0.6))
         # Leaf litter and pebbles: single texels, dim.
         var leaf := [Color(0.30, 0.26, 0.12), Color(0.24, 0.30, 0.12), Color(0.34, 0.22, 0.10)]
         for l in litter:
@@ -902,43 +1385,58 @@ class Living extends Node2D:
                 draw_rect(Rect2(q - Vector2(2, 2) * tx, Vector2(5, 3) * tx), sc.darkened(0.1))
                 draw_rect(Rect2(q - Vector2(2, 2) * tx, Vector2(5, 1) * tx), sc.lightened(0.15))
             draw_texture_rect(lt, Rect2(c - Vector2(24, 14), Vector2(48, 28)), false, Color(0, 0, 0, 0.45))
-            # A cracked bowl and a skull: the offering.
             var bc: Color = recipe["bone"]
             draw_rect(Rect2(_snap(c) - Vector2(4, 2) * tx, Vector2(8, 3) * tx), Color(0.03, 0.02, 0.02))
             draw_rect(Rect2(_snap(c) - Vector2(3, 2) * tx, Vector2(6, 2) * tx), Color(0.40, 0.30, 0.20))
             draw_rect(Rect2(_snap(c) + Vector2(-1, -4) * tx, Vector2(3, 2) * tx), bc.darkened(0.15))
         # Plants.
+        var fire := [Color(1.0, 0.84, 0.36), Color(1.0, 0.50, 0.14)]
+        var fstep := int(_t * 12.0)
         for pc in pieces:
             var k := String(pc["k"])
             var p: Vector2 = pc["p"]
             var st := String(pc["st"])
             if k == "grass":
                 var sw := _sway(pc)
-                var base := _tint(st, mc.lightened(0.10))
-                var tip := _tint(st, mc.lightened(0.42))
+                var base := _tint(pc, mc.lightened(0.10))
+                var tip := _tint(pc, mc.lightened(0.42))
+                if st == "burning":
+                    tip = fire[(fstep + int(p.x)) % 2]
                 for b in 3:
                     var bx := p.x + float(b - 1) * tx * 1.0
                     var h := 2 + (b % 2) + (1 if st == "live" else 0)
-                    if st == "burnt":
+                    if st == "burnt" or st == "shattered" or st == "sprout":
                         h = 1
+                    elif st == "wilted":
+                        h = maxi(1, h - 1)
                     draw_rect(Rect2(bx, p.y - float(h) * tx, tx, float(h) * tx), base)
                     draw_rect(Rect2(bx + sw * tx * float(b % 2 + 1) * 0.5, p.y - float(h + 1) * tx, tx, tx), tip)
+                    if st == "shattered" and b == 1:
+                        draw_rect(Rect2(bx, p.y - tx * 2.0, tx, tx), Color(0.92, 0.97, 1.0))
+                if st == "burning" and (fstep + int(p.y)) % 3 != 0:
+                    draw_rect(Rect2(p.x + sw * tx, p.y - 5.0 * tx, tx, tx), fire[(fstep + 1) % 2])
             elif k == "fern":
                 var sw := _sway(pc)
-                var base := _tint(st, mc.lightened(0.05))
-                var tip := _tint(st, mc.lightened(0.30))
+                var base := _tint(pc, mc.lightened(0.05))
+                var tip := _tint(pc, mc.lightened(0.30))
+                if st == "burning":
+                    tip = fire[(fstep + int(p.x)) % 2]
                 draw_rect(Rect2(p - Vector2(3, 0) * tx, Vector2(7, 1) * tx), Color(0, 0, 0, 0.35))
+                var segs := 1 if st == "burnt" or st == "shattered" or st == "sprout" else 3
+                var droop := 1.0 if st == "wilted" else 0.0
                 for f in 5:
                     var dirx := float(f - 2)
                     var q := p
-                    var segs := 3 if st != "burnt" else 1
                     for sgm in segs:
-                        q += Vector2(dirx * 0.8 + (sw * 0.5 if sgm == segs - 1 else 0.0), -1.0) * tx
+                        q += Vector2(dirx * 0.8 + (sw * 0.5 if sgm == segs - 1 else 0.0), -1.0 + (droop if sgm == segs - 1 else 0.0)) * tx
                         draw_rect(Rect2(_snap(q), Vector2(tx, tx)), base if sgm < segs - 1 else tip)
             elif k == "candle":
-                var fl := 1 if sin(_t * 11.0 + float(pc["ph"])) > 0.3 else 0
                 draw_rect(Rect2(p, Vector2(tx, tx * 3.0)), Color(0.80, 0.76, 0.64))
-                draw_rect(Rect2(p - Vector2(0, tx * float(1 + fl)), Vector2(tx, tx * float(1 + fl))), Color(1.0, 0.80, 0.36))
+                if st != "out":
+                    var fl := 1 if sin(_t * 11.0 + float(pc["ph"])) > 0.3 else 0
+                    draw_rect(Rect2(p - Vector2(0, tx * float(1 + fl)), Vector2(tx, tx * float(1 + fl))), Color(1.0, 0.80, 0.36))
+                else:
+                    draw_rect(Rect2(p - Vector2(0, tx), Vector2(tx, tx)), Color(0.20, 0.18, 0.16))
 
 
 ## Small life over the floor (z 26, under the foreground): moths circling the wall lights,
@@ -1117,6 +1615,30 @@ static func dress_hub(hub: Node2D, amb: Ambience, stair: Rect2, gate: Vector2, f
         cs.shape = rs
         cs.position = s[0]
         body.add_child(cs)
+    # Living touches (living world): cobwebs in the corners, iron chains with lanterns that
+    # swing when the player brushes past, moths round the hearth and the lanterns.
+    var ch := LivingWorld.Chains.new()
+    ch.tx = tx
+    ch.z_index = 0
+    var lanterns := [Vector2(stair.position.x + 250.0, stair.position.y - 14.0), Vector2(stair.end.x - 150.0, stair.position.y - 14.0)]
+    for a in lanterns:
+        ch.add("lantern", a, 9, tx * 2.0, Color(0.30, 0.30, 0.33))
+        add_light(hub, a + Vector2(0, tx * 18.0), 150.0, Color(1.0, 0.76, 0.42), 0.6, 0.04, 0.5)
+    for c in [stair.position, Vector2(stair.end.x, stair.position.y)]:
+        var sx := 1.0 if c.x < gate.x else -1.0
+        for k in 4:
+            var dir := Vector2(sx * cos(0.15 + float(k) * 0.45), sin(0.15 + float(k) * 0.45))
+            var ln := 22.0 + float(k % 2) * 10.0
+            ch.add("web", c + Vector2(sx * 2.0, 2.0), 2, ln, Color(0.82, 0.82, 0.78))
+            ch.chains[-1]["pts"][1] = c + Vector2(sx * 2.0, 2.0) + dir * ln
+            ch.chains[-1]["old"][1] = ch.chains[-1]["pts"][1]
+    hub.add_child(ch)
+    var moths := Critters.new()
+    moths.tx = tx
+    moths.lamps = [hearth + Vector2(0, -26)]
+    for a in lanterns:
+        moths.lamps.append(a + Vector2(0, tx * 18.0))
+    hub.add_child(moths)
     for m in [0, 1]:
         var d := HubStairDressing.new()
         d.stair = stair
@@ -1227,6 +1749,39 @@ class HubStairDressing extends Node2D:
         _crate(Vector2(stair.end.x - 52.0, stair.position.y + 250.0))
         _crate(Vector2(stair.end.x - 40.0, stair.position.y + 284.0))
         _icon("item/misc/misc_lantern.png", Vector2(stair.end.x - 52.0, stair.position.y + 232.0), 0.4)
+        # The Gatewarden's corner (living world): a cot with a bedroll, a chest, a shelf of
+        # ledgers against the wall and straw on the floor, so the room is lived in.
+        var cot := Rect2(_s(Vector2(stair.end.x - 176.0, stair.position.y + 130.0)), _s(Vector2(76.0, 30.0)))
+        draw_texture_rect(lt, Rect2(cot.position + Vector2(-10, 16), Vector2(cot.size.x + 20, 28)), false, Color(0, 0, 0, 0.65))
+        for i in 26:
+            var h := (i * 2654435761) & 0xFFFF
+            var q := _s(cot.get_center() + Vector2(float(h % 160) - 80.0, float((h >> 8) % 60) - 18.0))
+            draw_rect(Rect2(q, Vector2(tx * 2.0, tx)), Color(0.62, 0.54, 0.30, 0.55))
+        draw_rect(cot.grow(tx), Color(0.03, 0.02, 0.01))
+        draw_rect(cot, Color(0.34, 0.21, 0.11))
+        var bed := cot.grow(-tx * 2.0)
+        draw_rect(bed, Color(0.22, 0.26, 0.22))
+        draw_rect(Rect2(bed.position, Vector2(bed.size.x * 0.62, bed.size.y)), Color(0.28, 0.32, 0.26))
+        draw_rect(Rect2(bed.position + Vector2(bed.size.x * 0.62, 0), Vector2(tx, bed.size.y)), Color(0.16, 0.18, 0.15))
+        draw_rect(Rect2(bed.end.x - tx * 8.0, bed.position.y + tx, tx * 7.0, bed.size.y - tx * 2.0), Color(0.78, 0.74, 0.62))
+        draw_rect(Rect2(bed.end.x - tx * 8.0, bed.position.y + tx, tx * 7.0, tx), Color(0.92, 0.88, 0.76))
+        var chest := Rect2(_s(Vector2(cot.position.x - 40.0, cot.position.y + 4.0)), _s(Vector2(28.0, 20.0)))
+        draw_texture_rect(lt, Rect2(chest.position + Vector2(-6, chest.size.y - 6), Vector2(chest.size.x + 12, 14)), false, Color(0, 0, 0, 0.7))
+        draw_rect(chest.grow(tx), Color(0.03, 0.02, 0.01))
+        draw_rect(chest, Color(0.40, 0.24, 0.12))
+        draw_rect(Rect2(chest.position, Vector2(chest.size.x, tx * 3.0)), Color(0.50, 0.32, 0.16))
+        for bx in [chest.position.x + tx * 2.0, chest.end.x - tx * 3.0]:
+            draw_rect(Rect2(bx, chest.position.y, tx, chest.size.y), Color(0.30, 0.30, 0.32))
+        draw_rect(Rect2(chest.get_center() - Vector2(tx, 0), Vector2(tx * 2.0, tx * 2.0)), Color(0.80, 0.66, 0.30))
+        var shelf := Rect2(_s(Vector2(stair.end.x - 22.0, stair.position.y + 84.0)), _s(Vector2(18.0, 96.0)))
+        draw_rect(shelf.grow(tx), Color(0.03, 0.02, 0.01))
+        draw_rect(shelf, Color(0.30, 0.18, 0.09))
+        var spines := [Color(0.42, 0.12, 0.10), Color(0.16, 0.26, 0.36), Color(0.52, 0.44, 0.22), Color(0.24, 0.32, 0.18), Color(0.36, 0.30, 0.26)]
+        for row in 4:
+            var y0 := shelf.position.y + tx * 2.0 + float(row) * shelf.size.y / 4.0
+            draw_rect(Rect2(shelf.position.x, y0 + shelf.size.y / 4.0 - tx * 2.0, shelf.size.x, tx), Color(0.46, 0.30, 0.15))
+            for b in 4:
+                draw_rect(Rect2(shelf.position.x + tx, y0 + float(b) * tx * 2.2, shelf.size.x - tx * 2.0, tx * 1.6), spines[(row * 3 + b) % spines.size()])
         # Weapon rack against the top wall, right of the doorway.
         var rack := Rect2(_s(Vector2(stair.position.x + 470.0, stair.position.y + 2.0)), _s(Vector2(150.0, 54.0)))
         draw_texture_rect(lt, Rect2(rack.position + Vector2(-10, rack.size.y - 8), Vector2(rack.size.x + 20, 26)), false, Color(0, 0, 0, 0.6))
