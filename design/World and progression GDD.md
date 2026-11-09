@@ -60,7 +60,9 @@ git checkout -- default_bus_layout.tres            # the editor sometimes rewrit
 ```
 
 ```bash
-# Frame rate: a real window, nothing else running; heavy fights should hold about 98-100 fps with vsync.
+# Frame rate: a real window, nothing else running. Target (Emil, 2026-11-09): heavy fights hold
+# 60 fps with a 1% low at or above about 55. The game caps at 60 (Options "Frame cap"); bot runs
+# stay uncapped to show headroom (add --fps-cap to measure capped), but pass or fail is against 60.
 # Every windowed run goes through tools/bot_window.sh: the window opens without taking focus.
 tools/bot_window.sh 240 autotest/perf.log 400000 --path . --audio-driver Dummy res://scenes/main.tscn -- --autotest --secs=75 --short --arsenal --gear --perf --instance=N
 grep -E "PERF-SUMMARY|SCRIPT ERROR" autotest/perf.log
@@ -73,6 +75,12 @@ Real-window runs never take focus: `tools/bot_window.sh` sets `no_focus` for tha
 hitch, so older per-2-s `[PERF]` numbers read low. Real-window fps is noisy when the PC is in
 use (the same seed ranged 82 to 97 fps); compare CPU cost headless with `Perf` labels when
 the simulation is identical.
+
+Shipping (Emil, 2026-11-09): the game ships as the Windows exe only; the Web build and the
+Pages deploy are gone. After the last push, rebuild the local exe (`tools/export_exe.sh`) and
+confirm the "Windows release" workflow run succeeded:
+`curl -s "https://api.github.com/repos/EmilMartini/pressure/actions/runs?per_page=1"`. Lights and
+shaders only need to work in the exe.
 
 Every bot log must have 0 `SCRIPT ERROR` lines. `README.md` lists every bot flag, including
 `--build=storm`, `--start-floor`, `--old-balance`, `--mastery`, `--veteran`, `--gun-probe` and the

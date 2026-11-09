@@ -11,6 +11,8 @@ const ROWS := [
     { "key": "sfx_volume", "label": "Sound volume", "type": "slider" },
     { "key": "fullscreen", "label": "Fullscreen", "type": "bool" },
     { "key": "vsync", "label": "VSync", "type": "bool" },
+    { "key": "fps_cap", "label": "Frame cap", "type": "pick", "options": ["60", "uncapped"],
+        "names": ["60 FPS", "UNCAPPED"] },
     { "key": "screen_shake", "label": "Screen shake", "type": "slider" },
     { "key": "hit_stop", "label": "Hit-stop", "type": "bool" },
     { "key": "flashes", "label": "Screen flashes", "type": "bool" },

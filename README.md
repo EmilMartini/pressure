@@ -70,7 +70,8 @@ neighbours.
 
 A screen-space pass (bloom from a thresholded blur, mild contrast and saturation, a
 vignette, and a CRT look: slight barrel curve, scanlines, a faint phosphor triad,
-chromatic aberration and grain) that runs on the Compatibility renderer so the web build
+chromatic aberration and grain) that runs on the Compatibility renderer (the project's renderer;
+the game ships as the Windows exe only) so the exe
 keeps it. Tweak the uniforms at the top of `scripts/post_fx.gd`; set `crt_curve`,
 `scanline`, `aberration` and `grain` to 0 for a clean picture.
 
@@ -380,23 +381,15 @@ rumble for every pad; the browser cannot rumble some controllers (Chrome exposes
 for the DualSense). Local build: `tools/export_exe.sh` (stamps the build label), or the "Windows" export preset,
 or `godot --headless --path . --export-release Windows export/windows/Pressure.exe`.
 
-## Play in the browser
+## Frame rate
 
-The game exports to a single-page web build (GL Compatibility, single-threaded, so it
-runs on any static host without special headers). Two ways to get it:
-
-- **GitHub Pages, automatic.** Push the repository to GitHub, open Settings > Pages and
-  set Source to "GitHub Actions". `.github/workflows/deploy.yml` then exports the Web
-  preset on every push to `main` and publishes it at
-  `https://<user>.github.io/<repo>/`. Share that link; nothing to install, saves live
-  in the browser.
-- **Locally.** Install the 4.7.2 export templates once (`tools/get_templates.sh`, or
-  Editor > Manage Export Templates), then `tools/export_web.sh --serve` exports to
-  `export/web` and serves it on http://localhost:8060.
-
-The web build keeps controllers (browser Gamepad API: press a button once so the page
-sees the pad), keyboard and mouse. Co-op is local, so friends on their own machines each
-play their own run.
+The game caps at 60 fps by default (Options "Frame cap": 60 FPS or UNCAPPED, Settings
+`fps_cap`, applied through `Engine.max_fps`); vsync is its own option. The target is that
+heavy fights hold 60 fps with a 1% low at or above about 55. On a 100 Hz monitor with vsync a
+60 cap can pace frames slightly unevenly; UNCAPPED avoids that. Runs started with command-line
+arguments (bots, captures, `--perf`) stay uncapped to show headroom; `--fps-cap` caps them.
+The Web build and the GitHub Pages deploy were dropped on 2026-11-09: the game ships as the
+Windows exe only.
 
 ## Telemetry
 
@@ -439,7 +432,7 @@ Anonymous, opt-in play data for balancing (`scripts/telemetry.gd`, autoload `Tel
 - **Build label.** Every record carries `Telemetry.BUILD` = `VERSION+COMMIT`, for example
   `2026.11.08-p4+1a2b3c4`. Each phase (or any build you share) bumps `VERSION` in
   `scripts/telemetry.gd` by hand to the date plus a phase tag. `COMMIT` stays `"dev"` in the
-  repository: the Pages and release workflow stamps the short commit hash into it before
+  repository: the Windows release workflow stamps the short commit hash into it before
   exporting, and `tools/export_exe.sh` does the same for the local exe (commit first; it
   restores `"dev"` afterwards). A run from the editor or a bot says `+dev`.
 - **Analysis.** `python tools/analyze_telemetry.py export.jsonl dump.jsonl` (standard
@@ -804,8 +797,8 @@ To change which sprite something uses, edit the coordinates in `scripts/art.gd`
 
 ```
 project.godot        project settings, autoloads, renderer
-export_presets.cfg   the Web export preset;  .github/workflows/deploy.yml publishes it
-tools/               export_web.sh (export + serve), get_templates.sh, analyze_telemetry.py,
+export_presets.cfg   the Windows (and old Web) export presets;  .github/workflows/deploy.yml builds the release
+tools/               export_exe.sh, export_web.sh (old Web export), get_templates.sh, analyze_telemetry.py,
                      telemetry_worker.js (Cloudflare), telemetry_sheet.gs (Google Sheets)
 scenes/main.tscn     the only scene; everything is built in code
 scripts/

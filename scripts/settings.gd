@@ -14,6 +14,7 @@ const DEFAULTS := {
     "sfx_volume": 0.8,
     "fullscreen": false,
     "vsync": true,
+    "fps_cap": "60",                  # "60" or "uncapped" (Engine.max_fps); bots and captures run uncapped
     "screen_shake": 1.0,
     "hit_stop": true,
     "flashes": true,                  # full-strength screen flashes and the pulsing low-health edge
@@ -135,6 +136,11 @@ func apply() -> void:
         elif not want_full and is_full:
             DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
         DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_ENABLED if flag("vsync") else DisplayServer.VSYNC_DISABLED)
+    # Frame cap (Emil, 2026-11-09: the target is a steady 60). Runs started with user args
+    # (bots, captures, --perf) stay uncapped to show headroom unless they pass --fps-cap.
+    var args := OS.get_cmdline_user_args()
+    var capped := String(get_value("fps_cap")) == "60" and (args.is_empty() or args.has("--fps-cap"))
+    Engine.max_fps = 60 if capped else 0
     if is_inside_tree():
         _apply_post_fx_all(get_tree().root)
 
