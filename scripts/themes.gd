@@ -283,9 +283,28 @@ static func door_tiles(horizontal: bool, kind: String, theme: String = "") -> Ar
 ## world position of `ci`'s local origin. Each texel is `texel` world units.
 ## (`ci` is any CanvasItem; it is left untyped so the readability preview tool can pass
 ## an image canvas.)
+## The pieces never overlap (each is one tile cell's part of `rect`), so they are drawn
+## grouped by texture: the same pixels, one batch per texture instead of a draw call every
+## time the random pick switches variant.
 static func draw_tiles(ci, list: Array, rect: Rect2, origin: Vector2, texel_w: float, seed_v: int, tint: Color) -> void:
+    var pieces := tile_pieces(list, rect, origin, texel_w, seed_v)
+    var by_tex := {}   # texture -> [dest, src, ...], in first-drawn order
+    for k in range(0, pieces.size(), 3):
+        if not by_tex.has(pieces[k]):
+            by_tex[pieces[k]] = []
+        by_tex[pieces[k]].append(pieces[k + 1])
+        by_tex[pieces[k]].append(pieces[k + 2])
+    for t in by_tex:
+        var rs: Array = by_tex[t]
+        for k in range(0, rs.size(), 2):
+            ci.draw_texture_rect_region(t, rs[k], rs[k + 1], tint)
+
+
+## The pieces draw_tiles draws, flat: texture, destination rect, source rect, ... in order.
+static func tile_pieces(list: Array, rect: Rect2, origin: Vector2, texel_w: float, seed_v: int) -> Array:
+    var out: Array = []
     if list.is_empty() or rect.size.x <= 0.0 or rect.size.y <= 0.0 or texel_w <= 0.0:
-        return
+        return out
     var tw := 32.0 * texel_w
     var w0 := rect.position + origin
     var w1 := rect.end + origin
@@ -298,7 +317,10 @@ static func draw_tiles(ci, list: Array, rect: Rect2, origin: Vector2, texel_w: f
                 continue
             var t := pick(list, cell_hash(cx, cy, seed_v))
             var src := Rect2((clip.position - cell.position) / texel_w, clip.size / texel_w)
-            ci.draw_texture_rect_region(t, Rect2(clip.position - origin, clip.size), src, tint)
+            out.append(t)
+            out.append(Rect2(clip.position - origin, clip.size))
+            out.append(src)
+    return out
 
 
 # --- Readability: edges, shadows, chasms, pools ----------------------------------
@@ -372,11 +394,25 @@ static func draw_chasm_cell(ci, p: Vector2, cs: float, tx: float, up: bool, dn: 
 
 ## One deep-water cell: the theme's water tiles, a stone lip and a dark drop at the far
 ## edge, a lit rim at the near edge and sparse bright glints, so pools read as hazards.
+## Every command stays inside the cell's square, so a room may draw the three parts in
+## passes over all its pool cells (pool_base, the water's tile_pieces grouped by texture,
+## pool_rims): the same pixels, a few draw calls instead of several per cell.
 static func draw_pool_cell(ci, p: Vector2, cs: float, tx: float, up: bool, dn: bool, lf: bool, rt: bool, td: Dictionary, origin: Vector2, hsh: int) -> void:
-    var water_list: Array = [[String(td["water"][0]), 1.0], [String(td["water"][1]), 1.0]]
-    var hi: Color = td.get("water_hi", Color(0.8, 0.9, 1.0))
+    pool_base(ci, p, cs)
+    draw_tiles(ci, pool_water(td), Rect2(p, Vector2(cs, cs)), origin, tx, 9001, td["water_tint"])
+    pool_rims(ci, p, cs, tx, up, dn, lf, rt, td, hsh)
+
+
+static func pool_water(td: Dictionary) -> Array:
+    return [[String(td["water"][0]), 1.0], [String(td["water"][1]), 1.0]]
+
+
+static func pool_base(ci, p: Vector2, cs: float) -> void:
     ci.draw_rect(Rect2(p, Vector2(cs, cs)), Color(0.04, 0.08, 0.16))
-    draw_tiles(ci, water_list, Rect2(p, Vector2(cs, cs)), origin, tx, 9001, td["water_tint"])
+
+
+static func pool_rims(ci, p: Vector2, cs: float, tx: float, up: bool, dn: bool, lf: bool, rt: bool, td: Dictionary, hsh: int) -> void:
+    var hi: Color = td.get("water_hi", Color(0.8, 0.9, 1.0))
     if hsh % 3 == 0:
         var g := p + Vector2(float(hsh % 7) + 2.0, float((hsh >> 4) % 9) + 5.0)
         ci.draw_rect(Rect2(g, Vector2(3.0 * tx, tx)), Color(hi, 0.8))

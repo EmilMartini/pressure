@@ -2090,19 +2090,14 @@ func _draw_layout(cv: Node2D, mode: int) -> void:
     var cs := NAV
     var td := Themes.def(theme)
     var tx := Themes.texel(_zoom())
+    if mode == 0:
+        _draw_terrain(cv, cs, tx, td)
+        return
     for i in cells.size():
         var cx := i % nav_w
         var cy := i / nav_w
         var p := rect.position + Vector2(cx, cy) * cs
-        if mode == 0:
-            if terrain[i] == RoomLayouts.T_GRASS:
-                cv.draw_rect(Rect2(p, Vector2(cs, cs)), Color(0.40, 0.34, 0.16, 0.22))
-            elif terrain[i] == RoomLayouts.T_DEEP:
-                # The pool itself (its still water is not drawn by the Materials grid).
-                Themes.draw_pool_cell(cv, p, cs, tx, not _terrain_is(cx, cy - 1, RoomLayouts.T_DEEP),
-                    not _terrain_is(cx, cy + 1, RoomLayouts.T_DEEP), not _terrain_is(cx - 1, cy, RoomLayouts.T_DEEP),
-                    not _terrain_is(cx + 1, cy, RoomLayouts.T_DEEP), td, cv.global_position, (i * 2654435761) & 0xFFFF)
-        elif mode == 1:
+        if mode == 1:
             if cells[i] == RoomLayouts.CHASM:
                 Themes.draw_chasm_cell(cv, p, cs, tx, not _cell_is(cx, cy - 1, RoomLayouts.CHASM),
                     not _cell_is(cx, cy + 1, RoomLayouts.CHASM), not _cell_is(cx - 1, cy, RoomLayouts.CHASM),
@@ -2126,6 +2121,46 @@ func _draw_layout(cv: Node2D, mode: int) -> void:
         _draw_outer_edges(cv, tx, td, false)
     elif mode == 2:
         _draw_outer_edges(cv, tx, td, true)
+
+
+## The layout's floor terrain (mode 0): grass beds and deep pools (a pool's still water is
+## not drawn by the Materials grid). Every command stays inside its own layout cell, so it
+## draws in passes over all cells (flat rects, then the water tiles grouped by texture, then
+## the rims and glints): the same pixels as cell by cell, in a few draw calls instead of
+## about three per pool cell (a flooded Cistern room was 1,300 draw calls and 2.5 ms of
+## render CPU every frame).
+func _draw_terrain(cv, cs: float, tx: float, td: Dictionary) -> void:   # cv untyped: tests record it
+    var pools := PackedInt32Array()
+    for i in cells.size():
+        var p := rect.position + Vector2(i % nav_w, i / nav_w) * cs
+        if terrain[i] == RoomLayouts.T_GRASS:
+            cv.draw_rect(Rect2(p, Vector2(cs, cs)), Color(0.40, 0.34, 0.16, 0.22))
+        elif terrain[i] == RoomLayouts.T_DEEP:
+            Themes.pool_base(cv, p, cs)
+            pools.append(i)
+    if pools.is_empty():
+        return
+    var water := Themes.pool_water(td)
+    var tint: Color = td["water_tint"]
+    var by_tex := {}   # texture -> [dest, src, dest, src, ...]
+    for i in pools:
+        var p := rect.position + Vector2(i % nav_w, i / nav_w) * cs
+        var pieces := Themes.tile_pieces(water, Rect2(p, Vector2(cs, cs)), cv.global_position, tx, 9001)
+        for k in range(0, pieces.size(), 3):
+            if not by_tex.has(pieces[k]):
+                by_tex[pieces[k]] = []
+            by_tex[pieces[k]].append(pieces[k + 1])
+            by_tex[pieces[k]].append(pieces[k + 2])
+    for t in by_tex:
+        var rs: Array = by_tex[t]
+        for k in range(0, rs.size(), 2):
+            cv.draw_texture_rect_region(t, rs[k], rs[k + 1], tint)
+    for i in pools:
+        var cx := i % nav_w
+        var cy := i / nav_w
+        Themes.pool_rims(cv, rect.position + Vector2(cx, cy) * cs, cs, tx, not _terrain_is(cx, cy - 1, RoomLayouts.T_DEEP),
+            not _terrain_is(cx, cy + 1, RoomLayouts.T_DEEP), not _terrain_is(cx - 1, cy, RoomLayouts.T_DEEP),
+            not _terrain_is(cx + 1, cy, RoomLayouts.T_DEEP), td, (i * 2654435761) & 0xFFFF)
 
 
 ## Where the outer walls meet the floor: an outline on the floor side all round (mode 1,

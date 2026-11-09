@@ -1469,7 +1469,9 @@ func _step_later(delta: float) -> void:
             _pulls.remove_at(i)
 
 
-## One linear pass over the live window of the ring buffer.
+## One linear pass over the live window of the ring buffer. The behaviours are if-chains,
+## not `match`: a match costs about twice as much per pixel, and this runs for up to
+## MAX_PIXELS pixels a frame.
 func _step_pixels(delta: float) -> void:
     var cnt := _cnt
     if cnt == 0:
@@ -1501,146 +1503,144 @@ func _step_pixels(delta: float) -> void:
         var p: Vector2 = _pp[i]
         if t <= 0.0:
             _pt[i] = 0.0
-            match b:
-                B.FIRE, B.TONGUE:
-                    if (b == B.FIRE and randf() < 0.3) or (b == B.TONGUE and randf() < 0.2):
-                        _px(p, Vector2(randf_range(-8.0, 8.0), -25.0), randf_range(0.6, 1.0), 3.0, 0.4, B.SMOKE, PAL_SMOKE, false)
-                    _hot(p)
-                B.ACID:
-                    if _po[i].x >= 64.0:
-                        _land(Element.Kind.ACID, p, 48)   # the bubble pops onto the floor
-                B.BLOOM:
-                    if _po[i].x >= 64.0:
-                        _land(Element.Kind.POISON, p, 56)  # the bloom sinks to the floor
-                B.ICE, B.FALL:
-                    if _po[i].y > 0.5:
-                        _land(Element.Kind.ICE, p, 60)     # a fragment stops and sticks
+            if b == B.FIRE or b == B.TONGUE:
+                if (b == B.FIRE and randf() < 0.3) or (b == B.TONGUE and randf() < 0.2):
+                    _px(p, Vector2(randf_range(-8.0, 8.0), -25.0), randf_range(0.6, 1.0), 3.0, 0.4, B.SMOKE, PAL_SMOKE, false)
+                _hot(p)
+            elif b == B.ACID:
+                if _po[i].x >= 64.0:
+                    _land(Element.Kind.ACID, p, 48)   # the bubble pops onto the floor
+            elif b == B.BLOOM:
+                if _po[i].x >= 64.0:
+                    _land(Element.Kind.POISON, p, 56)  # the bloom sinks to the floor
+            elif b == B.ICE or b == B.FALL:
+                if _po[i].y > 0.5:
+                    _land(Element.Kind.ICE, p, 60)     # a fragment stops and sticks
             continue
         var v: Vector2 = _pv[i]
-        match b:
-            B.FIRE:
-                v.y -= 90.0 * delta
-                v.x += randf_range(-260.0, 260.0) * delta
-                v *= damp_soft
-            B.EMBER:
-                v.y = maxf(v.y - 30.0 * delta, -70.0)
-                v.x += randf_range(-120.0, 120.0) * delta
-            B.TONGUE:
-                # The run of a tongue shares its phase and age, so it sways as one column.
-                v.y -= 30.0 * delta
-                p.x += sin((_pl[i] - t) * 14.0 + _po[i].x) * 22.0 * delta
-            B.BLOOM:
-                v.x *= damp_soft
-                v.y = lerpf(v.y, -12.0, 1.5 * delta)
-                p.x += sin((_pl[i] - t) * 3.0 + _po[i].x) * 14.0 * delta
-            B.SHEEN:
-                v *= damp_fast
-            B.FALL:
-                v.x *= damp_soft
-                v.y += GRAVITY * 0.7 * delta
-            B.SIZZLE:
-                p += Vector2(randf_range(-1.0, 1.0), randf_range(-1.0, 1.0))
-                v = Vector2.ZERO
-            B.WHIRL:
-                # v = (angle, radius) around the anchor; one turn, then fly off as a streak.
-                var wc: Vector2 = _po[i]
-                var wl: float = _pl[i]
-                v.x += TAU / (wl * 0.6) * delta
-                p = wc + Vector2(cos(v.x), sin(v.x) * 0.55) * v.y
-                if t < wl * 0.4:
-                    _pb[i] = B.GALE
-                    v = Vector2(-sin(v.x), cos(v.x) * 0.55).normalized() * randf_range(220.0, 320.0)
-                _pv[i] = v
-                _pp[i] = p
-                _pt[i] = t
-                continue
-            B.SMOKE:
-                v.x = v.x * damp_soft + randf_range(-20.0, 20.0) * delta
-                v.y = lerpf(v.y, -22.0, 1.5 * delta)
-            B.DRIFT, B.POISON:
-                v *= damp_soft
-                var ph: float = _po[i].x
-                p.x += sin(t * 4.0 + ph) * 16.0 * delta
-                if b == B.POISON:
-                    p.y -= 8.0 * delta
-            B.ACID:
-                v *= damp_soft
-                v.y -= 40.0 * delta
-                p.x += sin(t * 9.0 + _po[i].x) * 8.0 * delta
-            B.WET, B.OIL, B.BLOOD, B.STONE, B.DROP:
-                v.y += (GRAVITY * 1.6 if b == B.STONE else GRAVITY) * delta
-                var a: Vector2 = _po[i]
-                if v.y > 0.0 and p.y >= a.y:
-                    p.y = a.y
-                    if b == B.DROP:
-                        # Thrown material lands: a cell of it, a small splash, a brief dot.
-                        var code := int(a.x)
-                        if code >= DROP_VISUAL:
-                            code -= DROP_VISUAL
-                        else:
-                            _land(code, p, 44)
-                        if code == DROP_BURNING or code == Element.Kind.FIRE:
-                            ember(p)
-                        elif code == Element.Kind.ICE:
-                            glint(p)
-                        elif code != Element.Kind.STONE and code != Element.Kind.POISON:
-                            _px(p, Vector2(randf_range(-60.0, 60.0), randf_range(-90.0, -40.0)), 0.3, 2.0, _pa[i], B.WET, _pc[i], false, Vector2(-1.0, p.y))
-                        _pb[i] = B.STUCK
-                        v = Vector2.ZERO
-                        t = randf_range(0.3, 0.5)
-                        _pl[i] = t
-                    elif b == B.WET:
-                        if a.x >= 0.0:
-                            # Splash: two or three droplets, a white glint, a cell of water.
-                            for k in 2 + randi() % 2:
-                                _px(p, Vector2(randf_range(-70.0, 70.0), randf_range(-110.0, -50.0)), 0.3, 2.0, _pa[i], B.WET, _pc[i], false, Vector2(-1.0, p.y))
-                            glint(p)
-                            _land(Element.Kind.WET, p, 36)
-                        _pt[i] = 0.0
-                        continue
-                    elif b == B.STONE and a.x < 1.0:
-                        v = Vector2(v.x * 0.6, -v.y * 0.35)
-                        a.x = 1.0
-                        _po[i] = a
-                    elif a.x < 0.0:
-                        _pt[i] = 0.0   # a splash droplet landing
-                        continue
+        if b == B.FIRE:
+            v.y -= 90.0 * delta
+            v.x += randf_range(-260.0, 260.0) * delta
+            v *= damp_soft
+        elif b == B.EMBER:
+            v.y = maxf(v.y - 30.0 * delta, -70.0)
+            v.x += randf_range(-120.0, 120.0) * delta
+        elif b == B.TONGUE:
+            # The run of a tongue shares its phase and age, so it sways as one column.
+            v.y -= 30.0 * delta
+            p.x += sin((_pl[i] - t) * 14.0 + _po[i].x) * 22.0 * delta
+        elif b == B.BLOOM:
+            v.x *= damp_soft
+            v.y = lerpf(v.y, -12.0, 1.5 * delta)
+            p.x += sin((_pl[i] - t) * 3.0 + _po[i].x) * 14.0 * delta
+        elif b == B.SHEEN:
+            v *= damp_fast
+        elif b == B.FALL:
+            v.x *= damp_soft
+            v.y += GRAVITY * 0.7 * delta
+        elif b == B.SIZZLE:
+            p += Vector2(randf_range(-1.0, 1.0), randf_range(-1.0, 1.0))
+            v = Vector2.ZERO
+        elif b == B.WHIRL:
+            # v = (angle, radius) around the anchor; one turn, then fly off as a streak.
+            var wc: Vector2 = _po[i]
+            var wl: float = _pl[i]
+            v.x += TAU / (wl * 0.6) * delta
+            p = wc + Vector2(cos(v.x), sin(v.x) * 0.55) * v.y
+            if t < wl * 0.4:
+                _pb[i] = B.GALE
+                v = Vector2(-sin(v.x), cos(v.x) * 0.55).normalized() * randf_range(220.0, 320.0)
+            _pv[i] = v
+            _pp[i] = p
+            _pt[i] = t
+            continue
+        elif b == B.SMOKE:
+            v.x = v.x * damp_soft + randf_range(-20.0, 20.0) * delta
+            v.y = lerpf(v.y, -22.0, 1.5 * delta)
+        elif b == B.DRIFT or b == B.POISON:
+            v *= damp_soft
+            var ph: float = _po[i].x
+            p.x += sin(t * 4.0 + ph) * 16.0 * delta
+            if b == B.POISON:
+                p.y -= 8.0 * delta
+        elif b == B.ACID:
+            v *= damp_soft
+            v.y -= 40.0 * delta
+            p.x += sin(t * 9.0 + _po[i].x) * 8.0 * delta
+        elif b == B.WET or b == B.OIL or b == B.BLOOD or b == B.STONE or b == B.DROP:
+            v.y += (GRAVITY * 1.6 if b == B.STONE else GRAVITY) * delta
+            var a: Vector2 = _po[i]
+            if v.y > 0.0 and p.y >= a.y:
+                p.y = a.y
+                if b == B.DROP:
+                    # Thrown material lands: a cell of it, a small splash, a brief dot.
+                    var code := int(a.x)
+                    if code >= DROP_VISUAL:
+                        code -= DROP_VISUAL
                     else:
-                        if b == B.BLOOD:
-                            for k in 1 + randi() % 2:
-                                _px(p, Vector2(randf_range(-60.0, 60.0), randf_range(-80.0, -40.0)), 0.3, 2.0, _pa[i], B.BLOOD, _pc[i], false, Vector2(-1.0, p.y))
-                            _land(Element.Kind.BLOOD, p, 40)
-                        elif b == B.OIL:
-                            _land(Element.Kind.OIL, p, 40)
-                        # Stick to the floor as a dot that fades out.
-                        _pb[i] = B.STUCK
-                        v = Vector2.ZERO
-                        t = randf_range(1.2, 2.2) if b == B.OIL else randf_range(0.6, 1.2)
-                        _pl[i] = t
-            B.ICE:
-                v *= damp_fast
-                if t < _pl[i] * 0.3:
-                    v.y += 260.0 * delta   # crumbles
-            B.SHOCK:
-                p += Vector2(randf_range(-3.0, 3.0), randf_range(-3.0, 3.0))
-                v *= damp_fast
-            B.VOID:
-                var c: Vector2 = _po[i]
-                var dv := (p - c).rotated(spin) * shrink
-                p = c + dv
-                if dv.length_squared() < 9.0:
-                    t = 0.0
-            B.GALE:
-                v *= maxf(0.0, 1.0 - 1.2 * delta)
-            B.RING:
-                v *= damp_ring
-            B.ORBIT:
-                v.x += 7.0 * delta
-                p = _po[i] + Vector2(cos(v.x), sin(v.x) * 0.45) * v.y
-                _pv[i] = v
-                _pp[i] = p
-                _pt[i] = t
-                continue
+                        _land(code, p, 44)
+                    if code == DROP_BURNING or code == Element.Kind.FIRE:
+                        ember(p)
+                    elif code == Element.Kind.ICE:
+                        glint(p)
+                    elif code != Element.Kind.STONE and code != Element.Kind.POISON:
+                        _px(p, Vector2(randf_range(-60.0, 60.0), randf_range(-90.0, -40.0)), 0.3, 2.0, _pa[i], B.WET, _pc[i], false, Vector2(-1.0, p.y))
+                    _pb[i] = B.STUCK
+                    v = Vector2.ZERO
+                    t = randf_range(0.3, 0.5)
+                    _pl[i] = t
+                elif b == B.WET:
+                    if a.x >= 0.0:
+                        # Splash: two or three droplets, a white glint, a cell of water.
+                        for k in 2 + randi() % 2:
+                            _px(p, Vector2(randf_range(-70.0, 70.0), randf_range(-110.0, -50.0)), 0.3, 2.0, _pa[i], B.WET, _pc[i], false, Vector2(-1.0, p.y))
+                        glint(p)
+                        _land(Element.Kind.WET, p, 36)
+                    _pt[i] = 0.0
+                    continue
+                elif b == B.STONE and a.x < 1.0:
+                    v = Vector2(v.x * 0.6, -v.y * 0.35)
+                    a.x = 1.0
+                    _po[i] = a
+                elif a.x < 0.0:
+                    _pt[i] = 0.0   # a splash droplet landing
+                    continue
+                else:
+                    if b == B.BLOOD:
+                        for k in 1 + randi() % 2:
+                            _px(p, Vector2(randf_range(-60.0, 60.0), randf_range(-80.0, -40.0)), 0.3, 2.0, _pa[i], B.BLOOD, _pc[i], false, Vector2(-1.0, p.y))
+                        _land(Element.Kind.BLOOD, p, 40)
+                    elif b == B.OIL:
+                        _land(Element.Kind.OIL, p, 40)
+                    # Stick to the floor as a dot that fades out.
+                    _pb[i] = B.STUCK
+                    v = Vector2.ZERO
+                    t = randf_range(1.2, 2.2) if b == B.OIL else randf_range(0.6, 1.2)
+                    _pl[i] = t
+        elif b == B.ICE:
+            v *= damp_fast
+            if t < _pl[i] * 0.3:
+                v.y += 260.0 * delta   # crumbles
+        elif b == B.SHOCK:
+            p += Vector2(randf_range(-3.0, 3.0), randf_range(-3.0, 3.0))
+            v *= damp_fast
+        elif b == B.VOID:
+            var c: Vector2 = _po[i]
+            var dv := (p - c).rotated(spin) * shrink
+            p = c + dv
+            if dv.length_squared() < 9.0:
+                t = 0.0
+        elif b == B.GALE:
+            v *= maxf(0.0, 1.0 - 1.2 * delta)
+        elif b == B.RING:
+            v *= damp_ring
+        elif b == B.ORBIT:
+            v.x += 7.0 * delta
+            p = _po[i] + Vector2(cos(v.x), sin(v.x) * 0.45) * v.y
+            _pv[i] = v
+            _pp[i] = p
+            _pt[i] = t
+            continue
         if b != B.VOID:
             p += v * delta
         for q in npull:

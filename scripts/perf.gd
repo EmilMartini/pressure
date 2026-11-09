@@ -43,6 +43,8 @@ func _ready() -> void:
         p.process_physics_priority = -1000000 if role == 0 else 1000000
         p.process_priority = -1000000 if role == 0 else 1000000
         add_child(p)
+    # Render cost per frame, as the engine measures it (CPU submit, GPU), in the labels.
+    RenderingServer.viewport_set_measure_render_time(get_viewport().get_viewport_rid(), true)
 
 
 func _phys(role: int) -> void:
@@ -77,6 +79,9 @@ func _proc(role: int) -> void:
                         parts.append("%s=%.1f" % [k, _ft[k] / 1000.0])
                     _spikes.append("[SPIKE] frame=%d ft=%.1f %s" % [frames.size(), ft / 1000.0, " ".join(parts)])
         _ft.clear()
+        var vp := get_viewport().get_viewport_rid()
+        add("render.cpu", int(RenderingServer.viewport_get_measured_render_time_cpu(vp) * 1000.0 + RenderingServer.get_frame_setup_time_cpu() * 1000.0))
+        add("render.gpu", int(RenderingServer.viewport_get_measured_render_time_gpu(vp) * 1000.0))
         _last_frame = now
         _proc_start = now
     else:
