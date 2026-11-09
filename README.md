@@ -668,7 +668,15 @@ any `Perf.add` labels, `[SPIKE]` lines for the first 200 frames of 16 ms or more
 `[BOSS-MOVE]`, `[STAGGER]`): every print through the bot's log pipe costs a 15 ms hitch on
 Windows. `--perf-lines` brings them back plus a `[PERF]` sample line every 2 s.
 `--grid-hash` prints `[GRID-HASH]` once a second: one hash of the whole materials grid
-state, the identity proof for changes to the grid step (same seed, headless, same lines).
+state. Same-seed headless runs still drift apart within a second (the game reads wall time
+in places), so the identity proof for a grid change is the replay: `git show
+<rev>:scripts/materials.gd | sed -e '/^class_name Materials/d' -e 's/var mats: Materials/var
+mats/' > autotest/materials_old.gd`, then `godot --headless --path .
+res://tools/grid_replay.tscn -- --old=res://autotest/materials_old.gd`. It drives both
+versions through the same seeded workload (every element, gales, fills, still pools, wipes,
+raised ground, shocked floods past STEP_CAP, a real Fx), compares the state hash after every
+step and the global RNG position at the end, times steps, sweeps and stamps, and prints
+`[REPLAY-CHECK] PASS/FAIL` (`--perf` adds any `Perf` labels).
 `--payout-shot` saves the level-up cards, the wave-end spoils, the ring swap card and a
 merge pedestal to `autotest/` (real window); `--hurt-shot` the danger cues (see Danger). Bots print `[LEVEL]` (level, floor, rooms,
 XP so far), `[WAVE]` (what lay on the floor when a wave ended, lowest health),

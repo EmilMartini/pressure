@@ -86,6 +86,7 @@ var _flag := PackedByteArray()
 var _char := PackedByteArray()     # permanent scorch level 0..3 under everything
 var _raised := PackedByteArray()   # raised dry ground (the Choir's platforms): nothing lands or flows here
 var _has_raised := false
+var _nbt := PackedInt32Array()     # neighbour of cell i in direction d at d * _n + i (see _nb)
 var _queue := PackedInt32Array()   # active cells, FIFO; _head is the next to step
 var _head := 0
 var _drawn := PackedInt32Array()   # every cell that may be non-empty
@@ -148,6 +149,7 @@ func _init(room_rect: Rect2 = Rect2(-560, -360, 1120, 720)) -> void:
     _flag.resize(_n)
     _char.resize(_n)
     _raised.resize(_n)
+    _build_nbt()
     _cols.resize(MAT_COUNT)
     _cols[NONE] = Color(0, 0, 0, 0)
     _cols[OIL] = Color(Element.COLORS[Element.Kind.OIL].darkened(0.45), 0.66)
@@ -332,7 +334,9 @@ func fill_rect(kind: int, world_rect: Rect2, amount: int, life_s: int = -1) -> v
             if m == WATER and (c == WATER or c == TOXIC):
                 amt[i] = maxi(int(amt[i]), a)
                 life[i] = maxi(int(life[i]), l)
-                _touch(i)
+                if _tmark[i] == 0:   # _touch
+                    _tmark[i] = 1
+                    _tlist.append(i)
             elif _open(c):
                 _put(i, m, a, l)
     _dirty = true
@@ -372,7 +376,9 @@ func lay_still(kind: int, idx: PackedInt32Array, from: int, count: int, amount: 
             life[i] = 255
             if (_flag[i] & F_STILL) == 0 and (_flag[i] & F_DRAWN) != 0:
                 _flag[i] = _flag[i] | F_STILL
-                _touch(i)
+                if _tmark[i] == 0:   # _touch
+                    _tmark[i] = 1
+                    _tlist.append(i)
                 _dirty = true
         elif c == TOXIC and m == WATER:
             life[i] = 255
@@ -381,7 +387,9 @@ func lay_still(kind: int, idx: PackedInt32Array, from: int, count: int, amount: 
             amt[i] = a
             life[i] = 255
             _flag[i] = _flag[i] | F_STILL
-            _touch(i)
+            if _tmark[i] == 0:   # _touch
+                _tmark[i] = 1
+                _tlist.append(i)
             if (_flag[i] & F_DRAWN) != 0:
                 _dirty = true   # it was drawn as something else a moment ago
 
@@ -416,20 +424,29 @@ func _cell_world(i: int) -> Vector2:
 
 
 ## Neighbour in direction d (0 left, 1 right, 2 up, 3 down), or -1 at the edge (a raised
-## cell is an edge too: liquids, gas and fire stop at a platform's lip).
+## cell is an edge too: liquids, gas and fire stop at a platform's lip). A table lookup
+## (_nbt); the hot loops read `_nbt[d * _n + i]` inline.
 func _nb(i: int, d: int) -> int:
-    var j := -1
-    if d == 0:
-        j = i - 1 if i % _w != 0 else -1
-    elif d == 1:
-        j = i + 1 if i % _w != _w - 1 else -1
-    elif d == 2:
-        j = i - _w if i >= _w else -1
-    else:
-        j = i + _w if i + _w < _n else -1
-    if _has_raised and j >= 0 and _raised[j] != 0:
-        return -1
-    return j
+    return _nbt[d * _n + i]
+
+
+## The neighbour table: four blocks of _n (left, right, up, down), -1 off the grid. Built
+## from ranges so a big room costs no per-cell script loop.
+func _build_nbt() -> void:
+    var left := PackedInt32Array(range(-1, _n - 1))
+    var right := PackedInt32Array(range(1, _n + 1))
+    var up := PackedInt32Array(range(-_w, _n - _w))
+    var down := PackedInt32Array(range(_w, _n + _w))
+    for y in _h:
+        left[y * _w] = -1
+        right[y * _w + _w - 1] = -1
+    for x in _w:
+        up[x] = -1
+        down[_n - _w + x] = -1
+    _nbt = left
+    _nbt.append_array(right)
+    _nbt.append_array(up)
+    _nbt.append_array(down)
 
 
 ## Raised dry ground over a world rect (cells whose centre is inside): wiped now and never
@@ -439,6 +456,16 @@ func raise_rect(world_rect: Rect2) -> void:
         _put(i, NONE, 0, 0)
         _raised[i] = 1
         _has_raised = true
+        # No neighbour leads onto it any more.
+        var x := i % _w
+        if x != _w - 1:
+            _nbt[i + 1] = -1             # its right-hand cell's left
+        if x != 0:
+            _nbt[_n + i - 1] = -1        # its left-hand cell's right
+        if i + _w < _n:
+            _nbt[2 * _n + i + _w] = -1   # the cell below it, looking up
+        if i >= _w:
+            _nbt[3 * _n + i - _w] = -1   # the cell above it, looking down
     _dirty = true
 
 
@@ -454,18 +481,23 @@ func _put(i: int, m: int, a: int, l: int) -> void:
     if m != NONE and _has_raised and _raised[i] != 0:
         return
     mat[i] = m
-    amt[i] = clampi(a, 0, 255)
-    life[i] = clampi(l, 0, 255)
-    _flag[i] = _flag[i] & ~F_STILL   # changed: the grid draws it from now on
-    if m != NONE and (_flag[i] & F_DRAWN) == 0:
-        _flag[i] = _flag[i] | F_DRAWN
+    amt[i] = a if a >= 0 and a <= 255 else clampi(a, 0, 255)
+    life[i] = l if l >= 0 and l <= 255 else clampi(l, 0, 255)
+    var f := _flag[i] & ~F_STILL   # changed: the grid draws it from now on
+    if m != NONE and (f & F_DRAWN) == 0:
+        f = f | F_DRAWN
         _drawn.append(i)
+    _flag[i] = f
     if m == WATER or m == TOXIC or m == OIL:
         _glinty = true
-    _touch(i)
+    if _tmark[i] == 0:   # _touch
+        _tmark[i] = 1
+        _tlist.append(i)
     _dirty = true
 
 
+## Into the active queue (once). The hot paths carry this inline (marked `# _wake`): a
+## script call costs as much as the rest of a cell's step.
 func _wake(i: int) -> void:
     if (_flag[i] & F_ACTIVE) == 0:
         _flag[i] = _flag[i] | F_ACTIVE
@@ -479,7 +511,7 @@ func _open(m: int) -> bool:
 
 func _has_fire_nb(i: int) -> bool:
     for d in 4:
-        var j := _nb(i, d)
+        var j := _nbt[d * _n + i]
         if j >= 0 and mat[j] == FIRE:
             return true
     return false
@@ -529,7 +561,9 @@ func _ignite_cell(i: int) -> void:
     var fuel := int(amt[i]) if was == OIL else 0
     _put(i, FIRE, 255 if was == OIL else 128, clampi(10 + fuel / 5, 10, 60))
     _flag[i] = _flag[i] | F_FRONT
-    _wake(i)
+    if (_flag[i] & F_ACTIVE) == 0:   # _wake
+        _flag[i] = _flag[i] | F_ACTIVE
+        _queue.append(i)
     if was == OIL and randi() % 5 == 0 and _fx_ok(4):
         _fx.flame_tongue(_cell_world(i))
 
@@ -538,106 +572,141 @@ func _char_mark(i: int, level: int) -> void:
     if int(_char[i]) >= level:
         return
     _char[i] = level
-    _touch(i)
+    if _tmark[i] == 0:   # _touch
+        _tmark[i] = 1
+        _tlist.append(i)
 
 
 func _stamp_cell(kind: int, i: int, a: int, force: bool, lay: bool) -> void:
     var m := int(mat[i])
-    _touch(i)
-    match kind:
-        Element.Kind.WET:
-            if m == WATER or m == TOXIC:
-                amt[i] = mini(255, int(amt[i]) + a / 2)
-                life[i] = maxi(int(life[i]), WATER_LIFE)
-                _wake(i)
-            elif m == FIRE:
-                _put(i, STEAM, 160, STEAM_TICKS)
-                _wake(i)
-            elif m == ACID:
-                # Dilutes: the acid thins and fades sooner.
-                var left := int(amt[i]) - a / 2
-                if left <= 8:
-                    _put(i, NONE, 0, 0)
-                else:
-                    amt[i] = left
-                    life[i] = maxi(1, int(life[i]) / 2)
-            elif m == POISON:
-                _put(i, TOXIC, a, WATER_LIFE)
-                _wake(i)
-            elif lay and (_open(m) or m == STEAM or m == BLOOD):
-                _put(i, WATER, a, WATER_LIFE)
-                _wake(i)
-        Element.Kind.OIL:
-            if m == OIL:
-                amt[i] = mini(255, int(amt[i]) + a / 2)
-                life[i] = maxi(int(life[i]), OIL_LIFE)
-                _wake(i)
-            elif m == FIRE:
-                life[i] = mini(255, int(life[i]) + a / 8)
-                amt[i] = 255
-            elif m == ACID:
-                _put(i, NONE, 0, 0)   # acid eats the oil
-            elif lay and (_open(m) or m == STEAM or m == POISON):
-                _put(i, OIL, a, OIL_LIFE)
-                _wake(i)
-        Element.Kind.FIRE:
-            if m == OIL or (m == POISON and gas_ignites):
-                _ignite_cell(i)
-            elif m == FIRE:
-                life[i] = maxi(int(life[i]), 12)
-            elif m == WATER or m == CHARGED or m == TOXIC:
-                if lay:
-                    _put(i, STEAM, 160, STEAM_TICKS)
-                    _wake(i)
-            elif m == ICE:
-                _put(i, WATER, 48, 4)
-            elif m == BLOOD:
-                _put(i, DRY_BLOOD, 255, DRY_LIFE)   # cauterised
-            elif lay and _open(m) and (force or _has_fire_nb(i)):
-                _put(i, FIRE, 128, FIRE_TICKS + randi() % 6)
-                _flag[i] = _flag[i] | F_FRONT
-                _wake(i)
-        Element.Kind.ICE:
-            if m == WATER or m == CHARGED or m == TOXIC:
-                _put(i, ICE, 200, ICE_LIFE)
-                _wake(i)
-            elif m == FIRE:
-                _put(i, STEAM, 120, STEAM_TICKS)
-                _wake(i)
-            elif lay and _open(m):
-                _put(i, ICE, 200, ICE_LIFE / 2 + 1)
-                _wake(i)
-        Element.Kind.POISON:
-            if m == POISON:
-                amt[i] = mini(255, int(amt[i]) + a / 2)
-                life[i] = POISON_TICKS
-            elif m == WATER:
-                _put(i, TOXIC, amt[i], WATER_LIFE)
-                _wake(i)
-            elif lay and (_open(m) or m == STEAM):
-                _put(i, POISON, a, POISON_TICKS)
-                _wake(i)
-        Element.Kind.ACID:
-            if m == ACID:
-                amt[i] = mini(255, int(amt[i]) + a / 2)
-                life[i] = ACID_TICKS
-            elif m == OIL or m == ICE:
+    if _tmark[i] == 0:   # _touch
+        _tmark[i] = 1
+        _tlist.append(i)
+    if kind == Element.Kind.WET:
+        if m == WATER or m == TOXIC:
+            amt[i] = mini(255, int(amt[i]) + a / 2)
+            life[i] = maxi(int(life[i]), WATER_LIFE)
+            if (_flag[i] & F_ACTIVE) == 0:   # _wake
+                _flag[i] = _flag[i] | F_ACTIVE
+                _queue.append(i)
+        elif m == FIRE:
+            _put(i, STEAM, 160, STEAM_TICKS)
+            if (_flag[i] & F_ACTIVE) == 0:   # _wake
+                _flag[i] = _flag[i] | F_ACTIVE
+                _queue.append(i)
+        elif m == ACID:
+            # Dilutes: the acid thins and fades sooner.
+            var left := int(amt[i]) - a / 2
+            if left <= 8:
                 _put(i, NONE, 0, 0)
-            elif m == WATER or m == TOXIC:
-                _put(i, ACID, a / 2, ACID_TICKS / 3)   # lands diluted
-                _wake(i)
-            elif lay and (_open(m) or m == STEAM or m == POISON):
-                _put(i, ACID, a, ACID_TICKS)
-                _wake(i)
-        Element.Kind.BLOOD:
-            if m == BLOOD:
-                amt[i] = mini(255, int(amt[i]) + a / 2)
-                life[i] = BLOOD_LIFE
-            elif m == FIRE:
-                _put(i, DRY_BLOOD, 255, DRY_LIFE)
-            elif lay and (_open(m) or m == STEAM):
-                _put(i, BLOOD, a, BLOOD_LIFE)
-                _wake(i)
+            else:
+                amt[i] = left
+                life[i] = maxi(1, int(life[i]) / 2)
+        elif m == POISON:
+            _put(i, TOXIC, a, WATER_LIFE)
+            if (_flag[i] & F_ACTIVE) == 0:   # _wake
+                _flag[i] = _flag[i] | F_ACTIVE
+                _queue.append(i)
+        elif lay and (_open(m) or m == STEAM or m == BLOOD):
+            _put(i, WATER, a, WATER_LIFE)
+            if (_flag[i] & F_ACTIVE) == 0:   # _wake
+                _flag[i] = _flag[i] | F_ACTIVE
+                _queue.append(i)
+    elif kind == Element.Kind.OIL:
+        if m == OIL:
+            amt[i] = mini(255, int(amt[i]) + a / 2)
+            life[i] = maxi(int(life[i]), OIL_LIFE)
+            if (_flag[i] & F_ACTIVE) == 0:   # _wake
+                _flag[i] = _flag[i] | F_ACTIVE
+                _queue.append(i)
+        elif m == FIRE:
+            life[i] = mini(255, int(life[i]) + a / 8)
+            amt[i] = 255
+        elif m == ACID:
+            _put(i, NONE, 0, 0)   # acid eats the oil
+        elif lay and (_open(m) or m == STEAM or m == POISON):
+            _put(i, OIL, a, OIL_LIFE)
+            if (_flag[i] & F_ACTIVE) == 0:   # _wake
+                _flag[i] = _flag[i] | F_ACTIVE
+                _queue.append(i)
+    elif kind == Element.Kind.FIRE:
+        if m == OIL or (m == POISON and gas_ignites):
+            _ignite_cell(i)
+        elif m == FIRE:
+            life[i] = maxi(int(life[i]), 12)
+        elif m == WATER or m == CHARGED or m == TOXIC:
+            if lay:
+                _put(i, STEAM, 160, STEAM_TICKS)
+                if (_flag[i] & F_ACTIVE) == 0:   # _wake
+                    _flag[i] = _flag[i] | F_ACTIVE
+                    _queue.append(i)
+        elif m == ICE:
+            _put(i, WATER, 48, 4)
+        elif m == BLOOD:
+            _put(i, DRY_BLOOD, 255, DRY_LIFE)   # cauterised
+        elif lay and _open(m) and (force or _has_fire_nb(i)):
+            _put(i, FIRE, 128, FIRE_TICKS + randi() % 6)
+            _flag[i] = _flag[i] | F_FRONT
+            if (_flag[i] & F_ACTIVE) == 0:   # _wake
+                _flag[i] = _flag[i] | F_ACTIVE
+                _queue.append(i)
+    elif kind == Element.Kind.ICE:
+        if m == WATER or m == CHARGED or m == TOXIC:
+            _put(i, ICE, 200, ICE_LIFE)
+            if (_flag[i] & F_ACTIVE) == 0:   # _wake
+                _flag[i] = _flag[i] | F_ACTIVE
+                _queue.append(i)
+        elif m == FIRE:
+            _put(i, STEAM, 120, STEAM_TICKS)
+            if (_flag[i] & F_ACTIVE) == 0:   # _wake
+                _flag[i] = _flag[i] | F_ACTIVE
+                _queue.append(i)
+        elif lay and _open(m):
+            _put(i, ICE, 200, ICE_LIFE / 2 + 1)
+            if (_flag[i] & F_ACTIVE) == 0:   # _wake
+                _flag[i] = _flag[i] | F_ACTIVE
+                _queue.append(i)
+    elif kind == Element.Kind.POISON:
+        if m == POISON:
+            amt[i] = mini(255, int(amt[i]) + a / 2)
+            life[i] = POISON_TICKS
+        elif m == WATER:
+            _put(i, TOXIC, amt[i], WATER_LIFE)
+            if (_flag[i] & F_ACTIVE) == 0:   # _wake
+                _flag[i] = _flag[i] | F_ACTIVE
+                _queue.append(i)
+        elif lay and (_open(m) or m == STEAM):
+            _put(i, POISON, a, POISON_TICKS)
+            if (_flag[i] & F_ACTIVE) == 0:   # _wake
+                _flag[i] = _flag[i] | F_ACTIVE
+                _queue.append(i)
+    elif kind == Element.Kind.ACID:
+        if m == ACID:
+            amt[i] = mini(255, int(amt[i]) + a / 2)
+            life[i] = ACID_TICKS
+        elif m == OIL or m == ICE:
+            _put(i, NONE, 0, 0)
+        elif m == WATER or m == TOXIC:
+            _put(i, ACID, a / 2, ACID_TICKS / 3)   # lands diluted
+            if (_flag[i] & F_ACTIVE) == 0:   # _wake
+                _flag[i] = _flag[i] | F_ACTIVE
+                _queue.append(i)
+        elif lay and (_open(m) or m == STEAM or m == POISON):
+            _put(i, ACID, a, ACID_TICKS)
+            if (_flag[i] & F_ACTIVE) == 0:   # _wake
+                _flag[i] = _flag[i] | F_ACTIVE
+                _queue.append(i)
+    elif kind == Element.Kind.BLOOD:
+        if m == BLOOD:
+            amt[i] = mini(255, int(amt[i]) + a / 2)
+            life[i] = BLOOD_LIFE
+        elif m == FIRE:
+            _put(i, DRY_BLOOD, 255, DRY_LIFE)
+        elif lay and (_open(m) or m == STEAM):
+            _put(i, BLOOD, a, BLOOD_LIFE)
+            if (_flag[i] & F_ACTIVE) == 0:   # _wake
+                _flag[i] = _flag[i] | F_ACTIVE
+                _queue.append(i)
 
 
 func _zap_cell(i: int) -> void:
@@ -646,12 +715,16 @@ func _zap_cell(i: int) -> void:
         _put(i, CHARGED, amt[i], CHARGE_TICKS)
     else:
         _flag[i] = (_flag[i] | F_ZAP) & ~F_STILL
-        _touch(i)
+        if _tmark[i] == 0:   # _touch
+            _tmark[i] = 1
+            _tlist.append(i)
         if (_flag[i] & F_DRAWN) == 0:
             _flag[i] = _flag[i] | F_DRAWN
             _drawn.append(i)   # still ice joins the draw list to strobe
         _dirty = true
-    _wake(i)
+    if (_flag[i] & F_ACTIVE) == 0:   # _wake
+        _flag[i] = _flag[i] | F_ACTIVE
+        _queue.append(i)
 
 
 ## Shock through water: the whole connected pool flashes charged, and the shock runs on
@@ -660,20 +733,26 @@ func _charge_from(i0: int, cap: int) -> int:
     var m0 := int(mat[i0])
     if m0 != WATER and m0 != ICE:
         return 0
+    # A LIFO stack with its own top (no resize per pop): a big pool is thousands of cells.
     var stack := PackedInt32Array([i0])
+    var top := 1
     _zap_cell(i0)
     var count := 1
-    while stack.size() > 0 and count < cap:
-        var i := stack[stack.size() - 1]
-        stack.resize(stack.size() - 1)
+    while top > 0 and count < cap:
+        top -= 1
+        var i := stack[top]
         for d in 4:
-            var j := _nb(i, d)
+            var j := _nbt[d * _n + i]
             if j < 0:
                 continue
             var mj := int(mat[j])
             if mj == WATER or (mj == ICE and (_flag[j] & F_ZAP) == 0):
                 _zap_cell(j)
-                stack.append(j)
+                if top < stack.size():
+                    stack[top] = j
+                else:
+                    stack.append(j)
+                top += 1
                 count += 1
                 if count % 24 == 0:
                     _spark(j)
@@ -744,12 +823,16 @@ func _surge_into(j: int, m: int, a: int) -> bool:
     var mj := int(mat[j])
     if mj == m:
         amt[j] = mini(255, int(amt[j]) + a / 2)
-        _touch(j)
+        if _tmark[j] == 0:   # _touch
+            _tmark[j] = 1
+            _tlist.append(j)
     elif _open(mj) or mj == STEAM:
         _put(j, m, a, _life_of(m))
     else:
         return false
-    _wake(j)
+    if (_flag[j] & F_ACTIVE) == 0:   # _wake
+        _flag[j] = _flag[j] | F_ACTIVE
+        _queue.append(j)
     return true
 
 
@@ -781,7 +864,9 @@ func _gale(local: Vector2, r: float) -> void:
                     continue
                 _put(j, m, amt[i], life[i])
                 _put(i, NONE, 0, 0)
-                _wake(j)
+                if (_flag[j] & F_ACTIVE) == 0:   # _wake
+                    _flag[j] = _flag[j] | F_ACTIVE
+                    _queue.append(j)
     _dirty = true
 
 
@@ -794,7 +879,12 @@ func _process(delta: float) -> void:
     if _acc < step_t:
         return
     _acc = minf(_acc - step_t, step_t)   # at most one step per frame, no catch-up spiral
-    _step()
+    if Perf.on:
+        var t0 := Time.get_ticks_usec()
+        _step()
+        Perf.add("materials.step", Time.get_ticks_usec() - t0)
+    else:
+        _step()
 
 
 func _step() -> void:
@@ -811,31 +901,33 @@ func _step() -> void:
     for q in range(start, end):
         var i := _queue[q]
         _flag[i] = _flag[i] & ~F_ACTIVE
-        match int(mat[i]):
-            FIRE:
-                _step_fire(i)
-            WATER:
-                _step_liquid(i, WATER, WATER_SPREAD, 2, true)
-            TOXIC:
-                _step_liquid(i, TOXIC, WATER_SPREAD, 2, true)
-            OIL:
-                # Slow but far: moves one step in three, down to a thin film.
-                if randi() % 3 == 0:
-                    _step_liquid(i, OIL, OIL_SPREAD, 1, false)
-                elif int(amt[i]) > OIL_SPREAD:
-                    _wake(i)
-            ACID:
-                _step_acid(i)
-            POISON:
-                _step_poison(i)
-            STEAM:
-                _step_steam(i)
-            CHARGED:
-                _step_charged(i)
-            ICE:
-                _step_ice(i)
-            ASH:
-                _step_ash(i)
+        var m := int(mat[i])   # if-chain, not match: a match costs twice as much per cell
+        if m == ICE:
+            _step_ice(i)
+        elif m == CHARGED:
+            _step_charged(i)
+        elif m == POISON:
+            _step_poison(i)
+        elif m == WATER:
+            _step_liquid(i, WATER, WATER_SPREAD, 2, true)
+        elif m == FIRE:
+            _step_fire(i)
+        elif m == ASH:
+            _step_ash(i)
+        elif m == STEAM:
+            _step_steam(i)
+        elif m == TOXIC:
+            _step_liquid(i, TOXIC, WATER_SPREAD, 2, true)
+        elif m == OIL:
+            # Slow but far: moves one step in three, down to a thin film.
+            if randi() % 3 == 0:
+                _step_liquid(i, OIL, OIL_SPREAD, 1, false)
+            elif int(amt[i]) > OIL_SPREAD:
+                if (_flag[i] & F_ACTIVE) == 0:   # _wake
+                    _flag[i] = _flag[i] | F_ACTIVE
+                    _queue.append(i)
+        elif m == ACID:
+            _step_acid(i)
     if _head >= _queue.size():
         _queue = PackedInt32Array()
         _head = 0
@@ -871,10 +963,12 @@ func _step_fire(i: int) -> void:
     _hurt_steps = 3
     if (_flag[i] & F_FRONT) != 0:
         _flag[i] = _flag[i] & ~F_FRONT   # the front moves on to the cells it lit
-        _touch(i)
+        if _tmark[i] == 0:   # _touch
+            _tmark[i] = 1
+            _tlist.append(i)
     var doused := false
     for d in 4:
-        var j := _nb(i, d)
+        var j := _nbt[d * _n + i]
         if j < 0:
             continue
         var m := int(mat[j])
@@ -885,21 +979,29 @@ func _step_fire(i: int) -> void:
             var left := int(amt[j]) - 24
             if left <= 8:
                 _put(j, STEAM, 120, STEAM_TICKS)
-                _wake(j)
+                if (_flag[j] & F_ACTIVE) == 0:   # _wake
+                    _flag[j] = _flag[j] | F_ACTIVE
+                    _queue.append(j)
             else:
                 amt[j] = left
-                _touch(j)
+                if _tmark[j] == 0:   # _touch
+                    _tmark[j] = 1
+                    _tlist.append(j)
         elif m == ICE:
             if randi() % 3 == 0:
                 _put(j, WATER, 48, 4)
-                _wake(j)
+                if (_flag[j] & F_ACTIVE) == 0:   # _wake
+                    _flag[j] = _flag[j] | F_ACTIVE
+                    _queue.append(j)
         elif m == BLOOD:
             _put(j, DRY_BLOOD, 255, DRY_LIFE)   # cauterised with a hiss
             if _fx_ok(2):
                 _fx.steam(_cell_world(j), 2)
     if doused:
         _put(i, STEAM, 160, STEAM_TICKS)
-        _wake(i)
+        if (_flag[i] & F_ACTIVE) == 0:   # _wake
+            _flag[i] = _flag[i] | F_ACTIVE
+            _queue.append(i)
         var puff := maxi(3, roundi(float(8 + randi() % 5) * emit_scale))
         if _boils < 3 and _fx_ok(puff):
             _boils += 1
@@ -914,10 +1016,14 @@ func _step_fire(i: int) -> void:
         elif randi() % 2 == 0:
             _char_mark(i, 1)
         _put(i, ASH, 255 if oil else 120, ASH_TICKS + randi() % 6)
-        _wake(i)
+        if (_flag[i] & F_ACTIVE) == 0:   # _wake
+            _flag[i] = _flag[i] | F_ACTIVE
+            _queue.append(i)
         return
     life[i] = l
-    _wake(i)
+    if (_flag[i] & F_ACTIVE) == 0:   # _wake
+        _flag[i] = _flag[i] | F_ACTIVE
+        _queue.append(i)
     _fire_fx += 1
     if _fire_fx % 3 == 0 and _fx_ok(1):
         var p := _cell_world(i)
@@ -939,47 +1045,62 @@ func _step_liquid(i: int, m: int, min_amt: int, tries: int, slosh: bool) -> void
     var l := int(life[i])
     for k in 4:
         var dir := (start + k) & 3
-        var j := _nb(i, dir)
+        var j := _nbt[dir * _n + i]
         if j < 0:
             continue
         var mj := int(mat[j])
-        if _open(mj) or mj == STEAM:
+        if mj == NONE or mj == ASH or mj == DRY_BLOOD or mj == STEAM:   # _open, or steam
             var give := a / 2
             if give < MIN_GIVE:
                 break
             a -= give
-            var j2 := _nb(j, dir) if slosh and give >= 40 else -1
-            if j2 >= 0 and _open(int(mat[j2])):
+            var j2 := _nbt[dir * _n + j] if slosh and give >= 40 else -1
+            var m2 := int(mat[j2]) if j2 >= 0 else -1
+            if m2 == NONE or m2 == ASH or m2 == DRY_BLOOD:
                 _put(j2, m, give / 2, l)
-                _wake(j2)
+                if (_flag[j2] & F_ACTIVE) == 0:   # _wake
+                    _flag[j2] = _flag[j2] | F_ACTIVE
+                    _queue.append(j2)
                 give -= give / 2
             _put(j, m, give, l)
-            _wake(j)
+            if (_flag[j] & F_ACTIVE) == 0:   # _wake
+                _flag[j] = _flag[j] | F_ACTIVE
+                _queue.append(j)
             moved += 1
         elif mj == m:
             var diff := a - int(amt[j])
             if diff > 16:
                 var g := diff / 2
                 amt[j] = int(amt[j]) + g
-                _touch(j)
+                if _tmark[j] == 0:   # _touch
+                    _tmark[j] = 1
+                    _tlist.append(j)
                 a -= g
-                _wake(j)
+                if (_flag[j] & F_ACTIVE) == 0:   # _wake
+                    _flag[j] = _flag[j] | F_ACTIVE
+                    _queue.append(j)
                 moved += 1
         if moved >= tries or a <= min_amt:
             break
     if slosh and moved > 0 and randi() % 3 == 0:
-        var s := _nb(i, randi() & 3)
+        var s := _nbt[(randi() & 3) * _n + i]
         if s >= 0 and int(mat[s]) == m:
             var dv := randi_range(-6, 6)
             amt[s] = clampi(int(amt[s]) + dv, 8, 255)
-            _touch(s)
+            if _tmark[s] == 0:   # _touch
+                _tmark[s] = 1
+                _tlist.append(s)
             a = clampi(a - dv, 8, 255)
     amt[i] = a
     if moved > 0:
-        _touch(i)
+        if _tmark[i] == 0:   # _touch
+            _tmark[i] = 1
+            _tlist.append(i)
         _dirty = true
         if a > min_amt:
-            _wake(i)
+            if (_flag[i] & F_ACTIVE) == 0:   # _wake
+                _flag[i] = _flag[i] | F_ACTIVE
+                _queue.append(i)
 
 
 ## Acid fizzes, eats oil and ice beside it and is diluted (fades faster) by water.
@@ -987,7 +1108,7 @@ func _step_acid(i: int) -> void:
     var l := int(life[i]) - 1
     var a := int(amt[i])
     for d in 4:
-        var j := _nb(i, d)
+        var j := _nbt[d * _n + i]
         if j < 0:
             continue
         var m := int(mat[j])
@@ -1005,7 +1126,9 @@ func _step_acid(i: int) -> void:
                 _put(j, NONE, 0, 0)
             else:
                 amt[j] = wl
-                _touch(j)
+                if _tmark[j] == 0:   # _touch
+                    _tmark[j] = 1
+                    _tlist.append(j)
             if randi() % 3 == 0 and _fx_ok(1):
                 _fx.bubble(_cell_world(j))
     if l <= 0 or a <= 8:
@@ -1013,12 +1136,16 @@ func _step_acid(i: int) -> void:
         return
     life[i] = l
     amt[i] = a
-    _touch(i)
+    if _tmark[i] == 0:   # _touch
+        _tmark[i] = 1
+        _tlist.append(i)
     if randi() % 6 == 0 and _fx_ok(1):
         _fx.bubble(_cell_world(i))
     _step_liquid(i, ACID, ACID_SPREAD, 2, false)
     if mat[i] == ACID:
-        _wake(i)
+        if (_flag[i] & F_ACTIVE) == 0:   # _wake
+            _flag[i] = _flag[i] | F_ACTIVE
+            _queue.append(i)
 
 
 ## Gas drifts, sheds motes, and contaminates water it touches (TOXIC).
@@ -1028,16 +1155,20 @@ func _step_poison(i: int) -> void:
         _put(i, NONE, 0, 0)
         return
     life[i] = l
-    _touch(i)
+    if _tmark[i] == 0:   # _touch
+        _tmark[i] = 1
+        _tlist.append(i)
     _dirty = true   # gas drifts every step
     if randi() % 10 == 0 and _fx_ok(1):
         _fx.mote(Element.Kind.POISON, _cell_world(i))
-    var j := _nb(i, randi() & 3)
+    var j := _nbt[(randi() & 3) * _n + i]
     if j >= 0:
         var mj := int(mat[j])
         if mj == WATER:
             _put(j, TOXIC, amt[j], WATER_LIFE)
-            _wake(j)
+            if (_flag[j] & F_ACTIVE) == 0:   # _wake
+                _flag[j] = _flag[j] | F_ACTIVE
+                _queue.append(j)
             l = maxi(1, l - 6)
             life[i] = l
         elif mj == NONE and randi() % 3 == 0:
@@ -1048,10 +1179,16 @@ func _step_poison(i: int) -> void:
             else:
                 _put(j, POISON, a, l)
                 _put(i, NONE, 0, 0)
-                _wake(j)
+                if (_flag[j] & F_ACTIVE) == 0:   # _wake
+                    _flag[j] = _flag[j] | F_ACTIVE
+                    _queue.append(j)
                 return
-            _wake(j)
-    _wake(i)
+            if (_flag[j] & F_ACTIVE) == 0:   # _wake
+                _flag[j] = _flag[j] | F_ACTIVE
+                _queue.append(j)
+    if (_flag[i] & F_ACTIVE) == 0:   # _wake
+        _flag[i] = _flag[i] | F_ACTIVE
+        _queue.append(i)
 
 
 func _step_steam(i: int) -> void:
@@ -1060,16 +1197,22 @@ func _step_steam(i: int) -> void:
         _put(i, NONE, 0, 0)
         return
     life[i] = l
-    _touch(i)
+    if _tmark[i] == 0:   # _touch
+        _tmark[i] = 1
+        _tlist.append(i)
     _dirty = true
     if randi() % 6 == 0 and _fx_ok(1):
         _fx.steam(_cell_world(i), 1)
     if randi() % 2 == 0 and i >= _w and mat[i - _w] == NONE:
         _put(i - _w, STEAM, amt[i], l)
         _put(i, NONE, 0, 0)
-        _wake(i - _w)
+        if (_flag[i - _w] & F_ACTIVE) == 0:   # _wake
+            _flag[i - _w] = _flag[i - _w] | F_ACTIVE
+            _queue.append(i - _w)
         return
-    _wake(i)
+    if (_flag[i] & F_ACTIVE) == 0:   # _wake
+        _flag[i] = _flag[i] | F_ACTIVE
+        _queue.append(i)
 
 
 ## Charged water strobes and sparks along the pool's edge.
@@ -1081,10 +1224,12 @@ func _step_charged(i: int) -> void:
         _put(i, WATER, amt[i], 4)
         return
     life[i] = l
-    var j := _nb(i, randi() & 3)
+    var j := _nbt[(randi() & 3) * _n + i]
     if (j < 0 or (mat[j] != CHARGED and mat[j] != WATER)) and randi() % 3 == 0 and _fx_ok(2):
         _spark(i)
-    _wake(i)
+    if (_flag[i] & F_ACTIVE) == 0:   # _wake(i), inline: thousands of charged cells a step
+        _flag[i] = _flag[i] | F_ACTIVE
+        _queue.append(i)
 
 
 ## Fresh ice creeps through the water it touches with white glints, then sleeps. Zapped
@@ -1092,14 +1237,16 @@ func _step_charged(i: int) -> void:
 func _step_ice(i: int) -> void:
     var left := false
     for d in 4:
-        var j := _nb(i, d)
+        var j := _nbt[d * _n + i]
         if j < 0:
             continue
         var m := int(mat[j])
         if m == WATER or m == CHARGED or m == TOXIC:
             if randi() % 2 == 0:
                 _put(j, ICE, 200, ICE_LIFE)
-                _wake(j)
+                if (_flag[j] & F_ACTIVE) == 0:   # _wake
+                    _flag[j] = _flag[j] | F_ACTIVE
+                    _queue.append(j)
                 if randi() % 3 == 0 and _fx_ok(1):
                     _fx.glint(_cell_world(j))
             else:
@@ -1110,12 +1257,16 @@ func _step_ice(i: int) -> void:
             _spark(i)
         if randi() % 3 == 0:
             _flag[i] = _flag[i] & ~F_ZAP
-            _touch(i)
+            if _tmark[i] == 0:   # _touch
+                _tmark[i] = 1
+                _tlist.append(i)
             _dirty = true
         else:
             left = true
     if left:
-        _wake(i)
+        if (_flag[i] & F_ACTIVE) == 0:   # _wake
+            _flag[i] = _flag[i] | F_ACTIVE
+            _queue.append(i)
 
 
 ## Cooling embers behind a fire front: a dull glow and a wisp of smoke, then bare char.
@@ -1125,17 +1276,23 @@ func _step_ash(i: int) -> void:
         _put(i, NONE, 0, 0)
         return
     life[i] = l
-    _touch(i)
+    if _tmark[i] == 0:   # _touch
+        _tmark[i] = 1
+        _tlist.append(i)
     _flicker = true
     if randi() % 10 == 0 and _fx_ok(1):
         _fx.smoke(_cell_world(i), 1, 3.0)
-    _wake(i)
+    if (_flag[i] & F_ACTIVE) == 0:   # _wake
+        _flag[i] = _flag[i] | F_ACTIVE
+        _queue.append(i)
 
 
 ## 1 Hz: age the slow materials (evaporate, dry, melt), drop empty cells from the draw
 ## list, and let obstacles at the doors feel what is on the floor beside them.
 func _sweep() -> void:
     var keep := PackedInt32Array()
+    keep.resize(_drawn.size())
+    var kn := 0
     var glinty := false
     for i: int in _drawn:
         var m := int(mat[i])
@@ -1147,7 +1304,9 @@ func _sweep() -> void:
             if l > 0:
                 life[i] = l
                 if l < 8 and m == DRY_BLOOD:
-                    _touch(i)   # fading out
+                    if _tmark[i] == 0:   # _touch # fading out
+                        _tmark[i] = 1
+                        _tlist.append(i)
                     _dirty = true
                 if m == TOXIC and randi() % 8 == 0 and _fx_ok(1):
                     _fx.mote(Element.Kind.POISON, _cell_world(i))
@@ -1159,13 +1318,15 @@ func _sweep() -> void:
                         _put(i, WATER, mini(int(amt[i]), 48), 4)
                     _:
                         _put(i, NONE, 0, 0)
-                if mat[i] == NONE:
+                m = int(mat[i])
+                if m == NONE:
                     _flag[i] = _flag[i] & ~F_DRAWN
                     continue
-        var km := int(mat[i])
-        if (km == WATER or km == TOXIC or km == OIL) and (_flag[i] & F_STILL) == 0:
+        if not glinty and (m == WATER or m == TOXIC or m == OIL) and (_flag[i] & F_STILL) == 0:
             glinty = true
-        keep.append(i)
+        keep[kn] = i
+        kn += 1
+    keep.resize(kn)
     _drawn = keep
     _glinty = glinty
     _touch_obstacles()
@@ -1723,7 +1884,8 @@ func _quad_rect() -> Rect2:
     return Rect2(_origin - Vector2(HALF, HALF), Vector2(_w * CELL + CELL, _h * CELL + CELL))
 
 
-## A cell's texel needs rewriting before the next flush.
+## A cell's texel needs rewriting before the next flush. Inline in the hot paths too
+## (marked `# _touch`).
 func _touch(i: int) -> void:
     if _tmark[i] == 0:
         _tmark[i] = 1
