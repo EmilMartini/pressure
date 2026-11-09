@@ -1644,6 +1644,83 @@ timestamps across every bot run of the phase.
 - **Acceptance:** each region has its profile, hazards and boss, and bots clear it inside its
   time budget.
 
+#### Late-build fps (2026-11-09)
+
+Weekly usage 41% at the start and 42% before each push. `VERSION` went from `2026.11.09-fps1`
+to `-fps4`. Commits: 0a56a32 (honest `--perf`, focus-free windows, `--grid-hash`), f8e644a
+(grid step), c5803d0 (floor batching, Fx), 9e64443 (boss music preload).
+
+**Before and after**, real window, vsync, 100 Hz, focus-free (`tools/bot_window.sh`), seed 2,
+`--perf` (whole fight; the 1% low is the mean of the slowest 1% of frames). Before is 675d1ec
+with the new `--perf` only; after is 9e64443, run in swapped order.
+
+| Run | Mean fps before | Mean fps after | 1% low before | 1% low after | Frames over 16 ms before | after |
+|---|---|---|---|---|---|---|
+| Choir, `--boss-only`, storm build | 86.5, 97.1 | 98.5, 97.7 | 37.0, 44.0 | 46.8, 47.0 | 7.4%, 2.9% | 1.3%, 2.4% |
+| Hive Mother (Gardens), same flags | 82.0, 95.2 | 97.9, 98.7 | 32.5, 39.8 | 46.8, 50.8 | 12.7%, 2.7% | 2.1%, 0.9% |
+| Section 0 command | 98.9, 99.3 | 99.2, 99.2 | 37.7, 44.0 | 44.9, 46.3 | 0.6%, 0.6% | 0.4%, 0.4% |
+
+Render CPU in the Choir fight went from 4.8 to 1.5 ms a frame and draw calls from about
+1,880 to about 470. The PC was in use during both sets (Emil's games and apps), so
+the same seed swings by up to 15 fps from run to run; the "before" pairs show it.
+
+**What the time was.** The old profile misled in two ways:
+- Every bot `print` through the log pipe costs about 15 ms on Windows. `[BOSS-CHAIN]` lines
+  (several a second in a storm fight) showed up as 10 to 25 ms "projectile", "enemy",
+  "cloud" and "gun" spikes, and the 2 s `[PERF]` block and the 10 s `[TICK]` block made
+  the rest. Players never print them. `--perf` now keeps them quiet and prints once, at the end.
+- "Drawing is not the cause" came from frame times capped by vsync. The engine's own
+  render timer said otherwise: 4.8 ms of the 10 ms frame was canvas submission, and the
+  room's floor terrain alone (a pool cell broke the batch three times) was 1,300 draw calls.
+
+**Fixes**, each with the same gameplay and the same pixels:
+- **Floor drawing** (`Room._draw_terrain`, `Themes.draw_tiles`): pools draw in passes over
+  all cells (base rects, water tiles grouped by texture, rims), and tile fills group their
+  pieces by texture. Proof: a draw-command check over 1,408 rooms (every layout, 4 seeds,
+  every theme, 2 sizes, 702k commands): every command stays inside its own layout cell and
+  each cell's commands are unchanged and in order. 3,000 random `draw_tiles` calls give
+  the same pieces, and none overlap. A one-shade colour change makes it FAIL in all 192 pool rooms.
+- **Materials grid step**: same cells, same order, same RNG draws, less overhead per cell (a
+  neighbour table, inline wake/touch, if-chains instead of `match`, which costs about twice
+  as much per cell). Proof: `tools/grid_replay.tscn` steps the old and new `materials.gd` through
+  five seeded workloads (every element, gales, fills, still pools, raised ground, shocked
+  floods past STEP_CAP, real Fx). The state hash matches after all 1,800 steps, and so does the
+  global RNG position. Mean saturated step 8.25 to 3.8 ms, worst 19.5 to 12 ms.
+- **Fx particles**: if-chains instead of `match` over up to 1,000 pixels a frame, the same
+  branch bodies and RNG calls in the same order. 0.87 to 0.36 ms a frame.
+- **Boss phase change**: the music loaded the next boss ogg on the spot (15 ms, twice a
+  fight). The boss pool now loads in the background when the fight starts; the pick and its
+  `randf()` are unchanged.
+
+Same-seed headless runs are not deterministic, even on unchanged code (the first
+`[GRID-HASH]` differs within a second; something reads wall time), so whole-game hashes
+can't be the proof. The replay and the draw-command check are. Bot outcomes stayed in their
+usual spread: the idle six-gun bot died in the Ossuary Gate on every fresh instance (t=25 to
+206; one check that reused an instance's save, with its meta progress, survived), the fusion
+probe cleared the Brute King in 26 to 35 s with `[FUSION-CHECK] PASS`, and the storm bosses
+fell in 15 to 25 s headless.
+
+**Clarity** (`--clarity-shot --clarity-spitters=8 --clarity-parts`, storm build, Frostvault,
+seeds 7 and 11, old drawing code put back for the A/B, 6 frames each): own effects 27.0% vs
+31.1% of the screen, enemy contrast 0.264 / 0.166 vs 0.280 / 0.180, shot contrast 0.400 / 0.403
+vs 0.403 / 0.386. The pixels are proven the same, so the spread is the capture moment
+(3 to 17 enemies on screen). Cistern reference (new code): own 3.3 to 43%, shots 0.33 / 0.31.
+
+**Checks:** load check clean; idle bot, fusion probe, hub walk and loadout probe passed
+after each change with 0 script errors; the real save, settings, mastery and `runs.jsonl`
+kept their timestamps; real-window runs never took focus.
+
+**Left:**
+- A grid step frame still costs 2 to 5 ms in a flooded fight (12 a second). That's most of
+  the remaining frames over 16 ms. The next gains need a cheaper per-cell step for ice,
+  charged water and gas, still with the replay proof.
+- Steady script load is about 3 ms a frame: HUD `_draw` 0.4 to 0.5 ms (redrawn every frame
+  for its pulses), Fx 0.36 ms, physics about 0.8 ms per tick.
+- Why same-seed headless runs drift (wall-clock reads in gameplay code) is unexplored.
+  Fixing it would make whole-game identity proofs possible.
+- `--perf-hide` (hide one group of canvas items per second, render CPU and draw calls
+  each) was a one-off. The patch is in the session notes folder if a later pass needs it.
+
 #### Phase 5 batch 1, part 3 (2026-11-08): Choir ledges, fps and the Cistern's sluice
 
 Weekly usage 38% at the start and 38% before each push. `VERSION` is `2026.11.08-p5c`.
@@ -1971,7 +2048,7 @@ set a stop at 39%, and the Drowned Choir (a new boss) did not fit in what was le
 | BR | Drowned Choir chain | Singers are innately wet: shock on them is Chain Lightning (12% wear), any fusion 15%, Galvanic Sea or Hurricane tears them at once. Health share 2.0 |
 | BS | Choir platforms | Three 96 x 72 px raised ledges near the corners, 170 px off the doors; nothing lands or flows on them; the song can pull you off |
 | BW | Cistern sluice | A wheel in the Choir's arena after the kill; drained Cistern: no puddles, drains or deep pools, non-boss enemies 1.3x health and 1.15x damage; the Choir's own flood stays |
-| BV | Late-build fps | Accepted for now: boss fights with the floor-2 storm build run about 81 to 83 fps (Choir and Hive Mother alike); the arenas alone hold 100 |
+| BV | Late-build fps | Fixed 2026-11-09 ("Late-build fps"): floor-2 storm-build boss fights run 98 to 99 fps in a real window (were 82 to 97), with the same gameplay and pixels; the grid step frame is what is left |
 | BT | Choir in the floor-number boss cycle | Not added to `SpawnTable.BOSSES` (that would change which boss appears past floor 5); the region picks it through `boss_kind` |
 | BU | Cistern lesson rewards | Region: Storm Seeker. Boss: Storm Pike |
 
