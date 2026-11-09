@@ -1,8 +1,8 @@
-name: Deploy web build
+name: Windows release
 
-# Every push to main exports the Web preset and publishes it on GitHub Pages, and builds
-# the Windows exe and attaches it (zipped) to the "latest" GitHub release.
-# One-time setup in the repository: Settings > Pages > Source: "GitHub Actions".
+# Every push to main builds the Windows exe and attaches it (zipped) to the "latest" GitHub
+# release. The Web build and GitHub Pages deploy were dropped on 2026-11-09: the game ships
+# as the Windows exe only.
 
 on:
   push:
@@ -10,79 +10,16 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write   # the Windows job moves the "latest" tag and uploads the release zip
-  pages: write
-  id-token: write
+  contents: write   # moves the "latest" tag and uploads the release zip
 
 concurrency:
-  group: pages
+  group: windows-release
   cancel-in-progress: true
 
 env:
   GODOT_VERSION: 4.7.2
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Cache Godot and export templates
-        id: cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/godot
-            ~/.local/share/godot/export_templates
-          key: godot-${{ env.GODOT_VERSION }}
-
-      - name: Download Godot and the export templates
-        if: steps.cache.outputs.cache-hit != 'true'
-        run: |
-          set -e
-          mkdir -p ~/godot ~/.local/share/godot/export_templates
-          BASE="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable"
-          curl -sSL -o godot.zip "$BASE/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
-          unzip -q godot.zip -d ~/godot
-          mv ~/godot/Godot_v${GODOT_VERSION}-stable_linux.x86_64 ~/godot/godot
-          chmod +x ~/godot/godot
-          curl -sSL -o templates.tpz "$BASE/Godot_v${GODOT_VERSION}-stable_export_templates.tpz"
-          unzip -q templates.tpz -d ~/godot
-          mv ~/godot/templates ~/.local/share/godot/export_templates/${GODOT_VERSION}.stable
-          rm -f godot.zip templates.tpz
-
-      - name: Export the Web preset
-        run: |
-          set -e
-          mkdir -p export/web
-          # Build label: stamp the short commit into Telemetry.COMMIT (see README, Telemetry).
-          sed -i "s/^const COMMIT := \"dev\"/const COMMIT := \"${GITHUB_SHA:0:7}\"/" scripts/telemetry.gd
-          grep -n '^const COMMIT' scripts/telemetry.gd
-          ~/godot/godot --headless --path . --import
-          ~/godot/godot --headless --path . --export-release Web export/web/index.html
-          # Cache busting: the game data gets a per-commit file name, so a reload after a
-          # deploy can never run the previous build from the browser cache.
-          SHORT="${GITHUB_SHA:0:7}"
-          mv export/web/index.pck "export/web/index-${SHORT}.pck"
-          sed -i "s/\"executable\":\"index\"/\"executable\":\"index\",\"mainPack\":\"index-${SHORT}.pck\"/; s/\"index.pck\":/\"index-${SHORT}.pck\":/" export/web/index.html
-          grep -o '"mainPack":"[^"]*"' export/web/index.html
-          touch export/web/.nojekyll
-          ls -la export/web
-
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: export/web
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@v4
-
   windows:
     runs-on: ubuntu-latest
     steps:
@@ -131,7 +68,7 @@ jobs:
         run: |
           set -e
           SHORT="${GITHUB_SHA:0:7}"
-          NOTES="Latest Windows build, commit ${SHORT}. Unzip and run Pressure.exe. The first launch may show a Windows SmartScreen warning because the exe is not code-signed: click More info, then Run anyway. Browser version: https://emilmartini.github.io/pressure/"
+          NOTES="Latest Windows build, commit ${SHORT}. Unzip and run Pressure.exe. The first launch may show a Windows SmartScreen warning because the exe is not code-signed: click More info, then Run anyway."
           git tag -f latest "$GITHUB_SHA"
           git push -f origin refs/tags/latest
           if gh release view latest >/dev/null 2>&1; then
