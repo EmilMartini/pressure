@@ -14,6 +14,7 @@ config/name="Pressure"
 run/main_scene="res://scenes/hub.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 config/icon="res://icon.svg"
+config/project_settings_override="res://autotest/window_override.cfg"
 
 [audio]
 

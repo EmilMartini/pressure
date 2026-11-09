@@ -42,7 +42,7 @@ var floor_rooms_cleared := 0   # difficulty creeps within a floor, resets at the
 var _paused_secs := 0.0
 var _perf_probe := OS.get_cmdline_user_args().has("--perf")
 var _perf_t := 2.0
-var _perf_frames := 0
+var _perf_lines := OS.get_cmdline_user_args().has("--perf-lines")
 var _bot_idle_fights := false
 var _probe: BalanceProbe = null   # --dps-probe (scripts/balance_probe.gd)
 var _probe_started := false
@@ -1343,7 +1343,8 @@ func _apply_bot_build(build: Dictionary, n: int) -> void:
 
 
 func _setup_autotest() -> void:
-    BossBody.log_enabled = true
+    Materials.hash_log = OS.get_cmdline_user_args().has("--grid-hash")
+    BossBody.log_enabled = not _perf_quiet()
     _bot_idle_fights = OS.get_cmdline_user_args().has("--idle")
     _bot_kite = OS.get_cmdline_user_args().has("--kite")
     for a in OS.get_cmdline_user_args():
@@ -1414,12 +1415,11 @@ func _setup_autotest() -> void:
 func _autotest_tick(delta: float) -> void:
     _clock += delta
     if _perf_probe:
+        # Every 2 s a sample line, but only with --perf-lines: printing costs a hitch, so a
+        # plain --perf run prints its frame-time summary once, at the end (Perf.summary).
         _perf_t -= get_process_delta_time() / maxf(Engine.time_scale, 0.001)
-        if _perf_t <= 0.0:
+        if _perf_t <= 0.0 and _perf_lines:
             _perf_t = 2.0
-            if get_node_or_null("/root/Perf") != null:
-                print("[PERF-SYS] per frame: %s" % get_node("/root/Perf").report(maxi(1, Engine.get_frames_drawn() - _perf_frames)))
-                _perf_frames = Engine.get_frames_drawn()
             print("[PERF] t=%.0f fps=%d process_ms=%.2f physics_ms=%.2f draw_calls=%d objects=%d primitives=%d nodes=%d enemies=%d projectiles=%d pixels=%d" % [
                 _clock, Engine.get_frames_per_second(),
                 Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0,
@@ -1486,7 +1486,8 @@ func _autotest_tick(delta: float) -> void:
     if fmod(_clock, 9.0) < delta and p.has_method("use_active"):
         p.use_active()
     if fmod(_clock, 10.0) < delta:
-        _print_stats("TICK")
+        if not _perf_quiet():
+            _print_stats("TICK")
         var peds: Array = []
         for ped in current.pedestals:
             if is_instance_valid(ped):
@@ -1817,8 +1818,17 @@ func _screenshot(path: String) -> void:
         img.save_png(path)
 
 
+## A --perf run (without --perf-lines) keeps the fight's chatty logs ([TICK], [BOSS-CHAIN],
+## [STAGGER]) quiet: a print through the bot's log pipe costs a 15 ms hitch on Windows, and
+## real players never print them.
+func _perf_quiet() -> bool:
+    return _perf_probe and not _perf_lines
+
+
 func _print_stats(label: String) -> void:
     if label == "END":
+        if _perf_probe:
+            print(Perf.summary())
         print("[HAZARD] region=%s gas_lit=%d zapped=%d" % [region_id, Materials.stat_gas_lit, Materials.stat_zapped])
     var p := players[0]
     var visited := 0

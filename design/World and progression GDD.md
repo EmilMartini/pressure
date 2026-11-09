@@ -60,9 +60,19 @@ git checkout -- default_bus_layout.tres            # the editor sometimes rewrit
 ```
 
 ```bash
-# Frame rate: a real window, nothing else running; heavy fights should hold about 98-100 fps with vsync
-"$G" --path . --audio-driver Dummy res://scenes/main.tscn -- --autotest --secs=75 --short --arsenal --gear --perf --instance=N
+# Frame rate: a real window, nothing else running; heavy fights should hold about 98-100 fps with vsync.
+# Every windowed run goes through tools/bot_window.sh: the window opens without taking focus.
+tools/bot_window.sh 240 autotest/perf.log 400000 --path . --audio-driver Dummy res://scenes/main.tscn -- --autotest --secs=75 --short --arsenal --gear --perf --instance=N
+grep -E "PERF-SUMMARY|SCRIPT ERROR" autotest/perf.log
 ```
+
+Real-window runs never take focus: `tools/bot_window.sh` sets `no_focus` for that launch only
+(see README, "Real-window bot runs"). Never start a windowed Godot directly, and never add an
+`override.cfg`. `--perf` prints one `[PERF-SUMMARY]` at the end (mean fps, 1% low, frames over
+12.5/16/25/50 ms) and keeps chatty logs quiet: a print through the log pipe costs a 15 ms
+hitch, so older per-2-s `[PERF]` numbers read low. Real-window fps is noisy when the PC is in
+use (the same seed ranged 82 to 97 fps); compare CPU cost headless with `Perf` labels when
+the simulation is identical.
 
 Every bot log must have 0 `SCRIPT ERROR` lines. `README.md` lists every bot flag, including
 `--build=storm`, `--start-floor`, `--old-balance`, `--mastery`, `--veteran`, `--gun-probe` and the

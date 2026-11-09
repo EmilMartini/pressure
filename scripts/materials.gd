@@ -40,6 +40,7 @@ const CELL := 6
 static var gas_ignites := false
 static var stat_gas_lit := 0   # bots: gas cells set alight ([HAZARD])
 static var stat_zapped := 0    # bots: water cells charged by shock ([HAZARD])
+static var hash_log := false   # bots (--grid-hash): [GRID-HASH] once a second, see _state_hash
 const HALF := 3
 const STEPS_PER_SEC := 12.0
 const STEP_CAP := 2500
@@ -853,6 +854,16 @@ func _step() -> void:
         _build_hostile_edges()
     elif not _edge_base.is_empty():
         _clear_hostile_edges()
+    if hash_log and _step_n % SWEEP_EVERY == 0:
+        print("[GRID-HASH] step=%d hash=%d queue=%d drawn=%d" % [_step_n, _state_hash(), _queue.size() - _head, _drawn.size()])
+
+
+## Bots: one number for the whole grid state (cells, flags, char, the active queue, the
+## draw list, surges, texels and the hostile outline). Two builds that print the same
+## [GRID-HASH] lines on the same seed stepped the grid identically.
+func _state_hash() -> int:
+    return hash([mat, amt, life, _flag, _char, _queue.slice(_head), _drawn, _sg, _tdata, _edge_base,
+        _edge_base_cols, _edge_dash, _edge_dash_cols, _step_n, _hurt_steps, _glinty])
 
 
 func _step_fire(i: int) -> void:

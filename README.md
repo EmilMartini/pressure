@@ -650,6 +650,25 @@ in one frame). For parallel silent runs add `--audio-driver Dummy` before the sc
 dummies that never die and prints `[DPS]`: damage per second over `--probe-secs=N` (default
 40) and its share by tier; `--probe-picks=id,id` adds level-up options, `--no-picks` drops
 the profile's own. Add `--fixed-fps 60` before the scene to run it faster than real time.
+
+**Real-window bot runs** (fps, screenshots) go through `tools/bot_window.sh <timeout_s>
+<log_file> <log_cap_bytes> <godot args...>`, so the window opens behind whatever Emil is
+working in and never takes focus. It writes `autotest/window_override.cfg`
+(`display/window/size/no_focus=true`), which project.godot names as
+`application/config/project_settings_override`, starts Godot and deletes the file 3 s later,
+once Godot has read its settings; the editor, exports and Emil's own runs never see it.
+The window is not throttled: it still renders at 100 fps with vsync. Don't launch a
+windowed Godot any other way, and don't add an `override.cfg`.
+`--perf` measures frame times there: it stores every frame's wall time and prints once, at
+the end, `[PERF-SUMMARY]` (mean fps, 1% low = mean of the slowest 1% of frames, median and
+p99 frame time, frames over 12.5/16/25/50 ms, wall time lost past 10 ms), `[PERF-HIST]`
+(frames per whole millisecond) and `[PERF-LABELS]` (per-frame cost of the frame phases and
+any `Perf.add` labels, `[SPIKE]` lines for the first 200 frames of 16 ms or more). A
+`--perf` run also keeps the fight's chatty logs quiet (`[TICK]`, `[BOSS-CHAIN]`,
+`[BOSS-MOVE]`, `[STAGGER]`): every print through the bot's log pipe costs a 15 ms hitch on
+Windows. `--perf-lines` brings them back plus a `[PERF]` sample line every 2 s.
+`--grid-hash` prints `[GRID-HASH]` once a second: one hash of the whole materials grid
+state, the identity proof for changes to the grid step (same seed, headless, same lines).
 `--payout-shot` saves the level-up cards, the wave-end spoils, the ring swap card and a
 merge pedestal to `autotest/` (real window); `--hurt-shot` the danger cues (see Danger). Bots print `[LEVEL]` (level, floor, rooms,
 XP so far), `[WAVE]` (what lay on the floor when a wave ended, lowest health),
