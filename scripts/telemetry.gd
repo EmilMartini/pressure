@@ -19,7 +19,7 @@ extends Node
 ## VERSION: bump it by hand with each phase or shared build (date plus phase tag).
 ## COMMIT: stays "dev" in the repository; the export steps (`.github/workflows/deploy.yml`,
 ## `tools/export_exe.sh`) stamp the short commit hash into it before exporting.
-const VERSION := "2026.11.09-fps3"
+const VERSION := "2026.11.09-fps4"
 const COMMIT := "dev"
 const BUILD := VERSION + "+" + COMMIT
 ## Where finished runs are POSTed (a Cloudflare Worker or Apps Script URL). Empty = local only.

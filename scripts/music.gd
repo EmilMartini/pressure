@@ -76,6 +76,8 @@ func play(mood: String, fade: float = CROSSFADE) -> void:
         return
     current = mood
     _start(file, fade)
+    if mood == "boss":
+        _preload_pool(mood)
 
 
 ## Skip to the next pick of the current pool.
@@ -214,13 +216,26 @@ func _pick(mood: String) -> String:
     return chosen
 
 
+## The rest of a pool loads in the background while its first track plays: a boss's phase
+## change switches track mid-fight, and loading an ogg there was a 15 ms hitch.
+func _preload_pool(mood: String) -> void:
+    for f in _available(mood):
+        var path := DIR + String(f)
+        if not _streams.has(path) and ResourceLoader.load_threaded_get_status(path) == ResourceLoader.THREAD_LOAD_INVALID_RESOURCE:
+            ResourceLoader.load_threaded_request(path)
+
+
 func _stream(file: String) -> AudioStream:
     var path := DIR + file
     if _streams.has(path):
         return _streams[path]
     if not ResourceLoader.exists(path):
         return null
-    var res := load(path)
+    var res: Resource = null
+    if ResourceLoader.load_threaded_get_status(path) != ResourceLoader.THREAD_LOAD_INVALID_RESOURCE:
+        res = ResourceLoader.load_threaded_get(path)   # preloaded (waits if still loading)
+    else:
+        res = load(path)
     var s := res as AudioStream
     if s == null:
         return null
