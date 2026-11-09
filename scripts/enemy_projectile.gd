@@ -28,6 +28,7 @@ var room_rect := Rect2()
 
 var _trail: Array[Vector2] = []
 var _age := 0.0
+var _closest := INF   # closest pass to a player, measured from a hit (PressureMeter near misses)
 
 
 func _ready() -> void:
@@ -40,6 +41,15 @@ func _ready() -> void:
             if r is Rect2:
                 var rr: Rect2 = r
                 room_rect = Rect2((parent as Node2D).global_position + rr.position, rr.size)
+
+
+## A shot that left play without hitting: a near miss if it passed close (PressureMeter).
+func _missed() -> void:
+    if _closest == INF:
+        return
+    var sc := get_tree().current_scene
+    if sc != null and "pressure_meter" in sc and sc.pressure_meter != null:
+        sc.pressure_meter.shot_missed(_closest)
 
 
 func color() -> Color:
@@ -56,9 +66,11 @@ func _physics_process(delta: float) -> void:
         _trail.pop_back()
     global_position += direction * speed * delta
     if lifetime <= 0.0:
+        _missed()
         queue_free()
         return
     if room_rect.has_area() and not room_rect.grow(radius).has_point(global_position):
+        _missed()
         queue_free()
         return
     var rm := Room.here
@@ -66,6 +78,7 @@ func _physics_process(delta: float) -> void:
         var sc := get_tree().current_scene
         if sc != null and "fx" in sc and sc.fx != null:
             sc.fx.puff(Art.PARTICLES["circle"], global_position, Color(color(), 0.5), radius * 3.0, 0.2, true)
+        _missed()
         queue_free()
         return
     var hit: Player = null
@@ -74,6 +87,7 @@ func _physics_process(delta: float) -> void:
         if not is_instance_valid(p) or not p.alive:
             continue
         var d: float = p.global_position.distance_to(global_position)
+        _closest = minf(_closest, d - radius - 10.0)
         if d <= radius + 10.0 and d < best:
             best = d
             hit = p

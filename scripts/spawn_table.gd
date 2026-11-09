@@ -22,6 +22,7 @@ const KINDS := {
 const HARD := ["brute", "spitter", "charger", "bomber", "splitter", "shaman", "warden", "wisp"]
 
 const AFFIXES := ["regenerating", "hasted", "trail", "volatile"]
+const DEEP_AFFIXES := ["barrage"]   # from floor 3 (difficulty 10): a ring of slow shots
 const BOSSES := ["brute_king", "hive_mother", "storm_warden", "pyre_lord", "void_herald"]
 
 
@@ -81,7 +82,11 @@ static func _pick(weights: Dictionary) -> String:
 static func elite_affix(diff: int) -> String:
     if diff < 6:
         return ""
-    return AFFIXES[randi() % AFFIXES.size()]
+    var pool: Array = AFFIXES.duplicate()
+    if diff >= 10 and not Main.old_balance:
+        pool.append_array(DEEP_AFFIXES)
+        pool.append_array(DEEP_AFFIXES)   # weighted: the one that pushes you around
+    return pool[randi() % pool.size()]
 
 
 ## The boss for a floor; past floor five the cycle repeats.

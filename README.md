@@ -674,6 +674,20 @@ dummies that never die and prints `[DPS]`: damage per second over `--probe-secs=
 40) and its share by tier; `--probe-picks=id,id` adds level-up options, `--no-picks` drops
 the profile's own. Add `--fixed-fps 60` before the scene to run it faster than real time.
 
+**Pressure readout** (`scripts/pressure_meter.gd`, difficulty pass 2026-11-09). Every floor
+ends with one `[PRESSURE]` line in bot logs and a `pressure` telemetry event in every run,
+human or bot (player 1): `fight` seconds a room was active; `lt50` / `lt25` share of that
+time under 50% / 25% health; `dmg_pm` and `heal_pm` damage taken and health healed per
+fight minute as shares of max health, with healing by source (leech, regen, item, active,
+fusion, pickup, altar, shrine, stairs, repair, revive); `hits` and `max_hit`; `close` drops
+under 20% that were survived (re-armed above 35%); `threat` share of fight time with an
+enemy shot within 150 px or an enemy within 70 px, and `moving` the share of that time
+spent moving; `near_miss_pm` enemy shots per fight minute that passed within 24 px of a
+hit; `clean` fights cleared without losing health, of all fights; `burst1` / `burst3` the
+most damage taken inside any 1 s / 3 s, as shares of max health. Older telemetry has no
+`pressure` event; its numbers can be rebuilt roughly from `damage_taken`, `wave_hp` and
+`room_clear` (design doc, "Difficulty pass").
+
 **Real-window bot runs** (fps, screenshots) go through `tools/bot_window.sh <timeout_s>
 <log_file> <log_cap_bytes> <godot args...>`, so the window opens behind whatever Emil is
 working in and never takes focus. It writes `autotest/window_override.cfg`

@@ -78,7 +78,31 @@ const KIND_COLORS := {
     "drowned_choir": Color(0.45, 0.68, 0.88),
 }
 
-const AFFIXES := ["regenerating", "hasted", "trail", "volatile"]
+const AFFIXES := ["regenerating", "hasted", "trail", "volatile", "barrage"]
+
+## Depth pressure (difficulty pass, 2026-11-09). Bots on floors 2 to 5 stood in a crowd of
+## melee that walked into their fire; one ranged kind fired one straight shot. By difficulty
+## (floor 2 is 6 to 9, floor 3 is 10, floor 4 is 14, floor 5 is 18):
+## - runners from FLANK_DIFF swing wide and close in from the side, not straight down the guns;
+## - spitters from FAN_DIFF fire a three-shot fan aimed half-way ahead of a moving target,
+##   each shot FAN_DMG of the old one, every 2 s instead of 1.6;
+## - spitters from LOB_DIFF lob every third volley: a ring marks the landing spot for
+##   SHELL_WARN s (hostile signature), then SHELL_R bursts. Killing the spitter cancels it;
+## - spitters from FAN_DIFF arrive shooting: the first fan leaves 0.25 s after they emerge;
+## - elites may roll "barrage" (SpawnTable): a ring of slow shots, glowing BARRAGE_WARN s first.
+const FLANK_DIFF := 6
+const FAN_DIFF := 8
+const LOB_DIFF := 14
+const FAN_SPREAD := 0.22
+const FAN_DMG := 0.7          # x a single shot, per fan shot: the fan moves you, it does not out-damage the old shot
+const LEAD := 0.5
+const SHELL_WARN := 1.0
+const SHELL_R := 56.0
+const SHELL_DMG := 1.4         # x a spitter shot
+const BARRAGE_EVERY := 3.4
+const BARRAGE_WARN := 0.6
+const BARRAGE_SHOTS := 10
+const BARRAGE_SPEED := 165.0
 const BOSS_KINDS := ["brute_king", "hive_mother", "storm_warden", "pyre_lord", "void_herald", "drowned_choir"]
 
 ## Spawns are telegraphed (Brotato's rule, design doc "Clarity pass"): a body emerges over
@@ -200,6 +224,9 @@ var _strafe_t := 0.0
 
 # Behaviour timers.
 var _shoot_t := 0.0
+var _volley := 0
+var _shells: Array = []     # spitter lobs in flight: [{ "at": Vector2 (global), "t": float }]
+var _barrage_t := 0.0
 var _pulse_t := 0.0
 var _pulse_fx := 0.0
 var _mode := MODE_CHASE
@@ -295,7 +322,9 @@ func configure(type: String, wave: int) -> void:
             immune_to = Element.ALL.pick_random()
             _wisp_phase = randf() * TAU
         "spitter":
-            _shoot_t = randf_range(0.6, 1.6)
+            # Deeper down they arrive shooting: a build that melts a crowd on landing still
+            # has a fan in the air to step out of (the emerge marker is the warning).
+            _shoot_t = 0.25 if wave >= FAN_DIFF and not Main.old_balance else randf_range(0.6, 1.6)
         "shaman":
             _pulse_t = randf_range(1.0, 3.0)
     _strafe_sign = 1.0 if randf() < 0.5 else -1.0
@@ -305,7 +334,24 @@ func configure(type: String, wave: int) -> void:
 ## Elite affix; "" clears it. Call after configure (before or after adding to the tree).
 func set_affix(name: String) -> void:
     affix = name if AFFIXES.has(name) else ""
+    if affix == "barrage":
+        _barrage_t = 2.0
+    _ensure_crisp()
     queue_redraw()
+
+
+var _crisp_on := false
+
+
+## The hostile overlay (telegraphs, blast rings, lob marks) for kinds that draw one. Elites
+## take their affix after entering the tree, so set_affix asks again (a volatile elite's
+## blast ring was never drawn before the difficulty pass).
+func _ensure_crisp() -> void:
+    if _crisp_on or not is_inside_tree():
+        return
+    if kind_name in ["bomber", "charger", "boss"] or affix in ["volatile", "barrage"]             or (kind_name == "spitter" and _wave >= LOB_DIFF and not Main.old_balance):
+        _crisp_on = true
+        Crisp.attach(self, _draw_hostile, 3)
 
 
 ## Boss pattern. Call after configure("boss", wave), before or after adding to the tree.
@@ -366,8 +412,7 @@ func _ready() -> void:
     add_child(shape)
     z_index = 8
     _setup_sprite()
-    if kind_name in ["bomber", "charger", "boss"] or affix == "volatile":
-        Crisp.attach(self, _draw_hostile, 3)
+    _ensure_crisp()
     var fx := _fx()
     if fx != null:
         fx.puff(Art.PARTICLES["smoke"], global_position, Color(0.1, 0.08, 0.1, 0.7), radius * 4.5, 0.5, false, Vector2(0, -20))
@@ -665,7 +710,7 @@ func take_damage(amount: float, color: Color, flash: bool = true, source: Player
     queue_redraw()
 
 
-func heal(amount: float) -> void:
+func heal(amount: float, _source: String = "") -> void:
     if hp <= 0.0:
         return
     hp = minf(max_hp, hp + amount)
@@ -830,6 +875,18 @@ func _die() -> void:
 func _draw_hostile(cv: CanvasItem) -> void:
     if kind_name == "bomber" or affix == "volatile":
         _draw_blast_ring(cv)
+    for sh in _shells:
+        # Where a lob lands: dark under red, filling in as it falls.
+        var k := 1.0 - float(sh["t"]) / SHELL_WARN
+        var at := to_local(Vector2(sh["at"]))
+        cv.draw_circle(at, SHELL_R * k, Color(Hostile.RED, 0.18))
+        cv.draw_arc(at, SHELL_R, 0.0, TAU, 32, Color(Hostile.DARK, 0.8), 6.0)
+        cv.draw_arc(at, SHELL_R, 0.0, TAU, 32, Color(Hostile.RED, 0.45 + 0.5 * k), 2.5)
+    if affix == "barrage" and _barrage_t <= BARRAGE_WARN and hp > 0.0 and emerge <= 0.0:
+        var kb := 1.0 - _barrage_t / BARRAGE_WARN
+        var ab := 0.45 + 0.4 * absf(sin(_fx_t * 18.0))
+        cv.draw_arc(Vector2.ZERO, radius * (2.2 - 0.6 * kb), 0.0, TAU, 32, Color(Hostile.DARK, 0.8), 5.0)
+        cv.draw_arc(Vector2.ZERO, radius * (2.2 - 0.6 * kb), 0.0, TAU, 32, Color(Hostile.RED, ab), 2.0)
     if boss_kind == "pyre_lord":
         _draw_pyre_hostile(cv)
     elif boss_kind == "brute_king":
@@ -1106,6 +1163,7 @@ func _physics_process(delta: float) -> void:
             return
 
     _tick_affix(delta)
+    _tick_shells(delta)
     if kind_name == "boss":
         _tick_boss_passive(delta)
         if _dead:
@@ -1182,9 +1240,20 @@ func _think(delta: float, target: Player) -> Vector2:
         "spitter":
             _shoot_t -= delta
             if _shoot_t <= 0.0 and dist < 560.0:
-                _shoot_t = 1.6
+                _shoot_t = 1.6 if _wave < FAN_DIFF else 2.0
                 var el: int = immune_to if immune_to != Element.Kind.NONE else Element.Kind.NONE
-                _shoot(dir, 250.0, _projectile_damage(6.0), el, 3.0, 6.0)
+                _volley += 1
+                if _wave >= LOB_DIFF and _volley % 3 == 0 and not Main.old_balance:
+                    _lob(target)
+                elif _wave >= FAN_DIFF and not Main.old_balance:
+                    # Half-way lead: a target running in a straight line or a circle gets
+                    # caught; one that changes direction does not.
+                    var ahead := target.global_position + target.velocity * (dist / 250.0) * LEAD
+                    var aim := (ahead - global_position).normalized()
+                    for a in [-FAN_SPREAD, 0.0, FAN_SPREAD]:
+                        _shoot(aim.rotated(a), 250.0, _projectile_damage(6.0) * FAN_DMG, el, 3.0, 6.0)
+                else:
+                    _shoot(dir, 250.0, _projectile_damage(6.0), el, 3.0, 6.0)
                 _squash = 0.6
             return _keep_range(delta, dir, dist, 220.0, 300.0) * speed * mult
         "charger":
@@ -1210,6 +1279,10 @@ func _think(delta: float, target: Player) -> Vector2:
             _wisp_phase += delta * 5.0
             var wobble := sin(_wisp_phase) * 1.1 + sin(_wisp_phase * 0.37) * 0.5
             return dir.rotated(wobble) * speed * mult
+    if kind_name == "runner" and _wave >= FLANK_DIFF and dist > 90.0 and not Main.old_balance:
+        # Flankers: swing up to about 60 degrees off the line, less as they close in.
+        var swing := clampf((dist - 90.0) / 260.0, 0.0, 1.0) * 1.05 * _strafe_sign
+        return dir.rotated(swing) * speed * mult
     if kind_name in ["grunt", "swarmer", "splitter"]:
         # Lunge: close the last stretch in a burst, so a wall of bullets has to stop
         # them rather than merely slow them.
@@ -1273,8 +1346,54 @@ func _shaman_pulse() -> void:
             e.armour_time = maxf(e.armour_time, 2.0)
 
 
+## A lobbed shell: lands where the target is heading, after SHELL_WARN s of warning.
+func _lob(target: Player) -> void:
+    var at := target.global_position + target.velocity * 0.25
+    var rr := _room_rect()
+    if rr.has_area():
+        at = Vector2(clampf(at.x, rr.position.x + 20.0, rr.end.x - 20.0), clampf(at.y, rr.position.y + 20.0, rr.end.y - 20.0))
+    _shells.append({ "at": at, "t": SHELL_WARN })
+    Sfx.play("tick")
+
+
+func _tick_shells(delta: float) -> void:
+    if _shells.is_empty():
+        return
+    for i in range(_shells.size() - 1, -1, -1):
+        var sh: Dictionary = _shells[i]
+        sh["t"] = float(sh["t"]) - delta
+        if float(sh["t"]) > 0.0:
+            continue
+        _shells.remove_at(i)
+        var at: Vector2 = sh["at"]
+        var col := Color(0.55, 0.85, 0.35)
+        Elements.nova.emit(at, SHELL_R, Color(col, 0.6))
+        var fx := _fx()
+        if fx != null:
+            fx.blast(at, SHELL_R, col)
+        for p in get_tree().get_nodes_in_group("players"):
+            if is_instance_valid(p) and p.alive and p.global_position.distance_to(at) <= SHELL_R + p.radius:
+                Telemetry.hurt_hint = "shell:" + Telemetry.enemy_label(self)
+                p.take_damage(_projectile_damage(6.0) * SHELL_DMG * damage_mult, self, at)
+    queue_redraw()
+
+
+func _barrage() -> void:
+    var off := randf() * TAU
+    for i in BARRAGE_SHOTS:
+        _shoot(Vector2.RIGHT.rotated(off + TAU * float(i) / float(BARRAGE_SHOTS)), BARRAGE_SPEED, _projectile_damage(5.0), Element.Kind.NONE, 3.2, 7.0)
+    _squash = 0.8
+
+
 func _tick_affix(delta: float) -> void:
     match affix:
+        "barrage":
+            _barrage_t -= delta
+            if _barrage_t <= 0.0:
+                _barrage_t = BARRAGE_EVERY
+                _barrage()
+            if _barrage_t <= BARRAGE_WARN:
+                queue_redraw()
         "regenerating":
             if _since_hit >= 2.0 and hp < max_hp:
                 heal(max_hp * 0.02 * delta)

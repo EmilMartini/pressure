@@ -138,6 +138,19 @@ const HAZARD_TICK_SECS := 0.75
 ## strong sustain (3 HP/s per point) that a hard moment can still outpace.
 const LEECH_PER_SEC := 3.0
 
+## Mending (difficulty pass, 2026-11-09): passive healing (Leech, regen, on-kill and on-hurt
+## item triggers, fusion heals) fades within one fight. Its rate is 1 / (1 + used / MEND_SOFT)
+## of normal, where `used` is the share of max health it has already restored since the fight
+## began: a quarter heals at full rate, the next quarter at about half. A storm build healed
+## exactly what it took on floors 2 to 5 (0.5 to 1.45 max health a fight minute, Leech 70% of
+## it) and never went under half health; fading keeps small sustain whole and cuts a stack.
+## Chosen heals stay whole: actives, pickups, altars, shrines, the stairs, repairs, revives.
+const MEND_SOFT := 0.2
+const MEND_SOURCES := ["leech", "regen", "item", "fusion"]
+var mend_used := 0.0          # passive healing this fight, as a share of max health
+var _mend_said := false       # "Mending fades" shown once per floor
+var _mend_fighting := false
+
 ## Burst guard (floors 2+, not with --old-balance): losing BURST_FRACTION of max health
 ## within BURST_WINDOW seconds buys BURST_INVULN seconds untouchable ("Steady"), at most
 ## once per BURST_COOLDOWN. A crowd still kills, but not from 60% health in under 5 s:
@@ -534,11 +547,36 @@ func move_speed() -> float:
     return BASE_SPEED * (1.0 + stat("speed")) * maxf(0.4, 1.0 - SPEED_LOSS_PER_WEIGHT * total_weight())
 
 
-func heal(amount: float) -> void:
+func heal(amount: float, source: String = "other") -> void:
     if alive:
+        var mending := MEND_SOURCES.has(source) and not Main.old_balance
+        if mending:
+            amount *= mend_rate()
         var before := hp
         hp = minf(max_hp, hp + amount)
         healed_total += hp - before
+        if mending:
+            mend_used += (hp - before) / maxf(1.0, max_hp)
+            if not _mend_said and mend_rate() < 0.5 and _mend_fighting:
+                _mend_said = true
+                say("Mending fades")
+        var mn := main()
+        if mn != null and mn.pressure_meter != null:
+            mn.pressure_meter.on_heal(self, hp - before, source)
+
+
+## Share of passive healing that still lands in this fight (MEND_SOFT).
+func mend_rate() -> float:
+    return 1.0 / (1.0 + mend_used / MEND_SOFT)
+
+
+## A fight starting refills Mending; called every physics frame.
+func _tick_mending() -> void:
+    var mn := main()
+    var fighting: bool = mn != null and mn.current != null and mn.current.active
+    if fighting and not _mend_fighting:
+        mend_used = 0.0
+    _mend_fighting = fighting
 
 
 ## Called by enemies when a reaction this player caused fires.
@@ -547,7 +585,7 @@ func on_reaction(_reaction_name: String) -> void:
     if steal > 0.0 and (_leech_budget >= 1.0 or Main.old_balance):
         _leech_budget -= 1.0
         var h0 := healed_total
-        heal(steal)
+        heal(steal, "leech")
         healed_leech += healed_total - h0
 
 
@@ -687,6 +725,9 @@ func _trace_hp(delta: float) -> void:
 ## The Shrine's survival track: stand back up at a quarter of max HP, briefly untouchable.
 func _last_breath() -> void:
     revives_left -= 1
+    var mn := main()
+    if mn != null and mn.pressure_meter != null:
+        mn.pressure_meter.on_heal(self, maxf(1.0, max_hp * Mastery.REVIVE_FRACTION), "revive")
     hp = maxf(1.0, max_hp * Mastery.REVIVE_FRACTION)
     invuln = Mastery.REVIVE_INVULN
     _squash = 1.0
@@ -742,10 +783,11 @@ func _physics_process(delta: float) -> void:
 
     pressure = move_toward(pressure, 0.0, PRESSURE_DECAY * delta)
     invuln = maxf(0.0, invuln - delta)
+    _tick_mending()
     var regen := stat("regen")
     if regen > 0.0:
         var h1 := healed_total
-        heal(regen * delta)
+        heal(regen * delta, "regen")
         healed_regen += healed_total - h1
     _leech_budget = minf(LEECH_PER_SEC, _leech_budget + LEECH_PER_SEC * delta)
     _message_time = maxf(0.0, _message_time - delta)

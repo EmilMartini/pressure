@@ -11,6 +11,7 @@ var players: Array[Player] = []
 var fx: Fx
 var hud: Hud
 var danger: DangerFx   # hit flashes and the low-health edge (danger_fx.gd)
+var pressure_meter: PressureMeter   # per-floor pressure readout (pressure_meter.gd)
 var camera: PixelCamera
 var pause_menu: PauseMenu
 var levelup: LevelUpScreen
@@ -105,6 +106,9 @@ func _ready() -> void:
     RenderingServer.set_default_clear_color(Art.CLEAR)
 
     add_child(PostFx.new())
+    pressure_meter = PressureMeter.new()
+    pressure_meter.main = self
+    add_child(pressure_meter)
     danger = DangerFx.new(self)
     add_child(danger)   # layer 3 like the HUD, added first: draws under it
     var layer := CanvasLayer.new()
@@ -541,10 +545,12 @@ func start_floor(n: int) -> void:
     if autotest and OS.get_cmdline_user_args().has("--one-floor") and floor_number > 0 and n > floor_number:
         # Balance probe: one floor per instance, so late floors can be measured in parallel.
         print("[FLOOR] %d (%s) reached at t=%.0f hp=%.0f/%.0f level=%d: --one-floor stops here" % [n, _next_region(n), _clock, players[0].hp, players[0].max_hp, players[0].level])
+        pressure_meter.flush()
         Telemetry.floor_start(self)
         _print_stats("END")
         get_tree().quit()
         return
+    pressure_meter.flush()
     floor_number = n
     region_id = _next_region(n)
     _door_choice = ""
@@ -557,6 +563,7 @@ func start_floor(n: int) -> void:
         print("[FLOOR] %d region=%s at t=%.0f kills=%d scrap=%d hp=%.0f level=%d guns=%d items=%d" % [
             n, region_id, _clock, total_kills, scrap, players[0].hp, players[0].level, players[0].guns.size(), players[0].equipment.size()])
     Telemetry.floor_start(self)
+    pressure_meter.start_floor(n, region_id)
     rooms = FloorGen.generate(region_id, party_luck(), players)
     _place_archivist()
     _place_well()
@@ -568,10 +575,11 @@ func start_floor(n: int) -> void:
     _scout_reveal()
     for p in players:
         p.pressure = 0.0
+        p._mend_said = false
         if not p.alive:
             p.alive = true
             p.add_to_group("players")
-        p.hp = maxf(p.hp, p.max_hp * (0.6 if n <= 2 else 0.4))   # deeper stairs patch you up less
+        p.heal(maxf(0.0, p.max_hp * (0.6 if n <= 2 else 0.4) - p.hp), "stairs")   # deeper stairs patch you up less
     enter_room(Vector2i(FloorGen.GRID / 2, FloorGen.GRID / 2), Vector2i.ZERO)
     announce(Regions.display_name(region_id))
     if autotest and OS.get_cmdline_user_args().has("--boss-only"):
@@ -657,6 +665,7 @@ func enter_room(pos: Vector2i, moved: Vector2i) -> void:
     Elements.room_reset()
     if autotest and not players.is_empty():
         _arena_snap = [_clock, players[0].hp, players[0].hurt_total, players[0].healed_total, players[0].healed_leech, players[0].healed_regen]
+    pressure_meter.room_entered()
     current = Room.new(rooms[pos], self)
     add_child(current)
     _update_spectacle()
@@ -733,6 +742,7 @@ func _print_arena(tag: String) -> void:
 
 func on_room_cleared(_room: Room) -> void:
     _print_arena("clear")
+    pressure_meter.room_cleared(_room)
     rooms_cleared += 1
     Progress.add("rooms")
     floor_rooms_cleared += 1
@@ -756,6 +766,7 @@ func next_floor(to: String = "") -> void:
     if floor_number >= FLOORS or Regions.next_options(region_id).is_empty():
         victory = true
         announce("You cleared the dungeon!")
+        pressure_meter.flush()
         _end_run(true)
     else:
         call_deferred("start_floor", floor_number + 1)
@@ -854,6 +865,7 @@ func _spawn_player(device: int, keyboard: bool) -> Player:
     add_child(p)
     players.append(p)
     p.died.connect(_on_player_died)
+    p.hurt.connect(func(pl: Player, amount: float, _from: Vector2, _src: String) -> void: pressure_meter.on_hurt(pl, amount))
     p.leveled_up.connect(_on_leveled_up)
     if danger != null:
         p.hurt.connect(danger.on_hurt)
@@ -983,6 +995,7 @@ func _on_player_died(_p: Player) -> void:
     if autotest:
         print("[DEATH] floor=%d region=%s room=%s diff=%d t=%.0f kills=%d level=%d" % [floor_number, region_id, current.data.type_name() if current else "-", difficulty(), _clock, total_kills, players[0].level])
         _print_arena("death")
+    pressure_meter.flush(true)
     _end_run(false)
 
 
@@ -1519,6 +1532,7 @@ func _autotest_tick(delta: float) -> void:
         if not game_over and not victory:
             var would: Dictionary = Mastery.preview(floor_number, false, String(Loadout.current()["mark"]))
             print("[EMBERS] time cap: a death here would pay +%d (%s)" % [int(would["total"]), Mastery.award_text(would)])
+            pressure_meter.flush()
         _print_stats("END")
         get_tree().quit()
 

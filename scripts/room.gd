@@ -65,6 +65,12 @@ const BOSS_HP_MAX_MULT := 9.0
 const RALLY_AT := [0.66, 0.33]
 const RALLY_SECS := 8.0
 const RALLY_GROUPS := 3
+
+## Elites from floor 2 hold at least ELITE_SECS of the floor's measured arena output
+## (main.floor_arena_dps, the number that sizes bosses), so a modifier gets to act: a
+## full-Shrine storm build dealt 4,100 a second on floor 5 and its elites died in a third of
+## a second (difficulty pass, 2026-11-09).
+const ELITE_SECS := 2.0
 const BOSS_CROWD := 0.4
 
 # Layout: interior walls, chasms and terrain on a NAV grid (see RoomLayouts).
@@ -650,6 +656,10 @@ func _spawn_elite(count: int) -> void:
     for i in count:
         var e := _spawn_enemy("elite", _spawn_point())
         e.emerge = Enemy.EMERGE_SECS
+        var out := main.floor_arena_dps()
+        if main.floor_number >= 2 and out > 0.0 and not Main.old_balance:
+            e.max_hp = maxf(e.max_hp, out * ELITE_SECS)
+            e.hp = e.max_hp
         e.set_affix(SpawnTable.elite_affix(diff))
         if not pairs.is_empty():
             e.set_shield(pairs.pick_random(), hits)
@@ -1501,7 +1511,7 @@ func activate(ped: Pedestal, pl: Player) -> void:
                 "vitality":
                     pl.max_hp_base += o["amount"]
                     pl.recalc_stats()
-                    pl.heal(o["amount"])
+                    pl.heal(o["amount"], "pickup")
                 "haul":
                     pl.weight_capacity_base += o["amount"]
                     pl.recalc_stats()
@@ -1546,7 +1556,7 @@ func activate(ped: Pedestal, pl: Player) -> void:
                 Sfx.play("error")
                 return
             main.scrap -= o["price"]
-            pl.hp = minf(pl.max_hp, pl.hp + o["amount"])
+            pl.heal(o["amount"], "repair")
             pl.say("Repaired")
             Sfx.play("buy")
             o["taken"] = true

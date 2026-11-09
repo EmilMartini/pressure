@@ -536,6 +536,21 @@ contexts `heal_source` runs once, like other area actions.
   reaction" turned bosses into lotteries once a run carried many elements. The shield is now
   a test of whether you are reacting at all, with a bonus for the right one.
 - **Dungeon tiers** (see section 4). Difficulty keys to your gear score, like Mythic+ keystones.
+- **Mending fades** (difficulty pass, 2026-11-09). Passive healing (Leech, regen, on-kill
+  and on-hurt item heals, fusion heals) slows within one fight: it heals at
+  1 / (1 + used / 0.2) of its rate, where `used` is the share of max health it has already
+  restored since the fight began, and refills when the next fight starts. A fifth of your
+  health comes back at full speed, the next fifth at about half. Chosen heals stay whole:
+  actives, pickups, altars, shrines, the stairs, repairs and Last Breath. The first time it
+  drops under half on a floor the figure says "Mending fades". Before it, a storm build
+  healed exactly what it took on floors 2 to 5 and never spent time under half health.
+- **Depth pressure** (same pass). From floor 2 runners swing wide and come in from the
+  side. From the middle of floor 2 (difficulty 8) spitters fire a three-shot fan
+  (0.7x damage a shot, every 2 s) aimed half-way ahead of a moving target, and arrive
+  shooting a quarter second after their emerge marker. From floor 4 every third volley is
+  a lob: a hostile ring marks where it lands for 1 s. Elites may roll Barrage from floor 3
+  (a ring of ten slow shots after a 0.6 s glow), and from floor 2 an elite holds at least
+  2 s of the floor's measured arena output, so its modifier gets to act.
 
 ### Danger readability — BUILT (2026-11-06)
 The player said most runs ended with dying "without realising it". Human telemetry (22
@@ -1301,6 +1316,7 @@ power estimate; every run prints `[EMBERS]` with what it paid (or would have pai
 the time cap ended it),
 `--arsenal` (every gun), `--gear` (equip shock gear at 45 s for the sheet screenshot),
 `--fusion-probe[=K]` (four w1 guns of four elements, rotating with `--instance`),
+every floor ends with a `[PRESSURE]` line (see README, "Pressure readout"),
 `--build=storm|mid --start-floor=N` (start on floor N with the human run's build at that
 floor, or a mediocre one; profile gear is kept), `--one-floor` (quit at the next floor),
 `--old-balance` (the late-floor tuning off, for before/after), `--kite` (a player-like

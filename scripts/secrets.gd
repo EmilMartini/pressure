@@ -592,7 +592,7 @@ func _bloom(b: Bit) -> void:
     Sfx.play("shield_restore", -4.0)
     for p in room.main.players:
         if p.alive:
-            p.heal(p.max_hp * 0.4)
+            p.heal(p.max_hp * 0.4, "shrine")
             _fxc("rise", [p.global_position, 10, 12.0])
     _cache(b.position + Vector2(0, 34), 10)
     _solved(b.position)

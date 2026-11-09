@@ -593,7 +593,7 @@ func _altar(el: int) -> bool:
         Element.Kind.BLOOD:
             if _ready_cd("heal", 10.0):
                 for p in _players_within(120.0):
-                    p.heal(15.0)
+                    p.heal(15.0, "altar")
                     _fxc("rise", [p.global_position, 10, 12.0])
                 Elements.nova.emit(gp, 120.0, Color(Element.COLORS[Element.Kind.BLOOD], 0.5))
                 _fxc("signature", [Element.Kind.BLOOD, gp, 40.0, 1.0, Vector2.ZERO])
@@ -1053,7 +1053,7 @@ func _ambient(pulse: bool, shed: bool) -> void:
                 Cloud.spawn(_world(), gp + Vector2.RIGHT.rotated(randf() * TAU) * 40.0, _contaminant, 70.0, 3.0, 1.0, null)
             if _timers.has("blessed"):
                 for p in _players_within(100.0):
-                    p.heal(0.5)   # 2/s
+                    p.heal(0.5, "altar")   # 2/s
                 if randf() < 0.5:
                     _fxc("rise", [gp, 2, 20.0])
             if _timers.has("fouled"):

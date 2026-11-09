@@ -635,7 +635,7 @@ func _act_at(enemy: Node2D, pos: Vector2, source: Player, potency: float, act: A
                 enemy.take_damage(enemy.max_hp * share + potency, COLORS[Kind.VOID], true, source)
         "heal_source":
             if source != null and is_instance_valid(source):
-                source.heal(float(act[1]))
+                source.heal(float(act[1]), "fusion")
 
 
 const BOSS_DECAY := 0.1

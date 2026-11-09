@@ -778,7 +778,7 @@ func _do(t: Dictionary, player: Player, ctx: Dictionary) -> void:
         "nova":
             nova(player, pos, _element_of(t, ctx), float(t.get("radius", 120.0)), potency)
         "heal":
-            player.heal(float(t.get("amount", 10.0)))
+            player.heal(float(t.get("amount", 10.0)), "active" if ctx.get("active", false) else "item")
         "scrap":
             player.main().add_scrap(int(t.get("amount", 5)))
         "pressure":
@@ -851,6 +851,7 @@ func use_active(player: Player) -> bool:
         "pos": player.global_position, "target": target,
         "element": int(_last_vent.get(player.get_instance_id(), Element.Kind.FIRE)),
     }
+    ctx["active"] = true
     _depth += 1
     for action in it.get("active", {}).get("do", []):
         _do(action, player, ctx)
