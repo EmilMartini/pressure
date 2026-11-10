@@ -1596,6 +1596,16 @@ func _bot_start_floor() -> int:
     return 1
 
 
+## The floor whose --build profile the bot starts with: `--build-floor=N` (a deeper build on
+## an earlier floor, e.g. a floor-3 build at the Brute King for the boss pace guard), else
+## the start floor.
+func _bot_build_floor() -> int:
+    for a in OS.get_cmdline_user_args():
+        if a.begins_with("--build-floor="):
+            return clampi(int(a.substr(14)), 1, FLOORS)
+    return _bot_start_floor()
+
+
 ## Bots: `--route=ossuary_gate,rust_ruins,...` fixes the regions in order (checked against
 ## the graph); otherwise a bot starting deeper (--start-floor) takes a random way down.
 func _plan_bot_route() -> void:
@@ -1688,7 +1698,7 @@ func _setup_autotest() -> void:
     if HurtShot.wanted():
         add_child(HurtShot.new(self))   # hit flash, low health, hazards, death recap (hurt_shot.gd)
     _plan_bot_route()
-    _apply_bot_build(_bot_build(), _bot_start_floor())
+    _apply_bot_build(_bot_build(), _bot_build_floor())
     if GearShot.wanted():
         add_child(GearShot.new(self))   # worn-gear sheets and fight close-ups (gear_shot.gd)
     if CardShot.wanted():

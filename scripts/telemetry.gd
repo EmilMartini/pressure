@@ -19,7 +19,7 @@ extends Node
 ## VERSION: bump it by hand with each phase or shared build (date plus phase tag).
 ## COMMIT: stays "dev" in the repository; the export steps (`.github/workflows/deploy.yml`,
 ## `tools/export_exe.sh`) stamp the short commit hash into it before exporting.
-const VERSION := "2026.11.10-rollout1"
+const VERSION := "2026.11.10-bosspace"
 const COMMIT := "dev"
 const BUILD := VERSION + "+" + COMMIT
 ## Where finished runs are POSTed (a Cloudflare Worker or Apps Script URL). Empty = local only.
@@ -484,7 +484,18 @@ func elite_spawned(e: Node) -> void:
 func boss_start(boss: Node) -> void:
     if _run.is_empty() or boss == null:
         return
-    _boss = { "id": boss.get_instance_id(), "kind": String(boss.get("boss_kind")), "floor": _floor, "t0": _clock, "phase2": -1.0 }
+    _boss = { "id": boss.get_instance_id(), "kind": String(boss.get("boss_kind")), "floor": _floor, "t0": _clock, "phase2": -1.0, "node": boss }
+
+
+## The boss's health and what its pace guard held back (BossBody.PACE_*): a "paced" share
+## near 0 means the build met the fight's length; a high share means it out-damaged it.
+func _boss_pace() -> Dictionary:
+    var b = _boss.get("node")
+    if b == null or not is_instance_valid(b):
+        return {}
+    var lost := float(b.get("pace_lost"))
+    var mhp := float(b.get("max_hp"))
+    return { "max_hp": roundf(mhp), "paced": snappedf(lost / maxf(1.0, mhp + lost), 0.01) }
 
 
 func boss_phase2(boss: Node) -> void:
@@ -499,7 +510,7 @@ func _boss_end(main: Node, won: bool) -> void:
         "kind": _boss["kind"], "floor": _boss["floor"], "secs": snappedf(_clock - float(_boss["t0"]), 0.1),
         "phase2_at_secs": snappedf(p2, 0.1) if p2 >= 0.0 else null,
         "player_hp_pct_at_end": _party_hp_pct(main), "won": won,
-    })
+    }.merged(_boss_pace()))
     _boss = {}
 
 

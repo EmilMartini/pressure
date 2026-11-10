@@ -753,6 +753,53 @@ affix to matter. **Bosses:** at least 35 s of P on **every** floor, floor 1 incl
 30 s from floor 2), at most `BOSS_HP_MAX_MULT` 9x the formula. Target for real players: 25 to
 50 s, checked from the `boss` telemetry event (`secs`).
 
+**Boss pace guard (2026-11-10, build `2026.11.10-bosspace`).** Emil's real floor-1 Brute King
+fights (`bot:false`) ended in 5.7, 14.0, 5.7 and 6.1 s on the newest builds (13 floor-1 fights
+since 11-05: 4.6 to 16 s). The cause is in the numbers, not the share:
+
+| | Arena output P (last 3 arenas) | Damage a second on the boss | Ratio |
+|---|---|---|---|
+| Emil, 13 floor-1 boss fights | 60 to 190 | 243 to 1,440 (median ~900; ~1,000 on the newest 6) | 2x to 20x |
+| Floor-1 bots (fusion probe, kite) | 50 to 72 | 100 to 200 | ~2x |
+
+Arena output is capped by how many enemies the wave holds, so it cannot predict what a build
+does to one big target; Decay (a slice of max health) alone made 44 to 73% of the boss damage
+in three of his runs. On floor 1 the King's health is the formula x 2.2 (~7.7k at difficulty 4;
+35 s of P is only ~3.5k). Raising health does not work: at x3.0 (10.4k) and x5.5 (19k) the
+floor-1 bots took 52 to 96 s and 2 of 3 died in his room, while Emil would still finish a 10k
+King in 10 s. So health stays at x2.2 and one rule caps the top end:
+
+- **Every boss has a minimum fight** (`BossBody.PACE_DEFAULT` 28 s; `PACE_SECS` per kind, none
+  set). Its health may not fall below `max_hp x (1 - t / 28)`, t the fight clock (the entrance
+  holds it). Damage past that line counts at 15% (`PACE_OVER`), never below the line minus 5%
+  of max health (`PACE_SLACK`). Weaker builds never meet the line; nothing changes for them.
+- Readable: a held-back hit shows its full number in steel grey, and a dull steel rim flashes
+  round the boss (`Enemy._pace_flash`). Telegraphs, attacks and the hostile red are untouched.
+- Telemetry: the `boss` event now carries `max_hp` and `paced` (share of damage held back);
+  bot `[BOSS]` lines print `boss_dps` and `paced`.
+
+**Human-damage assumption:** Emil's floor-1 boss damage, 570 to 1,440 a second on his last six
+runs. Every build over ~275 a second (7.7k / 28 s) meets the guard. Expected fight lengths:
+
+| Damage a second on the King | Before (7.7k) | After |
+|---|---|---|
+| 1,440 (Emil's best) | 5.3 s | 28 s, ~80% held back |
+| 1,000 (Emil's median) | 7.7 s | 28 s, ~70% held back |
+| 570 (Emil's weakest recent) | 13 s | 28 s, ~50% held back |
+| 243 (his weakest, old build) | 32 s | 32 s |
+| 100 to 200 (bots) | 38 to 77 s | unchanged |
+
+**Measured (headless):** `--build=storm --build-floor=N --boss-only` (new flag: a deeper build
+on floor 1) fought the King at 238, 444 and 617 a second: 28.0 s each, 13%, 53% and 66% held
+back (before: 24, 13 and 9 s). Floor-1 fusion bots: 42.0 and 67.5 s, 0% held back, one died in
+his room at 7.7k as before. Storm build at the Void Herald (floor 5): 35.6 to 62 s, 0 to 2% held
+back; Storm Warden 40 s; Hive Mother 50 s (bots never reach the line on rallying bosses).
+**The session-4 note (strong late runs, ~23 s on floors 4 and 5)** is covered by the same rule:
+no boss can now die before ~27 s. Emil's floor-2 fights with rallies (Hive Mother 30.7 s,
+Drowned Choir 26.8 s) were already in range and are only touched if he out-damages the line.
+**For Emil:** if a 28 s floor 1 feels like a wall for strong builds (much grey), lower
+`PACE_DEFAULT` to 25 or raise `PACE_OVER` to 0.3; read `paced` in his next `boss` events.
+
 **Diminishing returns on stacked reaction power:**
 - Reaction power bonus (the sum of `potency` and `potency_<el>`) counts in full up to +50%, at
   half from +50% to +150%, at a quarter beyond. +100% becomes +75%; +250% becomes +125%.

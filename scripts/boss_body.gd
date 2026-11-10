@@ -78,9 +78,28 @@ static func hp_share(boss_kind: String) -> float:
 
 ## Floor 1 keeps the old health formula (Room), times this. The Brute King's fight is his
 ## plates, barrels and three phases; at the old health the fusion bot killed him in 5 to 28 s.
+## Kept at 2.2 (2026-11-10): Emil's floor-1 runs dealt 570 to 1,440 a second to him (median
+## about 1,000) and killed ~7.7k in 5.7 to 14 s, but the floor-1 bots deal 100 to 200 and
+## died in his room at 3.0 (10.4k) and 5.5 (19k). More health punishes the weak builds; the
+## pace guard below holds the strong ones (every build over ~275/s takes ~27 s).
 const FLOOR1_MULT := {
     "brute_king": 2.2,
 }
+
+## Pace guard (Core loop reset 9, 2026-11-10): no boss dies faster than its minimum fight.
+## Its health may not fall below max_hp x (1 - t / pace_secs), t the fight clock; damage past
+## that line counts at PACE_OVER, and never below the line minus PACE_SLACK of max health. So
+## the shortest fight is (1 - PACE_SLACK) x pace_secs whatever the build deals; weaker builds
+## never meet the line. Human single-target damage on a boss is 4 to 20x their arena output,
+## so health sized from the arenas cannot hold a strong build by itself.
+const PACE_SECS := {}
+const PACE_DEFAULT := 28.0
+const PACE_OVER := 0.15
+const PACE_SLACK := 0.05
+
+
+static func pace_secs(boss_kind: String) -> float:
+    return float(PACE_SECS.get(boss_kind, PACE_DEFAULT))
 
 
 static func floor1_mult(boss_kind: String) -> float:

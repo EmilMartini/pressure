@@ -334,6 +334,12 @@ var rally_at: Array = []
 var _ward_t := 0.0
 var _ward_adds: Array = []
 const RALLY_LEAK := 0.05
+## Pace guard (BossBody.PACE_*), set by the room: pace_t is the fight clock (Room._tick_boss),
+## pace_lost the damage the guard held back (telemetry), _pace_flash the braced ring.
+var pace_secs := 0.0
+var pace_t := 0.0
+var pace_lost := 0.0
+var _pace_flash := 0.0
 
 ## Damage every enemy has actually lost (overkill trimmed), all sources: the room reads it to
 ## measure the party's output per arena second, which sizes the boss (Room._begin_boss).
@@ -778,6 +784,16 @@ func take_damage(amount: float, color: Color, flash: bool = true, source: Player
         rally_at.pop_front()
         _ward_t = rally_secs
         rallied.emit.call_deferred(self)
+    var shown := amount   # a braced hit still shows what it struck for, in steel grey
+    if pace_secs > 0.0 and amount > 0.0:
+        var line := max_hp * (1.0 - pace_t / pace_secs)
+        if hp - amount < line:
+            var free := maxf(0.0, hp - line)
+            var held := minf(free + (amount - free) * BossBody.PACE_OVER,
+                    maxf(0.0, hp - (line - max_hp * BossBody.PACE_SLACK)))
+            pace_lost += amount - held
+            amount = held
+            _pace_flash = 0.15
     hp -= amount
     dealt_total += amount + minf(hp, 0.0)
     if synergy_depth > 0:
@@ -787,7 +803,10 @@ func take_damage(amount: float, color: Color, flash: bool = true, source: Player
     if flash:
         var fx := _fx()
         if fx != null:
-            fx.number(global_position + Vector2(0, -radius), amount, color if color != Color.WHITE else Color(0.95, 0.9, 0.85), crit)
+            if shown > amount + 0.5:
+                fx.number(global_position + Vector2(0, -radius), shown, Color(0.62, 0.65, 0.7), crit)
+            else:
+                fx.number(global_position + Vector2(0, -radius), amount, color if color != Color.WHITE else Color(0.95, 0.9, 0.85), crit)
     else:
         _dot_accum += amount
         _dot_color = color
@@ -1328,6 +1347,7 @@ func _physics_process(delta: float) -> void:
     _contact_cd = maxf(0.0, _contact_cd - delta)
     _flash = maxf(0.0, _flash - delta)
     _shield_flash = maxf(0.0, _shield_flash - delta)
+    _pace_flash = maxf(0.0, _pace_flash - delta)
 
     _floor_t -= delta
     if _floor_t <= 0.0:
@@ -3029,6 +3049,9 @@ func _draw() -> void:
         # Rally guard: a thick gold ring that pulses while the adds live.
         var pulse := 0.5 + 0.5 * sin(_fx_t * 8.0)
         draw_arc(Vector2.ZERO, radius + 16.0, 0.0, TAU, 48, Color(1.0, 0.8, 0.3, 0.45 + 0.4 * pulse), 4.0)
+    if _pace_flash > 0.0:
+        # Pace guard: hits past the boss's minimum fight glance off a dull steel rim.
+        draw_arc(Vector2.ZERO, radius + 8.0, 0.0, TAU, 40, Color(0.75, 0.78, 0.82, 0.25 + 2.0 * _pace_flash), 3.0)
     if armour_time > 0.0:
         draw_arc(Vector2.ZERO, radius + 3.0, 0.0, TAU, 24, Color(0.5, 1.0, 0.5, 0.6), 2.0)
     if affix != "":

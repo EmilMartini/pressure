@@ -754,7 +754,9 @@ the bot hold fire at its own pick in fights (on a parted boss, intact armour fir
 the part that takes most), and `--aim=manual` implies it.
 `--boss-only` sends the bot straight to the floor's boss room and quits when the boss dies.
 `--boss-dps=N` stands in for the arena output a real floor would have measured, which
-sizes bosses from depth 2. `--boss-shot` (real window) saves `autotest/boss_<kind>_<s>.png`
+sizes bosses from depth 2. `--build-floor=N` gives the bot the `--build` profile of floor N on
+an earlier start floor (`--build=storm --build-floor=3 --boss-only` is a strong build at the
+Brute King: proof of the boss pace guard, `paced=` on the `[BOSS]` line). `--boss-shot` (real window) saves `autotest/boss_<kind>_<s>.png`
 at 1.5, 6, 12, 18, 24, 30 and 38 s into the fight, plus `boss_<kind>_entrance.png` (the name
 card), `boss_<kind>_phase2.png` / `phase3.png` and `boss_<kind>_death.png` from the boss show
 (`scripts/boss_show.gd`); with `--boss-only` the run then waits 1.4 s after the kill for the

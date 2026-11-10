@@ -738,6 +738,7 @@ func _begin_boss() -> void:
         var want := BOSS_SECS_P * main.measured_power() * BossBody.hp_share(boss.boss_kind)
         boss.max_hp = clampf(maxf(want, boss.max_hp), formula, formula * BOSS_HP_MAX_MULT)
         boss.hp = boss.max_hp
+        boss.pace_secs = BossBody.pace_secs(boss.boss_kind)
         if main.floor_number >= 2:
             boss.rally_secs = RALLY_SECS
             boss.rally_at = RALLY_AT.duplicate()
@@ -773,6 +774,8 @@ func _tick_boss(delta: float) -> void:
         return   # the entrance and the beat after the death hold the fight clock and the adds
     var was := _boss_secs
     _boss_secs += delta
+    if boss != null and is_instance_valid(boss):
+        boss.pace_t = _boss_secs
     if main.autotest and OS.get_cmdline_user_args().has("--boss-shot") and boss != null and is_instance_valid(boss):
         # Readability shots: the name card, then the fight every few seconds (real window).
         for at in [1.5, 6.0, 12.0, 18.0, 24.0, 30.0, 38.0]:
@@ -1096,8 +1099,9 @@ func _on_enemy_died(e: Enemy) -> void:
         Progress.add("bosses")
         if main.autotest:
             var pl: Player = main.players[0]
-            print("[BOSS] floor=%d kind=%s secs=%.1f phase2=%.1f max_hp=%.0f arena_dps=%.0f player_hp=%.0f/%.0f low=%.2f" % [
-                main.floor_number, e.boss_kind, _boss_secs, _boss_p2, e.max_hp, main.floor_arena_dps(), pl.hp, pl.max_hp, low_hp])
+            print("[BOSS] floor=%d kind=%s secs=%.1f phase2=%.1f max_hp=%.0f arena_dps=%.0f player_hp=%.0f/%.0f low=%.2f boss_dps=%.0f paced=%.2f" % [
+                main.floor_number, e.boss_kind, _boss_secs, _boss_p2, e.max_hp, main.floor_arena_dps(), pl.hp, pl.max_hp, low_hp,
+                (e.max_hp + e.pace_lost) / maxf(0.1, _boss_secs), e.pace_lost / maxf(1.0, e.max_hp + e.pace_lost)])
             if e.body != null:
                 print("[BOSS-BODY] kind=%s secs=%.1f max_hp=%.0f %s" % [e.boss_kind, _boss_secs, e.max_hp, e.body.summary()])
             if OS.get_cmdline_user_args().has("--boss-only"):
