@@ -718,7 +718,7 @@ static func now() -> float:
     return fmod(float(Time.get_ticks_msec()) / 1000.0, 900.0)
 
 
-## Materials.on_force: a gale on the grid reaches plants, chains and critters.
+## Materials.living_forces: a gale on the grid reaches plants, chains and critters.
 static func force_at(m: Materials, pos: Vector2, r: float, kind: int) -> void:
     var room := m.get_parent() as Room
     if room == null:
@@ -743,7 +743,7 @@ const LIVING_THEMES := ["ruins", "garden", "cistern"]
 static func dress_living(room: Room) -> void:
     if not enabled():
         return
-    Materials.on_force = func(m: Materials, p: Vector2, r: float, k: int) -> void: ArtPass.force_at(m, p, r, k)
+    Materials.living_forces = true
     var tx := Themes.texel(room._zoom())
     if not room._deep_rects.is_empty():
         var rv := LivingWorld.River.new()

@@ -76,6 +76,27 @@ hitch, so older per-2-s `[PERF]` numbers read low. Real-window fps is noisy when
 use (the same seed ranged 82 to 97 fps); compare CPU cost headless with `Perf` labels when
 the simulation is identical.
 
+Exe smoke test, **required before every push** (2026-11-10): `tools/exe_smoke.sh`. It exports a
+release exe to a scratch folder (never `export/windows/`) and runs it headless through the
+Hollow, the Gate's loadout screen and Descend, a short run, back to the Hollow, a second
+Descend, back again and quit, three ways: lighting on, lighting off, and player mode (no bot).
+Each must exit 0 with no crash and 0 `SCRIPT ERROR`; it prints `[SMOKE] ALL PASS`. Why: the
+debug editor misses release-only crashes. A lambda kept in a static var (`Materials.on_force`)
+crashed the exported exe at every teardown after a run while every editor check passed. The
+script also fails on any `static var ...: Callable`. Never keep a Callable, lambda or method,
+in a static var; use a flag and a direct call. Exported-exe runs are headless only:
+`tools/bot_window.sh` cannot keep an exported exe from taking focus, because its override
+file lives in res://, inside the project. If a windowed exe run is really needed, put an
+`override.cfg` with `[display]` / `window/size/no_focus=true` next to the scratch exe only
+(never in `export/windows/`), and check with GetForegroundWindow that focus does not change
+before relying on it. On 2026-11-10 such a
+file did not stop the exe taking focus, probably because project.godot sets its own
+`project_settings_override`, so treat windowed exe runs as off-limits.
+
+```bash
+tools/exe_smoke.sh "$TMPDIR/pressure_exe_smoke"     # about 2 min; must end in [SMOKE] ALL PASS
+```
+
 Shipping (Emil, 2026-11-09): the game ships as the Windows exe only; the Web build and the
 Pages deploy are gone. After the last push, rebuild the local exe (`tools/export_exe.sh`) and
 confirm the "Windows release" workflow run succeeded:

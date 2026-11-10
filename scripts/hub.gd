@@ -13,6 +13,10 @@ extends Node2D
 ## `-- --menu-shot` saves hub, journal, mastery, names, classes and options captures.
 ## `-- --hub-walk --instance=N` is the bot: it walks the rooms and uses every station on
 ## show (`--keep-save` keeps that instance's save, `--hub-shot` saves captures).
+## `-- --hub-descend --autotest --one-floor --secs=N --instance=N` is the exported-exe smoke
+## test (tools/exe_smoke.sh): the Gate's loadout screen opens and Descend is pressed, the
+## bot plays N seconds, the run hands back to the Hollow, and the Hollow quits (after
+## `--descend-runs=K` such runs, default 1).
 
 const WALL := 60.0
 const DOOR := 140.0
@@ -69,6 +73,9 @@ var _cooldown := 0.0
 var _closed_frame := -1
 var _shot := false
 var _walk := false
+## Smoke-test passes through the Hollow (--hub-descend): 0 = open the Gate and Descend,
+## then back from each run (--descend-runs=N, default 1), quitting after the last.
+static var _descend_pass := 0
 
 var _ui: Control
 var _dim: ColorRect
@@ -115,14 +122,15 @@ func _ready() -> void:
     var args := OS.get_cmdline_user_args()
     # Exported release builds cannot pick a scene on the command line, so the hub (the
     # start scene) hands bot and capture runs straight to the run scene.
+    var descend_probe := args.has("--hub-descend")
     for flag in ["--autotest", "--start-shot", "--obstacle-test", "--layouts-shot"]:
-        if args.has(flag):
+        if args.has(flag) and not descend_probe:
             get_tree().call_deferred("change_scene_to_file", "res://scenes/main.tscn")
             return
     _shot = args.has("--menu-shot")
     _walk = args.has("--hub-walk")
     var theme_shot := args.has("--themes-shot")
-    if _walk:
+    if _walk or descend_probe:
         # The hub bot: its own save, Shrine and play-data files per --instance, fresh
         # unless --keep-save (after a --recruit-probe run on the same instance).
         var tag := Main._instance_tag()
@@ -176,6 +184,8 @@ func _ready() -> void:
         _menu_shot()
     elif _walk:
         _hub_walk()
+    elif descend_probe:
+        _descend_probe()
     elif not Settings.flag("seen_explainer"):
         _open(_explainer_center, _explainer_ok)
     elif Telemetry.consent() == "ask":
@@ -619,6 +629,25 @@ func _close_class_select() -> void:
     _cooldown = 0.25
     for p in players:
         p.set_physics_process(true)
+
+
+## The exe smoke test (--hub-descend): Descend through the real loadout screen, and quit
+## once the run has handed back to the Hollow.
+func _descend_probe() -> void:
+    _descend_pass += 1
+    var runs := 1
+    for a in OS.get_cmdline_user_args():
+        if a.begins_with("--descend-runs="):
+            runs = maxi(1, int(a.substr(15)))
+    await get_tree().create_timer(1.5).timeout
+    if _descend_pass > runs:
+        print("[HUB-DESCEND] back in the Hollow; quitting")
+        get_tree().quit()
+        return
+    _show_class_select()
+    await get_tree().create_timer(1.0).timeout
+    print("[HUB-DESCEND] pressing Descend")
+    _class_select.descend()
 
 
 func _on_class_picked(lo: Dictionary) -> void:

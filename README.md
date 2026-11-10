@@ -400,6 +400,32 @@ rumble for every pad; the browser cannot rumble some controllers (Chrome exposes
 for the DualSense). Local build: `tools/export_exe.sh` (stamps the build label), or the "Windows" export preset,
 or `godot --headless --path . --export-release Windows export/windows/Pressure.exe`.
 
+### Exe smoke test (required before every push)
+
+`tools/exe_smoke.sh [scratch_dir]` exports a release exe to a scratch folder and runs it
+**headless** three ways, each through the real Gate path: the Hollow opens the loadout screen
+and presses Descend, a short run, back to the Hollow, a second Descend, back, quit. The runs
+are lighting on, lighting off (the Options flag through a throwaway settings file), and player
+mode (no bot). Each must exit 0 with no crash, reach the Hollow again and print 0
+`SCRIPT ERROR`. It ends in `[SMOKE] ALL PASS` (about 2 minutes) and cleans up its throwaway
+files (instances 9901 to 9903). Run it before every push. The debug editor does not catch
+release-only crashes. On 2026-11-10 a lambda kept in a static var (`Materials.on_force`)
+crashed the exported exe at every teardown after a run (exit 139, 0xc0000005) while every
+editor check passed. The script also fails on any `static var ...: Callable`. Keep Callables
+out of static vars; use a flag and a direct call.
+
+The probe flags: `-- --hub-descend` (the Hollow opens the Gate and presses Descend; the run
+hands back to the Hollow after `--secs=N`, and the Hollow quits after `--descend-runs=K` runs,
+default 1). Add `--autotest --one-floor` for the bot, or leave it out for player mode.
+
+Exported-exe runs are headless only. `tools/bot_window.sh` cannot keep an exported exe from
+taking focus, because its override file lives in res://, inside the project. If a windowed
+exe run is really needed, put an `override.cfg` with `[display]` /
+`window/size/no_focus=true` next to the scratch exe only, never in `export/windows/`, and
+check with GetForegroundWindow that focus does not change before relying on it. On 2026-11-10 such a
+file did not stop the exe taking focus, probably because project.godot sets its own
+`project_settings_override`, so treat windowed exe runs as off-limits.
+
 ## Frame rate
 
 The game caps at 60 fps by default (Options "Frame cap": 60 FPS or UNCAPPED, Settings

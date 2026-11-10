@@ -134,6 +134,14 @@ func _ready() -> void:
     _open_gates = autotest and args.has("--open-gates")
     Enemy.spawn_log = autotest   # [SPAWN-MOVED] / [SPAWN-CLOSE] lines (Enemy.EMERGE_SECS)
     old_balance = autotest and args.has("--old-balance")
+    if not autotest and args.has("--hub-descend"):
+        # Exe smoke test, player mode (no bot): the run is left alone for --secs, then
+        # hands back to the Hollow (Hub._descend_probe).
+        var secs := 8.0
+        for a in args:
+            if a.begins_with("--secs="):
+                secs = float(a.substr(7))
+        get_tree().create_timer(secs).timeout.connect(_probe_back_to_hub)
     Regions.activate("")
     Regions.reset_stats()
     Regions.exposed_enabled = not (autotest and args.has("--no-exposed"))
@@ -548,6 +556,9 @@ func start_floor(n: int) -> void:
         pressure_meter.flush()
         Telemetry.floor_start(self)
         _print_stats("END")
+        if OS.get_cmdline_user_args().has("--hub-descend"):
+            get_tree().change_scene_to_file.call_deferred("res://scenes/hub.tscn")
+            return
         get_tree().quit()
         return
     pressure_meter.flush()
@@ -1534,7 +1545,18 @@ func _autotest_tick(delta: float) -> void:
             print("[EMBERS] time cap: a death here would pay +%d (%s)" % [int(would["total"]), Mastery.award_text(would)])
             pressure_meter.flush()
         _print_stats("END")
+        if OS.get_cmdline_user_args().has("--hub-descend"):
+            set_process(false)
+            get_tree().paused = false
+            get_tree().change_scene_to_file("res://scenes/hub.tscn")   # exe smoke test: back to the Hollow
+            return
         get_tree().quit()
+
+
+func _probe_back_to_hub() -> void:
+    print("[HUB-DESCEND] player-mode run over at t=%.0f; back to the Hollow" % _clock)
+    get_tree().paused = false
+    get_tree().change_scene_to_file("res://scenes/hub.tscn")
 
 
 ## `--kite`: a player-like dodge instead of orbiting the nearest enemy. Every enemy and

@@ -82,9 +82,10 @@ const MARK_FROST := 1     # ice melted here: a pale frost rim
 const MARK_ACID := 2      # acid ate the floor: dark pitting
 const MARK_BLOOD := 3     # dried blood soaked in: a dark stain
 const MARK_RUBBLE := 4    # a prop broke here: grit and chips
-## Living world (ArtPass): called with (materials, world pos, radius, element) when a gale
-## blows over the grid, so plants, vines and critters answer it. Empty when no pass runs.
-static var on_force: Callable = Callable()
+## Living world (ArtPass): once a room has been dressed, a gale over the grid calls
+## ArtPass.force_at so plants, vines and critters answer it. A plain flag, never a Callable:
+## a lambda kept in a static var crashed the release exe at teardown (README, exe smoke test).
+static var living_forces := false
 
 # 8 directions for surge tendrils, clockwise from +x (y down).
 const DX := [1, 1, 0, -1, -1, -1, 0, 1]
@@ -240,8 +241,8 @@ func stamp(kind: int, pos: Vector2, radius: float, amount: int, force: bool = fa
     var r := clampf(radius, 6.0, 240.0)
     if kind == Element.Kind.GALE:
         _gale(local, minf(r, 120.0))
-        if on_force.is_valid():
-            on_force.call(self, pos, r, kind)
+        if living_forces:
+            ArtPass.force_at(self, pos, r, kind)
         return
     if not (kind in [Element.Kind.WET, Element.Kind.OIL, Element.Kind.FIRE, Element.Kind.ICE, Element.Kind.POISON,
             Element.Kind.ACID, Element.Kind.BLOOD, Element.Kind.SHOCK]):
