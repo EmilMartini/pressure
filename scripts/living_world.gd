@@ -6,7 +6,7 @@ extends RefCounted
 ##            (two noise layers cross-faded along it), depth from the bank, foam at the
 ##            banks, ripples and wakes from bodies, shots and drips. It reads the Materials
 ##            grid: ice stops the flow, shock crackles across it, fire and steam boil it.
-##            `river_carry` (setting, off by default) lets it carry oil, blood, poisoned
+##            `river_carry` (setting, on by default) lets it carry oil, blood, poisoned
 ##            water and ash downstream (a gameplay change: Emil's call).
 ##   Chains   Rain World style point chains: vines, banners and cobwebs on the top wall, iron
 ##            chains; gale and blasts swing them, void pulls them, fire burns them segment by
@@ -407,7 +407,7 @@ class River extends Node2D:
                 ripple(ns.global_position - room.global_position, 0.35)
                 n += 1
 
-    ## River carrying (setting `river_carry`, off by default): oil, blood, poisoned water and
+    ## River carrying (setting `river_carry`, on by default since 2026-11-10): oil, blood, poisoned water and
     ## ash in the river move one cell downstream, a third of the river a tick.
     func _carry() -> void:
         var w := mats._w

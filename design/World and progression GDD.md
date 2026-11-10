@@ -1984,8 +1984,7 @@ in `scripts/alive_shot.gd`. Off with the same switch as the art pass (Options "L
    third, with a dry ford wherever a door or the centre keeps the floor clear. It is in the
    signature list of the Drowned Cistern, the Rotting Gardens and the Rust Ruins only
    (`RoomLayouts.REGIONAL`), so other regions' rooms are unchanged.
-   **River carrying is Emil's call**: setting `river_carry` (off by default, `--river-carry` for
-   a bot) moves oil, blood, poisoned water and ash one cell downstream every 0.25 s, a third of
+   **River carrying is on** (Emil, 2026-11-10): setting `river_carry` (on by default) moves oil, blood, poisoned water and ash one cell downstream every 0.25 s, a third of
    the river per tick. With it on, an oil slick poured upstream reaches enemies downstream.
 3. **Damage that stays.** `Materials._mark` holds lasting marks drawn by the grid shader (no
    extra draw call): frost rims where ice melted, acid etching, dried blood soaked in, rubble

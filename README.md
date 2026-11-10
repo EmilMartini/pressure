@@ -100,8 +100,8 @@ ripples and wakes; ice stops it, shock crackles over it, fire boils it); the `st
 puff, a gust crosses the room now and then, and all of it rests in a fight. Lasting floor marks
 (`Materials.MARK_*`: frost rims, acid etching, dried blood, rubble, plus scorch) stay for the
 floor (`RoomData` meta `floor_marks`). Route doors and stairs are stairwells with the next
-region's light rising up them. Setting `river_carry` (off; `--river-carry` for a bot) lets
-rivers carry oil, blood, poisoned water and ash downstream: a gameplay change, Emil's call.
+region's light rising up them. Setting `river_carry` (on by default since 2026-11-10, Emil's decision) lets
+rivers carry oil, blood, poisoned water and ash downstream.
 Captures: `--alive-shot=river|react|route [--alive-layout=name] --tag=x` (real window, see
 `scripts/alive_shot.gd`) saves `autotest/alive_<region>_<kind>_<tag>_*.png`.
 
