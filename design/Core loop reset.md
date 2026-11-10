@@ -6,7 +6,7 @@ or four build sessions.
 
 ## Decisions (Emil, 2026-11-10)
 
-All twenty are locked. The spec is built around them.
+All twenty-one are locked. The spec is built around them.
 
 | # | Decision | Where |
 |---|---|---|
@@ -30,6 +30,7 @@ All twenty are locked. The spec is built around them.
 | 18 | Your hands: move and dash, trigger the active item, and the auto-aim focus of decision 10 | 7 |
 | 19 | Almost no fight text. No reaction names or floating damage numbers by default; only big crits or kills and boss warnings. Options turn more back on | 4.5 |
 | 20 | Camera closer, with bigger characters, Isaac-like, with edge arrows for off-screen enemies; it must work with the hordes | 4.6, 8 |
+| 21 | Auto-aim targets the closest enemy, no elite or boss priority (Emil, 2026-11-04: "Auto aim on elite is not something that is fun to play with, target closest enemy"; 2026-11-10: "I do not want the weapons to always focus elites and bosses"). Overrides the priority weights of decision 10 | 7.2 |
 
 Everything else here is a **default**: build it as written, keep it easy to change, and report
 the numbers. Section 15 lists the defaults Emil may want to overrule.
@@ -609,18 +610,17 @@ are within its radius, or after 1.5 s at full (Options: "Vent: automatic / butto
 mode puts it back on LB / Space and moves the active to X / F). The pedestal swap button (Y / Q)
 goes, since nothing is replaced any more. All of it rebinds in Options.
 
-### 7.2 Auto-aim that focuses (decision 10)
+### 7.2 Auto-aim that focuses (decisions 10 and 21)
 
 `Settings` `aim_mode` defaults to **"auto"** (today "assisted"); assisted and manual stay in
 Options. Every gun picks its own target every 0.1 s within its range:
 
 | Rule | Detail |
 |---|---|
-| Priority | Score = weight / (1 + distance / 300 px). Weights: boss 4, elite 3, a key threat winding up an attack 3, other key threats (lobbers, zoners, chargers, spitters) 2.5, any enemy within 120 px of you 2, the rest 1 |
-| Reaction aware | x1.3 on a target carrying an element that reacts with this gun's element, so guns set each other up |
+| Priority | The closest enemy in range: score = 1 / (1 + distance / 300 px). Every enemy weighs the same, with no boss, elite, key-threat or wind-up priority and no reaction bonus (decision 21; the first draft weighted bosses 4, elites 3, key threats 2.5 to 3, close enemies 2, and reacting targets x1.3). Killing an elite or a key threat first is the player's job: move so it is the closest |
 | No overkill | A target whose pending damage (shots in flight plus damage over time still to tick) already exceeds its health is skipped |
-| Spread | At most 2 of your 4 guns on the same ordinary enemy; elites and bosses can take all 4 |
-| Extra projectiles | A second beam, an extra projectile or an extra volley on a gun goes to the gun's best target **not already taken by that gun**; with fewer targets than shots, the extras double up on the top target. Spread guns keep their spread around their own target |
+| Spread | At most 2 of your 4 guns on the same enemy, elites and bosses included. When nothing else is in range, guns double up rather than hold fire |
+| Extra projectiles | A second beam, an extra projectile or an extra volley on a gun goes to the next-closest enemy **not already taken by that gun**; with fewer targets than shots, the extras double up on the top target. Spread guns keep their spread around their own target |
 | Stickiness | A gun keeps its target until it dies, leaves range, or another scores 1.5x higher, so beams don't flicker |
 
 Readability: no markers on ordinary targets; elites and bosses being focused get a thin bracket
@@ -914,7 +914,7 @@ Files: `items.gd` (synergy and resonance data, detection on pickup), `player.gd`
 | **Bosses and elites** | `boss` and `elite` events, bots and Emil | Bots: bosses 25 to 60 s. Emil's next runs: 25 to 50 s, elites 8 to 15 s median |
 | **Fairness** | Bot logs | 0 spawns within 140 px, 0 hostile damage without a 0.6 s telegraph, worst 3 s outside boss contact at most 0.5 of max health |
 | **Old rule** | The idle bot in the first region (GDD section 0), now with four guns | Still dies |
-| **Focus targeting** | New `--focus-probe`: one gun with 2 beams, then 4 guns, against a mixed crowd with an elite | 2 beams hit 2 different enemies in at least 90% of frames with 2 or more in range; the elite takes fire within 1 s of appearing; no more than 2 guns on one ordinary enemy |
+| **Focus targeting** | New `--focus-probe`: one gun with 2 beams, then 4 guns, against a mixed crowd with an elite | 2 beams hit 2 different enemies in at least 90% of frames with 2 or more in range; no more than 2 guns on one enemy, elites and bosses included (the old "elite takes fire within 1 s" target was dropped with decision 21; the `[FOCUS]` line still prints the latency for information) |
 | **Quiet screen** | Count text drawn over the arena per minute in a floor-3 fight (a `Perf` counter) | Quiet: at most 6 a minute (big hits, discoveries, boss lines) |
 | **Camera** | `--read-shot` in a full floor-3 arena at zoom 1.6; fps check | Every off-screen enemy within 700 px has an arrow; key threats readable; 60 fps with 1% low about 55 |
 | **Run length** | Kite bot wins and Emil's runs | Wins take 25 to 35 min of game time; 7 or 8 level-ups a run |
@@ -1318,6 +1318,37 @@ stacking makes every item add.
   above).
 - **Session 4:** restyle the reward row and the CURSED chip into the item card, and remap
   `--build=human6980`'s picks to the doubled amounts.
+
+### Decision 21: closest-enemy auto-aim (2026-11-10, after session 3)
+
+Emil: "I do not want the weapons to always focus elites and bosses" (he said the same on
+2026-11-04; sessions 1 and 2 missed it). Changes in `scripts/focus.gd`:
+- `weight()` is 1.0 for every enemy, and `REACT_BONUS` is 1.0. Each gun takes the closest
+  enemy in range.
+- Spread, no overkill, stickiness and the double-up fallback stay. Extra beams and shots go to
+  the next-closest different enemies. At most 2 guns sit on any enemy, elites and bosses
+  included.
+- `_elite_guard` is gone, and so is the "elite under fire within 1 s" check. `[FOCUS]` still
+  prints the latency for information.
+
+Same commands as the session 3 table (8 kite runs before, 4 kite and 4 idle runs after):
+
+| Check | Before (priority aim) | After (closest aim) |
+|---|---|---|
+| Mover reaches floor 4 | 2 of 8 | **3 of 4** (41 to 71 HP on arrival; died on floor 4 at 669 to 857 s) |
+| Mover floor 3 damage a minute / lt50 | 0.54 to 1.00 / 0.20 to 0.48 | 0.51 to 0.59 / 0.16 to 0.79 |
+| Stand-still dies on floor 2 | 4 of 4, 130 to 203 s, lt50 0.59 to 0.71, 1.04 to 1.45 a minute | 4 of 4, 93 to 122 s, lt50 0.61 to 0.77, 1.28 to 1.70 a minute |
+| Idle at least 2x mover damage (floor 2) | yes (5x) | yes (0.10 to 0.18 against 1.28 to 1.70, 7x or more) |
+| Elite seconds to kill (bots) | median 2.3 (p25 1.7, p75 2.8), n 71 | median 3.4 (p25 2.4, p75 4.9), n 53 |
+| Elite latency (information) | 0.0 s with the guard | median 0.6 to 3.0 s a floor, worst 18.6 s |
+| Bosses | Hive Mother 31 to 36 s, Storm Warden 31 s | Hive Mother 30 to 40 s, Storm Warden 44 to 62 s |
+| Focus probe: 2 beams on distinct enemies | 1.000 | 1.000 (174 of 174, 178 of 178) |
+| More than 2 guns on one enemy (passes with 4+ in range) | 0 and 1 | 0 to 7 a floor, out of thousands (the double-up fallback when the rest are claimed or out of sight) |
+
+Elites still die well under the human target of 8 to 15 s, because bots stand close to them
+when they come. Emil's `elite` events are the real test. Standing still got deadlier: with no
+pull toward key threats, the spitters and lobbers live longer. The Storm Warden now takes up
+to 62 s, just over the 60 s bot ceiling of 13.2.
 
 ### Session 4: Items, cards and synergies
 
