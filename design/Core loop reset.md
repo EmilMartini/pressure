@@ -4,12 +4,32 @@ Written 2026-11-10 after Emil quit run `6980a749e57a5a83` on floor 3 ("it's not 
 a spec only: no code changed with it. It sets the numbers, the files and the order for three
 or four build sessions.
 
-**Emil's decisions (2026-11-10), locked:**
-1. Items stack with no gear slots, Isaac and Brotato style. Guns keep a fixed number of slots.
-2. Hybrid loot: a few free items that each matter (treasure room, boss), plus a shop every
-   floor where money is tight and spending is a real choice.
-3. A dash with a short invulnerable window and a cooldown.
-4. The core loop comes first, before more content or polish.
+## Decisions (Emil, 2026-11-10)
+
+All twenty are locked. The spec is built around them.
+
+| # | Decision | Where |
+|---|---|---|
+| 1 | Items stack with no gear slots, Isaac and Brotato style. Guns keep a fixed number of slots | 3 |
+| 2 | Hybrid loot: a few free items that each matter (treasure, boss), plus a shop every floor where money is tight and spending is a real choice | 5, 6 |
+| 3 | A dash with a short invulnerable window and a cooldown | 7 |
+| 4 | The core loop comes first, before more content or polish | 14 |
+| 5 | Broken runs are rare and earned. Most runs stay a fight to the end; only a strong synergy, built on purpose, breaks the game, and then it looks spectacular, not just "enemies die faster" | 9, 12 |
+| 6 | Fights mix Brotato-style crowds to mow down with a few dangerous key threats per room (elites, zoners, lobbers) that you must prioritise and dodge | 8 |
+| 7 | A winning run takes 25 to 35 minutes (replaces the GDD's 30 to 45, section 3) | 5.0 |
+| 8 | You carry 4 guns (down from 6) | 3, 5 |
+| 9 | Reactions: keep all of them, hide the noise. No names over fights; a short "you discovered X" at the screen edge; a codex for the curious | 4.5 |
+| 10 | Auto-aim by default, Brotato style. Guns focus individual enemies: a second beam on a gun focuses another enemy. Targeting is smart: elites and threats sensibly, spread rather than overkill | 7.2 |
+| 11 | One shop room per floor, visited when you choose. Money carries over, so saving up is a choice | 6 |
+| 12 | A strong item does all three: changes how you shoot, changes your elements, and makes visible numbers go up | 3.2 |
+| 13 | Level-ups: fewer and bigger, with an occasional rare pick that changes play, offered at room clear, never mid-fight | 5.1 |
+| 14 | Healing is scarce and earned. No free full heals: a few drops, the shop, risky rooms and a per-floor regen and Leech budget | 10 |
+| 15 | Meta keeps all four layers: unlocks into the pool, small permanent stats (the Shrine), Marks with rule-changing twists, harder modes (Vows) for rewards | 11.3 |
+| 16 | Risk rooms, all three: deal rooms (max health, money or a curse for a strong item), optional challenge rooms (elite or timed), cursed loot (strong items with a clear drawback) | 11.1 |
+| 17 | Pickups: choose 1 of 2 or 3. Treasure and boss rewards show cards side by side; the rest vanish | 5.1 |
+| 18 | Your hands: move and dash, trigger the active item, and the auto-aim focus of decision 10 | 7 |
+| 19 | Almost no fight text. No reaction names or floating damage numbers by default; only big crits or kills and boss warnings. Options turn more back on | 4.5 |
+| 20 | Camera closer, with bigger characters, Isaac-like, with edge arrows for off-screen enemies; it must work with the hordes | 4.6, 8 |
 
 Everything else here is a **default**: build it as written, keep it easy to change, and report
 the numbers. Section 15 lists the defaults Emil may want to overrule.
@@ -21,16 +41,18 @@ the numbers. Section 15 lists the defaults Emil may want to overrule.
 | Problem in run 6980a749 | Cause in the code | Fix |
 |---|---|---|
 | Stood still on floor 3, 0% moving, never in danger | Melee walks down the gun line and dies. Only spitters hurt (64 of 65 hits, about 5% each), and regen healed most of it | New threats that punish standing still (lobbers, chargers, ring swarms, ground swell, zoning elites, room hazards), a dash, and fewer but harder hits |
-| Melted everything: the Brute King in 5.7 s | Enemy health follows depth and an estimate of gun dps capped at x1.87, while his damage grew x6.7 from floor 1 to 3. The floor-1 boss isn't sized to the build | Health follows measured damage (square root, so a broken build still feels broken), elites and bosses sized to it on every floor, diminishing returns on stacked reaction power |
+| Melted everything: the Brute King in 5.7 s | Enemy health follows depth and an estimate of gun dps capped at x1.87, while his damage grew x6.7 from floor 1 to 3. The floor-1 boss isn't sized to the build | Health follows measured damage (power 0.7, so ordinary stacking stays a fight), synergy damage counted at half (so only a synergy built on purpose breaks the game), elites and bosses sized on every floor, diminishing returns on stacked reaction power |
+| The screen is tiring to watch | Reaction and fusion names and damage numbers float over every fight; the camera is far out | Quiet fights by default, a discovery note at the edge, a codex; a closer camera with edge arrows |
 | Money almost infinite | Scrap comes per kill, and the crowd grows with the build (x1.22 per extra gun), so a strong build earns more. 2,508 scrap at the floor-2 shop against a top price of 286 | Scrap is a fixed budget per room and per floor, not per kill. Prices scale with depth. Target: spend down at most shops |
 | The shop is "reroll until epic or legendary" | Rerolls were cheap next to his scrap (11 rerolls in one visit) | Rerolls escalate fast inside a visit, money is tight, explicit rarity odds per floor, a lock button |
-| Loot flood, items feel meaningless | Every arena pays a pick of 2 to 4 cards, elites bank more, plus treasure, challenge, boss, shop and a level-up about every wave: about 35 cards to read on floor 1 and 50 on floor 2 | No items from arenas or elites. Free items come from the treasure room, the boss and optional rooms (2 to 4 a floor); 1 to 3 are bought. At most 15 cards to read a floor |
-| Items are hard to read | 9 gear slots: every card must say what it replaces, and which ring or trinket. 238 items, 44 of them one small stat (six are "+10 to 15 max HP") | Items stack, no slots. About 140 items after merging. A Brotato-style card: big icon, one line, green and red deltas. A build page on pause |
-| No reason to keep going; quitting paid 0 Embers | "Return to hub" never calls `Main._end_run`. Few choices with stakes | Quitting pays like a death. Pact rooms, cursed pedestals, optional elite rooms, resonances at 3 and 5 items, a floor-end summary |
+| Loot flood, items feel meaningless | Every arena pays a pick of 2 to 4 cards, elites bank more, plus treasure, challenge, boss, shop and a level-up about every wave: about 35 cards to read on floor 1 and 50 on floor 2 | No items from arenas or elites. Free items: pick 1 of 2 or 3 at the treasure room and the boss, more in optional rooms; 1 to 3 bought. Level-ups fewer and bigger. At most 15 cards a floor |
+| Items are hard to read | 9 gear slots: every card must say what it replaces, and which ring or trinket. 238 items, 44 of them one small stat (six are "+10 to 15 max HP") | Items stack, no slots. About 145 items after merging. A Brotato-style card: big icon, one line, green and red deltas. A build page on pause |
+| No reason to keep going; quitting paid 0 Embers | "Return to hub" never calls `Main._end_run`. Few choices with stakes | Quitting pays like a death. Deal rooms, cursed pedestals, optional elite rooms, resonances at 3 and 5 items, a floor-end summary |
 | A broken run gives no spike | Power grows in small invisible numbers | Named synergies with a banner and a visible change to your shots, resonances that change your look |
 
-Build order (section 14): **1. Fight** (dash, threats, healing reserve, power curve), **2. Loot
-and economy**, **3. Items without slots and readability**, **4. Broken runs and risk rooms**.
+Build order (section 14): **1. Hands and screen** (dash, auto-aim focus, 4 guns, camera, quiet
+fights, healing reserve), **2. Threats and power curve**, **3. Loot, economy and risk rooms**,
+**4. Items, cards and synergies**.
 Each session stands alone, has its own tests, and passes `tools/exe_smoke.sh`.
 
 ---
@@ -125,6 +147,9 @@ Principles only, no content.
    fight. The run has decisions with stakes, not only pickups.
 9. **Even a failed run pays.** Leaving early still moves the meta forward, so the next run
    starts sooner.
+10. **In Brotato your hands only position you.** Aiming is the build's job, so every second of
+    the fight is about where you stand and what you dodge. That only works if the targeting is
+    smart and the threats are about position.
 
 ---
 
@@ -134,7 +159,9 @@ Principles only, no content.
 
 - An item is a **passive** (stacks, no slot), a **gun mod** (sits in a gun's mod slots, which
   stay: a gun holds as many mods as its tier) or an **active** (one held at a time, the button
-  item; a new one swaps the old onto the floor). Guns keep `Player.MAX_GUNS` 6.
+  item; a new one swaps the old onto the floor). **Four gun slots** (decision 8):
+  `Player.MAX_GUNS` 6 becomes 4, and nothing adds gun slots. A fifth copy of a gun you carry
+  still merges up a tier.
 - `slot` stops being a gate. It becomes `look`: which body part the item dresses in
   `worn_gear.gd`, cosmetic only. The figure shows the highest-rarity item per body part.
 - Each passive has a `stack` rule:
@@ -162,7 +189,7 @@ Files: `items.gd` (catalog, `stack`, tags, caps, `Items.fire` events `dash` and
 ### 3.2 Migration of all 238 items
 
 Today: 166 hand-made items plus 6 element families x 12 elements (charm, ring, vial, gloves,
-coating, mantle). After: about 140 (109 passives, 21 gun mods, 10 actives). Every old id maps
+coating, mantle). After: about 145 (113 passives, 21 gun mods, 10 actives). Every old id maps
 to a new one in `Items.LEGACY_IDS`; nothing is dropped without a successor.
 
 **Plain stats: 72 items become 19.** Commons that only differ by name merge into one basic per
@@ -224,8 +251,8 @@ phoenix_mantle) stays.
 | Reactions and vents | 11 kept as they are | conductors_mail (storm_hood merges in), hands_of_storm, echo_loop, ring_of_multiplicity, plague_censer, heart_of_forge, permafrost_core, steam_whistle, signet_of_overload, skullcap_vented, vent_striders |
 | Economy | Gilded Carapace (L) | gilded_carapace |
 
-**New behaviour items (20).** Each changes how a gun, a reaction or the dash works, and each
-shows on screen.
+**New behaviour items (24).** Each changes how a gun, an element, a reaction or the dash
+works, and each shows on screen.
 
 | Item | One line | Stack |
 |---|---|---|
@@ -249,11 +276,21 @@ shows on screen.
 | Ward Vent | Venting raises a 3 s ring that stops enemy shots | +1 s |
 | Mirror Hide | The first hit in each room bounces back as a nova | +1 hit |
 | Scavenger's Eye | Secret walls glow; secrets drop 1 more item | add |
+| Second Nature | Your first gun also applies your vent element | once |
+| Transmuter | Your Wet hits freeze instead of soaking | once |
+| Overcharge | Chain Lightning strikes each target twice | +1 strike |
+| Spreading Taint | Element states you apply spread to 1 nearby foe | +1 foe |
+
+The last four change your elements (decision 12): a gun gains a second element, one element
+turns into another, a reaction gets a stronger form, states spread. With auto-aim, every item
+that adds projectiles, beams or volleys (Twin Triggers, Split Chamber, Fork, Rear Guard) sends
+the extra ones at **different** enemies (section 7.2), so a second beam on the acid gun is a
+second target, not a thicker beam.
 
 **Count of behaviour items.** Today 86 of 238 items change behaviour (36%), but 24 of them
 repeat a behaviour another item already has (five homing items, twelve gloves that add pierce).
-After: 63 of 109 passives (58%), and the number of distinct behaviours rises from about
-33 to about 53. The raw count falls because copies merge; what the player can discover rises.
+After: 67 of 113 passives (59%), and the number of distinct behaviours rises from about
+33 to about 57. The raw count falls because copies merge; what the player can discover rises.
 
 **Gun mods: 24 become 21** (they keep their per-gun slots). sight_rail and long_barrel become
 Long Barrel; oiled_bolt and gun_oil become Gun Oil; exhaust_pipes and pressure_coupler become
@@ -355,25 +392,93 @@ over 300 px tall, and prints `[CARDS] PASS n` or the failures. Emil reviews one 
 
 ---
 
+### 4.5 A quiet fight (decisions 9 and 19)
+
+Off by default during fights:
+- reaction, fusion and cataclysm names over enemies;
+- floating damage numbers (`Settings` `damage_numbers` default becomes false);
+- chatter over the figure: "Dodged", "Mending fades", "+12 scrap", item trigger lines.
+
+On by default:
+- **Big hits:** a single number for a crit at least 3x your average hit, in gold, 28 px, one
+  at a time;
+- **Elite and boss kills:** a short flourish (burst, sound, a 0.06 s hit-stop), no text;
+- **Boss warnings:** phase changes, rallies, big attacks, as today's boss frame lines;
+- **Discoveries:** the first time a reaction, fusion or cataclysm happens in your save, one
+  line at the left screen edge, 20 px, for 3 s: "Discovered: Steam". One at a time; the rest
+  queue. Each discovery lands in the **codex** (the Ledger's journal, `journal.gd`) with its
+  pair, what it does and how often you've caused it.
+
+Options, "Fight text": **Quiet** (default), **Reactions** (names come back, small), **Everything**
+(today's behaviour). Out-of-fight screens (cards, banners at pickup, the floor-end card) are not
+fight text.
+
+Files: `fx.gd` (damage numbers, reaction labels), `fusion_fx.gd`, `elements.gd` (label calls),
+`player.gd` (`say`), `hud.gd` (discovery line), `journal.gd`, `settings.gd`, `options_menu.gd`,
+`progress.gd` (discovery flags already exist for Embers).
+
+### 4.6 Camera: closer, bigger, with edge arrows (decision 20)
+
+- **Zoom 1.3 becomes 1.6.** At the 1280 x 720 base the view shows about 800 x 450 world px
+  (today about 985 x 554), so characters and enemies read 1.23x bigger.
+- **Rooms shrink** so most of a room stays in view: the normal arena goes from 1120 x 720 to
+  1000 x 600 (`Room.SIZE`, `RoomData.room_size`). Big rooms (bosses, the Cistern's sluice)
+  keep their size and lean on the arrows.
+- **The camera leads** up to 15% of the view toward the nearest key threat, else your
+  movement, and never past the room's walls.
+- **Edge arrows:** every hostile enemy off screen within 700 px gets a small arrow at the screen
+  edge with the hostile signature. Key threats (elites, lobbers, zoners, chargers) get a larger
+  arrow with their silhouette, and it pulses while they wind up an attack.
+- **Hordes at this zoom:** at most 40 enemies on screen at once (the crowd target spawns the
+  rest as they die); spawn rings and lob rings are drawn near the player, so they are always in
+  view; lobbers hang back at 260 to 380 px instead of 350 to 450 so most stay on screen.
+- **Checks:** a `--read-shot` screenshot in a full floor-3 arena, and the GDD's fps check
+  (heavy fights hold 60 fps, 1% low about 55) at the new zoom.
+
+Files: `main.gd` (`camera.zoom`), `pixel_camera.gd`, `post_fx.gd` (the cell grid follows the
+zoom), `room.gd`, `room_data.gd`, `room_layouts.gd`, `hud.gd` (arrows), `hostile.gd`.
+
 ## 5. Loot pacing
+
+### 5.0 Run length: 25 to 35 minutes (decision 7)
+
+| Piece of a floor | Count | Time |
+|---|---|---|
+| Arena waves | 4 (today 5 or 6) | 45 s on floors 1 and 2, 55 s on floors 3 to 5 |
+| Shop, treasure, optional rooms | the player's choice | about 1.5 min |
+| Boss | 1 | 25 to 50 s |
+| A floor | | 5 to 7 min |
+| A winning run, 5 floors | | 25 to 35 min |
+
+This replaces the GDD's section 3 (30 to 45 minutes, 7 to 9 minutes a region). Floor layouts
+(`floor_gen.gd`) place 4 arenas; the arena wave timer (`Room.wave_duration`) uses the times
+above.
 
 ### 5.1 What drops where, per floor
 
 | Source | Today | After |
 |---|---|---|
-| Arena, end of wave | Pick 1 of 2 to 4 (gun, item, elite cards); the rest salvaged | **No items.** Scrap from the room's budget (section 6). 35% chance of a heart |
+| Arena, end of wave | Pick 1 of 2 to 4 (gun, item, elite cards); the rest salvaged | **No items.** Scrap from the room's budget (section 6). 20% chance of a heart |
 | First two arenas of floor 1 | Same | Pick 1 of 2 guns (the build needs guns to start) |
-| Elite | Banks an item card | Scrap burst (4 x m, section 6), 20% chance of a heart. No items |
-| Treasure room (1 per floor) | 1 of 3: item, gun, boon | **1 free item**, treasure pool, at least Uncommon, 60% weighted to behaviour items. From floor 3, 1 of 2 |
-| Boss | 1 item | **1 of 2 items**, boss pool, at least Rare: one stat-heavy, one behaviour. Plus 30 x m scrap |
-| Secret room | Carry +3, a Rare item, scrap | 50% an item (Rare or better), 50% a scrap pile (25 x m). Always 1 heart |
-| Challenge room (optional) | 1 of 5 | 1 of 2, Rare or better, plus 15 x m scrap (section 11) |
-| Pact room (new, optional) | | 1 of 2 Epic or Legendary for max HP (section 11) |
-| Shop (1 per floor) | 3 or 4 wares | 4 wares: 3 items and 1 gun or gun mod |
-| Level-ups | About 1 per arena (3 to 4 a floor) | About 2 per floor (raise `Player.XP_BASE`), 3 cards each |
+| Elite | Banks an item card | Scrap burst (4 x m, section 6), 15% chance of a heart. No items |
+| Treasure room (1 per floor) | 1 of 3: item, gun, boon | **Pick 1 of 2** item cards side by side (floors 1 and 2), **1 of 3** from floor 3; treasure pool, at least Uncommon, 60% weighted to behaviour items. The rest vanish |
+| Boss | 1 item | **Pick 1 of 3** item cards, boss pool, at least Rare: one stat-heavy, one behaviour, one element changer when the pool has one. Plus 30 x m scrap |
+| Secret room | Carry +3, a Rare item, scrap | 50% pick 1 of 2 items (Rare or better), 50% a scrap pile (25 x m). Always 1 heart |
+| Challenge room (optional) | 1 of 5 | Pick 1 of 3, Rare or better, plus 15 x m scrap and a heart (section 11) |
+| Deal room (new, optional) | | Pick 1 of 2 Epic or Legendary for max health, money or a curse (section 11) |
+| Shop (1 per floor, visited when you choose) | 3 or 4 wares | 4 wares: 3 items and 1 gun or gun mod |
+| Level-ups | About 1 per arena (3 to 4 a floor) | **Fewer and bigger:** about 1.5 a floor, 7 or 8 a run; see below |
 
 Hearts heal 12% of max health, are a chosen heal (outside the Mending reserve) and fly to you
 when the room is cleared, like scrap does now.
+
+**Level-ups (decision 13).** `Player.XP_BASE` rises so a level comes about every 2 to 3 arenas.
+XP that crosses a level mid-fight waits: the choice opens at the room's clear, never during a
+fight. Each offer is 3 cards with **twice** today's amounts (`LevelUps` amounts doubled, so a
+common fire-rate pick is +16%, not +8%). One card in ten is a **rare pick** that changes play,
+drawn from the boons that already behave like triggers (the element echoes) plus a few
+behaviour boons: a dash charge, a gun's second element, +1 target for a beam. Rare picks use
+the Epic frame and the card rules of section 4.
 
 ### 5.2 Targets per floor
 
@@ -382,9 +487,9 @@ when the room is cleared, like scrap does now.
 | Free items | 2 (treasure, boss), up to 4 with optional rooms | 6 on floor 1, 6 on floor 2 |
 | Bought items | 1 to 3 | 2 to 3, rerolled for |
 | Items gained in all | 3 to 6 | 10 on floor 1 (with guns) |
-| Guns gained | 2 on floor 1, then 0 to 1 a floor; 4 guns by the end of floor 2, 6 by floor 4 | 4 on floor 1 |
+| Guns gained | 2 on floor 1, then 0 to 1 a floor; all 4 slots full by the end of floor 2, then copies tier guns up | 4 on floor 1 |
 | Cards shown, all screens | At most 15 | About 35 on floor 1, 50 on floor 2 |
-| Run total | About 22 to 28 items, 6 guns | |
+| Run total | About 20 to 26 items, 4 guns at tier 2 to 3, 7 or 8 level-ups | |
 
 Files: `room.gd` (`_arena_reward` reduced to the floor-1 gun picks; `banked` and spoils go),
 `enemy.gd` (elite drops), `floor_gen.gd` (`_stock_rooms`), `drops.gd`, `items.gd` (pools),
@@ -400,20 +505,21 @@ Depth multiplier `m = 1 + 0.25 x (floor - 1)`: 1.0, 1.25, 1.5, 1.75, 2.0.
 
 | Source | Scrap |
 |---|---|
-| Arena | 20 x m per room. 70% split over its kills in proportion to each enemy's share of the room's spawned health; the last 30% drops as the wave-end burst. More enemies means less per kill |
+| Arena | 25 x m per room (4 a floor). 70% split over its kills in proportion to each enemy's share of the room's spawned health; the last 30% drops as the wave-end burst. More enemies means less per kill |
 | Elite | 4 x m each, at most 3 elites paid per room |
 | Boss | 30 x m |
 | Secret pile | 25 x m (half the secrets) |
 | Challenge room | 15 x m |
 | Scrap gain items | +10% a copy (Scrap Magnet), total capped at +50% |
 
-A floor of 5 arenas, about 6 elites, the boss and a secret pays about **165 x m**: about 165 on
+A floor of 4 arenas, about 5 elites, the boss and a secret pays about **165 x m**: about 165 on
 floor 1, 250 on floor 3, 330 on floor 5. Today a strong build had 2,508 when it reached the
 floor-2 shop.
 
 `Enemy.STATS[kind][5]` stops being scrap; `Room._drop_scrap` reads the room budget. The crowd
 target's build factor is capped at x1.6 (today about x2.5 for six guns and four elements); the
-horde stays, it just doesn't pay more.
+horde stays, it just doesn't pay more. With 4 guns the factor still reaches 1.8 to 2.0 today (two to four elements), so the cap
+matters.
 
 ### 6.2 Prices
 
@@ -466,12 +572,14 @@ income, for a 45% chance. Rerolling once or twice for a specific need stays a go
 
 ### 6.5 Targets
 
-- **Spent down:** at 70% or more of shop visits, the scrap left when you walk out is less than
+Money carries over and the shop is visited when you choose (decision 11), so saving up is a
+legitimate plan. The targets allow one floor of saving and no more:
+- **Spent down:** at 60% or more of shop visits, the scrap left when you walk out is less than
   the cheapest ware still for sale (you bought what you could).
-- **Average leftover:** the median leftover per visit stays under **45 x m** (one Uncommon at
-  that depth). Why: one item's worth of savings is a real plan (lock something, save, buy it
-  next floor); more than that means money has stopped being scarce. Run 6980a749 left with
-  288, 1,671 and 749 scrap against items of 33 to 286.
+- **Average leftover:** the median leftover per visit stays under **80 x m**, about half a
+  floor's income: enough to lock an Epic and buy it next floor, not enough to stop choosing.
+  Run 6980a749 left with 288, 1,671 and 749 scrap against items of 33 to 286.
+- **No hoard:** scrap in hand never exceeds two floors' income (330 x m) in 90% of runs.
 - **Rerolls:** median at most 3 per visit.
 
 Files: `floor_gen.gd` (`reroll_price`, `gun_price`, `roll_ware`, `_stock_rooms`), `items.gd`
@@ -480,23 +588,62 @@ Files: `floor_gen.gd` (`reroll_price`, `gun_price`, `roll_ware`, `_stock_rooms`)
 
 ---
 
-## 7. Dash
+## 7. Your hands: dash, auto-aim, active
+
+Decision 18: your hands move and dash, and trigger the active item. Aiming is automatic
+(decision 10), and the vent fires on its own.
+
+### 7.1 Controls
+
+| Action | Gamepad | Keyboard and mouse |
+|---|---|---|
+| Move | Left stick | WASD |
+| Dash | **RB** or **RT** | **Space**, Shift or right mouse |
+| Active item | **LB** or X | **Q** or F |
+| Interact (pedestals, doors, shop) | A | E |
+| Pause, Build tab | Start | Esc |
+| Manual aim (Options only) | Right stick, LT fires | Mouse, left button |
+
+The vent leaves the buttons: it fires on its own when the gauge is full and at least 3 enemies
+are within its radius, or after 1.5 s at full (Options: "Vent: automatic / button"; the button
+mode puts it back on LB / Space and moves the active to X / F). The pedestal swap button (Y / Q)
+goes, since nothing is replaced any more. All of it rebinds in Options.
+
+### 7.2 Auto-aim that focuses (decision 10)
+
+`Settings` `aim_mode` defaults to **"auto"** (today "assisted"); assisted and manual stay in
+Options. Every gun picks its own target every 0.1 s within its range:
+
+| Rule | Detail |
+|---|---|
+| Priority | Score = weight / (1 + distance / 300 px). Weights: boss 4, elite 3, a key threat winding up an attack 3, other key threats (lobbers, zoners, chargers, spitters) 2.5, any enemy within 120 px of you 2, the rest 1 |
+| Reaction aware | x1.3 on a target carrying an element that reacts with this gun's element, so guns set each other up |
+| No overkill | A target whose pending damage (shots in flight plus damage over time still to tick) already exceeds its health is skipped |
+| Spread | At most 2 of your 4 guns on the same ordinary enemy; elites and bosses can take all 4 |
+| Extra projectiles | A second beam, an extra projectile or an extra volley on a gun goes to the gun's best target **not already taken by that gun**; with fewer targets than shots, the extras double up on the top target. Spread guns keep their spread around their own target |
+| Stickiness | A gun keeps its target until it dies, leaves range, or another scores 1.5x higher, so beams don't flicker |
+
+Readability: no markers on ordinary targets; elites and bosses being focused get a thin bracket
+in the neutral player colour. The aim lines of today's assisted mode stay off in auto.
+
+Files: `player.gd` (`_update_aim`, `aimed`), `gun.gd` (a target per gun, extra shots per
+target), `beam.gd`, `projectile.gd`, `player_input.gd`, `settings.gd`, `options_menu.gd`,
+`enemy.gd` (pending damage, key-threat flag), `main.gd` (bots use auto).
+
+### 7.3 Dash
 
 | Property | Value |
 |---|---|
 | Distance | 120 px in 0.15 s (800 px/s; base walk speed is 320 px/s) |
 | Invulnerable | 0.20 s from the start (the dash plus 0.05 s) |
 | Cooldown | 1.0 s, 1 charge. Items: up to 3 charges; cooldown never under 0.5 s |
-| Direction | The move stick or WASD; with no move input, the aim direction; else facing |
+| Direction | The move stick or WASD; with no move input, the way you face |
 | Collision | Through enemy bodies and enemy shots; not through walls, obstacles or closed doors. Floor hazards don't tick during the window |
 | Guns | Keep firing during the dash |
-| Gamepad | **RB** (right bumper; the thumbs stay on both sticks). LB is vent, RT fire, A interact, X active, Y swap |
-| Keyboard and mouse | **Shift** or the **right mouse button**. Space stays vent |
-| Rebinding | Listed in Options with the other bindings |
 
 **Perfect dodge:** an enemy hit that lands during the invulnerable window counts as a dodge:
-a soft chime, "Dodged" over the figure, and the `perfect_dodge` item event. It heals 3% of max
-health from the Mending reserve.
+a soft chime and a white flash on the figure, no text (section 4.5), and the `perfect_dodge`
+item event. It heals 3% of max health from the Mending reserve.
 
 **Visuals:** three afterimages of the figure in the player colour (40%, 25%, 10% alpha, 0.2 s),
 a dust puff at the start, a stretch along the direction, a whoosh. A thin white rim on the
@@ -513,9 +660,12 @@ and its dash is ready, so bot numbers stay close to a human mover. `--idle` neve
 **Tutorial:** one prompt in the first room ("RB: dash through danger"), dismissed after the
 first dash.
 
-Files: `player.gd` (`dash`, invulnerability, charges, `_physics_process`), `player_input.gd`
-(the `dash` action), `items.gd` (events), `hud.gd` (pips), `fx.gd` (afterimages, dust),
-`sfx.gd`, `tutorial.gd`, `options_menu.gd`, `main.gd` (bot dash).
+Files: `player.gd` (`dash`, invulnerability, charges, auto vent, `_physics_process`),
+`player_input.gd` (the `dash` action, new map), `items.gd` (events), `hud.gd` (pips), `fx.gd`
+(afterimages, dust), `sfx.gd`, `tutorial.gd`, `options_menu.gd`, `prompts.gd`, `main.gd`
+(bot dash).
+
+---
 
 ---
 
@@ -525,11 +675,22 @@ Every one uses the hostile signature (black outline, red rim, drawn above player
 `hostile.gd`) and a telegraph. **The test: a strong build parked in the middle of the room
 dies by the end of floor 3** (section 13).
 
+**Room composition (decision 6).** An arena is two layers:
+- **The crowd:** grunts, runners and swarmers, 80 to 90% of the bodies, there to be mowed down.
+  They die fast, push you around and feed the reactions.
+- **Key threats:** 1 or 2 alive at a time on floor 1, 2 to 3 on floors 2 and 3, 3 to 4 on
+  floors 4 and 5. Lobbers, chargers, spitters, zoning elites and the floor's elites. Each has
+  a distinct silhouette, is 1.2x the size of crowd enemies, gets the large edge arrow (section
+  4.6) and the auto-aim's priority (section 7.2). These are what you dodge and what your guns
+  should kill first.
+`spawn_table.gd` gets a `KEY` list and a per-floor key-threat budget; `Room` refills key threats
+on their own timer, independent of the crowd target.
+
 | Threat | First appears | How it works | Telegraph | Damage (share of a 100 HP bar, before `FLOOR_DAMAGE`) |
 |---|---|---|---|---|
-| **Lobber** (new enemy) | Floor 1, difficulty 4 | Hangs back at 350 to 450 px; every 2.4 s lobs a shell at where you stand now | A ring at the landing spot for the whole 1.1 s flight, filling in | 10%, 48 px burst |
+| **Lobber** (new enemy) | Floor 1, difficulty 4 | Hangs back at 260 to 380 px (in view at the new zoom); every 2.4 s lobs a shell at where you stand now | A ring at the landing spot for the whole 1.1 s flight, filling in | 10%, 48 px burst |
 | **Charger** (moved earlier) | Floor 1, difficulty 5 | Winds up, then charges 500 px at 600 px/s along a fixed line; stunned 1 s if it hits a wall | A red line along the path for 0.6 s | 15% |
-| **Ring swarm** | Floor 2 | 8 to 12 swarmers spawn as a ring 260 px around you and close in together, every 15 s or so | The ring telegraph (0.75 s); one 60 degree gap is lit as the way out | 4% per contact |
+| **Ring swarm** | Floor 2 | 8 to 12 swarmers spawn as a ring 220 px around you and close in together, every 15 s or so | The ring telegraph (0.75 s); one 60 degree gap is lit as the way out | 4% per contact |
 | **Ground swell** (room rule) | Floor 2, difficulty 7 | If you stay within 80 px of one spot for 3 s in a fight, the floor there erupts and leaves a 4 s hazard patch in the region's element | A rumble at 2 s, then a ring for 1.2 s | 10%, then 3% per 0.5 s on the patch |
 | **Sower elite** (affix) | Floor 2 | Drops 3 denial circles (70 px) round itself every 4 s, lasting 5 s | Circles fill in over 0.8 s | 5% per 0.5 s |
 | **Mortar elite** (affix) | Floor 3 | Lobs 3 shells at once, around where you stand | Rings as the lobber | 10% each |
@@ -547,6 +708,8 @@ dies by the end of floor 3** (section 13).
 - Nothing spawns within 140 px of a player.
 - Every damaging area shows its ring at least 0.6 s before it can hurt.
 - At most 2 hostile rings over a player at once; a third waits.
+- Every key threat that can hurt you within the next second is on screen or has a pulsing edge
+  arrow.
 - Ground swell never starts in a room's first 3 s or within 1.5 s after a dash.
 - The burst guard stays (0.25 of max health in 3 s under half health).
 - Killing a lobber or mortar elite cancels its shells and rings, as the spitter's lob does.
@@ -569,12 +732,19 @@ hazard per region), `hostile.gd`, `danger_fx.gd`.
 | Floor health multiplier `F(f)` | 1.0 | 1.3 | 1.8 | 2.4 | 3.0 |
 
 **Enemy health** = today's `base + per_diff x difficulty`, times `F(f)`, times the build factor
-`B = clamp(sqrt(P / E(f)), 0.8, 2.0)`. P is the **measured** damage per second of the floor's
+`B = clamp((P / E(f)) ^ 0.7, 0.8, 3.0)`. P is the **measured** damage per second of the floor's
 last three arenas (`Main.floor_arena_dps`); the first arena of a floor uses the last floor's P
 scaled by `E(f) / E(f-1)`. This replaces `Room.party_power`'s estimate from carried guns.
 
-The square root is deliberate. A build at 4x par meets enemies with 2x health, so it still kills
-twice as fast as par. **A broken build must feel broken**; it just can't make the game stop.
+**Broken runs are rare and earned (decision 5).** Two rules do it:
+- The power 0.7 keeps ordinary stacking a fight: a build at 2x par meets enemies at 1.6x health
+  and kills 1.2x faster; at 4x par, 2.6x health and 1.5x faster. A good run, still a fight to
+  the end.
+- **Synergy damage counts at half in P.** Damage from a formed synergy (section 12) and from
+  level-5 resonances is logged separately and weighs half when P is measured. A build at 8x par
+  that gets 60% of it from a synergy measures as 5.6x par, hits the 3.0 cap, and kills 2.7x
+  faster than par. That is the break, and it only comes from a synergy built on purpose.
+
 The rest of the push comes from section 8: threats that make you move, not health that makes
 you wait.
 
@@ -593,9 +763,9 @@ affix to matter. **Bosses:** at least 35 s of P on **every** floor, floor 1 incl
   reaction build, down from about 75%. The reaction game still carries the build.
 
 Files: `room.gd` (`party_power`, crowd cap, elite and boss sizing: `BOSS_DPS_SECS`),
-`enemy.gd` (health), `main.gd` (`floor_arena_dps`), `gun.gd` (potency), `elements.gd`
-(per-target decay). **`room.gd` and `enemy.gd` have the boss session's uncommitted edits
-today; session 1 starts after that work is committed.**
+`enemy.gd` (health, damage tagged by source so synergy damage can be split out), `main.gd`
+(`floor_arena_dps`), `gun.gd` (potency), `elements.gd` (per-target decay). **`room.gd` and `enemy.gd` have the boss session's uncommitted edits
+today; sessions 1 and 2 start after that work is committed.**
 
 ---
 
@@ -608,15 +778,17 @@ shows it as a thin green bar under the health bar, draining as it's used. This r
 per-fight fade (`MEND_SOFT`), which Emil couldn't see and which refilled every fight.
 
 **Chosen heals** stay outside the reserve: hearts (12%), the shop's repair (40% for 30 x m),
-the stairs, actives (Blood Chalice) and Last Breath.
+actives (Blood Chalice) and Last Breath (a Shrine revive, meta). **No free full heals**
+(decision 14): the stairs no longer heal, and no room, boon or item restores a whole bar.
 
 **Healing that rewards risk:**
 - Leech only counts reactions on enemies within 200 px of you.
 - A perfect dodge heals 3% (from the reserve).
 - An elite killed while you're under 50% health always drops a heart.
+- Challenge rooms always pay a heart; a deal room can sell a heal for money (section 11).
 
 **Budget per floor**, for a mover with a healing build: reserve 0.4 to 0.6 of a bar, hearts
-about 0.25, a repair 0.4 if bought, stairs about 0.1: about 1.0 to 1.3 bars. Damage taken by a
+about 0.15 (more from risky rooms), a repair 0.4 if bought: about 0.9 to 1.2 bars. Damage taken by a
 mover on floors 3 to 5 should be 1.4 to 1.8 bars a floor, so health drifts down across a floor
 and the shop's repair is a real purchase.
 
@@ -630,14 +802,19 @@ Files: `player.gd` (`heal`, `mend_rate`, `_tick_mending`, regen, `on_reaction`),
 
 ## 11. Reasons to keep going
 
-**Choices with stakes:**
+### 11.1 Risk rooms (decision 16)
 
 | Room or offer | When | Deal |
 |---|---|---|
-| **Pact room** | From floor 2, 40% chance a floor, a door off the boss room | 1 of 2 Epic or Legendary items for 15 or 25 max HP. Never takes you under 40 max HP |
-| **Cursed pedestal** | Treasure rooms from floor 2, 25% chance | A second pedestal one rarity higher, with a curse for the rest of the floor: Darkness (sight radius halved), Frailty (+25% damage taken), Greed (no hearts), or Haste (enemies +15% speed). You take one pedestal; the other vanishes |
-| **Challenge room** | Optional, as today | Doors lock, two elite waves; 1 of 2 Rare or better plus 15 x m scrap |
+| **Deal room** | From floor 2, 40% chance a floor, a door off the boss room | Pick 1 of 2 Epic or Legendary items. Each card shows its price, one of three kinds: **max health** (15 for Epic, 25 for Legendary; never below 40), **money** (60% of the scrap you hold, at least 80 x m), or **a curse** for the rest of the run (below). Also sells a 25% heal for 40 x m |
+| **Challenge room** | Optional, as today, now one of two kinds | **Elite:** doors lock, two waves of elites. **Timed:** kill 40 enemies in 30 s. Reward: pick 1 of 3 Rare or better, 15 x m scrap and a heart. Failing the timed one gives nothing and costs nothing |
+| **Cursed loot** | Treasure rooms from floor 2, 25% chance; deal rooms | A card one rarity higher with a red "Cursed" chip and its drawback in the effect line. Curses: Darkness (sight radius halved), Frailty (+25% damage taken), Greed (no hearts), Haste (enemies +15% speed), Brittle (the Mending reserve halved). Floor curses from treasure, run curses from deals |
 | **Mystery ware** | Shops from floor 2, 30% chance, in place of a ware | 60 x m for a random item one rarity above the floor's median |
+
+Trade-off items (section 3.2: Blood Pact, Frenzy Band and the rest) also show the Cursed chip,
+so "strong with a clear drawback" reads the same everywhere.
+
+### 11.2 Milestones and quitting
 
 **Visible milestones:** resonances at 3 and 5 items of a tag (section 12); gun tier-ups
 (merging a copy); and a **floor-end card** on the stairs: damage per second now against the
@@ -649,13 +826,29 @@ holds ("a boss item, a treasure room, a shop, +3 Embers for reaching it").
 death award (rooms, elites, discoveries, fusions, bosses, floors). Run 6980a749 would have paid
 about 50 instead of 0. Telemetry records `embers` on abandoned runs.
 
-Files: `floor_gen.gd` (pact room, cursed pedestal, mystery ware), `room_data.gd` (room type),
+### 11.3 Meta: all four layers stay (decision 15)
+
+| Layer | Today | With this reset |
+|---|---|---|
+| Unlocks into the pool | Achievements unlock guns, Marks and elements | Items join it: a fresh save draws from about 95 of the 145 items; the other 50 (most of the new behaviour items, element changers, Legendaries) unlock through Lessons, achievements and first wins with a Mark. The codex shows locked ones as silhouettes with a hint |
+| Shrine | Small permanent stats for Embers | Unchanged; its +stat talents stay small next to items |
+| Marks | A starting kit and a stat change | Each Mark gets one rule twist (an example: the Alchemist's reactions leave a short patch of their element). Designed in a later pass, not these four sessions |
+| Vows | Harder modes | Each Vow multiplies Embers; tuned in a later pass |
+
+Files: `floor_gen.gd` (deal room, cursed loot, mystery ware, timed challenge), `room_data.gd` (room type),
 `room.gd`, `pedestal.gd` (paired pedestals), `main.gd` (`_end_run`, floor-end card),
 `pause_menu.gd`, `mastery.gd`, `telemetry.gd`, `hud.gd` (curse icon).
 
 ---
 
 ## 12. The broken-run moment
+
+**Rare and earned (decision 5).** A synergy needs two specific items (or an item and a
+resonance), so it is built on purpose. About 20 exist at launch. Target: a synergy forms in
+about 1 run in 3, two in about 1 in 10. When one forms, the screen must change, not only the
+damage: every synergy has a signature look (the shots, the figure or the trail) that is
+obvious from across the room, and its damage counts at half in the power curve (section 9), so
+it really does break the game.
 
 **Synergies are data.** `Items.SYNERGIES`: a list of `{ id, name, needs: [item ids or tags],
 line, effect }`, about 20 at launch. Examples:
@@ -669,7 +862,7 @@ line, effect }`, about 20 at launch. Examples:
 | Storm Lattice | Wide Arc + Fork | Chains fork at every jump |
 | Pinball | Ricochet Gloves + Gravity Shot | Bounces seek the nearest pull |
 
-**When a synergy forms:**
+**When a synergy forms** (always at a pickup, so outside a fight; this is not fight text):
 - a banner in the top band of the screen: "SYNERGY: Hunting Shards", with the line under it
   ("Your shards now hunt"), 28 px and 22 px, for 2 s;
 - a 0.08 s hit-stop, a rising chord, a flash on the figure;
@@ -699,7 +892,7 @@ Files: `items.gd` (synergy and resonance data, detection on pickup), `player.gd`
 
 ### 13.1 Bots that play like the people who'll play it
 
-- **Human-strength build.** New flag `--build=human6980`: Emil's guns, tiers, items, gun mods
+- **Human-strength build.** New flag `--build=human6980`: Emil's 4 guns, tiers, items, gun mods
   and level-up picks at the end of floor 2 of run 6980a749, read from its `floor_end` and
   `levelup` events (mapped to new ids after session 3). The storm build is kept for
   comparison, but it took 2.0 bars a minute parked on floor 3 where Emil took 1.06, so it
@@ -720,7 +913,11 @@ Files: `items.gd` (synergy and resonance data, detection on pickup), `player.gd`
 | **Card readability** | `--card-shot` (section 4.4) | `[CARDS] PASS`; Emil reads one contact sheet |
 | **Bosses and elites** | `boss` and `elite` events, bots and Emil | Bots: bosses 25 to 60 s. Emil's next runs: 25 to 50 s, elites 8 to 15 s median |
 | **Fairness** | Bot logs | 0 spawns within 140 px, 0 hostile damage without a 0.6 s telegraph, worst 3 s outside boss contact at most 0.5 of max health |
-| **Old rule** | The idle six-gun bot in the first region (GDD section 0) | Still dies |
+| **Old rule** | The idle bot in the first region (GDD section 0), now with four guns | Still dies |
+| **Focus targeting** | New `--focus-probe`: one gun with 2 beams, then 4 guns, against a mixed crowd with an elite | 2 beams hit 2 different enemies in at least 90% of frames with 2 or more in range; the elite takes fire within 1 s of appearing; no more than 2 guns on one ordinary enemy |
+| **Quiet screen** | Count text drawn over the arena per minute in a floor-3 fight (a `Perf` counter) | Quiet: at most 6 a minute (big hits, discoveries, boss lines) |
+| **Camera** | `--read-shot` in a full floor-3 arena at zoom 1.6; fps check | Every off-screen enemy within 700 px has an arrow; key threats readable; 60 fps with 1% low about 55 |
+| **Run length** | Kite bot wins and Emil's runs | Wins take 25 to 35 min of game time; 7 or 8 level-ups a run |
 
 `tools/pressure_report.py` gets a `--shops` and a `--loot` view so Emil's runs report the same
 numbers. Every session also runs the standard checks in the GDD's section 0: load check, bot
@@ -731,80 +928,94 @@ any push, then the CI "Windows release" run.
 
 ## 14. Build order and session briefs
 
-Order by fun gained: the fight first (every second of play), then the economy (every shop and
-every room's reward), then the items and cards (the biggest change, easiest once loot is
-scarce), then the moments. Each session is a fresh session, starts from this document, and
-leaves its numbers in a hand-over section here. At most 4 Godot instances at once.
+Order by fun gained. First what your hands and eyes do every second (controls, targeting,
+camera, a quiet screen); then what pushes back (threats and the power curve); then every
+room's reward and every shop (loot, economy, risk rooms); then the items, the cards and the
+broken-run moments, the biggest change and the easiest once loot is scarce. Each session is a
+fresh session, starts from this document, and leaves its numbers in a hand-over section here.
+At most 4 Godot instances at once.
 
 **Before session 1:** the boss session (`sd-boss-presence`) has uncommitted edits in `room.gd`,
 `enemy.gd`, `player.gd`, `hud.gd`, `main.gd` and others. Session 1 starts only once that work is
 committed.
 
-### Session 1: Fight (dash, threats, healing reserve, power curve)
+### Session 1: Hands and screen
 
-Goal: standing still kills, moving feels great, a broken build still melts things but never
-ends the danger.
-- Dash (section 7) with bot dashing and the tutorial prompt.
-- Lobber, earlier chargers, runner lunge, ring swarms, ground swell, Sower, Mortar and Tether
-  affixes, one hazard per region from floor 2 (section 8).
-- Mending reserve per floor with its HUD bar; Leech within 200 px; hearts as a pickup (dropped
-  from elites at 20% and arenas at 35% for now; session 2 settles the loot table).
-- Power curve: `E(f)`, `F(f)`, measured build factor, elites 5 s, bosses 35 s on every floor,
-  reaction diminishing returns (section 9).
+Goal: the fight feels good to move through and calm to look at.
+- Controls of section 7.1: dash (7.3), the active on LB / Q, automatic vent, input map and
+  rebinding; bot dashing; the tutorial prompt.
+- Auto-aim by default with per-gun focus targeting (7.2); extra beams and projectiles to
+  distinct targets.
+- Four gun slots (`MAX_GUNS` 4).
+- Camera zoom 1.6, smaller arenas, camera lead, edge arrows (4.6).
+- Quiet fights, discovery line, codex entries, the "Fight text" option (4.5).
+- Mending reserve per floor with its HUD bar; Leech within 200 px; no stairs heal (section 10).
 - `--build=human6980` with today's item ids.
-- Files: `player.gd`, `player_input.gd`, `enemy.gd`, `spawn_table.gd`, `room.gd`,
-  `enemy_projectile.gd`, `materials.gd`, `regions.gd`, `gun.gd`, `elements.gd`, `hud.gd`,
-  `fx.gd`, `sfx.gd`, `tutorial.gd`, `options_menu.gd`, `main.gd`, `pressure_meter.gd`.
-- Done when: the stand-still, mover, pressure, boss and fairness checks in 13.2 pass; the idle
-  six-gun bot still dies in the first region; `[SMOKE] ALL PASS`; CI green.
-- Out of scope: loot, prices, item catalog.
+- Files: `player.gd`, `player_input.gd`, `gun.gd`, `beam.gd`, `projectile.gd`, `enemy.gd`
+  (pending damage), `main.gd`, `pixel_camera.gd`, `post_fx.gd`, `room.gd`, `room_data.gd`,
+  `room_layouts.gd`, `hud.gd`, `fx.gd`, `fusion_fx.gd`, `elements.gd`, `journal.gd`,
+  `settings.gd`, `options_menu.gd`, `tutorial.gd`, `prompts.gd`, `sfx.gd`.
+- Done when: the focus, quiet-screen and camera checks in 13.2 pass; the idle bot still dies in
+  the first region; fps holds; `[SMOKE] ALL PASS`; CI green.
+- Out of scope: new enemies, loot, prices, the item catalog.
 
-### Session 2: Loot and economy
+### Session 2: Threats and power curve
+
+Goal: standing still kills; most runs stay a fight to the end.
+- Room composition: crowd plus a key-threat budget per floor (section 8).
+- Lobber, earlier chargers, runner lunge, ring swarms, ground swell, Sower, Mortar and Tether
+  affixes, one hazard per region from floor 2; the fairness rules.
+- Run length: 4 arenas a floor, wave times of section 5.0.
+- Power curve: `E(f)`, `F(f)`, measured build factor at power 0.7 with the synergy split
+  (synergy damage is tagged now; synergies arrive in session 4), elites 5 s, bosses 35 s on
+  every floor, reaction diminishing returns (section 9).
+- Files: `enemy.gd`, `spawn_table.gd`, `room.gd`, `enemy_projectile.gd`, `materials.gd`,
+  `regions.gd`, `floor_gen.gd`, `gun.gd`, `elements.gd`, `hostile.gd`, `danger_fx.gd`,
+  `main.gd`, `pressure_meter.gd`.
+- Done when: the stand-still, mover, pressure, boss and fairness checks in 13.2 pass;
+  `[SMOKE] ALL PASS`; CI green.
+- Out of scope: loot, prices, the catalog.
+
+### Session 3: Loot, economy and risk rooms
 
 Goal: every room's reward and every shop visit is a decision; money is tight at any power.
-- Remove spoils and elite item banking; floor-1 gun picks; treasure, boss, secret and
-  challenge drops as in section 5.1; level-ups about 2 a floor.
-- Scrap budget per room, crowd build factor capped at x1.6, scrap gain cap (section 6.1).
-- Prices, reroll formula, locks carried to the next shop, explicit rarity tables, mystery ware
-  (sections 6.2 to 6.4, 11).
-- Quitting pays Embers like a death (section 11).
+- Remove spoils and elite item banking; floor-1 gun picks; pick 1 of 2 or 3 at treasure, boss,
+  secret and challenge rooms (section 5.1); hearts as drops.
+- Level-ups fewer and bigger, at room clear only, with rare picks.
+- Scrap budget per room, crowd factor cap, scrap gain cap (6.1); prices, reroll formula,
+  locks, rarity tables, mystery ware (6.2 to 6.4).
+- Deal room, timed and elite challenge rooms, cursed loot (11.1). Quitting pays Embers like a
+  death (11.2).
 - `shop_leave` and `floor_loot` events; `pressure_report.py --shops --loot`.
-- Files: `room.gd`, `floor_gen.gd`, `items.gd` (price and odds only), `drops.gd`, `enemy.gd`
-  (elite drops), `main.gd`, `pedestal.gd`, `levelup.gd`, `player.gd` (XP), `pause_menu.gd`,
-  `mastery.gd`, `telemetry.gd`, `tools/pressure_report.py`.
-- Done when: the shop-spend and loot-count checks pass on 4 kite runs with the human build;
-  quitting on floor 2 pays the death award; `[SMOKE] ALL PASS`; CI green.
+- Files: `room.gd`, `floor_gen.gd`, `room_data.gd`, `items.gd` (price, odds, curse flag),
+  `drops.gd`, `enemy.gd` (elite drops), `main.gd`, `pedestal.gd`, `levelup.gd`,
+  `levelup_screen.gd`, `player.gd` (XP), `pause_menu.gd`, `mastery.gd`, `telemetry.gd`,
+  `tools/pressure_report.py`.
+- Done when: the shop-spend, loot-count and run-length checks pass on 4 kite runs with the
+  human build; quitting on floor 2 pays the death award; `[SMOKE] ALL PASS`; CI green.
 - Out of scope: the catalog and the card.
 
-### Session 3: Items without slots and readability
+### Session 4: Items, cards and synergies
 
-Goal: every item reads in one glance and simply adds to your build.
+Goal: every item reads in one glance, simply adds to your build, and the rare synergy is a
+spectacle.
 - Inventory as id -> count; `stack` rules, caps, percentage armour; tags; `LEGACY_IDS` and the
-  catalog migration of section 3.2, including the 20 new behaviour items and the dash and
-  perfect-dodge events.
-- The item card, pedestal glow and labels, the pause Build tab (section 4).
-- `--card-shot` and the card check.
-- Save version 5 with the relic and Well migration and its test (section 3.3); bot builds and
-  `--build=human6980` mapped to new ids.
+  catalog migration of section 3.2, with the 24 new behaviour items.
+- The item card, pedestal glow and labels, the pause Build tab, `--card-shot` (section 4).
+- Save version 5 with the relic and Well migration and its test (3.3); the item pool split into
+  starting and unlockable items (11.3); bot builds and `--build=human6980` mapped to new ids.
+- Synergies and resonances with their looks and banners (section 12); the floor-end card.
 - Files: `items.gd`, `player.gd`, `item_card.gd`, `pedestal.gd`, `levelup_screen.gd`,
   `character_sheet.gd`, `pause_menu.gd`, `hud.gd`, `worn_gear.gd`, `drops.gd`, `progress.gd`,
-  `loadout.gd`, `journal.gd`, `hub.gd`, `well_screen.gd`, `main.gd` (bot builds).
-- Done when: `[CARDS] PASS`; a version-4 save loads with every old relic; the stand-still and
-  mover checks from session 1 still pass; `[SMOKE] ALL PASS`; CI green.
-- Out of scope: synergies and resonance effects (tags are counted, bonuses come in session 4).
+  `loadout.gd`, `journal.gd`, `hub.gd`, `well_screen.gd`, `fx.gd`, `sfx.gd`, `gun.gd`,
+  `projectile.gd`, `main.gd`.
+- Done when: `[CARDS] PASS`; a version-4 save loads with every old relic; every synergy fires in
+  a `--synergy-probe` (grant the pair, fight one arena, print `[SYNERGY] name ok`); the
+  stand-still and mover checks still pass; `[SMOKE] ALL PASS`; CI green.
+- This is the largest session. If it runs long, split it at the line between the catalog and
+  card work and the synergies, and hand over the rest.
 
-### Session 4: Broken runs and risk
-
-Goal: the run has peaks you remember and choices with stakes.
-- Synergy data and detection, about 20 synergies; resonance bonuses at 3 and 5 with looks
-  (section 12).
-- Pact room, cursed pedestal (section 11).
-- The floor-end card.
-- Files: `items.gd`, `player.gd`, `hud.gd`, `fx.gd`, `sfx.gd`, `worn_gear.gd`, `gun.gd`,
-  `projectile.gd`, `floor_gen.gd`, `room_data.gd`, `room.gd`, `pedestal.gd`, `main.gd`.
-- Done when: every synergy fires once in a `--synergy-probe` (new flag: grant the pair, fight
-  one arena, print `[SYNERGY] name ok`); banners obey the clarity rules in a `--read-shot`
-  screenshot; all earlier checks still pass; `[SMOKE] ALL PASS`; CI green.
+---
 
 ---
 
@@ -812,15 +1023,19 @@ Goal: the run has peaks you remember and choices with stakes.
 
 | Default | Alternative |
 |---|---|
-| One held active item | No actives at all, or actives as a second "gun" slot |
-| Level-ups stay, about 2 a floor | Remove them and let items carry all stats (pure Isaac), or keep one a wave (Brotato) |
+| The vent fires on its own (decision 18 leaves it off the buttons) | A vent button on LB, with the active on X |
 | Ground swell punishes standing 3 s in one spot | Only enemies punish standing still |
-| Dash: 120 px, 0.2 s invulnerable, 1.0 s cooldown, RB / Shift | Shorter window (0.15 s), or a roll on LB with vent moved |
+| Dash: 120 px, 0.2 s invulnerable, 1.0 s cooldown, RB / RT / Space | Shorter window (0.15 s) or a longer cooldown |
+| Camera zoom 1.6, arenas 1000 x 600 | Zoom 1.5 with today's rooms, or 1.8 with more arrows |
+| Power curve: power 0.7, cap 3.0, synergy damage at half | Power 0.6 (strong builds pull ahead more) or synergy damage not counted at all |
 | Armour as a percentage, 15 / (15 + armour) | Keep flat armour with a cap |
 | Leech only within 200 px | Leech anywhere, smaller |
 | Quitting pays the full death award | A penalty (say 75%), so finishing a floor is worth it |
 | Sets become tags and resonances | Keep named sets with their own bonuses |
 | Mending reserve 40% a floor | 30% (harsher) or 50% (gentler) |
+| Level-ups: about 1.5 a floor, amounts doubled, 1 card in 10 a rare pick | 1 a floor with tripled amounts |
+| A fresh save draws from about 95 of 145 items | A smaller start (70) for more to unlock |
+
 
 ## Appendix: where the numbers come from
 
