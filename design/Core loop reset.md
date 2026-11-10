@@ -40,7 +40,7 @@ the numbers. Section 15 lists the defaults Emil may want to overrule.
 
 | Problem in run 6980a749 | Cause in the code | Fix |
 |---|---|---|
-| Stood still on floor 3, 0% moving, never in danger | Melee walks down the gun line and dies. Only spitters hurt (64 of 65 hits, about 5% each), and regen healed most of it | New threats that punish standing still (lobbers, chargers, ring swarms, ground swell, zoning elites, room hazards), a dash, and fewer but harder hits |
+| Stood still on floor 3, 0% moving, never in danger | Melee walks down the gun line and dies. Only spitters hurt (64 of 65 hits, about 5% each), and regen healed most of it | New threats that punish standing still (lobbers, chargers, ring swarms, zoning elites, room hazards; ground swell dropped, section 15), a dash, and fewer but harder hits |
 | Melted everything: the Brute King in 5.7 s | Enemy health follows depth and an estimate of gun dps capped at x1.87, while his damage grew x6.7 from floor 1 to 3. The floor-1 boss isn't sized to the build | Health follows measured damage (power 0.7, so ordinary stacking stays a fight), synergy damage counted at half (so only a synergy built on purpose breaks the game), elites and bosses sized on every floor, diminishing returns on stacked reaction power |
 | The screen is tiring to watch | Reaction and fusion names and damage numbers float over every fight; the camera is far out | Quiet fights by default, a discovery note at the edge, a codex; a closer camera with edge arrows |
 | Money almost infinite | Scrap comes per kill, and the crowd grows with the build (x1.22 per extra gun), so a strong build earns more. 2,508 scrap at the floor-2 shop against a top price of 286 | Scrap is a fixed budget per room and per floor, not per kill. Prices scale with depth. Target: spend down at most shops |
@@ -691,7 +691,7 @@ on their own timer, independent of the crowd target.
 | **Lobber** (new enemy) | Floor 1, difficulty 4 | Hangs back at 260 to 380 px (in view at the new zoom); every 2.4 s lobs a shell at where you stand now | A ring at the landing spot for the whole 1.1 s flight, filling in | 10%, 48 px burst |
 | **Charger** (moved earlier) | Floor 1, difficulty 5 | Winds up, then charges 500 px at 600 px/s along a fixed line; stunned 1 s if it hits a wall | A red line along the path for 0.6 s | 15% |
 | **Ring swarm** | Floor 2 | 8 to 12 swarmers spawn as a ring 220 px around you and close in together, every 15 s or so | The ring telegraph (0.75 s); one 60 degree gap is lit as the way out | 4% per contact |
-| **Ground swell** (room rule) | Floor 2, difficulty 7 | If you stay within 80 px of one spot for 3 s in a fight, the floor there erupts and leaves a 4 s hazard patch in the region's element | A rumble at 2 s, then a ring for 1.2 s | 10%, then 3% per 0.5 s on the patch |
+| ~~**Ground swell**~~ (dropped by Emil, 2026-11-10: only enemies punish standing still) | Floor 2, difficulty 7 | If you stay within 80 px of one spot for 3 s in a fight, the floor there erupts and leaves a 4 s hazard patch in the region's element | A rumble at 2 s, then a ring for 1.2 s | 10%, then 3% per 0.5 s on the patch |
 | **Sower elite** (affix) | Floor 2 | Drops 3 denial circles (70 px) round itself every 4 s, lasting 5 s | Circles fill in over 0.8 s | 5% per 0.5 s |
 | **Mortar elite** (affix) | Floor 3 | Lobs 3 shells at once, around where you stand | Rings as the lobber | 10% each |
 | **Tether elite** (affix) | Floor 3 | If you stay within 300 px of it for 2 s, a beam links you and drains you until you break range or line of sight | The beam grows from the elite for 1 s first | 3% a second |
@@ -710,7 +710,7 @@ on their own timer, independent of the crowd target.
 - At most 2 hostile rings over a player at once; a third waits.
 - Every key threat that can hurt you within the next second is on screen or has a pulsing edge
   arrow.
-- Ground swell never starts in a room's first 3 s or within 1.5 s after a dash.
+- ~~Ground swell never starts in a room's first 3 s or within 1.5 s after a dash.~~ (dropped)
 - The burst guard stays (0.25 of max health in 3 s under half health).
 - Killing a lobber or mortar elite cancels its shells and rings, as the spitter's lob does.
 
@@ -959,12 +959,100 @@ Goal: the fight feels good to move through and calm to look at.
   the first region; fps holds; `[SMOKE] ALL PASS`; CI green.
 - Out of scope: new enemies, loot, prices, the item catalog.
 
+### Session 1 done (2026-11-10, build `2026.11.10-hands`)
+
+**Built**
+- **Controls (7.1).** Dash on RB, RT, Space, Shift or right mouse; the active on LB or X, Q or F;
+  interact A / E. The vent fires on its own (full gauge with 3 enemies in its radius, or 1.5 s at
+  full); Options "Vent: Automatic / Button" puts it on LB / Space, the active on X / F and the
+  dash on RB / RT / Shift / right mouse. Manual fire moved from RT to LT (RT dashes). The
+  pedestal swap moved from Y / Q to Y / R (Q is the active now) until session 4 drops slots.
+- **Dash (7.3)** at the spec's numbers: 800 px/s for 0.15 s, 0.20 s untouchable, 1.0 s cooldown,
+  1 charge (stats `dash_charges`, `dash_cooldown` for items: up to 3, never under 0.5 s). Walls
+  stop it; floor hazards skip their tick in the window. A hit inside the window is a perfect
+  dodge: white flash, soft chime, no text, 3% heal from the Mending reserve, the
+  `perfect_dodge` item event (`dash` fires too). Three afterimages, a dust puff, a whoosh, a
+  white rim, a recharge arc under the feet, dash pips left of the vent gauge. The dodge stat
+  is capped at 40%. Tutorial: the vent step teaches the dash; a run's first room shows
+  "RB: dash through danger" until the first dash ever (`dash_learned`).
+- **Auto-aim with focus (7.2)** in `scripts/focus.gd`: `aim_mode` defaults to auto (older
+  settings files migrate once, `controls_rev` 1). Every 0.1 s each gun ranks targets by the
+  spec's weights and distance falloff, x1.3 when the target carries a reacting element, skips
+  overkill (shots in flight are tracked as pending damage on the enemy), holds at most 2 guns on
+  an ordinary enemy, keeps its target unless another scores 1.5x. Extra beams and extra
+  projectiles go to the gun's next targets; guns whose design shoots a spread
+  (`projectile_count` above 1) keep it around their own target. One addition to the spec: an
+  elite or boss in a gun's range that no gun has picked takes the in-range gun with the
+  weakest target (without it an elite at 300 px lost to a close grunt and took up to 4 s to
+  draw fire). Focused elites and bosses get a thin corner bracket.
+- **Four gun slots** (`MAX_GUNS` 4). Nothing to migrate: saves hold only the kit gun and runs
+  are not saved. Bot profiles with six guns keep their four highest tiers.
+- **Camera (4.6):** zoom 1.6; arenas 1000 x 600 (small rooms 840 x 540, large 1400 x 880
+  unchanged); the camera leads up to 15% of the view toward the nearest key threat within
+  700 px, else the way you move; edge arrows in the hostile signature for every enemy off
+  screen within 700 px, larger with the enemy's icon for elites, bosses and key threats,
+  pulsing while they wind up.
+- **Quiet fights (4.5):** `damage_numbers` off and `fight_text` "quiet" by default; Options
+  "Fight text: Quiet / Reactions / Everything". In quiet: one gold 28 px number for a crit at
+  least 3x the average hit, **at most one every 12 s** (added: without the gap big crits alone
+  ran 20 a minute); no fusion names, no ELITE / shield popups, no chatter by the player card in
+  fights (DOWN and Last Breath still show). "Discovered: X" at the left edge, 20 px, 3 s, one at
+  a time. The codex (Ledger journal) already lists pair, effect and count per reaction and fusion.
+- **Mending reserve (10):** 40% of max health per floor (+10% per Bandage Roll), every passive
+  heal and the dodge heal draw on it, a thin green bar under the health bar; the stairs no
+  longer heal (a downed co-op partner stands up at 40%); Leech only counts reactions within
+  200 px. `--old-balance` keeps the old healing.
+- **Tests and telemetry:** `--build=human6980` (run 6980a749's floor-end guns, tiers, items and
+  picks; mods placed on the Etcher Beam and Arc Rifle since telemetry does not say which gun);
+  the moving bots dash when a shot is predicted to hit within 0.25 s or a charger in its dash
+  is within 130 px (`--idle` never dashes); `--focus-probe` (Etcher Beam with Split Chamber,
+  three more guns at 25 s); per floor `[HANDS]` (dashes, perfect dodges, vents, Mending
+  max / used / left, fight texts a minute), `[QUIET]` (texts by kind) and `[FOCUS]`; the
+  `pressure` telemetry event carries the same `hands` block for Emil's runs.
+
+**Measured** (headless, `--fixed-fps 60`, fresh instance saves)
+
+| Check | Result | Pass |
+|---|---|---|
+| Focus: 2 beams on distinct enemies | 1.000 (808 of 808) and 1.000 (801 of 801) frames | yes (0.90) |
+| Focus: elite under fire | 6 and 6 elites, all within 0.0 s of entering range (before the elite guard: median 0.23 to 0.58 s, worst 4.0 s) | yes (1 s) |
+| Focus: no more than 2 guns on an ordinary enemy | 0 and 1 retarget passes over, counted only with 4+ enemies in every gun's range | yes |
+| Quiet screen, floor 3 (kite, human build) | 3.7 texts a minute without discoveries (21 big hits, 1 label, 1 line in 6.2 min); 15.4 with the 72 first-ever discoveries of a fresh save | yes once a save has its discoveries; a fresh save reads one discovery every 3 s for its first runs |
+| Old rule: idle bot, first region (six-gun GDD loadout, now four guns) | died on floor 1 at 29 s | yes |
+| Stand-still baseline: `--idle --build=human6980 --mastery=full --start-floor=2`, route Ossuary Gate, Rust Ruins, Frostvault, 2 runs | both died on floor 2 (162 s and 86 s); lt50 0.49 and 0.53, damage 0.92 and 1.70 bars a minute, Mending 0.40 of 0.40 used, all three Last Breaths spent | already meets session 2's stand-still check on these two runs; session 2 runs the full 4 |
+| Mover: `--kite`, same build, from floor 2 | reached floor 3 at 21 of 142 HP (no stairs heal), died on floor 3 at 506 s; floor 2 lt50 0.33, damage 0.38 a minute, 30 dashes, 7 perfect dodges; floor 3 lt50 1.00 | idle took 2.4x and 4.5x the mover's damage a minute on floor 2 |
+| Mover from floor 3 (`--start-floor=3 --one-floor`, 420 s) | survived; lt50 0.37, damage 0.27 a minute, 77 dashes, 13 perfect dodges, 99 vents | |
+| Healing reserve | used to the last HP on every floor of every human-build run (0.40, 0.40, 0.32 of max health) | telemetry in place |
+| Fusion probe, idle bot, focus probes, hub walk | 0 `SCRIPT ERROR`; `[FUSION-CHECK] PASS`; `[HUB-WALK] PASS` | yes |
+
+**What's left for later sessions or Emil**
+- **Rebinding** in Options: only the vent mode switch exists; the map is fixed. A rebind screen
+  is a small task of its own.
+- **Hordes at the new zoom (4.6):** the 40-on-screen cap, spawn and lob rings near the player
+  and lobbers at 260 to 380 px belong with session 2's spawn work.
+- **The mover arrives at floor 3 on 15% health** with no stairs heal and the reserve spent:
+  session 2 should check its "3 of 4 movers reach floor 4" target against this before tuning
+  threats up. Hearts from elites and challenge rooms (section 10) arrive in session 3.
+- Elite and boss kill flourish without text: the existing kill effects stay; not re-checked.
+- Two stand-still runs, not four (usage); session 2 runs the full set.
+
+**Screenshots and windowed checks to take while Emil is away** (the windowed bot launcher of
+GDD section 0, never while he plays):
+1. `--read-shot` in a full floor-3 arena at zoom 1.6: arrows on every off-screen enemy within
+   700 px, key threats readable, the dash pips and the Mending bar on the HUD.
+2. The GDD fps check at the new zoom (heavy fights 60 fps, 1% low about 55).
+3. `--hurt-shot` and a dash close-up: afterimages, white rim, the recharge arc, the perfect-dodge
+   flash.
+4. A discovery line and the quiet gold big-hit number in a fight.
+
 ### Session 2: Threats and power curve
+
 
 Goal: standing still kills; most runs stay a fight to the end.
 - Room composition: crowd plus a key-threat budget per floor (section 8).
-- Lobber, earlier chargers, runner lunge, ring swarms, ground swell, Sower, Mortar and Tether
-  affixes, one hazard per region from floor 2; the fairness rules.
+- Lobber, earlier chargers, runner lunge, ring swarms, Sower, Mortar and Tether affixes, one
+  hazard per region from floor 2; the fairness rules. (No ground swell: Emil, 2026-11-10,
+  section 15.)
 - Run length: 4 arenas a floor, wave times of section 5.0.
 - Power curve: `E(f)`, `F(f)`, measured build factor at power 0.7 with the synergy split
   (synergy damage is tagged now; synergies arrive in session 4), elites 5 s, bosses 35 s on
@@ -984,8 +1072,9 @@ Goal: every room's reward and every shop visit is a decision; money is tight at 
 - Level-ups fewer and bigger, at room clear only, with rare picks.
 - Scrap budget per room, crowd factor cap, scrap gain cap (6.1); prices, reroll formula,
   locks, rarity tables, mystery ware (6.2 to 6.4).
-- Deal room, timed and elite challenge rooms, cursed loot (11.1). Quitting pays Embers like a
-  death (11.2).
+- Deal room, timed and elite challenge rooms, cursed loot (11.1). Quitting pays 75% of a
+  death's Embers (11.2; Emil, 2026-11-10, section 15).
+
 - `shop_leave` and `floor_loot` events; `pressure_report.py --shops --loot`.
 - Files: `room.gd`, `floor_gen.gd`, `room_data.gd`, `items.gd` (price, odds, curse flag),
   `drops.gd`, `enemy.gd` (elite drops), `main.gd`, `pedestal.gd`, `levelup.gd`,
@@ -1021,17 +1110,24 @@ spectacle.
 
 ## 15. Defaults Emil may want to change
 
+**Settled by Emil (2026-11-10, before session 1):**
+1. The vent fires on its own (the default stays; Options still has the button mode).
+2. **No ground swell.** Only enemies punish standing still; the floor hazard is dropped from
+   section 8 and from session 2's brief.
+3. **Quitting pays 75%** of a death's Embers award, not the full award (session 3).
+4. Gear sets become tags and resonances (the default stays; session 4).
+
 | Default | Alternative |
 |---|---|
-| The vent fires on its own (decision 18 leaves it off the buttons) | A vent button on LB, with the active on X |
-| Ground swell punishes standing 3 s in one spot | Only enemies punish standing still |
+| ~~The vent fires on its own~~ (settled: automatic) | A vent button on LB, with the active on X |
+| ~~Ground swell punishes standing 3 s in one spot~~ (settled: dropped) | Only enemies punish standing still |
 | Dash: 120 px, 0.2 s invulnerable, 1.0 s cooldown, RB / RT / Space | Shorter window (0.15 s) or a longer cooldown |
 | Camera zoom 1.6, arenas 1000 x 600 | Zoom 1.5 with today's rooms, or 1.8 with more arrows |
 | Power curve: power 0.7, cap 3.0, synergy damage at half | Power 0.6 (strong builds pull ahead more) or synergy damage not counted at all |
 | Armour as a percentage, 15 / (15 + armour) | Keep flat armour with a cap |
 | Leech only within 200 px | Leech anywhere, smaller |
-| Quitting pays the full death award | A penalty (say 75%), so finishing a floor is worth it |
-| Sets become tags and resonances | Keep named sets with their own bonuses |
+| ~~Quitting pays the full death award~~ (settled: 75%) | A penalty (say 75%), so finishing a floor is worth it |
+| ~~Sets become tags and resonances~~ (settled: tags and resonances) | Keep named sets with their own bonuses |
 | Mending reserve 40% a floor | 30% (harsher) or 50% (gentler) |
 | Level-ups: about 1.5 a floor, amounts doubled, 1 card in 10 a rare pick | 1 a floor with tripled amounts |
 | A fresh save draws from about 95 of 145 items | A smaller start (70) for more to unlock |
