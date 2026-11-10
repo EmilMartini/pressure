@@ -106,8 +106,10 @@ keeps it. Tweak the uniforms at the top of `scripts/post_fx.gd`; set `crt_curve`
 
 The same pass also lights the world (`scripts/art_pass.gd`, design doc "Art direction"):
 ambient times up to 16 point lights (torches, braziers, doorways, sun pools, one on each
-player) plus a region grade. It is on in the Rust Ruins and the Hollow; a fight lifts the
-darkness so it reads as before, and the mood returns when the room is clear. Options
+player) plus a region grade. Every region has its own recipe (since 2026-11-10: Ossuary Gate,
+the Gardens, the Cistern, Rust Ruins, Frostvault, the Forge, the Chapel of Ash and the Rift) and
+the whole Hollow is lit and dressed; a fight lifts the darkness so it reads as before, and the
+mood returns when the room is clear. Options
 "Lighting" (Settings `lighting`) or `--no-art` turns it off with its room dressing (wall
 faces, doorway jambs and spill, clutter, roots, the Gatewarden's gatehouse). Bot captures:
 `--clarity-rest` (the clarity room already cleared: `_rest.png` and `_rest_wall.png`),
@@ -115,7 +117,11 @@ faces, doorway jambs and spill, clutter, roots, the Gatewarden's gatehouse). Bot
 `--clarity-ab-off-first` (the off capture first), and tuning overrides `--art-amb=v`,
 `--art-pl=energy`, `--art-cap=v`, `--art-grade=0`; `--art-time` prints `[ART-DRESS]` (ms to
 dress each room). The room's plants are a registry for element reactions (`ArtPass.pieces_near`,
-`ArtPass.react`).
+`ArtPass.react`). In a fight the living layers stay on screen through a fight grade (70%
+opacity, muted saturation, luminance pulled towards the floor; `--art-fight=alpha,lum,sat`).
+`--art-probe` (headless) builds an arena per region and prints `[ART-PROBE]`: dressing coverage
+of the 1.6 camera's view and of the lanes, and the fight luminance bound `B_old` / `B_new`
+(design doc "Art direction", rollout).
 
 **Living world** (`scripts/living_world.gd`, the reactions in `ArtPass.Living`; design doc "Art
 direction", living world). Same switch (`lighting`, `--no-art`). Plants read the Materials grid

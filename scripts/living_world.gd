@@ -480,7 +480,7 @@ class Chains extends Node2D:
         name = "Chains"
         z_index = -1
 
-    ## kind "vine", "banner", "web", "chain"; n points `seg` px apart hanging from `anchor`.
+    ## kind "vine", "banner", "web", "chain", "lantern", "icicle"; n points `seg` px apart hanging from `anchor`.
     func add(kind: String, anchor: Vector2, n: int, seg: float, col: Color, width: float = 1.0) -> void:
         var pts := PackedVector2Array()
         for k in n:
@@ -492,7 +492,7 @@ class Chains extends Node2D:
         _t += delta
         _acc += delta
         if room != null:
-            modulate.a = 1.0 - ArtPass.fight_fade(room, 0.75) * ArtPass.fight_of(room)
+            ArtPass.grade_living(self, room, ArtPass.fight_of(room))
         var moved := false
         if _acc >= 1.0 / 30.0:
             _acc = minf(_acc - 1.0 / 30.0, 1.0 / 30.0)
@@ -540,8 +540,8 @@ class Chains extends Node2D:
                         c["alive"] = alive + 1
                         alive += 1
             var breeze := sin(_t * 0.9 + float(c["ph"])) * 0.05 + LivingWorld.gust_at(c["a"].x) * 0.5
-            if c["k"] == "web":
-                continue    # webs hold their shape (they only burn)
+            if c["k"] == "web" or c["k"] == "icicle":
+                continue    # webs and icicles hold their shape (they only burn or melt)
             var stiff := 0.98 if c["k"] == "chain" or c["k"] == "lantern" else 0.95
             for k in range(1, alive):
                 var p := pts[k]
@@ -563,6 +563,11 @@ class Chains extends Node2D:
 
     func _fall(pts: PackedVector2Array, from: int, c: Dictionary) -> void:
         var fx := _fx()
+        if c["k"] == "icicle":
+            # A melting icicle drips: water pixels, no embers, no scorch.
+            if fx != null and from < pts.size():
+                fx.pixels(Element.Kind.WET, global_position + pts[from], 1, 30.0, 3.0)
+            return
         if fx != null:
             for k in range(from, mini(int(c["alive"]), from + 1)):
                 fx.ember(global_position + pts[k])
@@ -627,8 +632,19 @@ class Chains extends Node2D:
                 for k in range(1, alive):
                     var d := global_position + pts[k] - at
                     if d.length_squared() < float(it[2]) * float(it[2]):
-                        pts[k] += Vector2(signf(d.x) if d.x != 0.0 else 1.0, 0.0) * 2.0
                         var el: int = it[1]
+                        if c["k"] == "icicle":
+                            # Ice doesn't bend: fire melts it from there, anything else snaps it.
+                            if el == Element.Kind.FIRE:
+                                ignite(c, k)
+                            elif el != Element.Kind.ICE and el >= 0 and el != Element.Kind.NONE:
+                                var fx := _fx()
+                                if fx != null:
+                                    fx.pixels(Element.Kind.ICE, global_position + pts[k], 3, 40.0, 3.0)
+                                c["alive"] = maxi(1, k)
+                                c["rg"] = 20.0
+                            break
+                        pts[k] += Vector2(signf(d.x) if d.x != 0.0 else 1.0, 0.0) * 2.0
                         if el == Element.Kind.FIRE:
                             ignite(c, k)
                         elif el == Element.Kind.ICE:
@@ -649,6 +665,8 @@ class Chains extends Node2D:
     ## A push (gale, blast) or a pull (void) at `at` (world) within `r`.
     func force(at: Vector2, r: float, strength: float) -> void:
         for c in chains:
+            if c["k"] == "icicle":
+                continue
             var pts: PackedVector2Array = c["pts"]
             for k in range(1, int(c["alive"])):
                 var d := global_position + pts[k] - at
@@ -720,13 +738,26 @@ class Chains extends Node2D:
                     else:
                         var p := _snap(pts[alive - 1]) + Vector2(0, float(c["seg"]))
                         draw_colored_polygon(PackedVector2Array([p + Vector2(-wd / 2.0, 0), p + Vector2(wd / 2.0, 0), p + Vector2(0, tx * 3.0)]), col.darkened(0.1))
+                "icicle":
+                    # Tapering ice: three texels wide at the root, one at the tip, a lit edge.
+                    for k in range(alive):
+                        var p := _snap(pts[k])
+                        var w := maxf(1.0, 3.0 - float(k) * 3.0 / float(maxi(1, int(c["n"]))))
+                        var r := Rect2(p - Vector2(roundf(w / 2.0) * tx, 0), Vector2(roundf(w) * tx, float(c["seg"])))
+                        draw_rect(r.grow(tx * 0.5), Color(0.04, 0.06, 0.10, 0.7))
+                        draw_rect(r, col.darkened(0.12 * float(k % 2)))
+                        draw_rect(Rect2(r.position, Vector2(tx, r.size.y)), col.lightened(0.25))
                 "web":
                     var a0 := _snap(pts[0])
                     for k in range(1, alive):
                         draw_line(a0, _snap(pts[k]), Color(col, 0.55), tx * 0.5)
                         if k > 1:
                             draw_line(_snap(pts[k - 1]), _snap(pts[k]), Color(col, 0.4), tx * 0.5)
-            if burn >= 0 and burn < alive:
+            if burn >= 0 and burn < alive and c["k"] == "icicle":
+                # Melting: a drip at the shrinking tip instead of flames.
+                var p := _snap(pts[burn]) + Vector2(0, float(c["seg"]) + float(step % 3) * tx)
+                draw_rect(Rect2(p, Vector2(tx, tx)), Color(0.60, 0.78, 0.95, 0.8))
+            elif burn >= 0 and burn < alive:
                 # The burning segment: small stepped flames, no glow on the floor.
                 var p := _snap(pts[burn])
                 draw_rect(Rect2(p - Vector2(tx, tx * 2.0), Vector2(tx * 2.0, tx * 2.0)), fire[step % 2])

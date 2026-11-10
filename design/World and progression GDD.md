@@ -2080,7 +2080,7 @@ completely in a fight (`ArtPass.fight_fade`).
 - The Gatewarden's room: `hub_gatewarden_alivebefore.png` / `hub_gatewarden_aliveafter.png`
   (the Gate: `hub_gate_alivebefore.png` / `hub_gate_aliveafter.png`).
 
-**Rollout status per region.**
+**Rollout status per region** (as of the living world; superseded by "Art rollout (2026-11-10)" below).
 
 | Region (theme) | Light recipe | Plants, chains, critters | River | Stairwell | Fight numbers |
 |---|---|---|---|---|---|
@@ -2099,7 +2099,132 @@ completely in a fight (`ArtPass.fight_fade`).
   needs the door drawing changed).
 - River carrying (Emil's decision above); when on, it could also ripple where the carried
   material arrives.
-- Critters and chains for the other regions and the rest of the Hollow.
+- Critters and chains for the other regions and the rest of the Hollow. (Done: "Art rollout" below.)
+
+#### Art rollout (2026-11-10): every region and the whole Hollow
+
+Emil: rooms "feel just as bland now as before". The causes: only Rust Ruins and the Hollow had a
+light recipe, only three regions had the living layer, the living layer faded hard in fights (to
+30%, or out completely in the Gardens and the Cistern), and the 1.6 camera on 1000 x 600 arenas
+showed the centre, which the dressing avoided. This rollout fixes all four. Code:
+`scripts/art_pass.gd` (recipes, `Living` kinds, the fight grade, `HubRoomDressing`),
+`scripts/living_world.gd` (icicles), `scripts/art_probe.gd` (`--art-probe`). Weekly usage 53% at
+the start. `VERSION` 2026.11.10-rollout1.
+
+**Recipes** (`ArtPass.RECIPES`, one per theme; each starts from ruins and changes colours, so the
+fight rules hold everywhere: ambient 1, cap 1, no grade, vignette 0.75, no scatter):
+
+| Region (theme) | Ambient at rest | Fire / spill / shafts | Rest floor | Living kit |
+|---|---|---|---|---|
+| Ossuary Gate (crypt) | cold violet-grey 0.46, 0.44, 0.54 | warm candle / pale moon / moonlight grates | 0.85, 0.85 | pale shrooms and grave grass, votive clusters, grave slabs and bone dust, an 8-spoke floor ring; dead roots, chains, cage lanterns, cobwebs; rats and beetles; bone dust falling |
+| Rotting Gardens (garden) | green dusk 0.46, 0.54, 0.40 | warm / yellow-green / warm sun | 0.95, 0.9 | grass and ferns, leaf litter, vines; critters; spores floating |
+| Drowned Cistern (cistern) | blue-teal 0.40, 0.50, 0.56 | torch / teal / grey drain light | 0.90, 0.88 | grass and pale shrooms, damp blotches, vines; critters, vents; motes |
+| Rust Ruins (ruins) | as before | as before | as before | as before, plus the island and wash changes below |
+| Frostvault (frozen) | pale 0.54, 0.60, 0.68 | cold blue-white / pale / skylights | 0.75, **0.6** (the fight contrast: light-floor rule) | ice crystals (melt in fire), frost mats at 26%, rime streaks, a 6-spoke frost ring; icicles (melt, snap, refreeze), no webs or banners; snow falling |
+| The Forge (forge) | smoky warm 0.58, 0.46, 0.42 | brazier / furnace glow / none | 0.90, 0.88 | slag lumps with a dim core (rest only; fire lights it, water quenches it with a puff, ice crusts it), soot, cinders and cracks; chains, dark red banners; vents; embers rising |
+| Chapel of Ash (sanctum) | ash-warm 0.52, 0.46, 0.44 | votive / gold / high windows | 0.85, 0.88 | ash stalks, three votive clusters, ash drifts, a 12-spoke floor ring; crimson and gold banners, two lit censers, cobwebs; critters; ash falling |
+| The Rift (void) | violet 0.46, 0.40, 0.58 | violet lamps / violet / none (rifts are light pools) | 0.85, 0.85 | void crystals and floating shards (bob over a shadow; gales push, void pulls, ice frosts, shock crackles), violet veins, a 5-spoke ring; rags and chains; void motes circling |
+
+Wall clutter mixes follow the theme (`mix`: bones in the crypt, rubble in the Forge and the Rift).
+Themes with their own wall lights keep them; the rest get the recipe's torches.
+
+**Fight grade, not fade** (`ArtPass.FIGHT_GRADE`, a shared canvas shader on `Living` and
+`Chains`). In a fight the living layers stay at 70% opacity, saturation x 0.55, and each pixel's
+luminance pulled to 0.43 of its distance from the theme's fight floor (`floor_l`, measured by the
+probe). A layer pixel then moves the floor's luminance by 0.70 x 0.43 = 0.30 of its rest
+difference, the same as the old 30% fade the paired test measured at parity in the Rust Ruins.
+The clarity metric reads luminance only, so the shapes and some hue stay on screen for free. The
+Gardens and the Cistern no longer fade out. Critters still hide, vents rest, the river still calms,
+motes halve, and the slag cores and sun beams go out (no warm glow in a fight).
+
+**At the 1.6 camera.** One more island per room (4 to 6, 170 px apart instead of 200), and an
+**interior wash** that may lie in the lanes and the centre clearing (never within 72 px of a door
+or on a blocker), held to a few percent of the floor's value: grave slabs, rime, soot and cinders,
+ash drifts, veins, damp, litter, plus a faint floor ring in four regions. Motes drift over the
+whole room. Lanes stay free of plants, props and islands.
+
+**Measured headless** (`--art-probe`; no renderer, so the probe paints the dressing's primitives
+over the theme's real tile pixels on a 2 px grid: tint, FLAT_FLOOR fight values and the floor
+veil, then the old fade and the new grade). A body or a shot drawn over the floor changes the
+clarity metric's per-pixel term by at most the floor's change (|E - F'| - |E - F| <= |F' - F|), so
+B, the mean floor change in a fight, bounds the change in enemy and shot contrast.
+
+| Region | floor_l | pieces / wash / chains | View touched | Lanes touched | B old fight | B new fight | p99 old / new |
+|---|---|---|---|---|---|---|---|
+| Ossuary Gate | 0.095 | 118 / 47 / 18 | 18.1%, 15.8% | 12.6%, 16.1% | 0.0000, 0.0000 | 0.0075, 0.0073 | 0.0000 / 0.0573 |
+| Rotting Gardens | 0.080 | 115 / 44 / 18 | 18.9%, 20.4% | 16.3%, 20.4% | 0.0000, 0.0000 | 0.0073, 0.0076 | 0.0000 / 0.0717 |
+| Drowned Cistern | 0.154 | 64 / 43 / 18 | 15.2%, 15.3% | 10.5%, 10.5% | 0.0000, 0.0000 | 0.0055, 0.0054 | 0.0000 / 0.0555 |
+| Rust Ruins | 0.093 | 127 / 43 / 18 | 15.1%, 12.6% | 9.0%, 9.2% | 0.0068, 0.0066 | 0.0067, 0.0065 | 0.0680 / 0.0673 |
+| Frostvault | 0.106 | 112 / 38 / 13 | 17.3%, 16.4% | 16.5%, 22.3% | 0.0000, 0.0000 | 0.0076, 0.0075 | 0.0000 / 0.0746 |
+| The Forge | 0.077 | 108 / 86 / 5 | 10.0%, 9.3% | 4.0%, 4.5% | 0.0000, 0.0000 | 0.0034, 0.0034 | 0.0000 / 0.0408 |
+| Chapel of Ash | 0.092 | 64 / 44 / 14 | 16.7%, 17.9% | 7.3%, 14.3% | 0.0000, 0.0000 | 0.0064, 0.0077 | 0.0000 / 0.0723 |
+| The Rift | 0.096 | 108 / 93 / 13 | 12.1%, 9.9% | 3.8%, 3.4% | 0.0000, 0.0000 | 0.0044, 0.0042 | 0.0000 / 0.0354 |
+
+(two layouts each: `open`, `four_pillars`; p99 from `open`)
+
+View touched: share of the 800 x 450 view at the room centre the dressing changes at rest. Lanes touched: the same inside the lanes and the centre clearing (the interior wash and the ring; before this pass 0 there). Frostvault uses `fight_lum` 0.34 (0.0084 at the global 0.43).
+
+Rust Ruins under the old fade gives B = 0.0068; the paired test measured that setting at parity
+(enemy 0.3062 against 0.3058, shots 0.3867 against 0.3871). The new grade gives 0.0067 there, and
+every region stays at or under 0.0077, so all of them sit in the envelope the paired test passed.
+The p99 column is the worst 1% of enemy positions (on an island). Caveats: the probe skips the
+ENDESGA palette snap and the mood lighting (a fight has none), and the old-fade column uses this
+build's dressing plan. The paired window test (`--clarity-ab`, both orders) per region is still
+the final word; commands below.
+
+**Checks** (headless, logs `autotest/rollout/`, local):
+
+| Check | Result | Session 4 |
+|---|---|---|
+| Load check | no errors | |
+| `--art-probe` (16 rooms) | 0 `SCRIPT ERROR`, every theme dressed | |
+| Stand-still, 2 runs (`--idle --build=human6980 --mastery=full --start-floor=2`, route Ossuary Gate, Rust Ruins, Frostvault, the Forge, the Rift) | both die on floor 2 at 110 s and 149 s; lt50 0.60, 1.40 bars a minute | 4 of 4 on floor 2, 85 to 111 s; lt50 0.65 to 0.78, 1.46 to 1.91 |
+| Movers, 2 runs (`--kite`, same) | both reach floor 4 (die there at 718 and 799 s); floor 2 damage 0.06 and 0.13 bars a minute; floor 3 lt50 0.20 and 0.48, 0.51 and 0.56 | 6 of 8 reach floor 4; floor 2 0.04 to 0.19; floor 3 0.00 to 0.52, 0.12 to 0.71 |
+| Fusion probe (`--one-floor --fusion-probe`) | `[FUSION-CHECK] PASS`, 0 errors | PASS |
+| Hub walk (fresh) | `[HUB-FRESH] PASS`, `[HUB-WALK] PASS` | PASS |
+| `tools/exe_smoke.sh` | `[SMOKE] ALL PASS` (on, off, player) | ALL PASS |
+| 0 `SCRIPT ERROR` | in every log | |
+
+Gameplay is unchanged within noise: the dressing is drawing only, and no new piece has collision.
+Emil's real save, mastery and runs.jsonl changed during this session, from a real run of his own
+(`bot: false`, build `2026.11.10-items+24d17ae`, 11:14 to 12:21); none of the rollout's runs wrote
+them (md5 checked again after the last run).
+
+**Screenshot commands for when Emil is away** (real windows through `tools/bot_window.sh`; never
+while he plays; at most 4 at once):
+
+```
+R2=ossuary_gate,rust_ruins
+for reg in "1 ossuary_gate" "2 ossuary_gate,rust_ruins" "2 ossuary_gate,rotting_gardens" "2 ossuary_gate,drowned_cistern" "3 ossuary_gate,rust_ruins,frostvault" "4 ossuary_gate,rust_ruins,frostvault,the_forge" "4 ossuary_gate,rust_ruins,frostvault,chapel_of_ash" "5 ossuary_gate,rust_ruins,frostvault,the_forge,the_rift"; do
+  set -- $reg
+  for s in 7 11; do
+    tools/bot_window.sh 300 autotest/roll_$2_$s.log 400000 --fixed-fps 60 --path . --audio-driver Dummy res://scenes/main.tscn -- --autotest --clarity-shot --clarity-spitters=8 --clarity-parts --clarity-ab --clarity-rest --build=storm --start-floor=$1 --route=$2 --seed=$s --tag=roll$s --instance=9$s
+    tools/bot_window.sh 300 autotest/roll_$2_${s}o.log 400000 --fixed-fps 60 --path . --audio-driver Dummy res://scenes/main.tscn -- --autotest --clarity-shot --clarity-spitters=8 --clarity-parts --clarity-ab --clarity-ab-off-first --build=storm --start-floor=$1 --route=$2 --seed=$s --tag=roll${s}o --instance=8$s
+  done
+done
+tools/bot_window.sh 120 autotest/roll_themes.log 200000 --path . --audio-driver Dummy res://scenes/main.tscn -- --themes-shot --instance=95
+tools/bot_window.sh 200 autotest/roll_hub.log 400000 --fixed-fps 60 --path . --audio-driver Dummy res://scenes/hub.tscn -- --hub-walk --hub-shot --instance=96
+tools/bot_window.sh 240 autotest/roll_react.log 400000 --fixed-fps 60 --path . --audio-driver Dummy res://scenes/main.tscn -- --autotest --alive-shot=react --build=storm --start-floor=3 --route=ossuary_gate,rust_ruins,frostvault --seed=7 --tag=roll --instance=97
+```
+
+Read the `[CLARITY-AVG]` and `[CLARITY-AB-NOART]` pairs: a region ships its grade if its fight
+numbers match the pass off within the pair spread (0.003 enemy, 0.002 shots). If one misses, lower
+`FIGHT_LUM` for that region (a recipe key would do) and run it again. Look at: `clarity_<region>_roll7_*_rest.png`
+(the mood at rest), the fight frames with and without `_noart`, `theme_*.png`, `hub_*_open.png`.
+
+**Rollout status per region (2026-11-10).**
+
+| Region (theme) | Light recipe | Living layer | Interior wash | Fight look | Fight numbers |
+|---|---|---|---|---|---|
+| Ossuary Gate (crypt) | yes | shrooms, votives, roots, chains, cages, webs, rats; bone dust | slabs, bone dust, ring | grade | probe bound in envelope; window pair owed |
+| Rotting Gardens (garden) | yes | as before, now kept in fights; spores | litter | grade (was faded out) | probe in envelope; window pair owed |
+| Drowned Cistern (cistern) | yes | as before plus shrooms, kept in fights | damp | grade (was faded out) | probe in envelope; window pair owed |
+| Rust Ruins (ruins) | yes | as before | litter | grade (= the old 30% in luminance) | measured at parity (old fade), probe equal |
+| Frostvault (frozen) | yes (light-floor rest floor) | crystals, frost mats, icicles; snow | rime, ring | grade (`fight_lum` 0.34) | probe in envelope; window pair owed |
+| The Forge (forge) | yes | slag, chains, vents; embers | soot, cinders, cracks | grade, cores out | probe in envelope; window pair owed |
+| Chapel of Ash (sanctum) | yes | ash stalks, votives, banners, censers; ash | ash drifts, ring | grade | probe in envelope; window pair owed |
+| The Rift (void) | yes, rift light pools | void crystals, floating shards; motes | veins, ring | grade | probe in envelope; window pair owed |
+| The Hollow | yes | all five rooms dressed: the Stair as before; the Fire (hearth ring, benches, runner, firewood, barrels, mantel, banners, candles), the Chapel (pews, aisle runner, altar, votive racks, banners, censers, ash), the Library (top-wall shelves, desk, map table, book piles, lanterns, dust), the Forge (furnace mouth, anvil, coal, quench barrel, chains, embers) | none | no fights | n/a |
 
 #### Difficulty pass (2026-11-09): pressure after the build comes online
 

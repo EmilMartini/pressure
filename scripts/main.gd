@@ -241,7 +241,7 @@ func _ready() -> void:
     Elements.reaction_fired.connect(_count_reaction)
     Elements.fusion_fired.connect(_on_fusion)
     Progress.unlocked.connect(_on_unlocked)
-    if args.has("--obstacle-test") or args.has("--start-shot") or args.has("--layouts-shot") or args.has("--themes-shot"):
+    if args.has("--obstacle-test") or args.has("--start-shot") or args.has("--layouts-shot") or args.has("--themes-shot") or args.has("--art-probe"):
         # Test hooks never touch the real save.
         Progress.save_path = "user://save_autotest.json"
         Progress.reset()
@@ -265,6 +265,8 @@ func _ready() -> void:
         _layouts_shot()
     if OS.get_cmdline_user_args().has("--themes-shot"):
         _themes_shot()
+    if OS.get_cmdline_user_args().has("--art-probe"):
+        add_child(ArtProbe.new(self))   # headless dressing coverage and fight bound (art_probe.gd)
     if OS.get_cmdline_user_args().has("--start-shot"):
         DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path("res://autotest"))
         await get_tree().create_timer(0.8).timeout
