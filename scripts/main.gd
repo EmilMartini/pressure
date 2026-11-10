@@ -1223,8 +1223,9 @@ func _on_player_died(_p: Player) -> void:
 
 
 ## Core loop reset 4.6 (decision 20): closer camera, bigger characters. At the 1280 x 720
-## base the view shows about 800 x 450 world px (1.3 showed about 985 x 554).
-const CAMERA_ZOOM := 1.6
+## base the view shows about 853 x 480 world px (1.3 showed about 985 x 554). Emil had it
+## eased from 1.6 to 1.5 on 2026-11-10 ("reduce the zoom just a tiny bit").
+const CAMERA_ZOOM := 1.5
 ## The camera leads up to CAMERA_LEAD of the view toward the nearest key threat, else the way
 ## you move; the room's camera limits keep it inside the walls.
 const CAMERA_LEAD := 0.15
