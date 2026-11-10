@@ -31,6 +31,22 @@ const ARCHETYPES := {
     "charge": ["charge", "charges up, then a rail through the line"],
     "mine": ["mine", "mines that burst when enemies step near"],
     "turret": ["turret", "deploys a turret that fires on its own"],
+    # Arsenal expansion batch 2: thrown styles (Thrown) and the new gun behaviours.
+    "knife": ["shot", "knives that stick, then fly back to you"],
+    "disc": ["shot", "bounces between enemies, then returns"],
+    "star": ["shot", "circles its target twice, then returns"],
+    "grenade": ["shot", "rolls, bounces once, bursts on a fuse"],
+    "javelin": ["shot", "a heavy javelin that pins its last foe"],
+    "bola": ["shot", "wraps the first foe and stops it"],
+    "anchor": ["shot", "thrown out, dragged back through the crowd"],
+    "revolver": ["shot", "a magazine of quick shots, then a reload"],
+    "bubble": ["shot", "slow bubbles that trap small foes"],
+    "bow": ["shot", "arrows that pierce and push"],
+    "sticky": ["shot", "darts that stick, then burst"],
+    "reflect": ["beam", "a ray that reflects off walls"],
+    "harpoon": ["shot", "a barbed shot that reels its foe in"],
+    "sniper": ["shot", "slow shots; long hits always crit"],
+    "hymn": ["shot", "hits harder as your health falls"],
 }
 
 ## Arsenal expansion 2.1: every weapon belongs to one of five families. The family comes
@@ -39,6 +55,8 @@ const FAMILIES := ["gun", "melee", "thrown", "summon", "ground"]
 const FAMILY_OF := {
     "melee": "melee",
     "boomerang": "thrown", "mortar": "thrown", "thrower": "thrown",
+    "knife": "thrown", "disc": "thrown", "star": "thrown", "grenade": "thrown", "javelin": "thrown",
+    "bola": "thrown", "anchor": "thrown",
     "turret": "summon",
     "nova": "ground", "mine": "ground",
 }
@@ -106,6 +124,8 @@ const MELEE_STYLES := ["sweep", "cleave", "thrust", "slam", "lash", "jab", "spin
 @export var fork_count: int = 0             # wand: bolts the shot splits into
 @export var ricochets: int = 0              # sling: rebounds off walls and enemies
 @export var paint_every: float = 0.0        # spray / beam: seconds between floor stamps
+@export var magazine: int = 0               # revolver: shots before a reload
+@export var reload_time: float = 0.0        # revolver: seconds to reload
 
 const PULSE := 0.3        # orb pulse interval, s
 const POOL_TICK := 0.5    # pool tick interval, s
@@ -144,7 +164,21 @@ func dps_at(dmg: float, rate: float) -> float:
             return dmg * rate * shots
         "turret":
             return dmg * rate * float(projectile_count)
+    if magazine > 0 and rate > 0.0:
+        # Revolver: the magazine at the trigger rate, then the reload.
+        var mag := float(magazine)
+        return dmg * shots * mag / (mag / rate + reload_time)
     match behaviour:
+        "knife", "anchor":
+            return dmg * rate * shots * 1.5   # out, and most of them back
+        "disc":
+            return dmg * rate * shots * 2.0   # out and back
+        "star":
+            return dmg * rate * shots * 3.0   # the throw and two laps
+        "grenade", "javelin", "bola", "bubble", "harpoon", "converge":
+            return dmg * rate * shots
+        "sticky":
+            return dmg * rate * shots * (1.0 + Thrown.STICKY_DART)
         "pool":
             # Pools overlap: each one ticks for `linger` seconds.
             return dmg / POOL_TICK * shots * minf(rate * linger, 3.0)
@@ -205,4 +239,34 @@ func how() -> String:
             return "Tosses mines that burst when an enemy steps near (%.0f s)" % linger
         "turret":
             return "Deploys a turret that fires on its own for %.0f s" % linger
+        "knife":
+            return "%d knives stick for %.1f s, then fly back" % [projectile_count, Thrown.STICK]
+        "disc":
+            return "Bounces between %d foes, then comes back" % (ricochets + 1)
+        "star":
+            return "Circles its target twice, then comes back"
+        "grenade":
+            return "Rolls, bounces once, bursts after %.1f s (%.0f px)" % [linger, splash_radius]
+        "javelin":
+            return ("Pierces %d; the last foe hit is pinned for 1 s" % pierce) if pierce > 0 else "Sticks in a foe and pins it for 1 s"
+        "bola":
+            return "Wraps the first foe: it stops for 1.2 s"
+        "anchor":
+            return "Thrown out, then dragged back: pulls foes to you"
+        "revolver":
+            return "%d quick shots, then a %.1f s reload" % [magazine, reload_time]
+        "bubble":
+            return "Slow bubbles: small foes are trapped for 0.6 s"
+        "bow":
+            return "Arrows pierce %d and push foes along the line" % pierce
+        "sticky":
+            return "Darts stick, then burst after 1 s (%.0f px)" % splash_radius
+        "reflect":
+            return "Continuous ray that reflects off walls %d times" % ricochets
+        "harpoon":
+            return "A barbed shot that reels its foe to you"
+        "sniper":
+            return "Slow shots; hits past 300 px always crit"
+        "hymn":
+            return "Up to triple damage as your health falls"
     return ""

@@ -199,7 +199,7 @@ const FAMILY_MULT := 1.5
 ## pool has none; `new_family` keeps to families the party carries none of (the floor-1
 ## pick), when one is unlocked. Legendaries never appear twice in a run.
 static func roll_gun(players: Array, exclude: Array = [], rarity: int = -1, min_rarity: int = 0, new_family: bool = false) -> String:
-    var ids: Array = Guns.ids().filter(func(id): return not exclude.has(id))
+    var ids: Array = Guns.ids().filter(func(id): return not exclude.has(id) and Trials.allows(String(id)))
     var profile := party_profile(players)
     var carried0: Dictionary = profile["carried"]
     ids = ids.filter(func(id): return not (Guns.rarity_of(String(id)) >= Items.Rarity.LEGENDARY and carried0.has(id)))

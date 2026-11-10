@@ -52,6 +52,8 @@ var _target_k := 0        # homing: rotates which enemy each volley's first seek
 var melee_n := 0          # melee: swings so far (finishers, spins)
 var swing_tilt := 0.0     # melee: 1 at a swing, the held weapon tilts back and returns
 var _ready_t := 0.0       # melee: the ready pose re-aims every READY_EVERY s
+var _mag := 0             # revolver: shots fired from the current magazine
+var _reload := 0.0        # revolver: seconds of reload left (drawn as a ring)
 const READY_EVERY := 0.15
 ## Focus targeting (Focus.update): ranked targets; shot or beam k goes to targets[k], extras
 ## doubling up on targets[0]. Empty outside auto aim.
@@ -131,7 +133,9 @@ func _process(delta: float) -> void:
             var back := sin(swing_tilt * PI) * 0.7
             _sprite.rotation += -back if not left else back
     _sprite.scale = Vector2.ONE * (1.0 + 0.08 * float(tier - 1))
-    if _charging or data.spin_up > 0.0:
+    if _reload > 0.0:
+        _reload = maxf(0.0, _reload - delta)
+    if _charging or data.spin_up > 0.0 or data.magazine > 0:
         queue_redraw()
 
 
@@ -148,6 +152,10 @@ func _draw() -> void:
     elif data.spin_up > 0.0 and _spin > 0.05:
         var s := clampf(_spin / data.spin_up, 0.0, 1.0)
         draw_arc(Vector2.ZERO, 13.0, -PI * 0.5, -PI * 0.5 + TAU * s, 18, Color(data.color(), 0.55), 1.5)
+    elif data.magazine > 0 and _reload > 0.0:
+        # Revolver: a thin ring fills while it reloads.
+        var rl := 1.0 - clampf(_reload / maxf(0.05, data.reload_time), 0.0, 1.0)
+        draw_arc(Vector2.ZERO, 13.0, -PI * 0.5, -PI * 0.5 + TAU * rl, 18, Color(0.85, 0.85, 0.9, 0.5), 1.5)
 
 
 func display_name() -> String:
@@ -210,6 +218,8 @@ func fire_rate() -> float:
     if data.spin_up > 0.0:
         spin = lerpf(GunData.SPIN_FLOOR, 1.0, clampf(_spin / data.spin_up, 0.0, 1.0))
     var fam := 0.0
+    if data.family == "thrown":
+        fam = player.stat("throw_rate")
     if data.family == "melee":
         # Swing speed (2.2): its own stat plus half the shot speed.
         fam = player.stat("swing_speed") + 0.5 * (player.stat("proj_speed") + player.stat("shot_speed") + _gm("g_speed"))
@@ -256,7 +266,14 @@ func strike(el: int = -1) -> Strike:
     var ek := element_key()
     var s := Strike.new()
     s.element = data.element if el < 0 else el
-    var fam_dmg := player.stat("melee_dmg") if data.family == "melee" else player.stat("gun_dmg") if data.family == "gun" else 0.0
+    var fam_dmg := 0.0
+    match data.family:
+        "melee":
+            fam_dmg = player.stat("melee_dmg")
+        "gun":
+            fam_dmg = player.stat("gun_dmg")
+        "thrown":
+            fam_dmg = player.stat("thrown_dmg")
     s.damage = data.damage * tier_mult() * maxf(0.1, 1.0 + player.stat("dmg") + player.stat("dmg_" + ek) + _gm("g_dmg") + fam_dmg)
     s.potency = s.damage * data.reaction_mult * (1.0 + potency_bonus(player.stat("potency") + player.stat("potency_" + ek)))
     s.crit = randf() < player.stat("crit")
@@ -265,6 +282,9 @@ func strike(el: int = -1) -> Strike:
         s.damage *= crit_mult
         s.potency *= 1.0 + (crit_mult - 1.0) * 0.5
     s.damage *= 1.0 + 0.5 * (maxf(0.3, 1.0 + player.stat("shot_size")) - 1.0)
+    if data.archetype == "hymn" and player.max_hp > 0.0:
+        # Blood Hymn: up to triple damage as your health falls.
+        s.damage *= 1.0 + 2.0 * (1.0 - clampf(player.hp / player.max_hp, 0.0, 1.0))
     s.extras = extra_elements()
     s.color = Element.COLORS[s.element]
     s.shooter = player
@@ -333,7 +353,17 @@ func fire(dir: Vector2) -> void:
             cooldown = maxf(1.0 / rate, data.burst_gap * float(burst - 1) + 0.05)
             _burst_left = burst - 1
             _burst_timer = data.burst_gap
+            if data.id == "ember_scattergun" and player.nearest_enemy(90.0) != null:
+                _burst_left += 1   # point blank: a second blast
+                _burst_timer = 0.09
             _shoot(dir)
+            if data.magazine > 0:
+                # Revolver: the magazine empties, then a slow reload.
+                _mag += 1
+                if _mag >= data.magazine:
+                    _mag = 0
+                    _reload = data.reload_time * data.fire_rate / maxf(0.05, rate)
+                    cooldown = maxf(cooldown, _reload)
     _recoil = 5.0 + float(data.weight) if kick > 0.5 else 2.0
     player.add_pressure(data.pressure_per_shot * (1.0 + _gm("g_pressure")))
     if kick != 0.0:
@@ -361,7 +391,7 @@ func shoot_from(muzzle: Vector2, dir: Vector2, focus := false) -> void:
     var size_mult := maxf(0.3, 1.0 + player.stat("shot_size"))
     var spectral := player.stat("spectral") > 0.0
     var boomerang := player.stat("boomerang") > 0.0
-    var bounces := int(player.stat("bounce"))
+    var bounces := int(player.stat("bounce")) + int(_gm("g_bounce"))
     # Straight guns take on the shape the gear asks for; other behaviours keep theirs.
     var shape := data.behaviour
     if shape == "straight":
@@ -373,6 +403,9 @@ func shoot_from(muzzle: Vector2, dir: Vector2, focus := false) -> void:
             shape = "flak"
     var lifetime := data.lifetime * (1.0 + player.stat("range") + _gm("g_range"))
     var lobbed := shape == "lob" or shape == "pool"
+    if lobbed:
+        speed *= 1.0 + player.stat("lob_speed")   # Overarm
+    var thrown_kind := Thrown.handles(shape)
     # Lobbed shells land on the nearest enemy (or most of the way out when there is none).
     var lob_dist := 0.0
     if lobbed:
@@ -387,7 +420,7 @@ func shoot_from(muzzle: Vector2, dir: Vector2, focus := false) -> void:
         targets = _targets_by_distance(muzzle, effective_range() * 1.2, maxi(count, 4))
         _target_k += 1
     var shot_element: int = data.element
-    var split := focus and count > 1 and data.projectile_count <= 1 and not lobbed and shape != "homing" and shape != "helix"
+    var split := focus and count > 1 and data.projectile_count <= 1 and not lobbed and shape != "homing" and shape != "helix" and shape != "star" and shape != "converge"
     if focus and not targets.is_empty():
         var t0 = targets[0]
         if is_instance_valid(t0) and t0 is Enemy:
@@ -432,12 +465,23 @@ func shoot_from(muzzle: Vector2, dir: Vector2, focus := false) -> void:
         p.knockback = data.knockback
         p.aura_radius = data.aura_radius * size_mult * (1.0 + 0.1 * float(tier - 1))
         p.linger = data.linger
+        if data.family == "thrown" and shape == "pool":
+            p.linger *= 1.0 + player.stat("state_duration")   # pools last longer (2.2)
+        if data.archetype == "sniper":
+            p.far_crit = 300.0
+        if data.archetype == "repeater" and data.element == Element.Kind.ICE and data.spin_up > 0.0:
+            # Rime Repeater: each hit chills a little more as it spins up.
+            p.potency *= 1.0 + clampf(_spin / data.spin_up, 0.0, 1.0)
         p.fork_count = data.fork_count
         p.ricochet_walls = data.ricochets > 0
         if shape == "helix":
             p.helix_sign = 1.0 if i % 2 == 0 else -1.0
         if shape == "homing" and not targets.is_empty():
             p.home_target = targets[(i + _target_k) % targets.size()]
+        if thrown_kind or (shape == "boomerang" and data.id == "crossing_axes"):
+            Thrown.prepare(p, self, muzzle, shot_dir, i, count)
+        if data.id == "crossing_axes" and count > 1:
+            p.velocity = p.velocity.rotated(0.55 * (1.0 if i % 2 == 0 else -1.0))
         if spectral and not lobbed:
             # Spectral: the obstacle grace never runs out, so walls of rock and crates are ignored.
             p.spectral = true
@@ -449,7 +493,7 @@ func shoot_from(muzzle: Vector2, dir: Vector2, focus := false) -> void:
         world.add_child(p)
     # Rear Guard: one more shot straight back per copy.
     var rear := int(player.stat("rear_shots"))
-    if rear > 0 and not lobbed:
+    if rear > 0 and not lobbed and not thrown_kind:
         for r in rear:
             var q := Projectile.new()
             q.velocity = (-dir).rotated(deg_to_rad(randf_range(-12.0, 12.0) + (float(r) - float(rear - 1) * 0.5) * 14.0)) * speed

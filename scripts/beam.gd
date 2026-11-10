@@ -30,6 +30,7 @@ var _sfx_cd := 0.0
 var _paint_cd := 0.0
 var _clouds: Dictionary = {}
 var _hit_points: Array = []
+var _segs: Array = []   # reflect (Glint Beam): [from, to] after each bounce off a wall
 static var _add_material: CanvasItemMaterial
 
 
@@ -69,8 +70,9 @@ func _process(delta: float) -> void:
     dir = dir.rotated(clampf(dir.angle_to(want), -turn, turn))
     origin = gun.global_position + dir * 12.0
     # The drawn end follows the sweep between ticks (cheap: the trace is a few cell reads).
-    var reach := origin.distance_to(end)
-    end = origin + dir * reach
+    if _segs.is_empty():
+        var reach := origin.distance_to(end)
+        end = origin + dir * reach
     queue_redraw()
 
 
@@ -102,6 +104,9 @@ func tick(aim: Vector2, s: Strike, reach: float, pierce: int, w: float) -> void:
     elif tr[1] != null and _prop_cd <= 0.0:
         _prop_cd = PROP_GAP
         s.touch_world(tree, end, 6.0, dir)
+    _segs.clear()
+    if gun.data.ricochets > 0 and tr[1] == null and n < 1 + pierce:
+        _reflect(s, tree, reach - origin.distance_to(end), pierce, w, hits)
     var length := origin.distance_to(end)
     var steps := int(length / 60.0)
     for k in steps + 1:
@@ -117,7 +122,50 @@ func tick(aim: Vector2, s: Strike, reach: float, pierce: int, w: float) -> void:
         Sfx.shoot(element, origin)
 
 
+## Glint Beam: the ray bounces off walls and the room's edge `ricochets` times; each leg hits
+## the first 1 + pierce foes it crosses that the ray has not hit this tick.
+func _reflect(s: Strike, tree: SceneTree, left: float, pierce: int, w: float, seen: Array) -> void:
+    var p := end
+    var d := dir
+    var rm := Room.here
+    for r in gun.data.ricochets:
+        if left <= 12.0 or rm == null or not is_instance_valid(rm):
+            return
+        var box := Rect2(rm.global_position + rm.rect.position, rm.rect.size).grow(8.0)
+        var bx := p + Vector2(d.x * 8.0, 0.0)
+        var by := p + Vector2(0.0, d.y * 8.0)
+        var flip_x := not box.has_point(bx) or (rm.has_walls and rm.blocks_shot(bx))
+        var flip_y := not box.has_point(by) or (rm.has_walls and rm.blocks_shot(by))
+        if not flip_x and not flip_y:
+            flip_x = true
+            flip_y = true
+        d = Vector2(-d.x if flip_x else d.x, -d.y if flip_y else d.y)
+        var a := p + d * 6.0
+        var tr2: Array = Strike.trace(tree, a, d, left)
+        var b: Vector2 = tr2[0]
+        var k := 0
+        for e in Strike.enemies_on_line(tree, a, b, w):
+            if seen.has(e):
+                continue
+            seen.append(e)
+            s.hit(e, 1.0, e.global_position)
+            _hit_points.append(e.global_position)
+            k += 1
+            if k >= 1 + pierce:
+                b = a + d * maxf(8.0, (e.global_position - a).dot(d))
+                _segs.append([a, b])
+                return
+        _segs.append([a, b])
+        left -= a.distance_to(b)
+        p = b
+        if tr2[1] != null:
+            return
+
+
 func _draw() -> void:
+    for sg in _segs:
+        draw_line(sg[0], sg[1], Color(color, 0.14), width * 2.6)
+        draw_line(sg[0], sg[1], Color(color, 0.6), width * 0.8)
     var a := origin
     var b := end
     var flick := 0.8 + 0.2 * sin(_t * 47.0)

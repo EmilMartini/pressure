@@ -502,13 +502,14 @@ const VIAL_CHANCE_CAP := 0.60
 
 ## Tags and resonances (3.1, section 12; Emil's decision: sets became these). Owning 3 items
 ## with a tag forms its resonance; 5 doubles it and adds a visual tier.
-const TAGS := ["vent", "guard", "gunslinger", "seeker", "alchemy", "swift", "fortune", "blade"]
+const TAGS := ["vent", "guard", "gunslinger", "seeker", "alchemy", "swift", "fortune", "blade", "thrown"]
 const TAG_NAMES := { "vent": "Vent", "guard": "Guard", "gunslinger": "Gunslinger", "seeker": "Seeker",
-    "alchemy": "Alchemy", "swift": "Swift", "fortune": "Fortune", "blade": "Blade" }
+    "alchemy": "Alchemy", "swift": "Swift", "fortune": "Fortune", "blade": "Blade", "thrown": "Thrown" }
 const TAG_COLORS := {
     "vent": Color(1.00, 0.55, 0.25), "guard": Color(0.65, 0.72, 0.85), "gunslinger": Color(0.95, 0.80, 0.50),
     "seeker": Color(0.55, 0.85, 1.00), "alchemy": Color(0.50, 0.95, 0.55), "swift": Color(0.60, 1.00, 0.92),
     "fortune": Color(1.00, 0.85, 0.30), "blade": Color(0.82, 0.84, 0.92),
+    "thrown": Color(0.80, 0.70, 0.55),
 }
 const RESONANCE_AT := [3, 5]
 ## Tag -> [mods at 3, line at 3]. At 5 every number doubles. An element tag gives +25%
@@ -523,6 +524,8 @@ const RESONANCES := {
     "fortune": [{ "shop_wares": 1, "luck": 0.10 }, "Shops stock 1 more ware"],
     # Arsenal expansion 5.3: at 5 it doubles and swings send a short wave past their reach.
     "blade": [{ "reach": 0.15, "swing_speed": 0.15 }, "Reach and swing speed +15%"],
+    # Arsenal expansion 5.3: at 5 it doubles and thrown objects split in two on their last hit.
+    "thrown": [{ "thrown_bounce": 1 }, "+1 bounce or return hit"],
 }
 
 ## Synergies (section 12): two specific items (or an item and a tag's resonance), built on
@@ -609,6 +612,8 @@ func resonance_mods(tag: String, tier: int) -> Dictionary:
         out[k] = float(base[k]) * float(tier)
     if tag == "blade" and tier >= 2:
         out["blade_wave"] = 1.0
+    if tag == "thrown" and tier >= 2:
+        out["thrown_split"] = 1.0
     return out
 
 
@@ -1067,6 +1072,8 @@ func fire(player: Player, event: String, ctx: Dictionary) -> void:
                 continue
             if t.get("melee", false) and Guns.family_of(String(ctx.get("gun", ""))) != "melee":
                 continue   # a Blade item's trigger: only hits and kills by a melee weapon
+            if t.has("family") and Guns.family_of(String(ctx.get("gun", ""))) != String(t["family"]):
+                continue   # a family item's trigger (Thrown): only hits and kills by that family
             if t.has("every"):
                 var ckey := "%d:%s:%d" % [player.get_instance_id(), id, ti]
                 var seen: int = int(_counters.get(ckey, 0)) + 1
@@ -1249,6 +1256,8 @@ func _do(t: Dictionary, player: Player, ctx: Dictionary) -> void:
                     shoot(player, pos, el2, int(t.get("count", 1)), potency, target if tv else null)
         "ward":
             player.ward_t = maxf(player.ward_t, float(t.get("secs", 3.0)))
+        "recall":
+            Thrown.recall_all(player, float(t.get("mult", 2.0)))
 
 
 ## The element a vent makes for this player: what they last vented, else hot fire / cold ice.
@@ -1486,6 +1495,55 @@ func _build_catalog() -> void:
     _add("ember_whetstone", "Ember Whetstone", "trinket", U, "Burning foes take +25% from melee", { "melee_vs_burning": 0.25 }, [], { "tags": ["blade", "fire"], "locked": true, "element": "fire" })
     _add("soaked_edge", "Soaked Edge", "ring", C, "20% of melee hits soak the foe", {}, [{ "on": "hit", "melee": true, "chance": 0.20, "do": "apply", "element": "wet", "potency": 4 }], { "tags": ["blade", "wet"], "locked": true, "element": "wet" })
     _add("mending_steel", "Mending Steel", "chest", R, "Melee kills mend 1 health", {}, [{ "on": "kill", "melee": true, "do": "heal", "amount": 1 }], BO)
+
+    # ======================= ARSENAL EXPANSION BATCH 2 (5.1, 5.2): Thrown items. All start
+    # locked and open through the thrown unlocks in progress.gd. "family": "thrown" on a
+    # trigger means only hits and kills by a thrown weapon fire it; "catch" is a returning
+    # weapon reaching you.
+    var TW := { "tags": ["thrown"], "locked": true }
+    var TWO := { "tags": ["thrown"], "locked": true, "stack": "once" }
+    # Thrown passives (12, behaviour).
+    _add("return_grip", "Return Grip", "hands", R, "Returning weapons hit twice as hard", { "return_mult": 1.0 }, [], TWO)
+    _add("fletching", "Fletching", "trinket", U, "+1 bounce on discs, +1 lap on stars", { "disc_bounce": 1 }, [], TW)
+    _add("double_fuse", "Double Fuse", "trinket", R, "Grenades burst twice", { "grenade_twice": 1 }, [], TWO)
+    _add("sticky_fingers", "Sticky Fingers", "hands", U, "Stuck knives poison foes that touch them", { "stuck_poison": 1 }, [], { "tags": ["thrown", "poison"], "locked": true, "stack": "once" })
+    _add("overarm", "Overarm", "chest", C, "Lobs fly 30% faster", { "lob_speed": 0.30 }, [], TW)
+    _add("quick_draw", "Quick Draw", "hands", C, "+15% throw rate", { "throw_rate": 0.15 }, [], TW)
+    _add("deep_pockets", "Deep Pockets", "chest", U, "+3 stuck knives; they stay 50% longer", { "knife_cap": 3, "stuck_time": 0.5 }, [], TW)
+    _add("heavy_hand", "Heavy Hand", "hands", U, "Pins and bolas hold 50% longer", { "pin_time": 0.5 }, [], TW)
+    _add("rim_shot", "Rim Shot", "ring", U, "Discs grow 10% with every bounce", { "disc_grow": 0.10 }, [], TW)
+    _add("catch_spark", "Catch Spark", "ring", R, "Catching a returning weapon: +8% damage for 2 s", {}, [{ "on": "catch", "do": "buff", "key": "dmg", "amount": 0.08, "secs": 2.0 }], TWO)
+    _add("shrapnel_pouch", "Shrapnel Pouch", "trinket", U, "Grenades burst into 4 more shards", { "grenade_shards": 4 }, [], TW)
+    _add("pin_cushion", "Pin Cushion", "trinket", R, "Stunned and pinned foes take +25% from thrown", { "vs_stunned": 0.25 }, [], TWO)
+    # Thrown mods (6): they fit any weapon.
+    _add("weighted_tip", "Weighted Tip", "mod", C, "This weapon: +20% damage, -10% speed", { "g_dmg": 0.20, "g_speed": -0.10 }, [], TW)
+    _add("spin_grip", "Spin Grip", "mod", U, "This weapon: +1 bounce", { "g_bounce": 1 }, [], TW)
+    _add("barbed_edge", "Barbed Edge", "mod", U, "This weapon: hits also bleed, -10% damage", { "extra_element": "blood", "g_dmg": -0.10 }, [], TW)
+    _add("throwing_strap", "Throwing Strap", "mod", C, "This weapon: +25% range", { "g_range": 0.25 }, [], TW)
+    _add("twin_throw", "Twin Throw", "mod", R, "This weapon: +1 throw or shot, -20% damage", { "g_count": 1, "g_dmg": -0.20 }, [], TW)
+    _add("fletched_shaft", "Fletched Shaft", "mod", U, "This weapon: +25% speed, +1 pierce", { "g_speed": 0.25, "g_pierce": 1 }, [], TW)
+    # Thrown actives (2).
+    _add("recall", "Recall", "active", U, "Use: every knife flies back, hitting twice as hard", {}, [],
+        { "tags": ["thrown"], "locked": true, "active": { "charges": 3, "do": [{ "do": "recall", "mult": 2.0 }] } })
+    _add("knife_storm", "Knife Storm", "active", R, "Use: throw 8 blades at the nearest foe", {}, [],
+        { "tags": ["thrown"], "locked": true, "active": { "charges": 2, "do": [{ "do": "shoot", "element": "gun", "count": 8, "potency": 8 }] } })
+    # Element items: a state item and a reaction item each for Fire, Ice, Wet, Shock and Oil.
+    _add("kindling_pouch", "Kindling Pouch", "trinket", U, "Thrown hits on oiled foes set them alight", {}, [{ "on": "hit", "family": "thrown", "if": "target_oiled", "chance": 0.5, "do": "apply", "element": "fire", "potency": 5 }], { "tags": ["thrown", "fire"], "locked": true, "element": "fire" })
+    _add("frost_quiver", "Frost Quiver", "chest", U, "Frozen foes take +25% from thrown", { "thrown_vs_frozen": 0.25 }, [], { "tags": ["thrown", "ice"], "locked": true, "element": "ice" })
+    _add("damp_satchel", "Damp Satchel", "chest", C, "20% of thrown hits soak the foe", {}, [{ "on": "hit", "family": "thrown", "chance": 0.20, "do": "apply", "element": "wet", "potency": 4 }], { "tags": ["thrown", "wet"], "locked": true, "element": "wet" })
+    _add("copper_wire", "Copper Wire", "ring", U, "Thrown hits on wet foes may arc lightning", {}, [{ "on": "hit", "family": "thrown", "if": "target_wet", "chance": 0.25, "do": "chain", "potency": 5 }], { "tags": ["thrown", "shock"], "locked": true, "element": "shock" })
+    _add("pitch_pot", "Pitch Pot", "trinket", C, "25% of thrown hits oil the foe", {}, [{ "on": "hit", "family": "thrown", "chance": 0.25, "do": "apply", "element": "oil", "potency": 4 }], { "tags": ["thrown", "oil"], "locked": true, "element": "oil" })
+    _add("firebrand_sash", "Firebrand Sash", "chest", R, "Inferno throws 3 embers at foes nearby", {}, [{ "on": "reaction:Inferno", "do": "shoot", "element": "fire", "count": 3, "potency": 5 }], { "tags": ["thrown", "fire"], "locked": true, "element": "fire" })
+    _add("rime_bandolier", "Rime Bandolier", "chest", U, "Thermal Shock chills foes nearby", {}, [{ "on": "reaction:Thermal Shock", "do": "spread", "element": "ice", "radius": 100, "potency": 4 }], { "tags": ["thrown", "ice"], "locked": true, "element": "ice" })
+    _add("cold_current", "Cold Current", "feet", U, "Deep Freeze slows foes nearby", {}, [{ "on": "reaction:Deep Freeze", "do": "slow", "radius": 140 }], { "tags": ["thrown", "wet"], "locked": true, "element": "wet" })
+    _add("storm_bangle", "Storm Bangle", "ring", R, "Plasma arcs to 2 more foes", {}, [{ "on": "reaction:Plasma", "do": "chain", "count": 2, "radius": 220, "potency": 5 }], { "tags": ["thrown", "shock"], "locked": true, "element": "shock" })
+    _add("slick_spool", "Slick Spool", "trinket", U, "Black Ice oils foes nearby", {}, [{ "on": "reaction:Black Ice", "do": "spread", "element": "oil", "radius": 110, "potency": 4 }], { "tags": ["thrown", "oil"], "locked": true, "element": "oil" })
+    # Behaviour, plain and trade-off (5).
+    _add("magnet_glove", "Magnet Glove", "hands", U, "Returning weapons drag foes toward you", { "return_pull": 1 }, [], TWO)
+    _add("second_throw", "Second Throw", "ring", R, "Every 5th thrown kill throws 2 blades onward", {}, [{ "on": "kill", "family": "thrown", "every": 5, "every_per": -1, "do": "shoot", "element": "gun", "count": 2, "potency": 8 }], TW)
+    _add("fuse_cutter", "Fuse Cutter", "trinket", C, "Grenade fuses burn 40% faster", { "fuse_cut": 0.40 }, [], TWO)
+    _add("hunters_oath", "Hunter's Oath", "head", R, "Thrown +30% damage, guns -20% damage", { "thrown_dmg": 0.30, "gun_dmg": -0.20 }, [], TWO)
+    _add("throwing_gloves", "Throwing Gloves", "hands", C, "+12% thrown damage", { "thrown_dmg": 0.12 }, [], TW)
 
     _add("slipstream_boots", "Slipstream Boots", "feet", R, "Dashing leaves a 2 s trail of your vent element", {}, [{ "on": "dash", "do": "trail", "element": "vent", "secs": 2.0, "secs_per": 1.0 }], { "tags": ["swift", "vent"] })
     _add("shoulder_charge", "Shoulder Charge", "chest", R, "Dashing through enemies hits them for gun damage", { "dash_hit": 1.0 }, [], { "tags": ["swift", "guard"] })

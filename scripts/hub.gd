@@ -53,6 +53,7 @@ const STATIONS := [
     { "id": "armory", "name": "ARMORY", "sub": "guns and gear", "pos": Vector2(760, -40), "tile": Vector2i(42, 9), "icon": "item/weapon/ranged/crossbow_2.png", "tint": Color(1.0, 0.6, 0.3), "verb": "browse", "style": "plinth", "room": "forge" },
     { "id": "workshop", "name": "WORKSHOP", "sub": "options", "pos": Vector2(1020, -40), "tile": Vector2i(41, 5), "icon": "gui/spells/earth/maxwells_silver_hammer.png", "tint": Color(0.85, 0.8, 0.7), "verb": "tinker", "style": "plinth", "room": "forge" },
     { "id": "mirror", "name": "MIRROR", "sub": "names", "pos": Vector2(250, -520), "tile": Vector2i(31, 0), "icon": "item/misc/mirror.png", "tint": Color(0.6, 0.85, 1.0), "verb": "look", "style": "plinth", "room": "chapel" },
+    { "id": "trials", "name": "TRIALS", "sub": "challenge runs", "pos": Vector2(210, 560), "tile": Vector2i(31, 0), "icon": "item/scroll/scroll-blue.png", "tint": Color(0.95, 0.75, 0.45), "verb": "read", "style": "plinth", "room": "stair" },
     { "id": "trophies", "name": "", "sub": "", "pos": Vector2(-60, -580), "tile": Vector2i(9, 11), "tint": LIT, "verb": "all achievements", "style": "wall", "room": "chapel" },
 ]
 
@@ -113,6 +114,10 @@ var _relic_back: Button
 var _map_center: CenterContainer
 var _map_back: Button
 var _map_list: Label
+var _trials_center: CenterContainer
+var _trials_body: VBoxContainer
+var _trials_back: Button
+var _pending_trial := ""   # a Trial picked on the board, set on Progress at Descend
 const WELL_POS := Vector2(330, -60)
 var _cv: CanvasItem = null     # where _text and prompts draw (the Crisp proxy)
 var ambience: Ambience = null
@@ -484,6 +489,9 @@ func _use_station(id: String) -> void:
             _open(_names_center, _name_edits[0])
         "workshop":
             _open(_options_center, null)
+        "trials":
+            _fill_trials()
+            _open(_trials_center, _trials_first())
 
 
 ## Each station opens its own part of the Journal (Journal.set_view).
@@ -623,6 +631,7 @@ func _show_class_select() -> void:
 
 
 func _close_class_select() -> void:
+    _pending_trial = ""   # backed out of the Gate: the next Descend is a normal run
     if _class_select != null:
         _class_select.queue_free()
         _class_select = null
@@ -686,6 +695,8 @@ func _descend_probe() -> void:
 
 
 func _on_class_picked(lo: Dictionary) -> void:
+    Progress.trial = _pending_trial
+    _pending_trial = ""
     Progress.loadout = lo
     Progress.save()
     # Deferred: Descend runs inside the click's (or key's) own input dispatch, and swapping
@@ -724,7 +735,7 @@ func _build_ui() -> void:
     _ui.add_child(_hint)
 
     _pad.on_cancel = func():
-        if _overlay in [_esc_center, _explainer_center, _journal_center, _mastery_center, _names_center, _ledger_center, _talk_root]:
+        if _overlay in [_esc_center, _explainer_center, _journal_center, _mastery_center, _names_center, _ledger_center, _talk_root, _trials_center]:
             _close_overlay()
     _pad.on_tab = func(step: int):
         if _overlay == _journal_center:
@@ -743,6 +754,7 @@ func _build_ui() -> void:
     _options_center.add_child(_options)
     _build_names()
     _build_ledger()
+    _build_trials()
     _build_explainer()
     _build_consent()
     _build_esc_menu()
@@ -856,6 +868,71 @@ func _build_ledger() -> void:
     mcol.add_child(_map_list)
     _map_back = UiTheme.button("Back", _close_overlay)
     mcol.add_child(_map_back)
+
+
+## The Trials board (Arsenal expansion 6.2): challenge runs with one rule each. A Trial
+## goes through the Gate's loadout screen like any run; backing out of it cancels the Trial.
+func _build_trials() -> void:
+    _trials_center = _center()
+    var panel := PanelContainer.new()
+    panel.custom_minimum_size = Vector2(820, 0)
+    _trials_center.add_child(panel)
+    var col := VBoxContainer.new()
+    col.add_theme_constant_override("separation", 8)
+    panel.add_child(col)
+    col.add_child(UiTheme.label("THE TRIALS", 40, LIT))
+    _trials_body = VBoxContainer.new()
+    _trials_body.add_theme_constant_override("separation", 10)
+    col.add_child(_trials_body)
+    _trials_back = UiTheme.button("Back", _close_overlay)
+    col.add_child(_trials_back)
+
+
+func _fill_trials() -> void:
+    for c in _trials_body.get_children():
+        _trials_body.remove_child(c)
+        c.queue_free()
+    var opened := Trials.open()
+    if not opened:
+        _trials_body.add_child(UiTheme.label("The board opens after %d runs (%d so far)." % [Trials.OPENS_AFTER, Progress.stat("runs_started")], 22, UiTheme.DIM))
+    for id in Trials.ORDER:
+        var d: Dictionary = Trials.DEFS[id]
+        var won := Trials.won(String(id))
+        var row := VBoxContainer.new()
+        row.add_theme_constant_override("separation", 2)
+        var title := UiTheme.label("%s%s" % [d["name"], "   (won)" if won else ""], 26, Color(0.55, 1.0, 0.7) if won else UiTheme.BONE)
+        title.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+        row.add_child(title)
+        var rule := UiTheme.label(String(d["rule"]), 20, UiTheme.DIM)
+        rule.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+        rule.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+        rule.custom_minimum_size = Vector2(780, 0)
+        row.add_child(rule)
+        var names: Array = []
+        for r in d["rewards"]:
+            names.append(Progress.unlock_label(String(r)))
+        var rew := UiTheme.label(("Opened: " if won else "Win to open: ") + ", ".join(names), 20, UiTheme.DIM)
+        rew.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+        row.add_child(rew)
+        if opened:
+            var tid := String(id)
+            var b := UiTheme.button("Begin %s" % d["name"], func(): _begin_trial(tid))
+            row.add_child(b)
+        _trials_body.add_child(row)
+
+
+func _trials_first() -> Control:
+    for row in _trials_body.get_children():
+        for c in row.get_children():
+            if c is Button:
+                return c
+    return _trials_back
+
+
+func _begin_trial(id: String) -> void:
+    _close_overlay()
+    _show_class_select()
+    _pending_trial = id   # after _show_class_select: only Descend from here starts the Trial
 
 
 ## The Wellkeeper's stall: what waits in the Well (a button each, priced by rarity), what
@@ -1470,7 +1547,7 @@ func _hub_walk() -> void:
     if Progress.npc_home("cartographer"):
         plan.append(["cartographer", "World map", _map_center])
     if _settled():
-        plan.append_array([["armory", "", _journal_center], ["workshop", "", _options_center], ["mirror", "", _names_center], ["trophies", "", _journal_center]])
+        plan.append_array([["armory", "", _journal_center], ["workshop", "", _options_center], ["mirror", "", _names_center], ["trophies", "", _journal_center], ["trials", "", _trials_center]])
     plan.append(["gatewarden", "Descend", null])
     var ok := not fresh or on_show == ["keeper", "gatewarden", "gate"]
     var p := players[0]
@@ -1516,6 +1593,15 @@ func _hub_walk() -> void:
             for i in (_journal.allowed if not _journal.allowed.is_empty() else range(Journal.TABS.size())):
                 tabs.append(Journal.TABS[i])
             opened += " (%s)" % ", ".join(tabs)
+        if _overlay == _trials_center:
+            var begins := 0
+            for row in _trials_body.get_children():
+                for c in row.get_children():
+                    if c is Button:
+                        begins += 1
+            opened += " (%d trials, %d open)" % [Trials.ORDER.size(), begins]
+            if Trials.open():
+                good = good and begins == Trials.ORDER.size()
         if _overlay == _relic_center:
             var first := _relic_first()
             if first != _relic_back:
@@ -1569,7 +1655,7 @@ func _loadout_check() -> bool:
 func _overlay_name() -> String:
     if _overlay == null:
         return "nothing"
-    for pair in [[_relic_center, "relics"], [_map_center, "map"], [_mastery_center, "talents"], [_ledger_center, "ledger: " + (_ledger_title.text if _ledger_title != null else "")], [_journal_center, "journal"], [_options_center, "options"], [_names_center, "names"], [_talk_root, "talk"], [_esc_center, "menu"]]:
+    for pair in [[_trials_center, "trials"], [_relic_center, "relics"], [_map_center, "map"], [_mastery_center, "talents"], [_ledger_center, "ledger: " + (_ledger_title.text if _ledger_title != null else "")], [_journal_center, "journal"], [_options_center, "options"], [_names_center, "names"], [_talk_root, "talk"], [_esc_center, "menu"]]:
         if _overlay == pair[0]:
             return String(pair[1])
     return "?"

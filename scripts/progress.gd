@@ -9,7 +9,7 @@ signal unlocked(unlock_id: String, achievement_name: String)
 const SAVE_PATH := "user://save.json"
 
 ## Always available, run one included.
-const BASE_UNLOCKS := ["gun:water_pistol", "gun:arc_rifle", "gun:flare_pistol", "gun:slick_wand", "gun:tin_sabre", "obstacle:pool", "mark:vagrant"]
+const BASE_UNLOCKS := ["gun:water_pistol", "gun:arc_rifle", "gun:flare_pistol", "gun:slick_wand", "gun:tin_sabre", "gun:steel_knives", "obstacle:pool", "mark:vagrant"]
 
 ## stat: the Progress stat that counts toward it. goal: the number to reach.
 ## Phase 3: the counter guns below moved to lessons (scripts/lessons.gd): oil_slinger,
@@ -209,6 +209,54 @@ const ACHIEVEMENTS := [
         "stat": "kills_melee", "goal": 5000, "rewards": ["gun:twin_fangs", "item:frostbite_steel"] },
     { "id": "melee_mastery_13", "name": "Blades XIII", "desc": "Kill 6500 enemies with melee weapons",
         "stat": "kills_melee", "goal": 6500, "rewards": ["gun:eclipse_scythe"] },
+    # Arsenal expansion batch 2 (6.2): thrown and the new guns. Play goals open the Commons
+    # and Uncommons, each with one Thrown item; thrown mastery (kills by thrown weapons)
+    # opens the rest in family order. Steel Knives is in BASE_UNLOCKS; three Rares and Epics
+    # come from the first Trials (Trials.DEFS).
+    { "id": "thrown_play_1", "name": "Knife Thrower", "desc": "Kill 200 enemies",
+        "stat": "kills", "goal": 200, "rewards": ["gun:clay_grenade", "item:throwing_gloves"] },
+    { "id": "thrown_play_2", "name": "Tangled", "desc": "Clear 15 rooms",
+        "stat": "rooms", "goal": 15, "rewards": ["gun:shock_bola", "item:quick_draw"] },
+    { "id": "thrown_play_3", "name": "Long Arm", "desc": "Kill 10 elites",
+        "stat": "elites", "goal": 10, "rewards": ["gun:frost_javelin", "item:damp_satchel"] },
+    { "id": "thrown_play_4", "name": "Firebug", "desc": "Vent 30 times",
+        "stat": "vents", "goal": 30, "rewards": ["gun:fire_bottle", "item:pitch_pot"] },
+    { "id": "thrown_play_5", "name": "Discus", "desc": "Set off 500 reactions",
+        "stat": "reactions", "goal": 500, "rewards": ["gun:tide_discus", "item:overarm"] },
+    { "id": "thrown_play_6", "name": "Fan Dancer", "desc": "Start 6 runs",
+        "stat": "runs_started", "goal": 6, "rewards": ["gun:venom_fan", "item:fuse_cutter"] },
+    { "id": "thrown_play_7", "name": "Star Gazer", "desc": "Discover 10 different reactions",
+        "stat": "reactions_discovered", "goal": 10, "rewards": ["gun:wind_star", "item:throwing_strap"] },
+    { "id": "gun_play_1", "name": "Six Shooter", "desc": "Kill 300 enemies",
+        "stat": "kills", "goal": 300, "rewards": ["gun:old_six", "item:weighted_tip"] },
+    { "id": "gun_play_2", "name": "Cold Hands", "desc": "Clear 25 rooms",
+        "stat": "rooms", "goal": 25, "rewards": ["gun:rime_repeater", "item:frost_quiver"] },
+    { "id": "gun_play_3", "name": "Bubbles", "desc": "Start 3 runs",
+        "stat": "runs_started", "goal": 3, "rewards": ["gun:bubble_gun", "item:cold_current"] },
+    { "id": "gun_play_4", "name": "Close Quarters", "desc": "Kill 15 elites",
+        "stat": "elites", "goal": 15, "rewards": ["gun:ember_scattergun", "item:kindling_pouch"] },
+    { "id": "gun_play_5", "name": "Archer", "desc": "Clear 8 floors",
+        "stat": "floors", "goal": 8, "rewards": ["gun:gale_longbow", "item:fletched_shaft"] },
+    { "id": "gun_play_6", "name": "Dartboard", "desc": "Kill 900 enemies",
+        "stat": "kills", "goal": 900, "rewards": ["gun:acid_darts", "item:slick_spool"] },
+    { "id": "gun_play_7", "name": "Marksman", "desc": "Beat 6 bosses",
+        "stat": "bosses", "goal": 6, "rewards": ["gun:longshot", "item:barbed_edge"] },
+    { "id": "thrown_mastery_1", "name": "Throws I", "desc": "Kill 60 enemies with thrown weapons",
+        "stat": "kills_thrown", "goal": 60, "rewards": ["gun:holy_water", "item:sticky_fingers", "item:heavy_hand"] },
+    { "id": "thrown_mastery_2", "name": "Throws II", "desc": "Kill 150 enemies with thrown weapons",
+        "stat": "kills_thrown", "goal": 150, "rewards": ["gun:void_grenade", "item:shrapnel_pouch", "item:rime_bandolier"] },
+    { "id": "thrown_mastery_3", "name": "Throws III", "desc": "Kill 300 enemies with thrown weapons",
+        "stat": "kills_thrown", "goal": 300, "rewards": ["gun:etching_javelin", "item:deep_pockets", "item:recall"] },
+    { "id": "thrown_mastery_4", "name": "Throws IV", "desc": "Kill 500 enemies with thrown weapons",
+        "stat": "kills_thrown", "goal": 500, "rewards": ["gun:halo_disc", "item:rim_shot", "item:fletching"] },
+    { "id": "thrown_mastery_5", "name": "Throws V", "desc": "Kill 800 enemies with thrown weapons",
+        "stat": "kills_thrown", "goal": 800, "rewards": ["gun:storm_kunai", "item:copper_wire", "item:spin_grip"] },
+    { "id": "thrown_mastery_6", "name": "Throws VI", "desc": "Kill 1200 enemies with thrown weapons",
+        "stat": "kills_thrown", "goal": 1200, "rewards": ["gun:cluster_bomb", "item:double_fuse", "item:storm_bangle"] },
+    { "id": "thrown_mastery_7", "name": "Throws VII", "desc": "Kill 1800 enemies with thrown weapons",
+        "stat": "kills_thrown", "goal": 1800, "rewards": ["gun:crossing_axes", "item:magnet_glove", "item:firebrand_sash", "item:catch_spark"] },
+    { "id": "thrown_mastery_8", "name": "Throws VIII", "desc": "Kill 2600 enemies with thrown weapons",
+        "stat": "kills_thrown", "goal": 2600, "rewards": ["gun:drowned_anchor", "item:second_throw", "item:knife_storm", "item:twin_throw"] },
 ]
 
 var save_path := SAVE_PATH
@@ -237,6 +285,10 @@ var well_saved: Array = []
 var lessons: Dictionary = {}
 ## The lesson the last run taught, for the payout and the Hollow ("" if none).
 var run_lesson := ""
+## The Trial of the run in progress (Trials), "" for a normal run. Not saved: the hub's
+## board sets it at Descend, the run's end clears it. Wins live in world["trials_won"].
+var trial := ""
+var run_trial_won := ""
 ## World state (Shortcuts, phase 4): { "shortcuts": { id: { "run": runs started when it
 ## opened } } }. Opened shortcuts never close. Version 4 of the save; older saves load
 ## with an empty world.
@@ -449,7 +501,25 @@ func end_run(won: bool, floor_number: int, kills: int, embers: int = 0, region: 
                     unlocks[r] = true
                     run_unlocks.append(r)
                     unlocked.emit(r, lname)
-    history.append({ "won": won, "floor": floor_number, "kills": kills, "unlocks": run_unlocks.duplicate(), "embers": embers, "region": region, "killer": killer })
+    run_trial_won = ""
+    if trial != "" and won:
+        # A Trial won (Trials): its rewards open once, announced like an achievement.
+        var tw: Dictionary = world.get("trials_won", {})
+        if not bool(tw.get(trial, false)):
+            tw[trial] = true
+            world["trials_won"] = tw
+            run_trial_won = trial
+            var tname := "Trial: %s" % Trials.name_of(trial)
+            for r in Trials.DEFS[trial]["rewards"]:
+                if not unlocks.has(r):
+                    unlocks[r] = true
+                    run_unlocks.append(r)
+                    unlocked.emit(r, tname)
+    var entry := { "won": won, "floor": floor_number, "kills": kills, "unlocks": run_unlocks.duplicate(), "embers": embers, "region": region, "killer": killer }
+    if trial != "":
+        entry["trial"] = trial
+    trial = ""
+    history.append(entry)
     if history.size() > 50:
         history.pop_front()
     if won:

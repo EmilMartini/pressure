@@ -46,8 +46,11 @@ func _physics_process(delta: float) -> void:
     _tick -= delta
     if _tick <= 0.0:
         _tick = GunData.POOL_TICK
+        var holy := strike.gun_id == "holy_water"
         for e in Strike.enemies_in(get_tree(), global_position, radius):
             strike.hit(e, 1.0, e.global_position)
+            if holy and is_instance_valid(e) and not e.is_queued_for_deletion():
+                e.marked_t = maxf(e.marked_t, GunData.POOL_TICK + 0.1)   # Holy Water: reactions inside hit harder
         var fx := Strike.fx_of(self)
         if fx != null:
             fx.mote(strike.element, global_position + Vector2.RIGHT.rotated(randf() * TAU) * radius * randf())

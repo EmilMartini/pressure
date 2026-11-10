@@ -51,7 +51,27 @@ var grow := 0.0             # Long Fuse: the shot swells by this share over its 
 var pull := 0.0             # Gravity Shot: drags enemies within this many px toward it
 var rebound := 0            # Rebound: walls send it back this many times
 var signature := Color(0, 0, 0, 0)   # a synergy's colour: halo and tail (section 12)
+var far_crit := 0.0         # Longshot: hits this far from the muzzle always crit (0 = off)
 var _r0 := 4.0
+## Thrown state (Thrown, Arsenal expansion 2.4): flying, stuck, returning or orbiting, and
+## what each style keeps between ticks.
+var t_state := 0
+var t_timer := 0.0
+var t_tick := 0.0
+var t_anchor: Node2D = null
+var t_offset := Vector2.ZERO
+var t_speed0 := 0.0
+var t_mult := 1.0
+var t_last: Node2D = null
+var t_jumps := 0
+var t_angle := 0.0
+var t_laps := 0.0
+var t_point := Vector2.INF
+var t_bounced := false
+var t_child := false
+var t_split := false
+var t_fresh := false
+var _hand := Vector2.ZERO   # where it left the hand, from the shooter's centre (returns aim there)
 
 var _hit: Dictionary = {}
 var _clouds_hit: Dictionary = {}
@@ -81,8 +101,12 @@ func _ready() -> void:
     _pierce0 = pierce
     _r0 = radius
     _base = global_position
+    if shooter != null and is_instance_valid(shooter):
+        _hand = global_position - shooter.global_position
     if home_target != null:
         _home_target = home_target
+    if Thrown.handles(behaviour):
+        Thrown.setup(self)
     if behaviour == "lob" or behaviour == "pool":
         # In the air: no contact with anything until it lands (see _physics_process).
         z_index = 6
@@ -118,6 +142,9 @@ func _bend(delta: float) -> void:
 func _physics_process(delta: float) -> void:
     if _landed:
         return
+    if Thrown.handles(behaviour):
+        Thrown.tick(self, delta)
+        return
     _age += delta
     var lobbed := behaviour == "lob" or behaviour == "pool"
     if grow > 0.0:
@@ -151,11 +178,18 @@ func _physics_process(delta: float) -> void:
         "boomerang":
             if not _returning and lifetime <= _life0 * 0.5:
                 _turn_back()
+            elif helix_sign != 0.0:
+                # Crossing Axes: each axe curves back toward the throw line, so the pair
+                # meets where they turn.
+                velocity = velocity.rotated(-helix_sign * 1.1 / maxf(0.2, _life0 * 0.5) * delta)
             if _returning:
-                # Back along the throw line to where it left the hand (so it crosses what it
-                # cut on the way out), caught early if the shooter is in its path.
-                var to_home := _base - global_position
-                if to_home.length() < 18.0 or (shooter != null and is_instance_valid(shooter) and shooter.global_position.distance_to(global_position) < 18.0):
+                # Back to where the shooter is now (2.4: moving matters), at 1.2x the
+                # outward speed; it vanishes quietly on reaching them.
+                var home := shooter.global_position + _hand if shooter != null and is_instance_valid(shooter) else _base
+                var to_home := home - global_position
+                if to_home.length() < 18.0:
+                    if shooter != null and is_instance_valid(shooter):
+                        Items.fire(shooter, "catch", { "pos": global_position, "gun": gun_id })
                     queue_free()
                     return
                 velocity = to_home.normalized() * velocity.length()
@@ -233,6 +267,8 @@ func _physics_process(delta: float) -> void:
 
 func _exit_tree() -> void:
     live -= 1
+    if t_speed0 > 0.0:
+        Thrown.forget(self)
 
 
 ## Enemy bodies the shot's circle touches now; each one it did not touch at the last check
@@ -269,8 +305,15 @@ func _turn_back() -> void:
         pierce = 99   # Reaper's Return: the way back cuts through everything
         Items.note_syn("reapers_return")
     _ob_grace = 0.2
-    velocity = -velocity
+    velocity = -velocity * Thrown.RETURN_SPEED
     lifetime = maxf(lifetime, _life0 * 0.5 + 0.8)
+    if helix_sign > 0.0 and gun_id == "crossing_axes":
+        # Crossing Axes: where the pair meets, both elements land on everything near.
+        for e in Strike.enemies_in(get_tree(), global_position, 70.0):
+            e.apply_element(Element.Kind.FIRE, potency, shooter)
+            if is_instance_valid(e) and not e.is_queued_for_deletion():
+                e.apply_element(Element.Kind.ICE, potency, shooter)
+        Elements.nova.emit(global_position, 70.0, Color(1.0, 0.85, 0.9, 0.35))
 
 
 ## Lob: the shell comes down and splashes everything within splash_radius at full damage.
@@ -385,6 +428,8 @@ func _fx() -> Fx:
 
 
 func _draw() -> void:
+    if Thrown.handles(behaviour) and Thrown.draw(self):
+        return
     var dir := velocity.normalized() if velocity != Vector2.ZERO else Vector2.RIGHT
     var side := dir.orthogonal()
     var lobbed := behaviour == "lob" or behaviour == "pool"
@@ -399,7 +444,8 @@ func _draw() -> void:
         var arc := clampf(_life0 * velocity.length() * 0.35, 30.0, 140.0)
         var h := sin(PI * t) * arc
         draw_set_transform(Vector2.ZERO, 0.0, Vector2(1.0, 0.45))
-        draw_circle(Vector2.ZERO, radius * (1.2 - 0.4 * sin(PI * t)), Color(0, 0, 0, 0.45))
+        # A small dark shadow under the shell (2.4: 25% alpha), never a landing marker.
+        draw_circle(Vector2.ZERO, radius * (1.2 - 0.4 * sin(PI * t)), Color(0, 0, 0, 0.25))
         draw_set_transform(Vector2(0, -h), 0.0, Vector2.ONE)
     elif _trail.size() > 1 and element != Element.Kind.OIL:
         if signature.a > 0.0:
@@ -495,6 +541,10 @@ func _draw() -> void:
 
 
 func _on_body_entered(body: Node) -> void:
+    if Thrown.handles(behaviour):
+        if not _landed:
+            Thrown.on_body(self, body)
+        return
     if _landed or behaviour == "lob" or behaviour == "pool" or behaviour == "orb":
         return
     if body is Obstacle or (body.is_in_group("obstacles") and body.has_method("apply_element")):
@@ -567,7 +617,14 @@ func _hit_prop(prop: Prop) -> void:
 ## The shared hit path (Strike.deal): raw damage with the element-vs-state multipliers,
 ## then the element and coatings, attributed to the gun.
 func _deal_hit(enemy: Enemy, dmg: float, pot: float) -> void:
-    Strike.deal(enemy, dmg, pot, element, extra_elements, color, crit, shooter, gun_id, global_position)
+    var c := crit
+    if far_crit > 0.0 and not crit and _base.distance_to(global_position) >= far_crit:
+        # Longshot: a long hit always crits.
+        c = true
+        var cm := 2.0 + (shooter.stat("crit_dmg") if shooter != null and is_instance_valid(shooter) else 0.0)
+        dmg *= cm
+        pot *= 1.0 + (cm - 1.0) * 0.5
+    Strike.deal(enemy, dmg, pot, element, extra_elements, color, c, shooter, gun_id, global_position)
 
 
 ## This shot's numbers as a Strike (for the pools, pulses and splits it makes).

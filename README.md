@@ -698,7 +698,9 @@ Arsenal expansion (`design/Arsenal expansion.md`): `--family-probe=<family>` (ba
 `melee`) starts with four weapons of that family at tier II and the human build's items;
 with `--kite --mastery=full` it is the family probe (at least 2 of 4 runs reach floor 3),
 with `--idle --start-floor=2 --build=human6980` the family stand-still check (all die by the
-end of floor 3).
+end of floor 3). Batch 2 adds `--family-probe=thrown` (Steel Knives, Clay Grenade, Shock
+Bola, Frost Javelin) and `--trial=<id>` (`blades_only`, `no_guns`, `one_element`: the run
+starts under that Trial's rule and prints `[TRIAL]`).
 Core loop reset, session 1 (`design/Core loop reset.md`): `--focus-probe` starts with an
 Etcher Beam with two beams and adds three guns at 25 s; every bot floor prints `[HANDS]`
 (dashes, perfect dodges, vents, the Mending reserve, fight texts a minute), `[QUIET]` (fight

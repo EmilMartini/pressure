@@ -43,7 +43,7 @@ static func sprite_for(id: String, part: String) -> Texture2D:
 
 ## Whether this module draws the weapon (it has no gun icon tile).
 static func draws(id: String) -> bool:
-    return Guns.DEFS.has(id) and Guns.family_of(id) == "melee" and Art.gun_icon_path(id) == ""
+    return Guns.DEFS.has(id) and Art.gun_icon_path(id) == ""
 
 
 ## The weapon's 32 px icon: the art pack's, else the code-drawn shape.
@@ -103,6 +103,102 @@ static func icon(id: String) -> Texture2D:
             _poly(img, pts, METAL)
             for k in 8:
                 _stroke(img, pts[k], pts[k + 1], 1.5, edge if k % 2 == 0 else second)
+        # --- Thrown (batch 2): the object itself -----------------------------------
+        "knife":
+            for k in 3:
+                var o := Vector2(float(k) * 4.0 - 4.0, float(1 - k) * 4.0 + 4.0)
+                _poly(img, [Vector2(8, 24) + o, Vector2(10, 26) + o, Vector2(24, 8) + o, Vector2(22, 6) + o], METAL)
+                _stroke(img, Vector2(10, 25) + o, Vector2(23, 8) + o, 1.0, edge)
+                _stroke(img, Vector2(5, 27) + o, Vector2(9, 23) + o, 2.0, GRIP)
+        "disc":
+            _disc(img, Vector2(16, 16), 11.0, METAL_DARK)
+            _disc(img, Vector2(16, 16), 9.0, edge)
+            _disc(img, Vector2(16, 16), 4.0, Color(0, 0, 0, 0))
+            _stroke(img, Vector2(9, 12), Vector2(13, 8), 1.5, Color(1, 1, 1, 0.9))
+        "star":
+            var spts: Array = []
+            for k in 8:
+                spts.append(Vector2(16, 16) + Vector2.RIGHT.rotated(PI * 0.25 * float(k) + 0.2) * (13.0 if k % 2 == 0 else 4.5))
+            _poly(img, spts, edge)
+            _disc(img, Vector2(16, 16), 2.5, METAL)
+        "grenade":
+            _disc(img, Vector2(15, 18), 9.0, edge.darkened(0.3))
+            _stroke(img, Vector2(10, 13), Vector2(20, 23), 1.5, edge.lightened(0.2))
+            _poly(img, [Vector2(17, 6), Vector2(23, 7), Vector2(22, 11), Vector2(18, 10)], METAL_DARK)
+            _stroke(img, Vector2(22, 7), Vector2(27, 3), 1.0, Color(0.9, 0.8, 0.6))
+        "javelin":
+            _stroke(img, Vector2(3, 29), Vector2(23, 9), 2.0, WOOD)
+            _poly(img, [Vector2(20, 7), Vector2(30, 2), Vector2(25, 12)], edge)
+            _stroke(img, Vector2(6, 26), Vector2(9, 23), 3.0, METAL_DARK)
+        "bola":
+            _stroke(img, Vector2(8, 24), Vector2(16, 14), 1.0, Color(0.6, 0.5, 0.35))
+            _stroke(img, Vector2(16, 14), Vector2(25, 9), 1.0, Color(0.6, 0.5, 0.35))
+            _stroke(img, Vector2(16, 14), Vector2(22, 25), 1.0, Color(0.6, 0.5, 0.35))
+            for c in [Vector2(8, 24), Vector2(25, 9), Vector2(22, 25)]:
+                _disc(img, c, 4.0, edge)
+        "anchor":
+            _stroke(img, Vector2(16, 5), Vector2(16, 26), 3.0, METAL_DARK)
+            _stroke(img, Vector2(10, 10), Vector2(22, 10), 2.0, METAL_DARK)
+            _disc(img, Vector2(16, 4), 2.5, METAL)
+            for k in 9:
+                var t := float(k) / 8.0
+                _disc(img, Vector2(16, 18) + Vector2(0, 1).rotated(lerpf(-1.4, 1.4, t)) * 9.0, 1.6, edge)
+            _disc(img, Vector2(16, 18) + Vector2(0, 1).rotated(-1.4) * 9.0, 2.2, second)
+            _disc(img, Vector2(16, 18) + Vector2(0, 1).rotated(1.4) * 9.0, 2.2, second)
+        "boomerang":
+            _poly(img, [Vector2(6, 8), Vector2(16, 4), Vector2(26, 10), Vector2(21, 12), Vector2(15, 9), Vector2(9, 13)], edge)
+            _poly(img, [Vector2(6, 24), Vector2(16, 28), Vector2(26, 22), Vector2(21, 20), Vector2(15, 23), Vector2(9, 19)], second)
+            _stroke(img, Vector2(4, 16), Vector2(28, 16), 1.5, WOOD)
+        "pool":
+            _poly(img, [Vector2(13, 4), Vector2(19, 4), Vector2(19, 10), Vector2(13, 10)], Color(0.6, 0.5, 0.4))
+            _disc(img, Vector2(16, 19), 9.0, Color(0.75, 0.8, 0.85, 0.9))
+            _disc(img, Vector2(16, 21), 7.0, edge)
+            _stroke(img, Vector2(11, 15), Vector2(13, 13), 1.5, Color(1, 1, 1, 0.9))
+        # --- New guns (batch 2), by archetype ------------------------------------------
+        "revolver", "repeater", "sniper", "hymn", "shotgun", "sticky":
+            var long := 24.0 if d.style == "sniper" else (18.0 if d.style == "repeater" else 15.0)
+            _poly(img, [Vector2(6, 26), Vector2(10, 29), Vector2(15, 21), Vector2(11, 18)], WOOD if d.style != "hymn" else Color(0.45, 0.12, 0.14))
+            _stroke(img, Vector2(12, 20), Vector2(12 + long * 0.7, 20 - long * 0.7), 4.0 if d.style == "shotgun" else 3.0, METAL_DARK)
+            _stroke(img, Vector2(13, 19), Vector2(12 + long * 0.7, 20 - long * 0.7), 1.0, edge)
+            if d.style == "revolver":
+                _disc(img, Vector2(15, 17), 3.5, METAL)
+                _disc(img, Vector2(15, 17), 1.5, edge)
+            elif d.style == "repeater":
+                for k in 3:
+                    _stroke(img, Vector2(16 + k * 3, 16 - k * 3), Vector2(19 + k * 3, 19 - k * 3), 1.0, METAL)
+            elif d.style == "sniper":
+                _stroke(img, Vector2(14, 13), Vector2(20, 7), 2.5, METAL)
+            elif d.style == "sticky":
+                _poly(img, [Vector2(23, 9), Vector2(29, 3), Vector2(26, 11)], edge)
+            elif d.style == "hymn":
+                _disc(img, Vector2(17, 15), 3.0, edge)
+            if d.behaviour == "converge":
+                _disc(img, Vector2(26, 6), 3.0, second)
+        "bubble":
+            _poly(img, [Vector2(6, 26), Vector2(10, 29), Vector2(15, 21), Vector2(11, 18)], Color(0.9, 0.55, 0.3))
+            _stroke(img, Vector2(12, 20), Vector2(19, 13), 4.0, Color(0.4, 0.75, 0.9))
+            _disc(img, Vector2(24, 8), 5.0, Color(edge, 0.5))
+            _disc(img, Vector2(22, 6), 1.2, Color(1, 1, 1, 0.9))
+        "bow":
+            var bpts: Array = []
+            for k in 11:
+                bpts.append(Vector2(16, 16) + Vector2.RIGHT.rotated(lerpf(-2.3, 0.75, float(k) / 10.0)) * 12.0)
+            for k in 10:
+                _stroke(img, bpts[k], bpts[k + 1], 2.0, WOOD)
+            _stroke(img, bpts[0], bpts[10], 1.0, Color(0.9, 0.9, 0.85))
+            _stroke(img, Vector2(6, 26), Vector2(26, 6), 1.5, METAL)
+            _poly(img, [Vector2(26, 3), Vector2(29, 6), Vector2(24, 8)], edge)
+        "reflect":
+            _poly(img, [Vector2(5, 25), Vector2(9, 29), Vector2(16, 22), Vector2(12, 18)], METAL_DARK)
+            _poly(img, [Vector2(14, 16), Vector2(22, 8), Vector2(26, 12), Vector2(18, 20)], Color(0.8, 0.9, 1.0))
+            _stroke(img, Vector2(22, 10), Vector2(29, 3), 1.5, edge)
+            _stroke(img, Vector2(26, 6), Vector2(30, 10), 1.0, edge)
+        "harpoon":
+            _stroke(img, Vector2(4, 28), Vector2(14, 18), 4.0, METAL_DARK)
+            _stroke(img, Vector2(14, 18), Vector2(27, 5), 1.5, METAL)
+            _poly(img, [Vector2(30, 2), Vector2(24, 4), Vector2(28, 8)], edge)
+            _stroke(img, Vector2(25, 8), Vector2(22, 7), 1.0, METAL)
+            _stroke(img, Vector2(5, 22), Vector2(10, 27), 1.0, Color(0.6, 0.5, 0.35))
         _:   # sweep: a blade, a guard, a grip
             _stroke(img, Vector2(4, 28), Vector2(9, 23), 3.0, GRIP)
             _stroke(img, Vector2(6, 19), Vector2(13, 26), 2.5, second if second != edge else METAL_DARK)

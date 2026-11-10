@@ -87,7 +87,7 @@ raids, loot tables).
   its hp over that rate. Floors 2 to 5 were retuned from a won human run (see "Late-floor
   balance" below).
 
-### Weapon families and rarity (Arsenal expansion, batch 1 BUILT)
+### Weapon families and rarity (Arsenal expansion, batches 1 and 2 BUILT)
 Full spec: `design/Arsenal expansion.md`. A weapon is still a `Gun` built from a `GunData`
 (ids, `gun:` unlocks, Mastery and telemetry unchanged); on screen it is a "weapon".
 - **Families:** gun, melee, thrown, summon, ground (`GunData.family`, from the archetype
@@ -120,6 +120,23 @@ Full spec: `design/Arsenal expansion.md`. A weapon is still a `Gun` built from a
 - **Blade tag:** carried non-gun weapons count toward their family tag; three melee
   weapons (or two and a Blade item) form the Blade resonance (reach and swing speed +15%;
   at 5 doubled, and swings send a short wave past their reach).
+- **Thrown** (`thrown.gd`, batch 2): every throw is a pooled `Projectile` whose behaviour
+  picks a path in `Thrown`. Knives stick in a foe or the floor for 1.5 s, then fly back,
+  hitting on the way (at most 12 stuck per weapon); discs jump between foes, then return;
+  stars circle their target twice; grenades roll, bounce once and burst on a fuse; javelins
+  pierce and pin the last foe 1 s; bolas stop the first foe 1.2 s (elites 0.4 s); the anchor
+  is dragged back on a chain, pulling foes in. Returns fly at 1.2x toward where you are now
+  and vanish quietly. Lobs draw only a small dark shadow (25%), never a landing circle.
+  Single-target damage is 95 to 105% of the gun band. Thrown stats: `thrown_dmg`,
+  `throw_rate`, bounce is +1 jump (discs, stars) or +25% on the return hit, duration keeps
+  knives stuck and pools down longer. Thrown tag: three thrown weapons or items give +1
+  bounce or return hit; at 5 thrown objects split in two on their last hit.
+- **New guns** (batch 2): a revolver (magazine and reload), bubbles that trap small foes,
+  a piercing bow, sticky darts that burst, a beam that reflects off walls twice, a harpoon
+  that reels its foe in, a sniper whose hits past 300 px always crit, Blood Hymn (up to x3
+  as your health falls) and Singularity (pellets curve in to meet at one point).
+- **Trials** (`trials.gd`, the board in the Stair, from run 6): Blades Only, No Guns and One
+  Element. A Trial goes through the Gate's loadout; winning it opens its rewards once.
 
 ### Gun tiers and mods
 - Guns have tiers I to IV, Brotato style. Picking up a duplicate merges it into the one

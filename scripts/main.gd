@@ -1083,6 +1083,8 @@ func _spawn_player(device: int, keyboard: bool) -> Player:
         if not Loadout.kit_unlocked(String(lo["kit"])):
             lo["kit"] = Loadout.BARE_KIT
     Loadout.apply(p, lo)
+    if players.size() <= 1:
+        Trials.start(p)   # a Trial's rule fixes the first player's starting weapons
     # A Kit brings its gun. A bare Kit starts naked: the entrance offers a pick of two
     # (the room does that for unarmed players on entry); late joiners get a random one.
     if current != null and String(lo["kit"]) == Loadout.BARE_KIT:
@@ -1511,6 +1513,7 @@ const FUSION_LOADOUTS := [
 ## --family-probe=<family>: four Commons and Uncommons of one family (Arsenal expansion 8).
 const FAMILY_PROBE := {
     "melee": ["tin_sabre", "frost_hatchet", "thorn_whip", "bone_club"],
+    "thrown": ["steel_knives", "clay_grenade", "shock_bola", "frost_javelin"],
 }
 
 

@@ -983,6 +983,131 @@ share (section 10) or `Melee.FOLLOW`.
 **Done when** the section 8 checks pass for thrown and for the guns, `--family-probe=thrown`
 passes, and the Trials board opens three Trials.
 
+#### Batch 2 done (2026-11-10, VERSION 2026.11.10-arsenal2)
+
+**Built:**
+- `thrown.gd` (`Thrown`): every throw is still a pooled `Projectile`; its behaviour picks a
+  path in `Thrown`, which runs the tick, the touches and the look. Styles:
+  - knives stick in a foe (they follow it) or the floor for 1.5 s, then fly back and hit
+    on the way out of the foe and along the return. At most 12 stuck per weapon (the
+    oldest leaves), plus `knife_cap`;
+  - discs jump between foes (`ricochets` + bounce), then return;
+  - stars fly to their target and circle it twice at 40 px, hitting it once a lap;
+  - grenades roll to stop at their target, bounce once off a wall or foe, and burst when
+    the fuse (`linger`) runs out; Void Grenade drags foes in over its fuse, Cluster Bomb
+    scatters five bomblets;
+  - javelins pierce and pin the last foe 1 s; Etching Javelin sticks and corrodes 3 s;
+  - bolas stop the first foe 1.2 s (elites and bosses 0.4 s); Shock Bola shocks foes near;
+  - the anchor goes out, is dragged back on a dashed chain and pulls what it hits to you.
+- Returns fly at 1.2x toward where you are now (offset by where it left your hand), vanish
+  quietly and fire a `catch` event. Boomerangs return this way too.
+- Lob shadows are 25% alpha. There is still no landing marker.
+- Holy Water and Fire Bottle run on today's pool code; Holy Water marks foes inside, so
+  their reactions hit harder (`MARK_BONUS`).
+- The thrown stat map (2.2): `thrown_dmg`, `throw_rate`. Bounce is +1 jump for discs (+1
+  lap for stars) and +25% on the return hit for the rest. Duration keeps knives stuck and
+  pools down longer.
+- **Weapons:** 16 thrown weapons and 11 guns, so the arsenal now has 93 weapons. The gun
+  behaviours:
+  - a revolver magazine with a reload ring;
+  - bubbles that trap small foes 0.6 s;
+  - a bow that pierces 2 and pushes;
+  - sticky darts that burst after 1 s;
+  - Glint Beam reflects off walls twice (`Beam._reflect`);
+  - a harpoon that reels its foe in;
+  - Longshot: hits past 300 px always crit (`Projectile.far_crit`);
+  - Blood Hymn: up to x3 as health falls;
+  - Singularity: pellets curve in to meet at the target's distance;
+  - Rime Repeater: potency grows with spin;
+  - Ember Scattergun: a second blast when a foe is within 90 px.
+- Code-drawn icons for every new weapon (`weapon_looks.gd`), by thrown style and by gun
+  archetype. `WeaponLooks.draws` now covers any weapon without a gun tile.
+- **Items (35), all locked until unlocked**, with the Thrown tag and its resonance. At 3:
+  +1 bounce or return hit. At 5: doubled, and thrown objects split in two on their last
+  hit. A trigger with `"family": "thrown"` fires only for thrown weapons.
+  - 12 Thrown passives: Return Grip, Fletching, Double Fuse, Sticky Fingers, Overarm,
+    Quick Draw, Deep Pockets, Heavy Hand, Rim Shot, Catch Spark, Shrapnel Pouch, Pin
+    Cushion;
+  - 6 mods: Weighted Tip, Spin Grip (`g_bounce`, new), Barbed Edge, Throwing Strap, Twin
+    Throw, Fletched Shaft;
+  - 2 actives: Recall (every knife flies back at x2) and Knife Storm;
+  - 10 element items, a state item and a reaction item each for Fire, Ice, Wet, Shock and
+    Oil: Kindling Pouch, Frost Quiver, Damp Satchel, Copper Wire, Pitch Pot, Firebrand
+    Sash, Rime Bandolier, Cold Current, Storm Bangle, Slick Spool;
+  - 5 behaviour and stat items: Magnet Glove, Second Throw, Fuse Cutter, Hunter's Oath,
+    Throwing Gloves.
+- **Unlocks:** Steel Knives is in the core set. 14 play goals open the thrown Commons and
+  Uncommons, the gun Commons and Uncommons, and Longshot, each with one item. 8 thrown
+  mastery steps (`kills_thrown`, 60 to 2,600) open the rest, with two to three items
+  each. The first three Trials open Blood Hymn, Singularity, Glint Beam and Harpoon with
+  three items.
+- **Trials** (`trials.gd`, the TRIALS plinth in the Stair):
+  - three Trials: Blades Only, No Guns and One Element;
+  - the board opens after 5 runs;
+  - Begin goes through the Gate's loadout, and backing out cancels the Trial;
+  - the rule fixes the start weapons (`Trials.start`) and filters every weapon offered
+    (`Drops.roll_gun`);
+  - a win opens the rewards once (`Progress.world["trials_won"]`, announced like an
+    achievement), and the history entry records the Trial;
+  - bots use `--trial=<id>`, and `--trials-open` opens the board on a young save.
+- `--family-probe=thrown` (Steel Knives, Clay Grenade, Shock Bola, Frost Javelin).
+
+**Deviations, and why:**
+| Spec | Built | Why |
+|---|---|---|
+| Returns fly toward where you are now | Toward where you are now plus the hand offset (where the throw left the orbiting weapon) | Aimed at your centre, a boomerang thrown while standing still misses the line it went out on: Rime Chakram's return hits went to 0. |
+| Crossing Axes pierce everything | Pierce 3, reaction power 0.12 (two-element rule) | At pierce 99 and 0.3, the pack number was 322 against the best w4 gun's 204. Now 221 (8% over), single 46.3 (the Epic band is 47 to 57). |
+| A grenade rolls a fixed way | Rolled to stop at its target | At a fixed roll (about 150 px), kiting bots kept foes beyond it, and the family probe reached floor 3 in 1 of 4 runs. Aimed, it reaches floor 3 in 3 of 4. |
+| Halo Disc grows with every bounce | +12% size and +7% damage a bounce | At +20% its pack was 169 against 121. Now 130 (7% over). |
+| Longshot in the band | 30 single at 75 px, 60 past 300 px | The rule doubles it at range; the close number sits under the band on purpose. |
+| Blood Hymn in the band | 26.7 at full health, up to x3 near death | The rule triples it; full health sits at 70% of the Epic band. |
+| The first Trial at run 6 (6.3) | All three Trials open after 5 runs | One threshold for the first three; batch 5 spaces the rest. |
+| Wind Star hits the target on arrival | It starts circling 44 px out: two lap hits and the return | That reads as "circles it twice". The damage was raised to 8 to stay in band. |
+| Thrown objects split in two at the 5 resonance | They fork (`Projectile._fork`) into two bolts at 60% | It reuses the existing fork path. |
+
+**Checks** (headless, at most 4 instances, 0 `SCRIPT ERROR` in every run):
+| Check | Result | Pass |
+|---|---|---|
+| Weapon bands (`--gun-probe`, 8 s, the 27 new weapons) | All thrown single numbers are within 95 to 105% of the band times the premium, except Crossing Axes (46.3, about 2% under) and the pools (by design). Packs: Halo Disc 130 and Crossing Axes 221 are 7 to 8% over the best gun of their weight; the rest are under. Guns are in band except Longshot and Blood Hymn (deviations above). Zephyr Rang 14.9 and Rime Chakram 26.6 now land their return hits. | yes (two near misses) |
+| Family probe (`--family-probe=thrown --kite --mastery=full --secs=1800`, 4 runs) | 3 of 4 reach floor 3 (one dies on floor 5, two on floor 3); one dies on floor 2 | yes (needs 2 of 4) |
+| Thrown stand-still (`--idle --family-probe=thrown --build=human6980 --mastery=full --start-floor=2`) | 2 of 2 die on floor 2, at 61 and 43 s; under 50% health 0.77 and 0.72; 2.41 and 3.69 bars a minute | yes |
+| Human-build stand-still (same, no family probe) | 2 of 2 die on floor 2, at 95 and 115 s; 1.73 and 1.44 a minute | yes |
+| Human-build mover (`--kite`) | 2 of 2 reach floor 4 (one dies on floor 5). Floor 3: 0.16 and 0.27 a minute, under 50% health 0.00 and 0.10 | yes, but floor 3's time under 50% is low (as in batch 1) |
+| Pressure, still against moving (floor 2) | Thrown idle 2.41 to 3.69 against thrown kite 0.16 to 0.69; human idle 1.44 to 1.73 against kite 0.11 to 0.20 | yes (at least 2x) |
+| Economy | Shop visits spent down: 7 of 9 human-build (78%), 15 of 18 thrown (83%). Weapons gained 0 to 1 a floor (the probes start with four). | yes |
+| Cards (`--card-shot`) | `[CARDS] PASS 451`, at most 23 words, at most 278 px tall | yes |
+| Fusion probe, idle bot | `[FUSION-CHECK] PASS` (also in every bot run); the standard idle bot dies on floor 1 at 35 s | yes |
+| Hub walk | `[HUB-WALK] PASS`, `[HUB-FRESH] PASS`. With a kept save, the trials station passes: 3 Trials, 3 open with `--trials-open` and 0 open below 5 runs | yes |
+| Trial starts (`--trial=no_guns`, `--trial=one_element`) | `[TRIAL] no_guns start weapons=steel_knives,tin_sabre`; `[TRIAL] one_element start weapons=water_pistol` | yes |
+| Load check (`--editor --quit`) | 0 `SCRIPT ERROR` | yes |
+| Smoke | `[SMOKE] ALL PASS` | yes |
+| Emil's files | `save.json` and `mastery.json` were last written at 13:45, before this session, and the last `runs.jsonl` lines are his own (`bot:false`, the hitfeel build). Every bot used `--instance` | yes |
+
+**Not built or not checked:**
+- A Trial won end to end. The reward path is a few lines in `Progress.end_run`, but no
+  bot cleared a full run under a Trial.
+- `--arsenal-perf` and the `--read-shot=family` layer check, which carry over from batch 1.
+- Guns count toward Gunslinger: unchanged, still off (batch 1's deviation).
+- Legendaries (Mother of Knives, Skyfall, Prism Disc and the four gun legendaries) belong
+  to batch 5.
+
+**Worth watching:** thrown builds take more damage while moving than melee (0.3 to 1.3 bars
+a minute on floors 2 and 3, against melee's 0.0 to 0.5). Thrown is not too safe, but it may feel
+weak. The levers are the thrown share (100%) and the knives' 1.5 s stick.
+
+**Screenshots for when Emil is away (window runs):**
+- A card contact sheet (`--card-shot` in a window) with the 27 new icons at 96 px and
+  22 px.
+- A fight with `--family-probe=thrown`: knives stuck in foes and in the floor, then the
+  recall; a disc's jumps; a grenade's roll and burst (check there is no floor circle); the
+  javelin pin; the bola. Check that no thrown object covers an enemy telegraph.
+- The Wind Star's laps, Crossing Axes meeting, and the Drowned Anchor's chain.
+- Glint Beam reflecting off a wall, Singularity's pellets meeting, and the revolver's
+  reload ring.
+- Lobs (Boulder Mortar, the flasks): the 25% shadow only.
+- The TRIALS plinth in the Stair, and its board both locked and open (`--hub-shot
+  --trials-open --keep-save`).
+
 ### Batch 3: Summons and drones
 
 **Builds:**
