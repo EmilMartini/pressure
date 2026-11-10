@@ -2285,10 +2285,8 @@ func _draw_parts(cv: CanvasItem) -> void:
             "crown":
                 var bone := boss_kind == "brute_king"
                 if bone and not vis:
-                    # A bone helm until phase 3 bares the crown.
-                    cv.draw_circle(at, pr * 0.9 + 2.0, Hostile.DARK)
-                    cv.draw_circle(at, pr * 0.9, Color(0.62, 0.58, 0.50))
-                    cv.draw_arc(at, pr * 0.9 + 2.0, 0.0, TAU, 20, Color(Hostile.RED, 0.9), 1.0)
+                    # A horned bone helm until phase 3 bares the crown.
+                    _draw_bone_helm(cv, at, pr, flash)
                     continue
                 var top := at.y - pr * 0.4
                 var pts := PackedVector2Array([Vector2(-pr, top + pr), Vector2(-pr, top), Vector2(-pr * 0.5, top + pr * 0.5), Vector2(0, top - pr * 0.4), Vector2(pr * 0.5, top + pr * 0.5), Vector2(pr, top), Vector2(pr, top + pr)])
@@ -2321,7 +2319,49 @@ func _draw_parts(cv: CanvasItem) -> void:
         cv.draw_arc(Vector2.ZERO, R * 1.45, 0.0, TAU, 40, Color(1.0, 0.9, 0.4, 0.5 + 0.4 * absf(sin(_fx_t * 10.0))), 2.0)
         for k in 4:
             var a := _fx_t * 4.0 + float(k) * TAU / 4.0
-            cv.draw_circle(Vector2(cos(a), sin(a) * 0.35) * R * 1.1 + Vector2(0, -R * 1.9), 3.0, Color(1, 0.9, 0.4))
+            _draw_daze_star(cv, Vector2(cos(a), sin(a) * 0.35) * R * 1.1 + Vector2(0, -R * 1.9), 5.0, a)
+
+
+## The Brute King's helm over his head (`at`, size `s`): a bone dome with cheek guards, two
+## horns and a dark eye slit, outlined dark with the thin hostile rim.
+func _draw_bone_helm(cv: CanvasItem, at: Vector2, s: float, flash: float) -> void:
+    var bone := Color(0.66, 0.61, 0.52).lerp(Color.WHITE, flash * 0.6)
+    var shade := Color(0.46, 0.42, 0.36).lerp(Color.WHITE, flash * 0.4)
+    for sd in [-1.0, 1.0]:
+        var horn := _helm_poly(at, s, [Vector2(sd * 0.72, -0.05), Vector2(sd * 1.15, -0.4), Vector2(sd * 1.42, -1.05), Vector2(sd * 1.0, -0.62), Vector2(sd * 0.66, -0.42)])
+        _fill_outlined(cv, horn, shade)
+    var dome := _helm_poly(at, s, [Vector2(-0.9, 0.3), Vector2(-0.86, -0.22), Vector2(-0.52, -0.66), Vector2(0.0, -0.8),
+        Vector2(0.52, -0.66), Vector2(0.86, -0.22), Vector2(0.9, 0.3), Vector2(0.56, 0.62), Vector2(0.22, 0.34),
+        Vector2(-0.22, 0.34), Vector2(-0.56, 0.62)])
+    _fill_outlined(cv, dome, bone)
+    # A ridge down the middle and the eye slit.
+    cv.draw_line(at + Vector2(0, -0.78) * s, at + Vector2(0, -0.12) * s, shade, maxf(2.0, s * 0.12))
+    cv.draw_line(at + Vector2(-0.58, 0.04) * s, at + Vector2(0.58, 0.04) * s, Hostile.DARK, maxf(3.0, s * 0.2))
+
+
+## `pts` (in units of `s`) placed at `at`.
+func _helm_poly(at: Vector2, s: float, pts: Array) -> PackedVector2Array:
+    var out := PackedVector2Array()
+    for q in pts:
+        out.append(at + Vector2(q) * s)
+    return out
+
+
+## A filled polygon with the dark outline and the thin hostile rim of boss parts.
+func _fill_outlined(cv: CanvasItem, poly: PackedVector2Array, fill: Color) -> void:
+    var ring := poly.duplicate()
+    ring.append(poly[0])
+    cv.draw_polyline(ring, Hostile.DARK, 5.0)
+    cv.draw_colored_polygon(poly, fill)
+    cv.draw_polyline(ring, Color(Hostile.RED, 0.9), 1.0)
+
+
+## A small four-point star circling a staggered boss's head (in place of plain dots).
+func _draw_daze_star(cv: CanvasItem, c: Vector2, r: float, spin: float) -> void:
+    var pts := PackedVector2Array()
+    for k in 8:
+        pts.append(c + Vector2.from_angle(spin + float(k) * PI / 4.0) * (r if k % 2 == 0 else r * 0.38))
+    cv.draw_colored_polygon(pts, Color(1, 0.9, 0.4))
 
 
 func _think_boss(delta: float, target: Player, dir: Vector2, dist: float, mult: float) -> Vector2:
@@ -3425,10 +3465,7 @@ func _draw_boss() -> void:
         draw_spawn_marker(self, to_local(s["pos"]), 10.0, k, _fx_t)
     match boss_kind:
         "brute_king":
-            # A crown.
-            var top := -radius - 10.0
-            var pts := PackedVector2Array([Vector2(-10, top + 8), Vector2(-10, top), Vector2(-5, top + 4), Vector2(0, top - 2), Vector2(5, top + 4), Vector2(10, top), Vector2(10, top + 8)])
-            draw_colored_polygon(pts, Color(1.0, 0.8, 0.3))
+            pass   # helm and crown are his "crown" body part (_draw_parts)
         "hive_mother":
             for k in 5:
                 var a := float(k) * TAU / 5.0 + _fx_t * 0.3

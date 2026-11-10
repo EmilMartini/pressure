@@ -737,11 +737,11 @@ static func _stats_of(model: Dictionary, opts: Dictionary) -> Dictionary:
     var smallest := TITLE_SIZE
     for r in model.get("rows", []):
         if r.has("s"):
-            smallest = mini(smallest, int(r["s"]))
+            smallest = mini(smallest, int(_row_font(r)[1]))
     smallest = mini(smallest, LABEL_SIZE if (model.get("chips", []) as Array).size() > 0 or String(model.get("stack", "")) != "" else smallest)
     var eff_lines := 1
     return { "words": int(model.get("words", 0)), "effect_lines": eff_lines, "font": smallest,
-        "height": _model_height(model, w), "wrapped": _wrap(String(model["rows"][0]["t"]), TEXT_SIZE, w - PAD * 2.0).size() }
+        "height": _model_height(model, w), "wrapped": _wrap(String(model["rows"][0]["t"]), int(_row_font(model["rows"][0])[1]), w - PAD * 2.0, _row_font(model["rows"][0])[0]).size() }
 
 
 static func _bonus_text(mods: Dictionary) -> String:
@@ -765,14 +765,24 @@ static func _header_height(model: Dictionary, width: float) -> float:
     return maxf(ICON + 8.0, text_h) + 12.0
 
 
+## How a text row is set (the text rule in art.gd): effect sentences at TEXT_SIZE or more
+## in the body font at Art.BODY_SIZE, everything else (names, numbers, prices, small
+## labels) in the pixel font at the row's size. Returns [font, px, line step].
+static func _row_font(row: Dictionary) -> Array:
+    var size := int(row["s"])
+    if size >= TEXT_SIZE and Art.FONT_BODY != null and Art.is_prose(String(row["t"])):
+        return [Art.FONT_BODY, Art.BODY_SIZE, float(Art.BODY_SIZE) + 5.0]
+    return [Art.FONT, size, float(size) + LINE_GAP]
+
+
 static func _row_height(row: Dictionary, width: float) -> float:
     if row.get("sep", false):
         return float(row.get("gap", 6.0)) + 6.0
     if row.has("badges"):
         return float(row.get("gap", 0.0)) + float(BADGE_SIZE) + 6.0 + LINE_GAP + 2.0
-    var size := int(row["s"])
-    var lines := _wrap(String(row["t"]), size, width - PAD * 2.0 - float(row.get("indent", 0.0))).size()
-    return float(row.get("gap", 0.0)) + float(lines) * (size + LINE_GAP)
+    var rf := _row_font(row)
+    var lines := _wrap(String(row["t"]), int(rf[1]), width - PAD * 2.0 - float(row.get("indent", 0.0)), rf[0]).size()
+    return float(row.get("gap", 0.0)) + float(lines) * float(rf[2])
 
 
 static func _model_height(model: Dictionary, width: float) -> float:
@@ -848,16 +858,16 @@ static func _render(canvas: CanvasItem, rect: Rect2, model: Dictionary, opts: Di
             y += _row_height(row, w)
             continue
         y += float(row.get("gap", 0.0))
-        var size := int(row["s"])
+        var rf := _row_font(row)
         var indent := float(row.get("indent", 0.0))
-        for line in _wrap(String(row["t"]), size, w - PAD * 2.0 - indent):
-            _text(canvas, Vector2(r.position.x + PAD + indent, y), line, size, row["c"])
-            y += size + LINE_GAP
+        for line in _wrap(String(row["t"]), int(rf[1]), w - PAD * 2.0 - indent, rf[0]):
+            _text(canvas, Vector2(r.position.x + PAD + indent, y), line, int(rf[1]), row["c"], rf[0])
+            y += float(rf[2])
 
 
 ## Text whose top edge is at `top`, with a drop shadow.
-static func _text(canvas: CanvasItem, top: Vector2, text: String, size: int, color: Color) -> void:
-    var font: Font = Art.FONT
+static func _text(canvas: CanvasItem, top: Vector2, text: String, size: int, color: Color, with_font: Font = null) -> void:
+    var font: Font = with_font if with_font != null else Art.FONT
     var base := top + Vector2(0, font.get_ascent(size))
     canvas.draw_string(font, base + Vector2(1, 1), text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color(0, 0, 0, 0.8 * color.a))
     canvas.draw_string(font, base, text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, color)
