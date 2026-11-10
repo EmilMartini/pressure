@@ -572,6 +572,9 @@ func start_floor(n: int) -> void:
     Regions.activate(region_id)
     Music.set_floor(n)
     floor_rooms_cleared = 0
+    if not _arena_dps.is_empty():
+        _prev_power = floor_arena_dps()
+        _prev_power_floor = floor_number - 1
     _arena_dps = []
     if autotest and not players.is_empty():
         print("[FLOOR] %d region=%s at t=%.0f kills=%d scrap=%d hp=%.0f level=%d guns=%d items=%d" % [
@@ -804,6 +807,34 @@ var _arena_dps: Array = []
 
 func note_arena_dps(dps: float) -> void:
     _arena_dps.append(dps)
+    if autotest:
+        print("[ARENA-P] floor=%d arena=%d dps=%.0f %s" % [floor_number, _arena_dps.size(), dps, power_text()])
+
+
+var _prev_power := 0.0          # the last floor's measured P
+var _prev_power_floor := 0
+
+
+## Arenas fought to the end on this floor (SpawnTable.key_budget and key_kind read it).
+func floor_arenas_done() -> int:
+    return _arena_dps.size()
+
+
+## P of Core loop reset section 9: the measured damage per second of the floor's last three
+## arenas; before the floor's first arena, the last floor's P scaled by E(f) / E(f-1); with
+## nothing measured, par E(f).
+func measured_power() -> float:
+    if not _arena_dps.is_empty():
+        return floor_arena_dps()
+    if _prev_power > 0.0:
+        return _prev_power * Room.par_dps(floor_number) / Room.par_dps(maxi(1, _prev_power_floor))
+    return Room.par_dps(floor_number)
+
+
+func power_text() -> String:
+    var p := measured_power()
+    var e := Room.par_dps(floor_number)
+    return "P=%.0f E=%.0f B=%.2f" % [p, e, clampf(pow(maxf(1.0, p) / e, Room.BUILD_POW), Room.BUILD_MIN, Room.BUILD_MAX)]
 
 
 ## Mean output of the floor's last three arenas, 0 when none was fought.
@@ -884,7 +915,7 @@ func _spawn_player(device: int, keyboard: bool) -> Player:
     add_child(p)
     players.append(p)
     p.died.connect(_on_player_died)
-    p.hurt.connect(func(pl: Player, amount: float, _from: Vector2, _src: String) -> void: pressure_meter.on_hurt(pl, amount))
+    p.hurt.connect(func(pl: Player, amount: float, _from: Vector2, src: String) -> void: pressure_meter.on_hurt(pl, amount, src))
     p.leveled_up.connect(_on_leveled_up)
     if danger != null:
         p.hurt.connect(danger.on_hurt)
@@ -1726,6 +1757,22 @@ func _bot_dash(p: Player) -> void:
             p.input.force_move = side
             return
     for e in current.enemies.get_children():
+        if not e is Enemy:
+            continue
+        # A ring about to land on us, or a fuse about to blow: dash out, away from its centre.
+        var en := e as Enemy
+        var danger := Vector2.INF
+        for sh in en._shells:
+            if float(sh["t"]) < BOT_DASH_LOOK and Vector2(sh["at"]).distance_to(pos) <= float(sh["r"]) + p.radius:
+                danger = Vector2(sh["at"])
+        if en._fuse > 0.0 and en._fuse < BOT_DASH_LOOK and en.global_position.distance_to(pos) <= Enemy.BOMB_RADIUS + p.radius:
+            danger = en.global_position
+        if danger != Vector2.INF:
+            var out := (pos - danger).normalized() if pos.distance_to(danger) > 1.0 else Vector2.RIGHT
+            p.input.force_dash = true
+            p.input.force_move = out
+            return
+    for e in current.enemies.get_children():
         if e is Enemy and (e as Enemy)._mode == Enemy.MODE_DASH and (e as Enemy).global_position.distance_to(pos) < 130.0:
             var away := (pos - (e as Enemy).global_position).normalized().orthogonal()
             p.input.force_dash = true
@@ -1744,6 +1791,24 @@ func _bot_kite_dir(p: Player) -> Vector2:
         var l := d.length()
         if l < 340.0 and l > 0.5:
             push += d / l * pow((340.0 - l) / 340.0, 2.0) * (2.5 if (e as Enemy).is_elite else 1.0)
+            crowd += 1
+        # Telegraphs a player reads (Core loop reset 8): out of landing rings, Sower circles
+        # and a lit fuse's blast, and out of a Tether's range once it starts to link.
+        var en := e as Enemy
+        var rings: Array = []
+        for sh in en._shells:
+            rings.append([Vector2(sh["at"]), float(sh["r"])])
+        for z in en._zones:
+            rings.append([Vector2(z["at"]), Enemy.SOW_R])
+        if en._fuse > 0.0:
+            rings.append([en.global_position, Enemy.BOMB_RADIUS])
+        for rg in rings:
+            var dr: Vector2 = pos - Vector2(rg[0])
+            if dr.length() < float(rg[1]) + 40.0:
+                push += (dr.normalized() if dr.length() > 1.0 else Vector2.RIGHT.rotated(randf() * TAU)) * 4.0
+                crowd += 1
+        if en._tether_state > 0 and l > 0.5:
+            push += d / l * 3.0
             crowd += 1
     for sh in get_tree().get_nodes_in_group("enemy_projectiles"):
         if not is_instance_valid(sh) or not sh is Node2D:

@@ -236,6 +236,8 @@ func try_react(enemy: Node2D, existing: int, incoming: int, potency: float, cont
     var name: String = d["name"]
     var pos: Vector2 = enemy.global_position
     var source: Player = enemy.last_hit_by if "last_hit_by" in enemy else null
+    if not Main.old_balance and enemy.has_method("react_decay"):
+        potency *= enemy.react_decay()   # the same enemy reacting again within 1 s: x0.75, x0.56 ...
     reaction_fired.emit(name, pos, COLORS[incoming])
     var prev := _enter(maxi(ctx, Fusions.TIER_REACTION))
     var tel_prev: String = Telemetry.begin_reaction(name)

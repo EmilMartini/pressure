@@ -30,6 +30,7 @@ const STATS := {
     "warden": [190.0, 32.0, 60.0, 22.0, 14.0, 5],
     "wisp": [19.0, 4.0, 170.0, 9.0, 6.0, 2],
     "elite": [300.0, 60.0, 95.0, 17.0, 14.0, 10],
+    "lobber": [40.0, 7.5, 80.0, 13.0, 6.0, 2],
     "boss": [1800.0, 420.0, 85.0, 30.0, 20.0, 40],
 }
 
@@ -47,6 +48,7 @@ const KIND_TILES := {
     "warden": Vector2i(24, 7),
     "wisp": Vector2i(27, 6),
     "elite": Vector2i(28, 5),
+    "lobber": Vector2i(28, 6),
     "boss": Vector2i(30, 8),
     "brute_king": Vector2i(30, 8),
     "hive_mother": Vector2i(26, 5),
@@ -69,6 +71,7 @@ const KIND_COLORS := {
     "warden": Color(0.60, 0.62, 0.70),
     "wisp": Color(0.70, 0.85, 1.00),
     "elite": Color(0.88, 0.45, 0.78),
+    "lobber": Color(0.86, 0.70, 0.32),
     "boss": Color(0.92, 0.22, 0.30),
     "brute_king": Color(0.90, 0.35, 0.28),
     "hive_mother": Color(0.60, 0.85, 0.35),
@@ -78,7 +81,43 @@ const KIND_COLORS := {
     "drowned_choir": Color(0.45, 0.68, 0.88),
 }
 
-const AFFIXES := ["regenerating", "hasted", "trail", "volatile", "barrage"]
+const AFFIXES := ["regenerating", "hasted", "trail", "volatile", "barrage", "sower", "mortar", "tether"]
+
+## Key threats of Core loop reset section 8 (damage as a share of a 100 HP bar, times the
+## floor's damage multiplier). The lobber hangs back and lobs a shell at where you stand: a
+## ring fills in for the whole flight, then a burst. Chargers wind up 0.6 s behind a red line
+## the length of their run, charge 500 px at 600 px/s and are stunned 1 s by a wall. Runners
+## crouch 0.35 s, then lunge 120 px. At most MAX_RINGS hostile rings over a player at once.
+const LOBBER_EVERY := 2.4
+const LOBBER_WARN := 1.1
+const LOBBER_R := 48.0
+const LOBBER_DMG := 10.0
+const CHARGE_SPEED := 600.0
+const CHARGE_LEN := 500.0
+const CHARGE_DMG := 15.0
+const CHARGE_STUN := 1.0
+const RUNNER_CROUCH := 0.35
+const MELEE_CROUCH := 0.2      # grunts, swarmers and splitters before their lunge
+const RUNNER_LUNGE := 120.0
+const RUNNER_LUNGE_SPEED := 500.0
+const SPIT_DMG_DEEP := 8.0      # a spitter shot from floor 3 (difficulty 10)
+const MAX_RINGS := 2
+## Zoning elites: the Sower drops SOW_N circles round itself every SOW_EVERY s (they fill
+## over SOW_WARN s, then hurt for SOW_LIFE s); the Mortar lobs 3 shells around you; the
+## Tether links to a player who stays within TETHER_R for TETHER_ARM s (the beam grows for
+## TETHER_GROW s first) and drains until range or sight breaks.
+const SOW_EVERY := 4.0
+const SOW_N := 3
+const SOW_R := 70.0
+const SOW_WARN := 0.8
+const SOW_LIFE := 5.0
+const SOW_DMG := 5.0            # per 0.5 s
+const MORTAR_EVERY := 3.4
+const TETHER_R := 300.0
+const TETHER_BREAK := 340.0
+const TETHER_ARM := 2.0
+const TETHER_GROW := 1.0
+const TETHER_DPS := 3.0
 
 ## Depth pressure (difficulty pass, 2026-11-09). Bots on floors 2 to 5 stood in a crowd of
 ## melee that walked into their fire; one ranged kind fired one straight shot. By difficulty
@@ -122,6 +161,11 @@ static var spawn_log := false   # Main sets it for the bot
 const BOMB_DAMAGE := 18.0
 const BOMB_RADIUS := 90.0
 const BOMB_TRIGGER := 40.0
+## Fairness (Core loop reset 8): a lit fuse burns BOMB_FUSE s, and a bomber or volatile elite
+## killed next to you only hurts you if its ring has shown for RING_SHOWN s.
+const BOMB_FUSE := 0.6
+const RING_SHOWN := 0.6
+var _ring_vis := 0.0
 const WARDEN_ARMOUR := 0.4
 const SHAMAN_ARMOUR := 0.7
 const MAX_ENEMIES_FOR_SUMMON := 45
@@ -233,7 +277,23 @@ var _strafe_t := 0.0
 # Behaviour timers.
 var _shoot_t := 0.0
 var _volley := 0
-var _shells: Array = []     # spitter lobs in flight: [{ "at": Vector2 (global), "t": float }]
+var _shells: Array = []     # lobs in flight: [{ "at": Vector2 (global), "t", "warn", "r", "dmg" }]
+var _zones: Array = []      # Sower circles: [{ "at": Vector2 (global), "age": float, "tick": float }]
+var _sow_t := 2.0
+var _mortar_t := 2.0
+var _tether_t := 0.0        # seconds a player has stayed in range (arming)
+var _tether_state := 0      # 0 idle, 1 the beam grows, 2 linked
+var _tether_k := 0.0
+var _tether_tick := 0.0
+var _tether_to: Player = null
+var _crouch_t := 0.0        # runner: crouching before a lunge
+var _react_n := 0           # reactions on this enemy inside the last second (Elements.try_react)
+var _react_last := -10.0
+## Damage dealt inside a formed synergy or a level-5 resonance (Core loop reset 9): Main
+## counts it at half when it measures the build. Synergies arrive in session 4; they raise
+## synergy_depth around their damage.
+static var synergy_depth := 0
+static var synergy_dealt := 0.0
 var _barrage_t := 0.0
 var _pulse_t := 0.0
 var _pulse_fx := 0.0
@@ -335,6 +395,8 @@ func configure(type: String, wave: int) -> void:
             _shoot_t = 0.25 if wave >= FAN_DIFF and not Main.old_balance else randf_range(0.6, 1.6)
         "shaman":
             _pulse_t = randf_range(1.0, 3.0)
+        "lobber":
+            _shoot_t = randf_range(1.0, 2.0)
     _strafe_sign = 1.0 if randf() < 0.5 else -1.0
     hp = max_hp
 
@@ -344,6 +406,8 @@ func set_affix(name: String) -> void:
     affix = name if AFFIXES.has(name) else ""
     if affix == "barrage":
         _barrage_t = 2.0
+    _sow_t = 2.0
+    _mortar_t = 2.0
     _ensure_crisp()
     queue_redraw()
 
@@ -357,7 +421,7 @@ var _crisp_on := false
 func _ensure_crisp() -> void:
     if _crisp_on or not is_inside_tree():
         return
-    if kind_name in ["bomber", "charger", "boss"] or affix in ["volatile", "barrage"]             or (kind_name == "spitter" and _wave >= LOB_DIFF and not Main.old_balance):
+    if kind_name in ["bomber", "charger", "boss", "lobber"] or affix in ["volatile", "barrage", "sower", "mortar", "tether"]             or (kind_name == "spitter" and _wave >= _lob_diff()):
         _crisp_on = true
         Crisp.attach(self, _draw_hostile, 3)
 
@@ -439,6 +503,8 @@ func _setup_sprite() -> void:
     var coord: Vector2i = KIND_TILES[key] if KIND_TILES.has(key) else Art.TILES.get(kind_name, Art.TILES["grunt"])
     # Clarity pass: bodies draw 15% larger than their hit circle, with a thick dark outline.
     _sprite_scale = radius / 6.0 * float(FLYER_SCALE.get(kind_name, 1.0)) * 1.15
+    if kind_name in SpawnTable.KEY:
+        _sprite_scale *= 1.15   # key threats stand out of the crowd (section 8: 1.2x a grunt)
     if _sprite == null:
         _sprite = Art.sprite(coord, 0.01, base_color)
         add_child(_sprite)
@@ -689,6 +755,8 @@ func take_damage(amount: float, color: Color, flash: bool = true, source: Player
         rallied.emit.call_deferred(self)
     hp -= amount
     dealt_total += amount + minf(hp, 0.0)
+    if synergy_depth > 0:
+        synergy_dealt += amount + minf(hp, 0.0)
     Telemetry.hit(amount + minf(hp, 0.0), color, flash, source)
     _since_hit = 0.0
     if flash:
@@ -858,8 +926,14 @@ func _die() -> void:
                 e.add_poison(poison_dps, 3.0)
         Elements.nova.emit(global_position, 110.0, Color(Element.COLORS[Element.Kind.POISON], 0.5))
     remove_from_group("enemies")
-    if kind_name == "bomber" or affix == "volatile":
-        _explode(BOMB_DAMAGE, BOMB_RADIUS)
+    if (kind_name == "bomber" or affix == "volatile") and not _exploded:
+        if Main.old_balance:
+            _explode(BOMB_DAMAGE, BOMB_RADIUS)
+        else:
+            # Killed before its fuse ran: the corpse's fuse burns BOMB_FUSE s behind the full
+            # ring, then it blows (Core loop reset 8: every damaging area shows 0.6 s first).
+            _fuse = BOMB_FUSE
+            _corpse = true
     if kind_name == "splitter":
         for i in 2:
             var off := Vector2.RIGHT.rotated(randf() * TAU) * radius
@@ -880,7 +954,16 @@ func _die() -> void:
         _:
             Sfx.die_enemy(self)
     died.emit(self)
+    if _corpse:
+        collision_layer = 0
+        collision_mask = 0
+        if _sprite != null:
+            _sprite.modulate = Color(0.35, 0.3, 0.3, 0.8)
+        return
     queue_free()
+
+
+var _corpse := false   # a killed bomber whose blast is still to come
 
 
 ## Hostile tells on the Crisp layer, above the player's own effects (Hostile): blast
@@ -890,11 +973,26 @@ func _draw_hostile(cv: CanvasItem) -> void:
         _draw_blast_ring(cv)
     for sh in _shells:
         # Where a lob lands: dark under red, filling in as it falls.
-        var k := 1.0 - float(sh["t"]) / SHELL_WARN
+        var r := float(sh["r"])
+        var k := 1.0 - float(sh["t"]) / float(sh["warn"])
         var at := to_local(Vector2(sh["at"]))
-        cv.draw_circle(at, SHELL_R * k, Color(Hostile.RED, 0.18))
-        cv.draw_arc(at, SHELL_R, 0.0, TAU, 32, Color(Hostile.DARK, 0.8), 6.0)
-        cv.draw_arc(at, SHELL_R, 0.0, TAU, 32, Color(Hostile.RED, 0.45 + 0.5 * k), 2.5)
+        cv.draw_circle(at, r * k, Color(Hostile.RED, 0.18))
+        cv.draw_arc(at, r, 0.0, TAU, 32, Color(Hostile.DARK, 0.8), 6.0)
+        cv.draw_arc(at, r, 0.0, TAU, 32, Color(Hostile.RED, 0.45 + 0.5 * k), 2.5)
+    for z in _zones:
+        # Sower circles: fill in while harmless, then a solid marching ring while they hurt.
+        var age := float(z["age"])
+        var zat := to_local(Vector2(z["at"]))
+        var fill := clampf(age / SOW_WARN, 0.0, 1.0)
+        var fade := clampf((SOW_WARN + SOW_LIFE - age) / 0.4, 0.0, 1.0)
+        cv.draw_circle(zat, SOW_R * fill, Color(Hostile.RED, (0.12 if age < SOW_WARN else 0.22) * fade))
+        Hostile.dash_ring(cv, zat, SOW_R, (0.6 if age < SOW_WARN else 0.95) * fade, 2.0 if age < SOW_WARN else 3.0)
+    if _tether_state > 0 and _tether_to != null and is_instance_valid(_tether_to):
+        var to := to_local(_tether_to.global_position)
+        var tip := to * (_tether_k if _tether_state == 1 else 1.0)
+        var ta := 0.55 + 0.35 * absf(sin(_fx_t * 14.0))
+        cv.draw_line(Vector2.ZERO, tip, Color(Hostile.DARK, 0.8), 7.0 if _tether_state == 2 else 4.0)
+        cv.draw_line(Vector2.ZERO, tip, Color(Hostile.RED, ta), 3.0 if _tether_state == 2 else 1.5)
     if affix == "barrage" and _barrage_t <= BARRAGE_WARN and hp > 0.0 and emerge <= 0.0:
         var kb := 1.0 - _barrage_t / BARRAGE_WARN
         var ab := 0.45 + 0.4 * absf(sin(_fx_t * 18.0))
@@ -917,7 +1015,7 @@ func _draw_hostile(cv: CanvasItem) -> void:
     if body != null and body.has_parts():
         _draw_parts(cv)
     if _mode == MODE_TELEGRAPH and emerge <= 0.0 and hp > 0.0:
-        var length := 420.0 * 0.5 if kind_name == "charger" else 300.0
+        var length := (420.0 * 0.5 if Main.old_balance else CHARGE_LEN) if kind_name == "charger" else 300.0
         var a := 0.45 + 0.4 * absf(sin(_fx_t * 20.0))
         var w := radius * (0.6 if kind_name == "charger" else 1.6)
         var tip := _dash_dir * length
@@ -964,8 +1062,9 @@ func _explode(dmg: float, rad: float) -> void:
     # Blasts scale with the floor like contact and shots (they were flat 18 and the top
     # damage source of floors 2 to 4 in run 4487a37a).
     var hit := dmg if Main.old_balance else dmg * damage_mult
+    var fair := Main.old_balance or _fuse > -0.99 or _ring_vis >= RING_SHOWN   # _fuse is -1 until lit
     for p in get_tree().get_nodes_in_group("players"):
-        if is_instance_valid(p) and p.alive and p.global_position.distance_to(pos) <= rad + p.radius:
+        if fair and is_instance_valid(p) and p.alive and p.global_position.distance_to(pos) <= rad + p.radius:
             p.take_damage(hit, self)
     var potency := 5.0 + 0.3 * float(_wave)
     for e in get_tree().get_nodes_in_group("enemies"):
@@ -1104,6 +1203,15 @@ func contact_reach() -> float:
 
 
 func _physics_process(delta: float) -> void:
+    if _corpse:
+        _fuse -= delta
+        _fx_t += delta
+        queue_redraw()
+        if _fuse <= 0.0:
+            _corpse = false
+            _explode(BOMB_DAMAGE, BOMB_RADIUS)
+            queue_free()
+        return
     if intro:
         emerge -= delta
         _fx_t += delta
@@ -1203,6 +1311,10 @@ func _physics_process(delta: float) -> void:
 
     _tick_affix(delta)
     _tick_shells(delta)
+    if kind_name == "bomber" or affix == "volatile":
+        var pl := _nearest_player()
+        var near := pl.global_position.distance_to(global_position) if pl != null else INF
+        _ring_vis = _ring_vis + delta if near <= BOMB_RADIUS + 124.0 else 0.0
     if kind_name == "boss":
         _tick_boss_passive(delta)
         if _dead:
@@ -1222,11 +1334,25 @@ func _physics_process(delta: float) -> void:
     velocity += shove_vel
     shove_vel = shove_vel.move_toward(Vector2.ZERO, 900.0 * delta)
     move_and_slide()
+    if kind_name == "charger" and _mode == MODE_DASH and not Main.old_balance:
+        for i in get_slide_collision_count():
+            if get_slide_collision(i).get_collider() is StaticBody2D:
+                # Charged into a wall: stunned, the opening to hit it.
+                stun_time = maxf(stun_time, CHARGE_STUN)
+                _mode = MODE_COOL
+                _mode_t = 0.4
+                _squash = 1.0
+                Sfx.play_at("hit_wall", global_position, -2.0)
+                break
 
     if target != null and _contact_cd <= 0.0 and is_instance_valid(target) and _burrow_state != 2:
         var reach := contact_reach() + target.radius + 2.0
         if global_position.distance_squared_to(target.global_position) <= reach * reach:
-            target.take_damage(contact_damage, self)
+            var hit := contact_damage
+            if kind_name == "charger" and _mode == MODE_DASH and not Main.old_balance:
+                hit = CHARGE_DMG * damage_mult
+                Telemetry.hurt_hint = "charge:" + Telemetry.enemy_label(self)
+            target.take_damage(hit, self)
             _contact_cd = 0.8
     _update_sprite()
     queue_redraw()
@@ -1282,7 +1408,7 @@ func _think(delta: float, target: Player) -> Vector2:
                 _shoot_t = 1.6 if _wave < FAN_DIFF else 2.0
                 var el: int = immune_to if immune_to != Element.Kind.NONE else Element.Kind.NONE
                 _volley += 1
-                if _wave >= LOB_DIFF and _volley % 3 == 0 and not Main.old_balance:
+                if _wave >= _lob_diff() and _volley % 3 == 0:
                     _lob(target)
                 elif _wave >= FAN_DIFF and not Main.old_balance:
                     # Half-way lead: a target running in a straight line or a circle gets
@@ -1290,13 +1416,25 @@ func _think(delta: float, target: Player) -> Vector2:
                     var ahead := target.global_position + target.velocity * (dist / 250.0) * LEAD
                     var aim := (ahead - global_position).normalized()
                     for a in [-FAN_SPREAD, 0.0, FAN_SPREAD]:
-                        _shoot(aim.rotated(a), 250.0, _projectile_damage(6.0) * FAN_DMG, el, 3.0, 6.0)
+                        _shoot(aim.rotated(a), 250.0, _fan_damage(), el, 3.0, 6.0)
                 else:
                     _shoot(dir, 250.0, _projectile_damage(6.0), el, 3.0, 6.0)
                 _squash = 0.6
             return _keep_range(delta, dir, dist, 220.0, 300.0) * speed * mult
         "charger":
-            return _charge_ai(delta, dir, dist, mult, 0.6, 420.0, 0.5, 1.5, 260.0)
+            if Main.old_balance:
+                return _charge_ai(delta, dir, dist, mult, 0.6, 420.0, 0.5, 1.5, 260.0)
+            return _charge_ai(delta, dir, dist, mult, 0.6, CHARGE_SPEED, CHARGE_LEN / CHARGE_SPEED, 1.5, 380.0)
+        "lobber":
+            _shoot_t -= delta
+            if _shoot_t <= 0.0 and dist < 560.0:
+                if rings_over(target.global_position) < MAX_RINGS:
+                    _shoot_t = LOBBER_EVERY
+                    _lob_at(target.global_position, LOBBER_WARN, LOBBER_R, LOBBER_DMG)
+                    _squash = 0.7
+                else:
+                    _shoot_t = 0.3   # a third ring waits
+            return _keep_range(delta, dir, dist, 260.0, 380.0) * speed * mult
         "shaman":
             _pulse_t -= delta
             if _pulse_t <= 0.0:
@@ -1311,13 +1449,28 @@ func _think(delta: float, target: Player) -> Vector2:
                     return Vector2.ZERO
                 return dir * speed * 0.3 * mult
             if dist <= BOMB_TRIGGER + target.radius:
-                _fuse = 0.3
+                _fuse = 0.3 if Main.old_balance else BOMB_FUSE
                 Sfx.play("tick")
             return dir * speed * mult
         "wisp":
             _wisp_phase += delta * 5.0
             var wobble := sin(_wisp_phase) * 1.1 + sin(_wisp_phase * 0.37) * 0.5
             return dir.rotated(wobble) * speed * mult
+    if kind_name == "runner" and not Main.old_balance:
+        # Crouch, then lunge 120 px: melee no longer only walks down the gun line.
+        if _crouch_t > 0.0:
+            _crouch_t -= delta
+            if _crouch_t <= 0.0:
+                _lunge_t = RUNNER_LUNGE / RUNNER_LUNGE_SPEED
+                _lunge_cd = 2.2
+                _dash_dir = dir
+            return Vector2.ZERO
+        if _lunge_t > 0.0:
+            return _dash_dir * RUNNER_LUNGE_SPEED
+        if _lunge_cd <= 0.0 and dist < 160.0 and dist > radius + target.radius + 12.0:
+            _crouch_t = RUNNER_CROUCH
+            _squash = 0.8
+            return Vector2.ZERO
     if kind_name == "runner" and _wave >= FLANK_DIFF and dist > 90.0 and not Main.old_balance:
         # Flankers: swing up to about 60 degrees off the line, less as they close in.
         var swing := clampf((dist - 90.0) / 260.0, 0.0, 1.0) * 1.05 * _strafe_sign
@@ -1325,10 +1478,20 @@ func _think(delta: float, target: Player) -> Vector2:
     if kind_name in ["grunt", "swarmer", "splitter"]:
         # Lunge: close the last stretch in a burst, so a wall of bullets has to stop
         # them rather than merely slow them.
+        if _crouch_t > 0.0:
+            # A short tinted crouch first (Core loop reset 8: every hit a player can read).
+            _crouch_t -= delta
+            if _crouch_t <= 0.0:
+                _lunge_t = 0.32
+            return Vector2.ZERO
         if _lunge_t <= 0.0 and _lunge_cd <= 0.0 and dist < 150.0 and dist > radius + target.radius + 6.0:
-            _lunge_t = 0.32
             _lunge_cd = 1.6
             _squash = 0.8
+            if Main.old_balance:
+                _lunge_t = 0.32
+            else:
+                _crouch_t = MELEE_CROUCH
+                return Vector2.ZERO
         if _lunge_t > 0.0:
             return dir * minf(speed * 2.6, 300.0) * maxf(mult, 0.7)
     return dir * speed * mult
@@ -1391,8 +1554,57 @@ func _lob(target: Player) -> void:
     var rr := _room_rect()
     if rr.has_area():
         at = Vector2(clampf(at.x, rr.position.x + 20.0, rr.end.x - 20.0), clampf(at.y, rr.position.y + 20.0, rr.end.y - 20.0))
-    _shells.append({ "at": at, "t": SHELL_WARN })
+    _shells.append({ "at": at, "t": SHELL_WARN, "warn": SHELL_WARN, "r": SHELL_R, "dmg": _projectile_damage(6.0) * SHELL_DMG })
     Sfx.play("tick")
+
+
+## A shell at `at` (global, kept inside the room): a ring for `warn` s, then a burst of
+## radius `r` dealing `dmg` (times the floor's damage multiplier).
+func _lob_at(at: Vector2, warn: float, r: float, dmg: float) -> void:
+    var rr := _room_rect()
+    if rr.has_area():
+        at = Vector2(clampf(at.x, rr.position.x + 20.0, rr.end.x - 20.0), clampf(at.y, rr.position.y + 20.0, rr.end.y - 20.0))
+    _shells.append({ "at": at, "t": warn, "warn": warn, "r": r, "dmg": dmg })
+    Sfx.play("tick")
+
+
+## Hostile rings (shells in flight, Sower circles) whose area covers `pos` (global).
+func rings_over(pos: Vector2) -> int:
+    var n := 0
+    for e in get_tree().get_nodes_in_group("enemies"):
+        if not is_instance_valid(e) or not (e is Enemy):
+            continue
+        for sh in e._shells:
+            if Vector2(sh["at"]).distance_to(pos) <= float(sh["r"]) + 16.0:
+                n += 1
+        for z in e._zones:
+            if Vector2(z["at"]).distance_to(pos) <= SOW_R + 16.0:
+                n += 1
+    return n
+
+
+func _lob_diff() -> int:
+    return LOB_DIFF if Main.old_balance else 8   # section 8: the spitter's lob from difficulty 8
+
+
+## A spitter's fan shot: 8 of a 100 HP bar from floor 3 (section 8), else the old scaling.
+func _fan_damage() -> float:
+    var d := _projectile_damage(6.0) * FAN_DMG
+    if _wave >= 10 and not Main.old_balance:
+        d = maxf(d, SPIT_DMG_DEEP)
+    return d
+
+
+## Reactions on this enemy inside a second of each other: x1, x0.75, x0.56 ... never under
+## x0.4 (Core loop reset 9). Elements.try_react multiplies the reaction's potency by it.
+func react_decay() -> float:
+    var now := _game_now()
+    if now - _react_last > 1.0:
+        _react_n = 0
+    _react_last = now
+    var m := maxf(0.4, pow(0.75, float(_react_n)))
+    _react_n += 1
+    return m
 
 
 func _tick_shells(delta: float) -> void:
@@ -1405,15 +1617,16 @@ func _tick_shells(delta: float) -> void:
             continue
         _shells.remove_at(i)
         var at: Vector2 = sh["at"]
-        var col := Color(0.55, 0.85, 0.35)
-        Elements.nova.emit(at, SHELL_R, Color(col, 0.6))
+        var r := float(sh["r"])
+        var col := Color(0.55, 0.85, 0.35) if kind_name == "spitter" else Color(0.95, 0.65, 0.3)
+        Elements.nova.emit(at, r, Color(col, 0.6))
         var fx := _fx()
         if fx != null:
-            fx.blast(at, SHELL_R, col)
+            fx.blast(at, r, col)
         for p in get_tree().get_nodes_in_group("players"):
-            if is_instance_valid(p) and p.alive and p.global_position.distance_to(at) <= SHELL_R + p.radius:
+            if is_instance_valid(p) and p.alive and p.global_position.distance_to(at) <= r + p.radius:
                 Telemetry.hurt_hint = "shell:" + Telemetry.enemy_label(self)
-                p.take_damage(_projectile_damage(6.0) * SHELL_DMG * damage_mult, self, at)
+                p.take_damage(float(sh["dmg"]) * damage_mult, self, at)
     queue_redraw()
 
 
@@ -1425,7 +1638,35 @@ func _barrage() -> void:
 
 
 func _tick_affix(delta: float) -> void:
+    _tick_zones(delta)
     match affix:
+        "sower":
+            _sow_t -= delta
+            if _sow_t <= 0.0:
+                _sow_t = SOW_EVERY
+                var off := randf() * TAU
+                for i in SOW_N:
+                    var at := global_position + Vector2.from_angle(off + TAU * float(i) / float(SOW_N)) * randf_range(80.0, 150.0)
+                    var rr := _room_rect()
+                    if rr.has_area():
+                        at = Vector2(clampf(at.x, rr.position.x + 30.0, rr.end.x - 30.0), clampf(at.y, rr.position.y + 30.0, rr.end.y - 30.0))
+                    if rings_over(at) >= MAX_RINGS:
+                        continue
+                    _zones.append({ "at": at, "age": 0.0, "tick": 0.0 })
+                _squash = 0.7
+        "mortar":
+            _mortar_t -= delta
+            var pl := _nearest_player()
+            if _mortar_t <= 0.0 and pl != null and pl.global_position.distance_to(global_position) < 620.0:
+                _mortar_t = MORTAR_EVERY
+                var at := pl.global_position
+                var side := Vector2.from_angle(randf() * TAU)
+                for o in [Vector2.ZERO, side * 105.0, -side * 105.0]:
+                    if rings_over(at + o) < MAX_RINGS:
+                        _lob_at(at + o, LOBBER_WARN, LOBBER_R, LOBBER_DMG)
+                _squash = 0.8
+        "tether":
+            _tick_tether(delta)
         "barrage":
             _barrage_t -= delta
             if _barrage_t <= 0.0:
@@ -1448,6 +1689,69 @@ func _tick_affix(delta: float) -> void:
                 var w := _world()
                 if w != null:
                     Cloud.spawn(w, global_position, el, 60.0, 4.0, 4.0, null)
+
+
+## Sower circles: fill for SOW_WARN s (no harm), then hurt every 0.5 s for SOW_LIFE s.
+func _tick_zones(delta: float) -> void:
+    if _zones.is_empty():
+        return
+    for i in range(_zones.size() - 1, -1, -1):
+        var z: Dictionary = _zones[i]
+        z["age"] = float(z["age"]) + delta
+        if float(z["age"]) > SOW_WARN + SOW_LIFE:
+            _zones.remove_at(i)
+            continue
+        if float(z["age"]) < SOW_WARN:
+            continue
+        z["tick"] = float(z["tick"]) - delta
+        if float(z["tick"]) > 0.0:
+            continue
+        z["tick"] = 0.5
+        for p in get_tree().get_nodes_in_group("players"):
+            if is_instance_valid(p) and p.alive and p.global_position.distance_to(Vector2(z["at"])) <= SOW_R + p.radius * 0.5:
+                Telemetry.hurt_hint = "sower:" + Telemetry.enemy_label(self)
+                p.take_damage(SOW_DMG * damage_mult, self, Vector2(z["at"]))
+    queue_redraw()
+
+
+## The Tether: stay within TETHER_R for TETHER_ARM s and a beam grows from it for
+## TETHER_GROW s, then drains TETHER_DPS of a 100 HP bar a second until you break range
+## (TETHER_BREAK) or sight.
+func _tick_tether(delta: float) -> void:
+    var pl := _nearest_player()
+    var rm := Room.here
+    var seen := pl != null and (rm == null or not is_instance_valid(rm) or rm.line_clear(global_position, pl.global_position))
+    var d := pl.global_position.distance_to(global_position) if pl != null else INF
+    match _tether_state:
+        0:
+            _tether_t = _tether_t + delta if (seen and d <= TETHER_R) else maxf(0.0, _tether_t - delta)
+            if _tether_t >= TETHER_ARM:
+                _tether_state = 1
+                _tether_k = 0.0
+                _tether_to = pl
+                Sfx.play("tick")
+        1, 2:
+            var lost := _tether_to == null or not is_instance_valid(_tether_to) or not _tether_to.alive
+            if not lost:
+                lost = _tether_to.global_position.distance_to(global_position) > TETHER_BREAK
+            if not lost and rm != null and is_instance_valid(rm):
+                lost = not rm.line_clear(global_position, _tether_to.global_position)
+            if lost:
+                _tether_state = 0
+                _tether_t = 0.0
+                _tether_to = null
+            elif _tether_state == 1:
+                _tether_k += delta / TETHER_GROW
+                if _tether_k >= 1.0:
+                    _tether_state = 2
+                    _tether_tick = 0.0
+            else:
+                _tether_tick -= delta
+                if _tether_tick <= 0.0:
+                    _tether_tick = 0.5
+                    Telemetry.hurt_hint = "tether:" + Telemetry.enemy_label(self)
+                    _tether_to.take_damage(TETHER_DPS * 0.5 * damage_mult, self)
+    queue_redraw()
 
 
 # --- Bosses ----------------------------------------------------------------
@@ -2606,6 +2910,8 @@ func _update_sprite() -> void:
         c = c.lerp(Element.COLORS[Element.Kind.FIRE], 0.35)
     if _mode == MODE_TELEGRAPH and fmod(_mode_t, 0.16) < 0.08:
         c = c.lerp(Color(1, 0.3, 0.2), 0.7)
+    if _crouch_t > 0.0:
+        c = c.lerp(Color(1, 0.3, 0.2), 0.6)
     if _fuse >= 0.0 and fmod(_fuse, 0.1) < 0.05:
         c = c.lerp(Color(1, 1, 0.6), 0.8)
     if kind_name == "boss" and _phase >= 2:
@@ -2932,6 +3238,19 @@ func _draw_affix() -> void:
             var c := Color(1.0, 0.45 + 0.3 * sin(_fx_t * 8.0), 0.2)
             draw_circle(pos, 3.5, c)
             draw_line(pos + Vector2(0, -3.5), pos + Vector2(2, -6), Color(1, 0.9, 0.5), 1.5)
+        "sower":
+            var c := Color(1.0, 0.35, 0.3)
+            for k in 3:
+                draw_circle(pos + Vector2.from_angle(TAU * float(k) / 3.0 - PI / 2.0) * 3.0, 1.8, c)
+        "mortar":
+            var c := Color(0.95, 0.65, 0.3)
+            draw_arc(pos + Vector2(0, 2), 4.0, PI, TAU, 8, c, 2.0)
+            draw_circle(pos + Vector2(0, -2.5), 1.8, c)
+        "tether":
+            var c := Color(1.0, 0.3, 0.45)
+            draw_line(pos + Vector2(-4, 3), pos + Vector2(4, -3), c, 2.0)
+            draw_circle(pos + Vector2(-4, 3), 1.6, c)
+            draw_circle(pos + Vector2(4, -3), 1.6, c)
 
 
 ## The entrance animation per boss (BossShow.REVEAL is the moment it is there).
@@ -3084,12 +3403,13 @@ const KEY_THREATS := ["spitter", "charger", "shaman", "bomber", "warden", "lobbe
 
 
 func is_key_threat() -> bool:
-    return kind_name in KEY_THREATS or affix in ["volatile", "barrage"]
+    return kind_name in KEY_THREATS or affix in ["volatile", "barrage", "sower", "mortar", "tether"]
 
 
 ## Winding up an attack right now (charge telegraph, ring, teleport or gut-blast warning).
 func winding_up() -> bool:
-    return _mode == MODE_TELEGRAPH or _ring_warn > 0.0 or _tele_warn > 0.0 or _gut_warn > 0.0
+    return _mode == MODE_TELEGRAPH or _ring_warn > 0.0 or _tele_warn > 0.0 or _gut_warn > 0.0 \
+            or _crouch_t > 0.0 or not _shells.is_empty() or _tether_state > 0
 
 
 ## Shots in flight toward this enemy (Focus skips it once they cover its health).

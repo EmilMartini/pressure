@@ -48,6 +48,8 @@ var rooms := 0
 var clean := 0
 var _room_hurt0 := -1.0
 var _hurt_log: Array = []     # [t, share of max hp]
+var _hurt_log_nb: Array = []  # the same outside boss rooms (the fairness check, Core loop reset 13.2)
+var dmg_by: Dictionary = {}   # hurt source kind -> share of max hp (Core loop reset: which threat hurts)
 
 
 func _ready() -> void:
@@ -110,6 +112,8 @@ func start_floor(n: int, region: String) -> void:
     clean = 0
     _room_hurt0 = -1.0
     _hurt_log = []
+    _hurt_log_nb = []
+    dmg_by = {}
 
 
 func _physics_process(delta: float) -> void:
@@ -152,10 +156,15 @@ func _physics_process(delta: float) -> void:
             moving += SAMPLE
 
 
-func on_hurt(p: Player, amount: float) -> void:
+func on_hurt(p: Player, amount: float, src: String = "") -> void:
     if _flushed or p != player():
         return
     var share := amount / maxf(1.0, p.max_hp)
+    var kind := src.get_slice("|", 0)
+    dmg_by[kind] = float(dmg_by.get(kind, 0.0)) + share
+    var rm = main.current if main != null and "current" in main else null
+    if rm == null or not ("data" in rm) or rm.data == null or rm.data.type != RoomData.Type.BOSS:
+        _hurt_log_nb.append([_t, share])
     dmg += share
     dmg_abs += amount
     hits += 1
@@ -194,14 +203,16 @@ func room_cleared(room: Node) -> void:
         clean += 1
 
 
-func _burst(window: float) -> float:
+func _burst(window: float, log: Array = []) -> float:
+    if log.is_empty():
+        log = _hurt_log
     var best := 0.0
     var sum := 0.0
     var i := 0
-    for j in _hurt_log.size():
-        sum += float(_hurt_log[j][1])
-        while float(_hurt_log[j][0]) - float(_hurt_log[i][0]) > window:
-            sum -= float(_hurt_log[i][1])
+    for j in log.size():
+        sum += float(log[j][1])
+        while float(log[j][0]) - float(log[i][0]) > window:
+            sum -= float(log[i][1])
             i += 1
         best = maxf(best, sum)
     return best
@@ -224,6 +235,7 @@ func summary(died: bool) -> Dictionary:
         "moving": snappedf(moving / maxf(threat, 0.1), 0.001), "near_miss_pm": snappedf(float(near_miss) / mins, 0.01),
         "rooms": rooms, "clean": clean,
         "burst1": snappedf(_burst(1.0), 0.001), "burst3": snappedf(_burst(3.0), 0.001), "died": died,
+        "burst3_nb": snappedf(_burst(3.0, _hurt_log_nb) if not _hurt_log_nb.is_empty() else 0.0, 0.001),
         "hands": hands(),
     }
 
@@ -243,6 +255,12 @@ func flush(died: bool = false) -> void:
             s["floor"], s["region"], s["fight"], s["lt50"], s["lt25"], s["dmg_pm"], s["heal_pm"], heal_txt.strip_edges(),
             s["hits"], s["max_hit"], s["close"], s["threat"], s["moving"], s["near_miss_pm"], s["clean"], s["rooms"],
             s["burst1"], s["burst3"], str(died)])
+        var top: Array = dmg_by.keys()
+        top.sort_custom(func(a, b): return float(dmg_by[a]) > float(dmg_by[b]))
+        var by_txt := ""
+        for k in top.slice(0, 8):
+            by_txt += "%s:%.2f " % [k, float(dmg_by[k])]
+        print("[THREATS] floor=%d burst3_nonboss=%.2f power=%s hurt_by(bars)=%s" % [s["floor"], s["burst3_nb"], main.power_text(), by_txt.strip_edges()])
         var h: Dictionary = s["hands"]
         if not h.is_empty():
             print("[HANDS] floor=%d dashes=%d perfect=%d vents=%d mend_max=%.2f mend_used=%.2f mend_left=%.2f texts=%d texts_pm=%.2f focus_multi=%d focus_distinct=%d" % [

@@ -215,7 +215,7 @@ func strike(el: int = -1) -> Strike:
     var s := Strike.new()
     s.element = data.element if el < 0 else el
     s.damage = data.damage * tier_mult() * maxf(0.1, 1.0 + player.stat("dmg") + player.stat("dmg_" + ek) + _gm("g_dmg"))
-    s.potency = s.damage * data.reaction_mult * (1.0 + player.stat("potency") + player.stat("potency_" + ek))
+    s.potency = s.damage * data.reaction_mult * (1.0 + potency_bonus(player.stat("potency") + player.stat("potency_" + ek)))
     s.crit = randf() < player.stat("crit")
     if s.crit:
         var crit_mult := 2.0 + player.stat("crit_dmg")
@@ -227,6 +227,16 @@ func strike(el: int = -1) -> Strike:
     s.shooter = player
     s.gun_id = data.id
     return s
+
+
+## Stacked reaction power with diminishing returns (Core loop reset 9): in full up to +50%,
+## at half from +50% to +150%, at a quarter beyond (+100% is +75%, +250% is +125%).
+static func potency_bonus(raw: float) -> float:
+    if Main.old_balance or raw <= 0.5:
+        return raw
+    if raw <= 1.5:
+        return 0.5 + 0.5 * (raw - 0.5)
+    return 1.0 + 0.25 * (raw - 1.5)
 
 
 ## The element of the next projectile, flipping alternating guns.

@@ -1064,6 +1064,110 @@ Goal: standing still kills; most runs stay a fight to the end.
   `[SMOKE] ALL PASS`; CI green.
 - Out of scope: loot, prices, the catalog.
 
+### Session 2 done (2026-11-10, build `2026.11.10-threats`)
+
+**Built**
+- **Room composition (8).** `SpawnTable.KEY` (spitter, lobber, charger) and `key_budget`: one key
+  threat alive on floor 1, two from its third arena; 2 then 3 on floor 2; 3 on floor 3; 3 to 4 on
+  floors 4 and 5. Elites count against it. `Room._tick_keys` refills them every 2 s from 3 s into
+  a wave. Spitters and chargers left the crowd table. Lobbers and chargers start in floor 1's
+  third arena. Elites are now 1 a timer on floors 1 to 3 and 2 from floor 4, which fits them
+  inside the budget (before: 2 a timer from difficulty 8, so 4 elites a floor-3 wave).
+- **Lobber** (new): 40 + 7.5 per difficulty, keeps 260 to 380 px, lobs every 2.4 s at where you
+  stand; a ring fills in for the 1.1 s flight, then a 48 px burst for 10. Ochre, tile (28, 6),
+  drawn 15% larger like every key threat.
+- **Charger:** 0.6 s red line the full 500 px, then 600 px/s; 15 a hit; a wall stuns it 1 s.
+- **Runner lunge:** a 0.35 s red crouch, then 120 px at 500 px/s.
+- **Grunt, swarmer and splitter lunge:** a 0.2 s red crouch first (added; they lunged with no tell).
+- **Spitter:** the lob from difficulty 8 (was 14); fan shots 8 from floor 3.
+- **Zoning elites:** Sower (floor 2: 3 circles of 70 px every 4 s, 0.8 s to fill, then 5 per
+  0.5 s for 5 s), Mortar (floor 3: 3 shells round you every 3.4 s, one on you and two 105 px to
+  the sides), Tether (floor 3: 2 s within 300 px arms it, the beam grows for 1 s, then 3 a second
+  until you pass 340 px or break sight). Each has an icon, is a key threat for the auto-aim, and
+  drops its circles, shells and beam when it dies.
+- **Fairness:** at most 2 hostile rings over a player (a third lob or circle waits). A bomber's
+  fuse is now 0.6 s (was 0.3), and a bomber or volatile elite killed before its fuse ran leaves
+  its corpse burning for 0.6 s behind the full ring before it blows (it blew at once). Spawns
+  stay at least 170 px from a player.
+- **Run length (5.0):** 4 arenas a floor (`FloorGen.ARENAS`), waves 45 s on floors 1 and 2 and
+  55 s from floor 3, at most 40 enemies alive (`Room.SCREEN_CAP`, the boss room too).
+- **Power curve (9):** `Room.PAR_DPS` and `FLOOR_HP` as the table. Enemy health = formula x F x B,
+  B = clamp((P / E)^0.7, 0.8, 3.0). P is `Main.measured_power()`: the floor's last 3 arenas, else
+  last floor's P x E(f) / E(f-1), else par. Synergy damage is tagged (`Enemy.synergy_depth`,
+  `synergy_dealt`) and counted at half; nothing raises the tag yet (session 4). Elites hold at
+  least 5 s of P on every floor. Bosses hold 35 s of P x their health share on every floor,
+  floor 1 included, never under formula x F x B, at most 9x the formula. Potency bonus with
+  diminishing returns (`Gun.potency_bonus`), and per-target reaction decay x0.75 a repeat
+  within 1 s, never under x0.4 (`Enemy.react_decay`).
+- **Bots and telemetry:** `[ARENA-P]` per arena (dps, P, E, B), `[THREATS]` per floor (worst 3 s
+  outside boss rooms, damage by source in bars). The kite bot now reads telegraphs the way a
+  player sees them: it steps out of landing rings, Sower circles and lit fuses, backs off a
+  tether, and dashes out of a ring or fuse about to go off.
+
+**Deviations from the spec, and why** (all measured with the 4-mover set below)
+- **The crowd takes B at half the power** (`CROWD_BUILD_POW` 0.35; key threats, elites and
+  bosses keep 0.7). With the full B the floor-3 crowd had 4 to 4.7x its formula health. Brutes,
+  splitters and grunts walked through the guns, and 3 or 4 movers of 4 died on floor 3. Section
+  8 says the crowd is "there to be mowed down", and section 9 puts the push in "threats that make
+  you move, not health that makes you wait".
+- **The crowd no longer grows with guns and elements** (x1.22 a gun before). Health follows the
+  measured build now, so that would count the build twice. Half the old growth was tried: floor
+  2 stayed easy for movers, and floor 3 killed 3 of 4.
+- **Boss health shares:** Hive Mother 1.5 to 1.15 (57 s at 1.5); Storm Warden 1.5 to 0.85 (52 s,
+  then 49 to 54 s at 1.15; his armour slows the fight); Drowned Choir 2.0 to 1.55 and Void
+  Herald 2.3 to 1.75 by the same ratio, **not measured** at the new 35 s.
+- **Elites stay at 5 s of P.** Bots still kill them in a 1.5 to 3.2 s median, because the auto-aim
+  puts all four guns on them. 8 s was tried: elites became the movers' top killer on floor 3
+  (0.6 to 1.1 bars), and no mover of 4 survived floor 3. The human 8 to 15 s target is for
+  Emil's runs to show.
+- **Not built:** ring swarms and room hazards (section 8; not in this session's brief, and the
+  stand-still check already passes without them). The fairness check "0 hostile damage without
+  a 0.6 s telegraph" is met by construction for the new threats, not counted in the logs.
+
+**Measured** (headless, `--fixed-fps 60`, `--build=human6980 --mastery=full --start-floor=2`,
+route Ossuary Gate, Rust Ruins, Frostvault, the Forge; the build exists from floor 2, so the
+runs start there, as session 1's did). Before = main at `ce93aa6`.
+
+Stand-still (`--idle`):
+
+| | Runs | Died | Floor 2 lt50 | Floor 2 damage a minute (bars) | Top sources |
+|---|---|---|---|---|---|
+| Before | 2 | floor 2, at 123 and 189 s | 0.75, 0.58 | 1.74, 1.02 | |
+| After | 4 | floor 2, at 154, 156, 200 and 222 s | 0.55 to 0.72 | 0.92 to 1.23 | spitters, lobber shells, bombers, runners, elites, chargers |
+
+Mover (`--kite`, dashes):
+
+| | Runs | Reached floor 4 | Floor 2 lt50 / damage a minute | Floor 3 lt50 / damage a minute / healing per damage | Health at floor 4 |
+|---|---|---|---|---|---|
+| Before | 2 | 2 | 0.00 / 0.21, 0.25 | 0.52, 0.56 / 0.21, 0.29 / 0.57, 0.62 | 13 and 13 |
+| After | 4 | 3 (one died in a floor-3 arena) | 0.00 / 0.12 to 0.20 | 0.30, 0.51, 0.14 (and 0.75 in the death) / 0.37, 0.28, 0.42 / 0.51, 0.46, 0.64 | 8, 36 and 53 (of 142 to 229) |
+
+| Check (13.2) | Result | Pass |
+|---|---|---|
+| Stand-still dies by the end of floor 3 | 4 of 4 die on floor 2; lt50 0.55 to 0.72 | yes |
+| Mover reaches floor 4, 3 of 4 | 3 of 4; from floor 3 lt50 0.14 to 0.51, healing 0.46 to 0.64x damage | yes |
+| Idle takes at least 2x the mover's damage a minute | floor 2: 0.92 to 1.23 against 0.12 to 0.20 (5x or more); idle never reaches floor 3 | yes |
+| Bosses, bots 25 to 60 s | Hive Mother 46.4, 40.1, 24.5, 34.8 s; Storm Warden 40.7, 31.8, 42.9 s | yes (one at 24.5) |
+| Worst 3 s outside boss rooms at most 0.5 | movers 0.06 to 0.29; idle 0.24 to 0.37 | yes |
+| Spawns | `[SPAWN-CHECK] PASS` in every run, 0 close | yes |
+| Old rule: idle six-gun bot, first region | died on floor 1 at 78 s | yes |
+| Fresh save (kite, no Shrine, no build) | 2 of 2 died on floor 1 (75 and 42 s), as the meta-curve bots did before (40 and 56 s) | humans are the reference |
+| Fusion probe, hub walk | `[FUSION-CHECK] PASS`, `[HUB-WALK] PASS`, `[HUB-FRESH] PASS`; 0 `SCRIPT ERROR` in every bot log | yes |
+
+**What's left, and for Emil**
+- **Floor 2 is easy for a mover** (never under 50% in 8 runs), and floor 3 is where it bites.
+  If Emil's floor 2 feels flat, raise the floor-2 key budget, not the crowd.
+- **Elite times on human play:** `elite` events in Emil's next runs (target median 8 to 15 s).
+  If they melt, raise `Room.ELITE_SECS_P`, but watch elite body slams on floor 3.
+- **Floors 4 and 5, the Drowned Choir and the Void Herald** were not measured at the new curve.
+- **Ring swarms and room hazards** (section 8) are still to build.
+
+**Screenshots and windowed checks to take while Emil is away:**
+1. A lobber's ring filling and the 15% larger key-threat bodies in a floor-1 third arena.
+2. A charger's 500 px red line, and a charger stunned against a wall.
+3. A Sower's circles filling, a Mortar's three rings, a Tether's beam growing and linked.
+4. A killed bomber's corpse ring, and a runner's red crouch.
+
 ### Session 3: Loot, economy and risk rooms
 
 Goal: every room's reward and every shop visit is a decision; money is tight at any power.

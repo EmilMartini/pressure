@@ -84,6 +84,60 @@ const RALLY_GROUPS := 3
 const ELITE_SECS := 2.0
 const BOSS_CROWD := 0.4
 
+## Core loop reset (sections 5.0, 8, 9). Arena waves last WAVE_SECS (floors 1 and 2) or
+## WAVE_SECS_DEEP (floors 3+). At most SCREEN_CAP enemies alive in a room (the hordes at
+## zoom 1.6). Key threats refill on their own timer (KEY_REFILL s) up to the floor's budget
+## (SpawnTable.key_budget; elites count against it), from KEY_FIRST s into a wave.
+## Enemy health = the old formula x FLOOR_HP[floor] x the build factor
+## B = clamp((P / PAR_DPS[floor]) ^ BUILD_POW, BUILD_MIN, BUILD_MAX), P the measured damage
+## per second (Main.measured_power). Elites hold at least ELITE_SECS_P s of P and bosses
+## BOSS_SECS_P s of P (times their hp share), at most BOSS_HP_MAX_MULT x their formula.
+const WAVE_SECS := 45.0
+const WAVE_SECS_DEEP := 55.0
+const SCREEN_CAP := 40
+const KEY_REFILL := 2.0
+const KEY_FIRST := 3.0
+const PAR_DPS := [150.0, 350.0, 700.0, 1100.0, 1600.0]
+const FLOOR_HP := [1.0, 1.3, 1.8, 2.4, 3.0]
+const BUILD_POW := 0.7
+const BUILD_MIN := 0.8
+const BUILD_MAX := 3.0
+const ELITE_SECS_P := 5.0   # bots kill these in a 2 to 3 s median (all guns focus them); at 8 s elites were the mover's top killer on floor 3
+## The crowd (not key threats, elites or bosses) takes B at half the power: section 8's crowd
+## is there to be mowed down. With the full B the mover died on floor 3 in 3 or 4 runs of 4.
+const CROWD_BUILD_POW := 0.35
+const BOSS_SECS_P := 35.0
+var _key_t := KEY_FIRST
+var _syn0 := 0.0                    # Enemy.synergy_dealt when the arena wave began
+
+
+## Par damage per second a decent build has on a floor (section 9); past floor 5 +40% a floor.
+static func par_dps(floor_number: int) -> float:
+    var f := clampi(floor_number, 1, PAR_DPS.size())
+    return float(PAR_DPS[f - 1]) * (1.0 + 0.4 * float(maxi(0, floor_number - PAR_DPS.size())))
+
+
+static func floor_hp(floor_number: int) -> float:
+    var f := clampi(floor_number, 1, FLOOR_HP.size())
+    return float(FLOOR_HP[f - 1]) * (1.0 + 0.25 * float(maxi(0, floor_number - FLOOR_HP.size())))
+
+
+## The build factor B for this floor from the measured power P.
+func build_factor() -> float:
+    var e := par_dps(main.floor_number)
+    return clampf(pow(maxf(1.0, main.measured_power()) / e, BUILD_POW), BUILD_MIN, BUILD_MAX)
+
+
+## What an enemy's formula health is multiplied by: F(f) x B, the crowd F(f) x B at half the
+## power (the old party_power cap with --old-balance).
+func hp_mult(crowd: bool = false) -> float:
+    if Main.old_balance:
+        return clampf(1.0 + 0.12 * (party_power() - 1.0), 0.9, 1.25)
+    var b := build_factor()
+    if crowd:
+        b = pow(b, CROWD_BUILD_POW / BUILD_POW)
+    return floor_hp(main.floor_number) * b
+
 # Layout: interior walls, chasms and terrain on a NAV grid (see RoomLayouts).
 var layout_name := "open"
 var nav_w := 0
@@ -216,7 +270,11 @@ func _begin_arena() -> void:
     active = true
     var diff := main.difficulty()
     wave_duration = clampf(18.0 + 2.2 * float(diff), 18.0, 60.0)
+    if not Main.old_balance:
+        wave_duration = WAVE_SECS if main.floor_number <= 2 else WAVE_SECS_DEEP
     wave_time_left = wave_duration
+    _key_t = KEY_FIRST
+    _syn0 = Enemy.synergy_dealt
     _spawn_timer = 0.8
     _elite_timer = wave_duration * 0.45 if diff >= 2 else INF
     _elite_timer2 = wave_duration * 0.78 if main.floor_number >= 2 else INF
@@ -240,7 +298,7 @@ func _tick_arena(delta: float) -> void:
         # a six-gun build that melts everything gets a constant horde (many enemies, not
         # tankier ones). The first seconds of a wave ramp up from a third of the target.
         var ramp := clampf((wave_duration - wave_time_left) / 8.0, 0.35, 1.0)
-        var target := int(round(float(crowd_target(diff)) * ramp))
+        var target := mini(int(round(float(crowd_target(diff)) * ramp)), SCREEN_CAP)
         var alive := enemies.get_child_count()
         if alive < target:
             _spawn_group()
@@ -248,18 +306,49 @@ func _tick_arena(delta: float) -> void:
             _spawn_timer = 0.3 if alive < target * 0.6 else 0.7
         else:
             _spawn_timer = 0.5
+    _tick_keys(delta)
     if _elite_timer <= 0.0:
         _elite_timer = INF
-        _spawn_elite(SpawnTable.elite_count(diff))
+        _spawn_elite(SpawnTable.elite_count(diff, main.floor_number))
     _elite_timer2 -= delta
     if _elite_timer2 <= 0.0:
         _elite_timer2 = INF
-        _spawn_elite(SpawnTable.elite_count(diff))
+        _spawn_elite(SpawnTable.elite_count(diff, main.floor_number))
     if wave_time_left <= 0.0:
-        main.note_arena_dps((Enemy.dealt_total - _dealt0) / maxf(1.0, wave_duration))
+        # Synergy damage counts at half (section 9): only a synergy built on purpose breaks the curve.
+        var dealt := (Enemy.dealt_total - _dealt0) - 0.5 * (Enemy.synergy_dealt - _syn0)
+        main.note_arena_dps(dealt / maxf(1.0, wave_duration))
         Telemetry.wave_end(self, _floor_pedestals(), _floor_scrap())
         _finish_fight(6)
         _arena_reward()
+
+
+## Key threats (section 8): refilled on their own timer up to the floor's budget, elites
+## counted against it, never past the screen cap.
+func _tick_keys(delta: float) -> void:
+    if Main.old_balance:
+        return
+    _key_t -= delta
+    if _key_t > 0.0:
+        return
+    _key_t = KEY_REFILL
+    var arena_i := main.floor_arenas_done()
+    var budget := SpawnTable.key_budget(main.floor_number, arena_i)
+    var keys := 0
+    var alive := 0
+    for e in enemies.get_children():
+        if not (e is Enemy) or e.is_queued_for_deletion() or e.hp <= 0.0:
+            continue
+        alive += 1
+        if SpawnTable.KEY.has(e.kind_name) or e.kind_name == "elite":
+            keys += 1
+    if keys >= budget or alive >= SCREEN_CAP:
+        return
+    var kind := SpawnTable.key_kind(main.floor_number, arena_i)
+    if kind == "":
+        return
+    var e := _spawn_enemy(kind, _spawn_point())
+    e.emerge = Enemy.EMERGE_SECS
 
 
 ## Every arena pays out once, at the wave's end, as one clear choice (Brotato's crates
@@ -433,16 +522,21 @@ func _begin_boss() -> void:
             add_child(tool)
             if tool_kind == "war_brazier":
                 ArtPass.add_light(tool, Vector2(0, -8), 220.0, Color(1.0, 0.6, 0.3), 0.9, 0.04, 0.6)
-    if main.floor_number >= 2 and not Main.old_balance:
-        var want := BOSS_DPS_SECS * main.floor_arena_dps() * BossBody.hp_share(boss.boss_kind)
-        boss.max_hp = clampf(want, boss.max_hp, boss.max_hp * BOSS_HP_MAX_MULT)
+    if not Main.old_balance:
+        # Section 9: at least BOSS_SECS_P seconds of the measured power on every floor, floor
+        # 1 included, never under the formula (x F x B, and the Brute King's floor-1 share),
+        # at most BOSS_HP_MAX_MULT x the formula.
+        var formula := boss.max_hp / maxf(0.01, _last_hp_mult)
+        if main.floor_number <= 1:
+            formula *= BossBody.floor1_mult(boss.boss_kind)
+            boss.max_hp *= BossBody.floor1_mult(boss.boss_kind)
+        var want := BOSS_SECS_P * main.measured_power() * BossBody.hp_share(boss.boss_kind)
+        boss.max_hp = clampf(maxf(want, boss.max_hp), formula, formula * BOSS_HP_MAX_MULT)
         boss.hp = boss.max_hp
-        boss.rally_secs = RALLY_SECS
-        boss.rally_at = RALLY_AT.duplicate()
-        boss.rallied.connect(_on_boss_rallied)
-    elif not Main.old_balance:
-        boss.max_hp *= BossBody.floor1_mult(boss.boss_kind)
-        boss.hp = boss.max_hp
+        if main.floor_number >= 2:
+            boss.rally_secs = RALLY_SECS
+            boss.rally_at = RALLY_AT.duplicate()
+            boss.rallied.connect(_on_boss_rallied)
     var pairs := Elements.available_reactions(main.party_elements())
     var hits := 5 + main.difficulty() / 3
     if not pairs.is_empty():
@@ -491,7 +585,7 @@ func _tick_boss(delta: float) -> void:
         _spawn_timer -= delta
         if _spawn_timer <= 0.0:
             _spawn_timer = 0.7
-            if enemies.get_child_count() < int(float(crowd_target(main.difficulty())) * BOSS_CROWD):
+            if enemies.get_child_count() < mini(int(float(crowd_target(main.difficulty())) * BOSS_CROWD), SCREEN_CAP):
                 _spawn_group()
     if boss == null or not is_instance_valid(boss):
         boss = null
@@ -565,6 +659,12 @@ func crowd_target(diff: int) -> int:
     for pl in main.players:
         guns += (pl as Player).guns.size()
     var build := 1.0 + 0.22 * float(maxi(0, guns - 1)) + 0.12 * float(maxi(0, party_elements_count() - 1))
+    if not Main.old_balance:
+        # Core loop reset 9: health follows the measured build (hp_mult), so the crowd no
+        # longer grows with guns and elements as well (section 0: x1.22 a gun fed the money
+        # flood). Session 2 tried half the old growth: floor 2 stayed easy for a mover and
+        # floor 3 killed 3 of 4.
+        build = 1.0
     return clampi(int(base * build), 5, 130)
 
 
@@ -628,6 +728,7 @@ static func floor_damage_mult(floor_number: int) -> float:
 func _spawn_group(out: Array = []) -> float:
     var diff := main.difficulty()
     var total_hp := 0.0
+    var room_left := SCREEN_CAP - enemies.get_child_count() if not Main.old_balance else 999
     var ring := randf() < 0.55 and main.floor_number >= 1
     var anchor: Player = null
     if ring:
@@ -637,6 +738,9 @@ func _spawn_group(out: Array = []) -> float:
     var group_i := 0
     var group: Array = SpawnTable.group(diff, main.floor_number, main.players.size())
     for type in group:
+        if room_left <= 0:
+            break
+        room_left -= 1
         var pos := _spawn_point()
         if anchor != null:
             # Brotato spawns anywhere on screen: here half the groups close in from a ring
@@ -662,12 +766,16 @@ func _spawn_group(out: Array = []) -> float:
     return total_hp
 
 
+var _last_hp_mult := 1.0
+
+
 func _spawn_enemy(type: String, pos: Vector2) -> Enemy:
     var e := Enemy.new()
     e.configure(type, main.difficulty())
     # A stronger build meets more enemies, not tankier ones: health grows at most 25%;
     # the rest of the party's power goes into the bodies budget (party_guns_factor).
-    e.max_hp *= clampf(1.0 + 0.12 * (party_power() - 1.0), 0.9, 1.25) * Loadout.vow_enemy_hp()
+    _last_hp_mult = hp_mult(type != "elite" and type != "boss" and not SpawnTable.KEY.has(type))
+    e.max_hp *= _last_hp_mult * Loadout.vow_enemy_hp()
     e.hp = e.max_hp
     e.damage_mult = floor_damage_mult(main.floor_number)
     if type != "boss" and Shortcuts.drained(main.region_id):
@@ -689,11 +797,14 @@ func _spawn_elite(count: int) -> void:
     for i in count:
         var e := _spawn_enemy("elite", _spawn_point())
         e.emerge = Enemy.EMERGE_SECS
-        var out := main.floor_arena_dps()
-        if main.floor_number >= 2 and out > 0.0 and not Main.old_balance:
-            e.max_hp = maxf(e.max_hp, out * ELITE_SECS)
-            e.hp = e.max_hp
-        e.set_affix(SpawnTable.elite_affix(diff))
+        if Main.old_balance:
+            var out := main.floor_arena_dps()
+            if main.floor_number >= 2 and out > 0.0:
+                e.max_hp = maxf(e.max_hp, out * ELITE_SECS)
+        else:
+            e.max_hp = maxf(e.max_hp, main.measured_power() * ELITE_SECS_P)
+        e.hp = e.max_hp
+        e.set_affix(SpawnTable.elite_affix(diff, main.floor_number))
         if not pairs.is_empty():
             e.set_shield(pairs.pick_random(), hits)
         Telemetry.elite_spawned(e)

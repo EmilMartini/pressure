@@ -6,6 +6,7 @@ extends RefCounted
 
 const GRID := 9
 const DIRS: Array[Vector2i] = [Vector2i.UP, Vector2i.DOWN, Vector2i.LEFT, Vector2i.RIGHT]
+const ARENAS := 4   # arena rooms a floor (Core loop reset 5.0)
 const OBSTACLES := ["pool", "thicket", "valve", "ward", "rubble", "miasma"]
 
 
@@ -15,6 +16,9 @@ const OBSTACLES := ["pool", "thicket", "valve", "ward", "rubble", "miasma"]
 static func generate(region_id: String, luck: float = 0.0, players: Array = []) -> Dictionary:
     var floor_number := Regions.depth_of(region_id)
     var target := 7 + floor_number * 2
+    if not Main.old_balance:
+        # Core loop reset 5.0: four arenas a floor, plus the start and the special rooms.
+        target = 1 + ARENAS + (4 if Progress.has("room:challenge") else 3)
     var start := Vector2i(GRID / 2, GRID / 2)
     var rooms: Dictionary = {}
     for attempt in 60:

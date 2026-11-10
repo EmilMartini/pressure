@@ -659,7 +659,11 @@ Etcher Beam with two beams and adds three guns at 25 s; every bot floor prints `
 (dashes, perfect dodges, vents, the Mending reserve, fight texts a minute), `[QUIET]` (fight
 texts by kind) and `[FOCUS]` (beams on distinct targets, elite latency, guns piled on one
 enemy). `--build=human6980` is Emil's run 6980a749 build by floor. Moving bots dash; `--idle`
-never does.
+never does. Session 2 (threats and power curve): every arena prints `[ARENA-P]` (its measured
+damage per second and the floor's P, par E and build factor B that size enemy health), and
+every floor `[THREATS]` (the worst 3 s of damage outside boss rooms, and damage taken by
+source in bars). The stand-still and mover checks run with `--build=human6980 --mastery=full
+--start-floor=2` (the build exists from floor 2), `--idle` or `--kite`.
 
 `--fusion-probe` starts with four w1 guns of four elements so compounds, fusions and
 cataclysms actually happen; the loadout rotates with `--instance` (wet/fire/shock/gale,
