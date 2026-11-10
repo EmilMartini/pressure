@@ -409,7 +409,7 @@ func _option_text(slot: String, id: String, open: bool) -> Array:
     match slot:
         "kit":
             if id == "":
-                return ["Bare hands", "The entrance offers a pick of two guns", UiTheme.BONE, null]
+                return ["Bare hands", "The entrance offers a pick of two weapons", UiTheme.BONE, null]
             var gd: GunData = Guns.make(id)
             var detail := "%s, weight %d" % [Element.NAMES[gd.element] if gd.element != Element.Kind.NONE else "No element", gd.weight] if gd != null else ""
             if not open:

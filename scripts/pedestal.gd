@@ -519,11 +519,11 @@ func _draw_labels(cv: CanvasItem) -> void:
             "boon":
                 desc = FloorGen.BOONS[offer["id"]]["desc"]
             "gunsmith":
-                desc = "Raise your lowest-tier gun one tier."
+                desc = "Raise your lowest-tier weapon one tier."
             "reroll":
                 desc = "New wares in every slot still on offer. Dearer each time."
             "carry":
-                desc = "More guns before the weight slows you."
+                desc = "More weapons before the weight slows you."
             "repair":
                 desc = "Patch yourself up."
         if desc != "":
@@ -599,6 +599,8 @@ func _draw_card(cv: CanvasItem) -> void:
     else:
         if _gun_data == null:
             _gun_data = Guns.make(offer["id"])
+        if offer.has("tier"):
+            opts["tier"] = int(offer["tier"])
         h = ItemCard.gun_height(_gun_data, opts)
     var w: float = ItemCard.DEFAULT_WIDTH
     # Screen placement: right of the plinth, flipped left near the right edge, clamped

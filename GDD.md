@@ -87,6 +87,40 @@ raids, loot tables).
   its hp over that rate. Floors 2 to 5 were retuned from a won human run (see "Late-floor
   balance" below).
 
+### Weapon families and rarity (Arsenal expansion, batch 1 BUILT)
+Full spec: `design/Arsenal expansion.md`. A weapon is still a `Gun` built from a `GunData`
+(ids, `gun:` unlocks, Mastery and telemetry unchanged); on screen it is a "weapon".
+- **Families:** gun, melee, thrown, summon, ground (`GunData.family`, from the archetype
+  through `GunData.FAMILY_OF` unless the entry names one). The 43 older weapons keep their
+  mechanics: Storm Pike is melee, the boomerangs, flasks and mortars are thrown, the Kettle
+  Gun is a summon, Frost Caster and the mines are ground.
+- **Rarity** is fixed per weapon (Common to Legendary, `GunData.rarity`); the tier (I to IV)
+  still comes from merging copies and the Gunsmith. The card frame and name colour show the
+  rarity, pips show the tier, a tier IV weapon gets a thin bright rim, and a chip names the
+  family (Blade for melee). Weapon odds per floor: `Guns.RARITY_ODDS`; shop price
+  `PRICE_BASE[rarity] x (0.8 + 0.1 x weight) x depth`; the Gunsmith costs x1.0 to x2.0 by
+  the rarity of the weapon it raises; deep Commons and Uncommons arrive at tier II (30% on
+  floor 3, 50% on 4 and 5). Sources: the floor-1 picks (Common or Uncommon, one from a
+  family you don't carry), the shop's 4th ware (a weapon 70%, else a mod), treasure (35%,
+  never Common), boss rows from floor 2 (25%, Rare+), challenge rows (30%, Rare+), deal
+  rows (40%, Epic+).
+- **Melee** (`melee.gd`): seven swing styles (sweep, cleave, thrust, slam, lash, jab,
+  spin). A melee weapon swings only when an enemy is within reach, at the closest one,
+  takes no Focus slot, and faces the closest enemy while it waits. One shape query per
+  swing, at most 12 hits, closest first; the first takes 100%, the rest 25%. Slams stagger
+  ordinary enemies 0.3 s, a lash's outer 30% hits x1.5, every 4th jab is a x2.5 finisher,
+  every 3rd spin is a full circle. Single-target damage is about 130% of a gun of the same
+  weight. Stats map per family (2.2): fire rate and half the shot speed are swing speed,
+  +1 projectile is +1 swing, pierce and half the range bonus are reach, shot size widens
+  the arc. Blade items add `melee_dmg`, `reach`, `swing_speed` and melee-only triggers.
+- **Looks** (`weapon_looks.gd`): code-drawn melee icons (a blade, an axe head, a spear, a
+  mace, a whip, a gauntlet, a scythe), 1 px outline, element-coloured edge; the swing smear
+  is the swing's shape at 35% alpha for 0.1 s. `WeaponLooks.sprite_for(id, part)` returns
+  an art-pack sprite from `res://assets/weapons/<id>_<part>.png` when one exists.
+- **Blade tag:** carried non-gun weapons count toward their family tag; three melee
+  weapons (or two and a Blade item) form the Blade resonance (reach and swing speed +15%;
+  at 5 doubled, and swings send a short wave past their reach).
+
 ### Gun tiers and mods
 - Guns have tiers I to IV, Brotato style. Picking up a duplicate merges it into the one
   you carry one tier higher (no extra weight); the shop's Gunsmith raises your lowest-tier

@@ -863,6 +863,102 @@ new is reachable before its batch ships. Each writes a handoff note.
 **Done when** the 24 melee weapons are in the pool by their unlocks, every weapon shows its
 rarity, the section 8 checks pass for melee, `[CARDS] PASS`, and `[SMOKE] ALL PASS`.
 
+#### Batch 1 done (2026-11-10, VERSION 2026.11.10-arsenal1)
+
+**Built:**
+- `GunData.family`, `rarity`, `style`, `cap` and `unique`, with `FAMILY_OF`. All 43 older
+  weapons have a rarity (`Guns.RARITY_OF`), and the 12 that changed family have a style
+  (`Guns.STYLE_OF`).
+- Weapon rarity: `Guns.RARITY_ODDS` and `TREASURE_LEGENDARY` go through
+  `Items.rarity_weights(..., weapon)`, so luck and the Shrine cap apply. Also built: deep
+  tier-II Commons, prices by rarity and weight (`Guns.price`), Gunsmith factors, duplicate
+  weight by rarity, the family term (x1.5) in `Drops.roll_gun`, and no Legendary twice.
+- Weapon sources: floor-1 picks (Common or Uncommon only, one from a family you don't
+  carry), shop 70/30, treasure 35%, boss from floor 2 25%, challenge 30%, deal 40%. Deal
+  weapon cards pay the deal price through the same `Room._pay_deal` as items.
+- Cards:
+  - the rarity owns the frame and the name colour;
+  - the sub line reads "Rare melee weapon, tier II";
+  - a family tag chip;
+  - a thin rim at tier IV;
+  - "weapon" on screen, where the text was "gun".
+- `melee.gd`:
+  - all seven styles: sweep, cleave, thrust, slam, lash, jab, spin;
+  - at most 12 hits a swing, closest first;
+  - slams stagger for 0.3 s; the tip of a lash hits x1.5; every 4th jab is a x2.5
+    finisher; every 3rd spin is a full circle;
+  - the ready pose, the swing tilt, and a smear at 35% for 0.1 s;
+  - the swing sound sits 10 dB under a shot;
+  - one rule per weapon (section 4.2);
+  - melee takes no Focus slot and swings only at an enemy in reach.
+- The stat map for melee (2.2): swing speed is fire rate plus half the shot speed; +1
+  projectile is +1 swing; reach comes from pierce and half the range bonus; shot size
+  widens the arc; bounce reaches one enemy past the reach. The other families' columns wait
+  for their batches.
+- `weapon_looks.gd`: code-drawn melee icons on 32 px tiles, used everywhere through
+  `Art.gun_icon`, the smears, and the `sprite_for(id, part)` art-pack hook (looks for
+  `res://assets/weapons/<id>_<part>.png`).
+- **Weapons:** 23 new melee weapons, plus Storm Pike remapped to `sweep`. All 24
+  non-legendary melee weapons are in, so the arsenal now has 66 weapons.
+- **Items (30), all locked until unlocked:**
+  - 12 Blade passives: Long Reach, Follow-Through, Riposte, Bloodletter, Whirl, Shock
+    Edge, Frostbite Steel, Thunder Grip, Cutting Wind, Marked Steel, Wildfire Edge, Edge
+    Runner;
+  - 6 mods: Whetstone, Weighted Pommel, Long Haft, Balanced Grip, Twin Edge, Tempered
+    Steel;
+  - 2 actives: Bulwark, Whirlwind;
+  - 10 others: Honed Edge, Swift Strikes, Sword Belt, Iron Wrists, Berserker Oath, Glass
+    Blade, Rime Whetstone, Ember Whetstone, Soaked Edge, Mending Steel.
+- The Blade tag and its resonance. A trigger can be marked `"melee": true`, and hit and
+  kill events now carry the weapon id.
+- **Unlocks:** Tin Sabre is in the core set. 9 play goals each open a Common or Uncommon
+  with one item. 13 melee-mastery steps (`kills_melee`, 60 to 6,500) open the rest, each
+  with one or two items. `item:<id>` is a new kind of unlock.
+- **Tests:** `--family-probe=<family>`. `--gun-probe` now prints family, style and rarity.
+
+**Deviations, and why:**
+| Spec | Built | Why |
+|---|---|---|
+| Hits after the first in a swing take 75% | 25% (`Melee.FOLLOW`) | At 75%, `--gun-probe` put melee pack damage at 4 to 8 times the best gun of its weight. That breaks the spec's own rule that pack damage is at most the best gun's. At 25%, every melee weapon's pack is within the best gun of its weight. |
+| Weapons count toward their family tag, Gunslinger included | Only non-gun weapons count | With four slots nearly every gun build would form Gunslinger, a balance shift to every existing build. Revisit in batch 2 with the pressure checks. |
+| Melee mastery: 5 steps (100 to 5,000) | 13 steps (60 to 6,500) | Trials, milestones and lessons don't exist yet, so batch 1 has only play goals and mastery to open 23 weapons. Later batches may move the Rares and Epics to Trials. |
+| The Gunsmith price uses the rarity of the weapon it raises | Priced when the shop is stocked, from your lowest-tier weapon then | The ware's price is fixed at stocking. |
+| Storm Pike's mechanics unchanged | It now goes through `melee.gd`: a 12-hit cap, 25% on follow-up hits, and the smear | One swing path for all melee. Its single-target number is unchanged (42). |
+| The two-element melee weapons at the premium band | Low base damage and reaction power (0.1 to 0.4) | They react with themselves, as the two-element guns do, and ran about 2x over at the band's damage. |
+| Storm Lash and Riptide Whip at 60° arcs | 45° and 50°, and Storm Lash's damage at 22 | Their pack numbers were 8 to 25% over the best w2 gun. |
+| Thorn Whip: "the tip poisons twice as hard" | The tip applies its poison a second time | It needed no new element code. |
+
+**Not built (carried to later batches):** `--arsenal-perf` (no check yet for 40 enemies
+with melee only); the screen layer check (`--read-shot=family`); the thrown, summon and
+ground stat columns; the Trials. `--loot-sim` belongs to batch 5.
+
+**Checks** (headless, at most 4 instances, 0 `SCRIPT ERROR` in every run):
+| Check | Result | Pass |
+|---|---|---|
+| Weapon bands (`--gun-probe`, 24 melee) | Single-target damage is about 130% of each weight's measured gun band, times the rarity premium. Every pack number is at or under the best gun of its weight (w1 28 vs 29.5, w2 49 to 94 vs 87.5, w3 76 to 112 vs 121, w4 108 to 201 vs 204, w5 183 vs 267). The exception is Riptide Whip, 8% over at 94.9. | yes (one near miss, noted) |
+| Family probe (`--family-probe=melee --kite --mastery=full`, 4 runs from floor 1) | 4 of 4 reach floor 5. Damage a minute 0.0 to 0.12 on floors 1 and 2, 0.09 to 0.50 on floor 3 | yes (needs 2 of 4 to reach floor 3) |
+| Melee stand-still (`--idle --family-probe=melee --build=human6980 --mastery=full --start-floor=2`) | 2 of 2 die on floor 2, at 74 and 76 s; under 50% health 0.69 and 0.74 of the fight; 2.20 and 1.95 bars a minute | yes |
+| Human-build stand-still (same, without the family probe) | 2 of 2 die on floor 2, at 80 and 119 s; 0.63 and 0.53; 1.90 and 1.76 a minute | yes (session 3: 93 to 122 s, 1.28 to 1.70) |
+| Human-build mover (`--kite`) | 2 of 2 reach floor 4. Floor 3: 0.40 and 0.25 a minute, under 50% health 0.09 and 0.07 | yes (session 3: 0.54 to 1.00) |
+| Economy | Shop visits spent down: 9 of 11 human-build (82%) and 30 of 41 melee (73%); target 70%. Weapons gained 0 to 1 a floor after floor 1. Cards shown 13 to 22 a floor (the session-3 deviation) | yes |
+| Cards (`--card-shot`) | `[CARDS] PASS 389`, at most 23 words, at most 278 px tall | yes |
+| Fusion probe | `[FUSION-CHECK] PASS` | yes |
+| Hub walk | `[HUB-WALK] PASS`, `[HUB-FRESH] PASS` | yes |
+
+**Worth watching:** melee movers take very little damage (four tier-II melee weapons and
+the human build's items reach floor 5 in all 4 runs). Standing still still dies fast, so
+the rule holds. But if Emil finds melee too safe while moving, the levers are the 130%
+share (section 10) or `Melee.FOLLOW`.
+
+**Screenshots for when Emil is away (window runs):**
+- A card contact sheet (`--card-shot` in a window) of the 23 new melee icons at 96 px and
+  22 px, the rarity frames, the Blade chip and a tier IV rim.
+- One fight per style with `--family-probe=melee`: the sweep, cleave, thrust and slam
+  smears; the lash tip; the jab finisher; the full spin. Also the ready pose and the tilt.
+  Check that no smear covers an enemy telegraph.
+- Parry Blade cutting enemy shots, and Magma Maul's fissure.
+- A shop with a Rare weapon ware and its price, and a floor-3 tier-II Common.
+
 ### Batch 2: Thrown and lobbed, and the new guns
 
 **Builds:**

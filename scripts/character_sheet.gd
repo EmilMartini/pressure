@@ -444,7 +444,7 @@ func _draw_header() -> void:
     var can_combine := _twin_of(g) != null
     var items := [
         ["combine", "A" if pad else "Enter", "Combine", can_combine],
-        ["drop", "X", "Drop gun", g != null],
+        ["drop", "X", "Drop weapon", g != null],
         ["back", "B" if pad else "Esc", "Back", true],
         ["player", "LB RB" if pad else "Q E", "Player", true],
     ]

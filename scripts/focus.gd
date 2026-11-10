@@ -57,6 +57,9 @@ func update(p: Player, delta: float) -> void:
         cands.append(e)
     var claims := {}   # enemy instance id -> guns with it as their first target
     for g in p.guns:
+        if g.data.family == "melee":
+            g.targets = []   # melee takes no Focus slot: it swings at what is in reach (2.1)
+            continue
         var rng := g.effective_range()
         var r2 := rng * rng
         var scored: Array = []

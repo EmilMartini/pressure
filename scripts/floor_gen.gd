@@ -220,7 +220,7 @@ static func _stock_rooms(rooms: Dictionary, floor_number: int, luck: float = 0.0
 const SHOP_ITEMS := 3
 const MYSTERY_CHANCE := 0.3
 const MYSTERY_PRICE := 60
-const SHOP_GUN_SHARE := 0.55   # the fourth ware: a gun, else a gun mod
+const SHOP_GUN_SHARE := 0.70   # the fourth ware: a weapon, else a mod (Arsenal expansion 3.2)
 ## Services, x m: repair heals REPAIR_PCT of max health.
 const REPAIR_PRICE := 30
 const REPAIR_PCT := 40
@@ -278,6 +278,13 @@ static func _stock_rooms_reset(rooms: Dictionary, floor_number: int, luck: float
                     c["id"] = Drops.roll_item_at(up, ids + _mod_ids(), "treasure", players)
                     c["curse"] = String(Items.CURSES.keys().pick_random())
                     c["curse_span"] = "floor"
+                if randf() < Guns.TREASURE_WEAPON:
+                    var plain: Array = cards.filter(func(c): return not c.has("curse"))
+                    if not plain.is_empty():
+                        var at := cards.find(plain.pick_random())
+                        var wid := Drops.roll_gun(players, [], Items.roll_rarity("treasure", floor_number, luck, true), Items.Rarity.UNCOMMON)
+                        if wid != "":
+                            cards[at] = weapon_offer(wid, floor_number)
                 for c in cards:
                     c["group"] = "treasure"
                     r.stock.append(c)
@@ -356,7 +363,31 @@ static func stock_shop(r: RoomData, floor_number: int, luck: float, players: Arr
     rep["pct"] = true
     r.stock.append(rep)
     var free_smith := floor_number <= int(Mastery.bonus("free_gunsmith"))
-    r.stock.append(offer("gunsmith", "", 0 if free_smith else int(roundf(GUNSMITH_PRICE * _m(floor_number)))))
+    r.stock.append(offer("gunsmith", "", 0 if free_smith else int(roundf(GUNSMITH_PRICE * _m(floor_number) * smith_factor(players)))))
+
+
+## Arsenal expansion 3.4: the Gunsmith costs more for a rarer weapon. Priced when the shop
+## opens, from the lowest-tier weapon it would raise.
+static func smith_factor(players: Array) -> float:
+    for pl in players:
+        if pl == null or not is_instance_valid(pl):
+            continue
+        var best: Gun = null
+        for g in pl.guns:
+            if g.tier < Gun.MAX_TIER and (best == null or g.tier < best.tier):
+                best = g
+        if best != null:
+            return float(Guns.SMITH_FACTOR[clampi(best.data.rarity, 0, 4)])
+    return 1.0
+
+
+## A weapon card: free (the caller prices it), at tier II now and then for a deep Common.
+static func weapon_offer(id: String, floor_number: int) -> Dictionary:
+    var o := offer("gun", id, 0)
+    var t := Guns.deep_tier(Guns.rarity_of(id), floor_number)
+    if t > 1:
+        o["tier"] = t
+    return o
 
 
 ## Price of a ware on `floor_number`: items by rarity, guns by weight, the mystery ware flat.
@@ -392,9 +423,11 @@ static func roll_item_ware(floor_number: int, luck: float, stock: Array, players
 static func roll_gun_ware(floor_number: int, luck: float, stock: Array, players: Array) -> Dictionary:
     var o: Dictionary = {}
     var on_offer := _on_offer(stock)
-    var gun_id := Drops.roll_gun(players, on_offer) if randf() < SHOP_GUN_SHARE else ""
+    var gun_id := ""
+    if randf() < SHOP_GUN_SHARE:
+        gun_id = Drops.roll_gun(players, on_offer, Items.roll_rarity("shop", floor_number, luck, true))
     if gun_id != "":
-        o = offer("gun", gun_id, 0)
+        o = weapon_offer(gun_id, floor_number)
     else:
         var rar := Items.roll_rarity("shop", floor_number, luck)
         var mods: Array = _mod_ids().filter(func(id): return int(Items.get_item(String(id)).get("rarity", 0)) <= rar and not on_offer.has(id))
@@ -419,11 +452,18 @@ static func stock_deal(r: RoomData, floor_number: int, luck: float, players: Arr
     var kinds := ["hp", "money", "curse"]
     kinds.shuffle()
     var ids: Array = []
+    var weapon_at := randi() % 2 if randf() < Guns.DEAL_WEAPON else -1
     for i in 2:
-        var rar := Items.roll_rarity("deal", floor_number, luck)
-        var id := Drops.roll_item_at(rar, ids + _mod_ids(), "", players)
-        ids.append(id)
-        var o := Items.offer(id, 0)
+        var o: Dictionary = {}
+        if i == weapon_at:
+            var wid := Drops.roll_gun(players, [], Items.roll_rarity("deal", floor_number, luck, true), Items.Rarity.EPIC)
+            if wid != "" and Guns.rarity_of(wid) >= Items.Rarity.EPIC:
+                o = offer("gun", wid, 0)
+        if o.is_empty():
+            var rar := Items.roll_rarity("deal", floor_number, luck)
+            var id := Drops.roll_item_at(rar, ids + _mod_ids(), "", players)
+            ids.append(id)
+            o = Items.offer(id, 0)
         o["group"] = "deal"
         o["deal"] = String(kinds[i])
         if o["deal"] == "curse":
@@ -437,7 +477,8 @@ static func stock_deal(r: RoomData, floor_number: int, luck: float, players: Arr
 
 ## Max health a deal card costs (Epic or Legendary).
 static func deal_hp(o: Dictionary) -> int:
-    return DEAL_HP[1] if int(Items.get_item(String(o["id"])).get("rarity", 0)) >= Items.Rarity.LEGENDARY else DEAL_HP[0]
+    var rar := Guns.rarity_of(String(o["id"])) if String(o.get("kind", "")) == "gun" else int(Items.get_item(String(o["id"])).get("rarity", 0))
+    return DEAL_HP[1] if rar >= Items.Rarity.LEGENDARY else DEAL_HP[0]
 
 
 ## Scrap a money deal costs with `scrap` in hand.
@@ -490,10 +531,11 @@ static func reroll_price(floor_number: int, uses: int) -> int:
     return 10 + floor_number * 6 + uses * (6 + floor_number * 3)
 
 
-## Gun price. Core loop reset 6.2: (20 + 10 x weight) x m.
+## Weapon price. Arsenal expansion 3.4: by rarity and weight (Guns.price); was
+## (20 + 10 x weight) x m.
 static func gun_price(data: GunData, floor_number: int) -> int:
     if not Main.old_balance:
-        return int(roundf(float(20 + 10 * data.weight) * _m(floor_number)))
+        return Guns.price(data, floor_number)
     var base := 16 + data.weight * 9
     var diff := floor_number * 4
     return base + 2 * diff + int(float(base) * 0.10 * float(diff))

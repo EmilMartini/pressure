@@ -423,6 +423,11 @@ func gun_icon_path(id: String) -> String:
 
 ## A gun's icon; falls back to its old 1-bit tile.
 func gun_icon(id: String) -> Texture2D:
+    var packed := WeaponLooks.sprite_for(id, "icon")
+    if packed != null:
+        return packed
+    if WeaponLooks.draws(id):
+        return WeaponLooks.icon(id)
     return icon(gun_icon_path(id), gun_tile(id))
 
 
@@ -439,6 +444,8 @@ func reward_icon_path(reward: String) -> String:
         return Loadout.mark_icon_path(reward.substr(5))
     if reward.begins_with("kit:"):
         return gun_icon_path(reward.substr(4))
+    if reward.begins_with("item:"):
+        return Items.icon_path(Items.get_item(reward.substr(5)))
     if REWARD_ICONS.has(reward):
         return String(REWARD_ICONS[reward])
     var prefix := reward.get_slice(":", 0)

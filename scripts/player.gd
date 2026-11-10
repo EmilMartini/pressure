@@ -345,7 +345,7 @@ func add_gun(id: String, allow_merge := true) -> bool:
         Sfx.play("unlock")
         return true
     if guns.size() >= gun_slots():
-        say("All %d gun slots full: drop or combine" % gun_slots())
+        say("All %d weapon slots full: drop or combine" % gun_slots())
         return false
     if not can_carry(data):
         say("Too heavy: %s needs %d, %d free" % [data.display_name, data.weight, weight_capacity - total_weight()])
@@ -354,6 +354,8 @@ func add_gun(id: String, allow_merge := true) -> bool:
     add_child(gun)
     guns.append(gun)
     _layout_guns()
+    if data.family != "gun":
+        recalc_stats()   # weapons count toward their family tag (resonances)
     say("Picked up %s" % data.display_name)
     Sfx.pickup("pickup_gun", self)
     return true
@@ -441,7 +443,7 @@ func equip(id: String, _hint: String = "") -> String:
     if slot == "mod":
         var g := mod_target()
         if g == null:
-            say("No free mod slot: upgrade a gun")
+            say("No free mod slot: upgrade a weapon")
             return ""
         equip_mod_on(g, id)
         return ""
@@ -542,7 +544,7 @@ func recalc_stats() -> void:
             if mods[k] is String:
                 continue
             _stats[k] = float(_stats.get(k, 0.0)) + float(mods[k]) * f
-    var res := Items.resonances_for(counts)
+    var res := Items.resonances_for(counts, self)
     for t in res.keys():
         var rm := Items.resonance_mods(String(t), int(res[t]))
         for k in rm.keys():
@@ -1134,6 +1136,8 @@ func _update_aim(delta: float) -> void:
 ## Where gun `g` fires this frame, or ZERO for "not now". Assisted mode bends an aimed shot
 ## onto the enemy or boss part inside a narrow cone; manual never bends; auto picks the nearest.
 func gun_dir(g: Gun) -> Vector2:
+    if g.data.family == "melee":
+        return _melee_dir(g)
     if _aim_firing:
         if aim_mode() == "assisted":
             return soft_lock(g.global_position, _aim_now, g.effective_range())
@@ -1149,6 +1153,24 @@ func gun_dir(g: Gun) -> Vector2:
     if target == null:
         return Vector2.ZERO
     return (target.global_position - g.global_position).normalized()
+
+
+## Melee (Arsenal expansion 2.1): swings only at an enemy within reach. Auto and assisted
+## take the closest one; an aimed swing goes the aimed way when an enemy is in reach there.
+func _melee_dir(g: Gun) -> Vector2:
+    var reach := g.effective_range()
+    if _aim_firing:
+        var locked := soft_lock(global_position, _aim_now, reach)
+        for e in Strike.enemies_in_cone(get_tree(), global_position, _aim_now, reach, deg_to_rad(40.0)):
+            return locked
+        return Vector2.ZERO
+    if aim_mode() == "manual":
+        return Vector2.ZERO
+    var target := nearest_enemy(reach)
+    if target == null:
+        return Vector2.ZERO
+    var to := target.global_position - global_position
+    return to.normalized() if to.length() > 1.0 else Vector2.RIGHT
 
 
 ## `dir` snapped to the enemy, or the visible boss part, whose bearing from `from` is closest

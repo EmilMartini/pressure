@@ -240,7 +240,7 @@ func _hide_options() -> void:
 
 const FANFARE := Color(1.0, 0.82, 0.35)
 const UNLOCK_KINDS := {
-    "gun": "a new gun in the pool",
+    "gun": "a new weapon in the pool",
     "class": "a new class at the Gate",
     "obstacle": "a new door obstacle",
     "room": "a new room type",

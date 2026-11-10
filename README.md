@@ -694,6 +694,11 @@ loadout and its power estimate. The log prints `[FLOOR]`, `[DEATH]` and `[EMBERS
 Every run with arguments after `--` uses throwaway `settings_`, `save_` and
 `mastery_autotest<_N>.json` files and `telemetry/runs<_N>.jsonl` from the first frame
 (`Main.bot_run()`), never the player's own.
+Arsenal expansion (`design/Arsenal expansion.md`): `--family-probe=<family>` (batch 1:
+`melee`) starts with four weapons of that family at tier II and the human build's items;
+with `--kite --mastery=full` it is the family probe (at least 2 of 4 runs reach floor 3),
+with `--idle --start-floor=2 --build=human6980` the family stand-still check (all die by the
+end of floor 3).
 Core loop reset, session 1 (`design/Core loop reset.md`): `--focus-probe` starts with an
 Etcher Beam with two beams and adds three guns at 25 s; every bot floor prints `[HANDS]`
 (dashes, perfect dodges, vents, the Mending reserve, fight texts a minute), `[QUIET]` (fight
@@ -852,7 +857,7 @@ the Journal and every old station), and `--hub-shot` (real window) saves
 checks projectiles hit obstacles. `godot --headless --fixed-fps 60 --path . res://scenes/main.tscn -- --autotest
 --gun-probe[=a,b,...]` fires each gun (or the ones named) alone at tier I against pinned
 dummies and prints `[GUN-PROBE] id archetype mechanic element weight single=.. pack=..
-budget=..` (damage per second on one dummy 75 px away and on a pack of eight 95 px away;
+budget=.. family style rarity` (damage per second on one dummy 75 px away and on a pack of eight 95 px away;
 `--probe-secs=N`, default 6); with `--gun-shots` in a real window it instead saves
 `autotest/gun_<id>.png`, each gun's mechanic mid-volley. `godot --path . --audio-driver Dummy res://scenes/main.tscn -- --autotest
 --secs=30 --gear-shot[=id,id,...]` dresses the bot (a wizard by default), saves the worn-gear

@@ -48,9 +48,81 @@ const ORDER := [
     "vein_pistol", "clot_orb", "rift_seeker", "null_wand", "sun_cannon", "prayer_burst",
     "zephyr_rang", "cyclone_flak", "boulder_mortar", "gravel_shotgun", "eclipse_carbine",
     "kettle_gun", "storm_seeker", "railgun", "napalm_lobber", "duality_burst",
+    # Arsenal expansion batch 1: melee (section 4.2), the 23 new non-legendary ones.
+    "tin_sabre", "ember_brand", "frost_hatchet", "tide_spear", "spark_knuckles", "bone_club",
+    "thorn_whip", "pitch_cleaver", "gale_glaive", "etching_claws", "blood_rapier",
+    "sanctified_mace", "hollow_sickle", "storm_lash", "parry_blade", "magma_maul", "rimefang",
+    "venom_pike", "crimson_gauntlets", "riptide_whip", "thunder_halberd", "eclipse_scythe",
+    "twin_fangs",
 ]
 
+## Arsenal expansion 4.1 to 4.5: every existing weapon's rarity (0 Common .. 4 Legendary)
+## and, where it moved family, its style. New weapons carry both in their DEFS entry.
+## Arc Rifle is Common because it is a fresh-save starter.
+const RARITY_OF := {
+    "water_pistol": 0, "flare_pistol": 0, "vein_pistol": 0, "slick_wand": 0, "spark_needler": 0,
+    "venom_spitter": 0, "gravel_shotgun": 0, "etcher_beam": 0, "blowtorch": 0, "mist_sprayer": 0,
+    "arc_rifle": 0, "null_wand": 1, "ember_carbine": 1, "cyclone_flak": 1, "blight_seeker": 1,
+    "clot_orb": 1, "radiant_ray": 1, "gale_blaster": 1, "prayer_burst": 1, "stone_sling": 2,
+    "hydro_cannon": 2, "cinder_flak": 2, "rift_seeker": 2, "storm_seeker": 2, "blood_lance": 2,
+    "eclipse_carbine": 3, "duality_burst": 3, "sun_cannon": 3, "void_orb": 3, "glacier_lance": 3,
+    "railgun": 3,
+    "storm_pike": 3,
+    "zephyr_rang": 0, "oil_slinger": 0, "rime_chakram": 1, "acid_flask": 1, "plague_mortar": 1,
+    "boulder_mortar": 2, "napalm_lobber": 2,
+    "kettle_gun": 2,
+    "frost_caster": 0, "tar_mortar": 2, "corrosion_burst": 2,
+}
+const STYLE_OF := {
+    "storm_pike": "sweep",
+    "zephyr_rang": "boomerang", "rime_chakram": "boomerang", "oil_slinger": "pool", "acid_flask": "pool",
+    "plague_mortar": "pool", "boulder_mortar": "lob", "napalm_lobber": "lob",
+    "kettle_gun": "turret",
+    "frost_caster": "pulse", "tar_mortar": "mine", "corrosion_burst": "mine",
+}
+
 const K := Element.Kind
+
+## Arsenal expansion 3.2: weapon rarity odds per floor (percent, Common to Legendary) for
+## the shop row; the boss row moves everything under Rare into Rare; treasure is never
+## Common and has its own Legendary share (used from batch 5, when legendaries exist).
+const RARITY_ODDS := [
+    [65.0, 30.0, 5.0, 0.0, 0.0],
+    [45.0, 35.0, 15.0, 4.0, 1.0],
+    [30.0, 35.0, 23.0, 9.5, 2.5],
+    [20.0, 32.0, 29.0, 15.0, 4.0],
+    [12.0, 28.0, 33.0, 21.0, 6.0],
+]
+const TREASURE_LEGENDARY := [3.0, 5.0, 8.0, 11.0, 14.0]
+## 3.2 deeper Commons: Common and Uncommon weapons in the shop and treasure arrive at tier II
+## this often (by floor; floors 1 and 2 never).
+const DEEP_TIER2 := [0.0, 0.0, 0.30, 0.50, 0.50]
+## 3.4: the Gunsmith's price times the rarity factor of the weapon it raises.
+const SMITH_FACTOR := [1.0, 1.2, 1.4, 1.7, 2.0]
+## 3.4: duplicate weight by rarity (Drops.DUPLICATE_MULT in full for Common and Uncommon,
+## half for Rare, a quarter for Epic; Legendaries never twice).
+const DUPLICATE_SHARE := [1.0, 1.0, 0.5, 0.25, 0.0]
+## 3.2 weapon sources: the chance one card of the row is a weapon.
+const SHOP_WEAPON_SHARE := 0.70
+const TREASURE_WEAPON := 0.35
+const BOSS_WEAPON := 0.25
+const BOSS_WEAPON_FROM := 2
+const CHALLENGE_WEAPON := 0.30
+const DEAL_WEAPON := 0.40
+
+
+## Shop price of a weapon (3.4): PRICE_BASE[rarity] x (0.8 + 0.1 x weight) x depth.
+func price(data: GunData, floor_number: int) -> int:
+    var base := float(Items.PRICE_BASE[clampi(data.rarity, 0, Items.PRICE_BASE.size() - 1)])
+    return int(roundf(base * (0.8 + 0.1 * float(data.weight)) * Items.depth_mult(floor_number)))
+
+
+## Tier II now and then for a deep Common or Uncommon (3.2).
+func deep_tier(rarity: int, floor_number: int) -> int:
+    if rarity > Items.Rarity.UNCOMMON:
+        return 1
+    var p := float(DEEP_TIER2[clampi(floor_number, 1, DEEP_TIER2.size()) - 1])
+    return 2 if randf() < p else 1
 
 ## id -> the GunData fields that differ from its defaults. `archetype` sets `mechanic`
 ## (GunData.ARCHETYPES) unless the entry names one.
@@ -238,6 +310,81 @@ const DEFS := {
         "damage": 2.4, "fire_rate": 6.0, "projectile_speed": 650.0, "spread_deg": 12.0, "max_range": 360.0,
         "lifetime": 0.6, "reaction_mult": 0.5, "projectile_radius": 4.0, "linger": 8.0,
         "alt_element": K.FIRE },
+
+    # --- Melee (Arsenal expansion 2.3, 4.2) --------------------------------------------
+    # Single-target dps about 130% of the gun band for the weight (the risk of standing
+    # close), times the rarity premium: damage = band x 1.3 x premium / (rate x the style
+    # and rule factor in Melee.single_mult). Hits past the first in a swing take 75%, at
+    # most 12 a swing. Pressure per second about a gun's of the same weight.
+    "tin_sabre": { "display_name": "Tin Sabre", "archetype": "melee", "style": "sweep", "rarity": 0, "element": K.NONE,
+        "weight": 2, "damage": 20.0, "fire_rate": 1.6, "max_range": 100.0, "arc_deg": 130.0, "knockback": 60.0,
+        "reaction_mult": 0.0 },
+    "ember_brand": { "display_name": "Ember Brand", "archetype": "melee", "style": "sweep", "rarity": 0, "element": K.FIRE,
+        "weight": 2, "damage": 11.0, "fire_rate": 1.5, "max_range": 100.0, "arc_deg": 130.0, "knockback": 50.0,
+        "pressure_per_shot": 5.0, "reaction_mult": 1.2 },
+    "frost_hatchet": { "display_name": "Frost Hatchet", "archetype": "melee", "style": "cleave", "rarity": 0, "element": K.ICE,
+        "weight": 3, "damage": 39.0, "fire_rate": 0.95, "max_range": 110.0, "arc_deg": 200.0, "knockback": 150.0,
+        "pressure_per_shot": -5.0, "reaction_mult": 0.9 },
+    "tide_spear": { "display_name": "Tide Spear", "archetype": "melee", "style": "thrust", "rarity": 0, "element": K.WET,
+        "weight": 2, "damage": 18.0, "fire_rate": 1.8, "max_range": 155.0, "arc_deg": 25.0, "knockback": 30.0,
+        "pressure_per_shot": -2.5, "reaction_mult": 1.2 },
+    "spark_knuckles": { "display_name": "Spark Knuckles", "archetype": "melee", "style": "jab", "rarity": 0, "element": K.SHOCK,
+        "weight": 1, "damage": 4.9, "fire_rate": 3.4, "max_range": 72.0, "arc_deg": 70.0, "knockback": 10.0,
+        "pressure_per_shot": 2.0, "reaction_mult": 2.0 },
+    "bone_club": { "display_name": "Bone Club", "archetype": "melee", "style": "slam", "rarity": 0, "element": K.STONE,
+        "weight": 3, "damage": 47.0, "fire_rate": 0.85, "max_range": 60.0, "aura_radius": 70.0, "knockback": 40.0,
+        "pressure_per_shot": 1.0, "reaction_mult": 1.0 },
+    "thorn_whip": { "display_name": "Thorn Whip", "archetype": "melee", "style": "lash", "rarity": 0, "element": K.POISON,
+        "weight": 2, "damage": 24.5, "fire_rate": 1.2, "max_range": 175.0, "arc_deg": 60.0, "knockback": 20.0,
+        "pressure_per_shot": 0.5, "reaction_mult": 1.2 },
+    "pitch_cleaver": { "display_name": "Pitch Cleaver", "archetype": "melee", "style": "cleave", "rarity": 1, "element": K.OIL,
+        "weight": 4, "damage": 65.0, "fire_rate": 0.9, "max_range": 115.0, "arc_deg": 200.0, "knockback": 150.0,
+        "pressure_per_shot": 1.0, "reaction_mult": 1.2 },
+    "gale_glaive": { "display_name": "Gale Glaive", "archetype": "melee", "style": "spin", "rarity": 1, "element": K.GALE,
+        "weight": 3, "damage": 30.5, "fire_rate": 1.2, "max_range": 100.0, "arc_deg": 150.0, "knockback": 60.0,
+        "pressure_per_shot": -2.0, "reaction_mult": 1.0 },
+    "etching_claws": { "display_name": "Etching Claws", "archetype": "melee", "style": "jab", "rarity": 1, "element": K.ACID,
+        "weight": 1, "damage": 3.3, "fire_rate": 3.5, "max_range": 76.0, "arc_deg": 70.0, "knockback": 10.0,
+        "pressure_per_shot": 2.0, "reaction_mult": 1.8 },
+    "blood_rapier": { "display_name": "Blood Rapier", "archetype": "melee", "style": "thrust", "rarity": 1, "element": K.BLOOD,
+        "weight": 2, "damage": 11.4, "fire_rate": 2.0, "max_range": 150.0, "arc_deg": 25.0, "knockback": 20.0,
+        "reaction_mult": 1.4 },
+    "sanctified_mace": { "display_name": "Sanctified Mace", "archetype": "melee", "style": "slam", "rarity": 1, "element": K.HOLY,
+        "weight": 3, "damage": 49.0, "fire_rate": 0.85, "max_range": 60.0, "aura_radius": 70.0, "knockback": 40.0,
+        "pressure_per_shot": 1.0, "reaction_mult": 1.2 },
+    "hollow_sickle": { "display_name": "Hollow Sickle", "archetype": "melee", "style": "spin", "rarity": 1, "element": K.VOID,
+        "weight": 2, "damage": 27.0, "fire_rate": 1.25, "max_range": 100.0, "arc_deg": 150.0, "knockback": 40.0,
+        "pressure_per_shot": -1.0, "reaction_mult": 1.2 },
+    "storm_lash": { "display_name": "Storm Lash", "archetype": "melee", "style": "lash", "rarity": 1, "element": K.SHOCK,
+        "weight": 2, "damage": 22.0, "fire_rate": 1.2, "max_range": 180.0, "arc_deg": 45.0, "knockback": 20.0,
+        "pressure_per_shot": 3.0, "reaction_mult": 1.2 },
+    "parry_blade": { "display_name": "Parry Blade", "archetype": "melee", "style": "sweep", "rarity": 2, "element": K.GALE,
+        "weight": 3, "damage": 32.0, "fire_rate": 1.4, "max_range": 105.0, "arc_deg": 140.0, "knockback": 60.0,
+        "pressure_per_shot": -2.0, "reaction_mult": 1.0 },
+    "magma_maul": { "display_name": "Magma Maul", "archetype": "melee", "style": "slam", "rarity": 2, "element": K.FIRE,
+        "weight": 5, "damage": 100.0, "fire_rate": 0.75, "max_range": 60.0, "aura_radius": 70.0, "knockback": 60.0,
+        "pressure_per_shot": 10.0, "reaction_mult": 0.8 },
+    "rimefang": { "display_name": "Rimefang", "archetype": "melee", "style": "thrust", "rarity": 2, "element": K.ICE,
+        "weight": 4, "damage": 38.0, "fire_rate": 1.5, "max_range": 165.0, "arc_deg": 25.0, "knockback": 30.0,
+        "pressure_per_shot": -4.0, "reaction_mult": 1.2 },
+    "venom_pike": { "display_name": "Venom Pike", "archetype": "melee", "style": "thrust", "rarity": 2, "element": K.POISON,
+        "weight": 3, "damage": 28.5, "fire_rate": 1.6, "max_range": 160.0, "arc_deg": 25.0, "knockback": 30.0,
+        "pressure_per_shot": 0.5, "reaction_mult": 1.2 },
+    "crimson_gauntlets": { "display_name": "Crimson Gauntlets", "archetype": "melee", "style": "jab", "rarity": 2, "element": K.BLOOD,
+        "weight": 2, "damage": 8.1, "fire_rate": 3.2, "max_range": 75.0, "arc_deg": 70.0, "knockback": 10.0,
+        "reaction_mult": 1.6 },
+    "riptide_whip": { "display_name": "Riptide Whip", "archetype": "melee", "style": "lash", "rarity": 2, "element": K.WET,
+        "weight": 2, "damage": 31.0, "fire_rate": 1.15, "max_range": 185.0, "arc_deg": 50.0, "knockback": 20.0,
+        "pressure_per_shot": -3.0, "reaction_mult": 1.2 },
+    "thunder_halberd": { "display_name": "Thunder Halberd", "archetype": "melee", "style": "thrust", "rarity": 3, "element": K.WET,
+        "alt_element": K.SHOCK, "weight": 4, "damage": 13.5, "fire_rate": 1.4, "max_range": 160.0, "arc_deg": 25.0,
+        "knockback": 30.0, "pressure_per_shot": 2.0, "reaction_mult": 0.3 },
+    "eclipse_scythe": { "display_name": "Eclipse Scythe", "archetype": "melee", "style": "spin", "rarity": 3, "element": K.HOLY,
+        "alt_element": K.VOID, "weight": 4, "damage": 29.0, "fire_rate": 1.2, "max_range": 100.0, "arc_deg": 150.0,
+        "knockback": 60.0, "reaction_mult": 0.1 },
+    "twin_fangs": { "display_name": "Twin Fangs", "archetype": "melee", "style": "sweep", "rarity": 3, "element": K.POISON,
+        "alt_element": K.BLOOD, "weight": 3, "damage": 7.5, "fire_rate": 1.5, "max_range": 95.0, "arc_deg": 130.0,
+        "knockback": 40.0, "pressure_per_shot": 0.5, "reaction_mult": 0.4 },
 }
 
 
@@ -265,4 +412,22 @@ func make(id: String) -> GunData:
         g.set(key, def[key])
     if not def.has("mechanic"):
         g.mechanic = String(GunData.ARCHETYPES.get(g.archetype, ["shot"])[0])
+    if not def.has("family"):
+        g.family = String(GunData.FAMILY_OF.get(g.archetype, "gun"))
+    if not def.has("rarity"):
+        g.rarity = int(RARITY_OF.get(id, 0))
+    if not def.has("style"):
+        g.style = String(STYLE_OF.get(id, g.archetype))
     return g
+
+
+func rarity_of(id: String) -> int:
+    var def: Dictionary = DEFS.get(id, {})
+    return int(def.get("rarity", RARITY_OF.get(id, 0)))
+
+
+func family_of(id: String) -> String:
+    var def: Dictionary = DEFS.get(id, {})
+    if def.has("family"):
+        return String(def["family"])
+    return String(GunData.FAMILY_OF.get(String(def.get("archetype", "")), "gun"))

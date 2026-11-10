@@ -22,6 +22,7 @@ static func party_profile(players: Array) -> Dictionary:
     var weights: Dictionary = {}
     var archetypes: Dictionary = {}
     var carried: Dictionary = {}
+    var families: Dictionary = {}
     for pl in players:
         if pl == null or not is_instance_valid(pl):
             continue
@@ -38,6 +39,7 @@ static func party_profile(players: Array) -> Dictionary:
                 archetypes[arch] = int(archetypes.get(arch, 0)) + 1
             var gid := gun.data.id
             carried[gid] = mini(int(carried.get(gid, Gun.MAX_TIER)), gun.tier)
+            families[gun.data.family] = int(families.get(gun.data.family, 0)) + 1
         for iid in pl.inventory.keys():
             var item: Dictionary = Items.get_item(String(iid))
             if item.has("element"):
@@ -60,6 +62,7 @@ static func party_profile(players: Array) -> Dictionary:
         "reaction_partners": reaction_partners(top),
         "archetypes": archetypes,
         "carried": carried,
+        "families": families,
     }
 
 
@@ -161,7 +164,7 @@ static func synergy_card(exclude: Array) -> String:
     var out: Array = []
     for id in Items.catalog.keys():
         var it: Dictionary = Items.catalog[id]
-        if exclude.has(id) or String(it.get("slot", "")) == "mod" or int(it.get("rarity", 0)) > cap:
+        if exclude.has(id) or String(it.get("slot", "")) == "mod" or int(it.get("rarity", 0)) > cap or not Items.unlocked(String(id)):
             continue
         if String(it.get("stack", "add")) == "once" and int(Items.held.get(id, 0)) > 0:
             continue
@@ -185,13 +188,42 @@ static func _wants(it: Dictionary, want: String) -> bool:
     return true
 
 
-## A gun id from the unlocked guns minus `exclude`, tilted toward the build and toward
-## guns the party could combine. "" when nothing is left.
-static func roll_gun(players: Array, exclude: Array = []) -> String:
+## Arsenal expansion 3.2: families you carry weigh this much more; a family you carry none
+## of stays in the off-build share, so you still meet new families.
+const FAMILY_MULT := 1.5
+
+
+## A weapon id from the unlocked weapons minus `exclude`, tilted toward the build and toward
+## weapons the party could combine. "" when nothing is left. `rarity` >= 0 picks inside that
+## rarity (3.2: the caller rolled it), stepping down to `min_rarity` and then up when the
+## pool has none; `new_family` keeps to families the party carries none of (the floor-1
+## pick), when one is unlocked. Legendaries never appear twice in a run.
+static func roll_gun(players: Array, exclude: Array = [], rarity: int = -1, min_rarity: int = 0, new_family: bool = false) -> String:
     var ids: Array = Guns.ids().filter(func(id): return not exclude.has(id))
+    var profile := party_profile(players)
+    var carried0: Dictionary = profile["carried"]
+    ids = ids.filter(func(id): return not (Guns.rarity_of(String(id)) >= Items.Rarity.LEGENDARY and carried0.has(id)))
+    if new_family:
+        var fams: Dictionary = profile["families"]
+        var fresh: Array = ids.filter(func(id): return not fams.has(Guns.family_of(String(id))))
+        if not fresh.is_empty():
+            ids = fresh
+    if rarity >= 0:
+        var cap := Items.max_rarity_unlocked()
+        var want := mini(rarity, cap)
+        var order: Array = []
+        for r in range(want, min_rarity - 1, -1):
+            order.append(r)
+        for r in range(want + 1, cap + 1):
+            order.append(r)
+        var pool: Array = []
+        for r in order:
+            pool = ids.filter(func(id): return Guns.rarity_of(String(id)) == int(r))
+            if not pool.is_empty():
+                break
+        ids = pool
     if ids.is_empty():
         return ""
-    var profile := party_profile(players)
     var top := int(profile["top"])
     var partners: Array = profile["reaction_partners"]
     var carried: Dictionary = profile["carried"]
@@ -208,7 +240,10 @@ static func roll_gun(players: Array, exclude: Array = []) -> String:
             elif partners.has(el):
                 bias *= PARTNER_MULT
         if carried.has(id) and int(carried[id]) < Gun.MAX_TIER:
-            bias *= DUPLICATE_MULT
+            var share := float(Guns.DUPLICATE_SHARE[clampi(Guns.rarity_of(String(id)), 0, 4)])
+            bias *= 1.0 + (DUPLICATE_MULT - 1.0) * share
+        if (profile["families"] as Dictionary).has(data.family):
+            bias *= FAMILY_MULT
         if bias > 1.0:
             on.append(id)
             on_w.append(bias)
@@ -236,7 +271,7 @@ static func _kind_of(key: String) -> int:
 static func _item_candidates(source: Array, rarity: int, exclude: Array, allow_seen: bool) -> Array:
     var out: Array = []
     for id in source:
-        if exclude.has(id) or (not allow_seen and Items.seen_run.has(id)):
+        if exclude.has(id) or (not allow_seen and Items.seen_run.has(id)) or not Items.unlocked(String(id)):
             continue
         var item: Dictionary = Items.get_item(String(id))
         if String(item.get("stack", "add")) == "once" and int(Items.held.get(id, 0)) > 0:

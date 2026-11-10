@@ -987,7 +987,7 @@ func _die() -> void:
     if frozen_time > 0.0:
         Elements.nova.emit(global_position, radius * 2.5, Color(Element.COLORS[Element.Kind.ICE], 0.6))
     if last_hit_by != null and is_instance_valid(last_hit_by):
-        var ctx := { "target": self, "pos": global_position, "elite": is_elite }
+        var ctx := { "target": self, "pos": global_position, "elite": is_elite, "gun": Telemetry.shot_gun() }
         Items.fire(last_hit_by, "kill", ctx)
         if is_elite:
             Items.fire(last_hit_by, "elite_kill", ctx)

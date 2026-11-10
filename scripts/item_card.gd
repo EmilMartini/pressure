@@ -65,7 +65,7 @@ const BADGE_TEXT := Color(0.86, 0.83, 0.77)
 
 const SLOT_TITLES := {
     "head": "Head", "chest": "Chest", "hands": "Hands", "feet": "Feet", "ring": "Ring",
-    "trinket": "Trinket", "mod": "Gun mod", "active": "Active",
+    "trinket": "Trinket", "mod": "Weapon mod", "active": "Active",
 }
 
 ## key -> [label, format, plural label]. Formats: pct (fraction), int, dec, x.
@@ -83,10 +83,10 @@ const STATS := {
     "vs_oiled": ["damage vs oiled", "pct"], "lifesteal": ["HP per reaction", "int"],
     "thorns": ["thorns damage", "int"], "chain_jumps": ["chain jump", "int", "chain jumps"],
     "bounce": ["bounce", "int", "bounces"], "xp_gain": ["XP gain", "pct"], "luck": ["luck", "pct"],
-    "g_dmg": ["damage on this gun", "pct"], "g_fire_rate": ["fire rate on this gun", "pct"],
-    "g_count": ["projectile on this gun", "int", "projectiles on this gun"],
-    "g_pierce": ["pierce on this gun", "int"], "g_range": ["range on this gun", "pct"],
-    "g_speed": ["shot speed on this gun", "pct"], "g_pressure": ["pressure on this gun", "pct"],
+    "g_dmg": ["damage on this weapon", "pct"], "g_fire_rate": ["fire rate on this weapon", "pct"],
+    "g_count": ["projectile on this weapon", "int", "projectiles on this weapon"],
+    "g_pierce": ["pierce on this weapon", "int"], "g_range": ["range on this weapon", "pct"],
+    "g_speed": ["shot speed on this weapon", "pct"], "g_pressure": ["pressure on this weapon", "pct"],
     "homing": ["homing", "dec"], "splash": ["px splash", "int"], "shards": ["shard per shot", "int", "shards per shot"],
     "shot_size": ["shot size", "pct"], "shot_speed": ["shot speed", "pct"],
     "orbitals": ["orbiting familiar", "int", "orbiting familiars"], "gun_slots": ["gun slot", "int", "gun slots"],
@@ -94,7 +94,7 @@ const STATS := {
 const FLAGS := {
     "spectral": "Spectral shots: pass through obstacles",
     "boomerang": "Shots return like boomerangs",
-    "orbital_element": "Familiars carry your first gun's element",
+    "orbital_element": "Familiars carry your first weapon's element",
 }
 const EVENTS := {
     "hit": "On hit", "kill": "On kill", "elite_kill": "On elite kill", "reaction": "On any reaction",
@@ -280,7 +280,7 @@ static func draw_pips(canvas: CanvasItem, pos: Vector2, count: int, color: Color
 ## One stat line, e.g. "+12% damage", "+2 armour", "Chain Lightning +40% potency".
 static func stat_line(key: String, value) -> String:
     if key == "extra_element":
-        return "This gun also applies %s" % _el_name(String(value))
+        return "This weapon also applies %s" % _el_name(String(value))
     if FLAGS.has(key):
         return String(FLAGS[key])
     var v := float(value)
@@ -291,9 +291,9 @@ static func stat_line(key: String, value) -> String:
     if key.begins_with("potency_"):
         return "%s %s potency" % [_fmt("pct", v), _el_name(key.substr(8))]
     if key.begins_with("fire_rate_"):
-        return "%s fire rate with %s guns" % [_fmt("pct", v), _el_name(key.substr(10))]
+        return "%s fire rate with %s weapons" % [_fmt("pct", v), _el_name(key.substr(10))]
     if key.begins_with("pierce_"):
-        return "%s pierce with %s guns" % [_fmt("int", v), _el_name(key.substr(7))]
+        return "%s pierce with %s weapons" % [_fmt("int", v), _el_name(key.substr(7))]
     if STATS.has(key):
         var s: Array = STATS[key]
         var label := String(s[0])
@@ -534,7 +534,7 @@ static func _sub_line(item: Dictionary) -> String:
             var ch := int(item.get("active", {}).get("charges", 1))
             return "%s active, %d charge%s" % [word, ch, "" if ch == 1 else "s"]
         "mod":
-            return "%s gun mod" % word
+            return "%s weapon mod" % word
     return word
 
 
@@ -698,11 +698,15 @@ static func _gun_model(data: GunData, opts: Dictionary) -> Dictionary:
     var title := data.display_name
     if tier > 1:
         title += " " + ROMAN[clampi(tier - 1, 0, ROMAN.size() - 1)]
-    var tr := Items.tier_rarity(tier)
+    # Arsenal expansion 3.1: rarity is fixed per weapon and owns the frame and the name
+    # colour; the tier shows as pips (and a bright rim at IV). The family is a tag chip.
+    var tr := clampi(data.rarity, 0, Items.RARITY_NAMES.size() - 1)
     var chips: Array = [data.element]
     for extra in [data.alt_element, data.extra_element]:
         if extra != Element.Kind.NONE and not chips.has(extra):
             chips.append(extra)
+    chips = chips.slice(0, 2)
+    chips.append(data.family_tag())
     var words := _words(title)
     for r in rows:
         if r.has("t") and String(r["t"]).find("scrap") < 0 and r["s"] != PRICE_SIZE:
@@ -710,9 +714,10 @@ static func _gun_model(data: GunData, opts: Dictionary) -> Dictionary:
     return {
         "icon": Art.gun_icon(data.id), "icon_tint": Color.WHITE, "big": true, "title": title,
         "title_col": Items.RARITY_TEXT_COLORS[tr],
-        "sub": "%s, tier %s" % [Items.RARITY_NAMES[tr], ROMAN[clampi(tier - 1, 0, ROMAN.size() - 1)]],
+        "sub": "%s %s, tier %s" % [Items.RARITY_NAMES[tr], "gun" if data.family == "gun" else data.family + " weapon", ROMAN[clampi(tier - 1, 0, ROMAN.size() - 1)]],
         "sub_col": Items.RARITY_TEXT_COLORS[tr], "frame": Items.RARITY_COLORS[tr], "pips": clampi(tier, 1, 5),
-        "chips": chips.slice(0, 3), "rows": rows, "words": words,
+        "rim": tier >= Gun.MAX_TIER,
+        "chips": chips, "rows": rows, "words": words,
     }
 
 
@@ -783,6 +788,9 @@ static func _render(canvas: CanvasItem, rect: Rect2, model: Dictionary, opts: Di
     var r := Rect2(rect.position, Vector2(w, h))
     var frame: Color = model.get("frame", TEXT)
     draw_frame(canvas, r, frame, bool(opts.get("highlight", false)))
+    if bool(model.get("rim", false)):
+        # A tier IV weapon: one thin bright rim inside the frame (Arsenal expansion 3.4).
+        canvas.draw_rect(r.grow(-5.0), Color(1, 1, 1, 0.85), false, 1.0)
 
     # Header: the icon at 2x, the title (wrapped), slot and rarity.
     var ib := Rect2(r.position + Vector2(PAD, PAD), Vector2(ICON + 8.0, ICON + 8.0))

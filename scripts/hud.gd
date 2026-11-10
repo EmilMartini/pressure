@@ -1134,7 +1134,7 @@ func _draw_help(vp: Vector2) -> void:
     var inp: PlayerInput = main.players[0].input if not main.players.is_empty() else null
     var pad := inp != null and inp.last_kind == "pad"
     var lines := [
-        "MOVE  %s      DASH  %s      ACTIVE  %s      INTERACT  %s      guns aim and fire on their own" % [
+        "MOVE  %s      DASH  %s      ACTIVE  %s      INTERACT  %s      weapons aim and fire on their own" % [
             "left stick" if pad else "WASD", inp.prompt("dash") if inp != null else "Space",
             inp.prompt("active") if inp != null else "Q", "A" if pad else "E"],
 

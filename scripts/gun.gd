@@ -49,6 +49,10 @@ var _spray: Spray = null
 var _mines: Array = []
 var _turrets: Array = []
 var _target_k := 0        # homing: rotates which enemy each volley's first seeker takes
+var melee_n := 0          # melee: swings so far (finishers, spins)
+var swing_tilt := 0.0     # melee: 1 at a swing, the held weapon tilts back and returns
+var _ready_t := 0.0       # melee: the ready pose re-aims every READY_EVERY s
+const READY_EVERY := 0.15
 ## Focus targeting (Focus.update): ranked targets; shot or beam k goes to targets[k], extras
 ## doubling up on targets[0]. Empty outside auto aim.
 var targets: Array = []
@@ -104,6 +108,15 @@ func _process(delta: float) -> void:
                 if bd != Vector2.ZERO:
                     _aim = bd
             _shoot(_aim)
+    if data.family == "melee":
+        swing_tilt = maxf(0.0, swing_tilt - delta / 0.12)
+        _ready_t -= delta
+        if _ready_t <= 0.0 and _since_fire > 0.3 and is_instance_valid(player):
+            # The ready pose (2.1): with nothing in reach the weapon faces the closest enemy.
+            _ready_t = READY_EVERY
+            var near := player.nearest_enemy(500.0)
+            if near != null:
+                _aim = (near.global_position - global_position).normalized()
     _sprite.position = -_aim * _recoil
     var left := _aim.x < 0.0
     _sprite.flip_h = left
@@ -113,6 +126,10 @@ func _process(delta: float) -> void:
         # The tiles lie diagonally with the business end up and to the right (-45 degrees);
         # mirrored for a left aim it points up-left (-135 degrees). Turn that end to the aim.
         _sprite.rotation = _aim.angle() + (PI * 0.75 if left else PI * 0.25)
+        if swing_tilt > 0.0:
+            # A swing tilts back over the first 0.05 s, then follows through.
+            var back := sin(swing_tilt * PI) * 0.7
+            _sprite.rotation += -back if not left else back
     _sprite.scale = Vector2.ONE * (1.0 + 0.08 * float(tier - 1))
     if _charging or data.spin_up > 0.0:
         queue_redraw()
@@ -177,7 +194,14 @@ func tier_mult() -> float:
 
 
 func effective_range() -> float:
+    if data.family == "melee":
+        return Melee.trigger_reach(self)
     return data.max_range * (1.0 + player.stat("range") + _gm("g_range"))
+
+
+## The way the weapon points now (melee follow-ups re-aim with it).
+func aim_dir() -> Vector2:
+    return _aim
 
 
 func fire_rate() -> float:
@@ -185,7 +209,11 @@ func fire_rate() -> float:
     var spin := 1.0
     if data.spin_up > 0.0:
         spin = lerpf(GunData.SPIN_FLOOR, 1.0, clampf(_spin / data.spin_up, 0.0, 1.0))
-    return data.fire_rate * spin * (1.0 + 0.12 * float(tier - 1)) * maxf(0.2, 1.0 + player.stat("fire_rate") + player.stat("fire_rate_" + ek) + _gm("g_fire_rate"))
+    var fam := 0.0
+    if data.family == "melee":
+        # Swing speed (2.2): its own stat plus half the shot speed.
+        fam = player.stat("swing_speed") + 0.5 * (player.stat("proj_speed") + player.stat("shot_speed") + _gm("g_speed"))
+    return data.fire_rate * spin * (1.0 + 0.12 * float(tier - 1)) * maxf(0.2, 1.0 + player.stat("fire_rate") + player.stat("fire_rate_" + ek) + _gm("g_fire_rate") + fam)
 
 
 ## Rate at full spin (what the cards show for repeaters).
@@ -228,7 +256,8 @@ func strike(el: int = -1) -> Strike:
     var ek := element_key()
     var s := Strike.new()
     s.element = data.element if el < 0 else el
-    s.damage = data.damage * tier_mult() * maxf(0.1, 1.0 + player.stat("dmg") + player.stat("dmg_" + ek) + _gm("g_dmg"))
+    var fam_dmg := player.stat("melee_dmg") if data.family == "melee" else player.stat("gun_dmg") if data.family == "gun" else 0.0
+    s.damage = data.damage * tier_mult() * maxf(0.1, 1.0 + player.stat("dmg") + player.stat("dmg_" + ek) + _gm("g_dmg") + fam_dmg)
     s.potency = s.damage * data.reaction_mult * (1.0 + potency_bonus(player.stat("potency") + player.stat("potency_" + ek)))
     s.crit = randf() < player.stat("crit")
     if s.crit:
@@ -620,11 +649,11 @@ func _nova_ring(r: float) -> void:
 
 func _fire_melee(dir: Vector2) -> void:
     var swings := shot_count()
-    _swing(dir, false)
+    Melee.swing(self, dir, false)
     for k in range(1, swings):
         get_tree().create_timer(0.14 * float(k), false).timeout.connect(func():
             if is_instance_valid(self) and is_inside_tree():
-                _swing(_aim, k % 2 == 1))
+                Melee.swing(self, _aim, k % 2 == 1))
 
 
 func _swing(dir: Vector2, back: bool) -> void:

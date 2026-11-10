@@ -19,7 +19,7 @@ extends Node
 ## VERSION: bump it by hand with each phase or shared build (date plus phase tag).
 ## COMMIT: stays "dev" in the repository; the export steps (`.github/workflows/deploy.yml`,
 ## `tools/export_exe.sh`) stamp the short commit hash into it before exporting.
-const VERSION := "2026.11.10-hitfeel"
+const VERSION := "2026.11.10-arsenal1"
 const COMMIT := "dev"
 const BUILD := VERSION + "+" + COMMIT
 ## Where finished runs are POSTed (a Cloudflare Worker or Apps Script URL). Empty = local only.
@@ -515,6 +515,11 @@ func _boss_end(main: Node, won: bool) -> void:
 
 
 # --- Damage --------------------------------------------------------------------
+
+
+## The weapon whose hit is being dealt right now ("" outside a hit).
+func shot_gun() -> String:
+    return _shot_gun if _shot_on else ""
 
 
 func begin_shot(gun_id: String, element: int) -> void:

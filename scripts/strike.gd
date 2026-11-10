@@ -84,7 +84,7 @@ static func deal(enemy: Enemy, dmg: float, pot: float, el: int, extra_els: Array
             enemy.apply_element(extra, pot * 0.8, src)
     Telemetry.end_shot()
     if src != null:
-        Items.fire(src, "hit", { "target": enemy, "pos": pos, "element": el })
+        Items.fire(src, "hit", { "target": enemy, "pos": pos, "element": el, "gun": gid })
 
 
 ## The element (and coatings) on a prop; a plain chip when none of them did anything.

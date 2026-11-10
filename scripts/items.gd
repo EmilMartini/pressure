@@ -502,13 +502,13 @@ const VIAL_CHANCE_CAP := 0.60
 
 ## Tags and resonances (3.1, section 12; Emil's decision: sets became these). Owning 3 items
 ## with a tag forms its resonance; 5 doubles it and adds a visual tier.
-const TAGS := ["vent", "guard", "gunslinger", "seeker", "alchemy", "swift", "fortune"]
+const TAGS := ["vent", "guard", "gunslinger", "seeker", "alchemy", "swift", "fortune", "blade"]
 const TAG_NAMES := { "vent": "Vent", "guard": "Guard", "gunslinger": "Gunslinger", "seeker": "Seeker",
-    "alchemy": "Alchemy", "swift": "Swift", "fortune": "Fortune" }
+    "alchemy": "Alchemy", "swift": "Swift", "fortune": "Fortune", "blade": "Blade" }
 const TAG_COLORS := {
     "vent": Color(1.00, 0.55, 0.25), "guard": Color(0.65, 0.72, 0.85), "gunslinger": Color(0.95, 0.80, 0.50),
     "seeker": Color(0.55, 0.85, 1.00), "alchemy": Color(0.50, 0.95, 0.55), "swift": Color(0.60, 1.00, 0.92),
-    "fortune": Color(1.00, 0.85, 0.30),
+    "fortune": Color(1.00, 0.85, 0.30), "blade": Color(0.82, 0.84, 0.92),
 }
 const RESONANCE_AT := [3, 5]
 ## Tag -> [mods at 3, line at 3]. At 5 every number doubles. An element tag gives +25%
@@ -521,6 +521,8 @@ const RESONANCES := {
     "alchemy": [{ "state_duration": 0.40 }, "Elements last 40% longer"],
     "swift": [{ "dash_charges": 1 }, "+1 dash charge"],
     "fortune": [{ "shop_wares": 1, "luck": 0.10 }, "Shops stock 1 more ware"],
+    # Arsenal expansion 5.3: at 5 it doubles and swings send a short wave past their reach.
+    "blade": [{ "reach": 0.15, "swing_speed": 0.15 }, "Reach and swing speed +15%"],
 }
 
 ## Synergies (section 12): two specific items (or an item and a tag's resonance), built on
@@ -565,7 +567,9 @@ var held: Dictionary = {}
 const SYNERGY_NUDGE := 3.0
 
 
-## Tag -> number of owned items carrying it (each copy counts).
+## Tag -> number of owned items carrying it (each copy counts), plus one per carried weapon
+## for its family tag (Arsenal expansion 5.3, Brotato's classes: three melee weapons, or
+## two and a Blade item, form the Blade resonance).
 func tag_counts(player: Player) -> Dictionary:
     var out: Dictionary = {}
     if player == null or not is_instance_valid(player):
@@ -574,6 +578,10 @@ func tag_counts(player: Player) -> Dictionary:
     for id in counts.keys():
         for t in get_item(String(id)).get("tags", []):
             out[t] = int(out.get(t, 0)) + int(counts[id])
+    for g in player.guns:
+        if g != null and is_instance_valid(g) and g.data != null and g.data.family != "gun":
+            var ft := g.data.family_tag()
+            out[ft] = int(out.get(ft, 0)) + 1
     return out
 
 
@@ -599,6 +607,8 @@ func resonance_mods(tag: String, tier: int) -> Dictionary:
     var base: Dictionary = RESONANCES[tag][0] if RESONANCES.has(tag) else { "potency_" + tag: 0.25, "glow_" + tag: 1 }
     for k in base.keys():
         out[k] = float(base[k]) * float(tier)
+    if tag == "blade" and tier >= 2:
+        out["blade_wave"] = 1.0
     return out
 
 
@@ -657,11 +667,18 @@ func synergy(id: String) -> Dictionary:
 
 
 ## Resonance tiers a count map reaches (for cards that ask "what would taking this do").
-func resonances_for(counts: Dictionary) -> Dictionary:
+func resonances_for(counts: Dictionary, player: Player = null) -> Dictionary:
     var tc: Dictionary = {}
     for id in counts.keys():
         for t in get_item(String(id)).get("tags", []):
             tc[t] = int(tc.get(t, 0)) + int(counts[id])
+    if player != null and is_instance_valid(player):
+        # Carried weapons count toward their family tag (5.3). Guns don't count toward
+        # Gunslinger yet: with four slots nearly every build would form it (batch 1 note).
+        for g in player.guns:
+            if g != null and is_instance_valid(g) and g.data != null and g.data.family != "gun":
+                var ft := g.data.family_tag()
+                tc[ft] = int(tc.get(ft, 0)) + 1
     var out: Dictionary = {}
     for t in tc.keys():
         var tier := resonance_tier(int(tc[t]))
@@ -833,12 +850,12 @@ func price_at(rarity: int, floor_number: int) -> int:
 
 ## Rarity weights for a roll (section 6.4). `table`: "shop", "treasure" (never Common,
 ## Legendary from TREASURE_LEGENDARY), "boss" (never under Rare), "deal" (Epic or Legendary).
-func rarity_weights(table: String, floor_number: int, luck: float = 0.0) -> Array:
+func rarity_weights(table: String, floor_number: int, luck: float = 0.0, weapon: bool = false) -> Array:
     var f := clampi(floor_number, 1, SHOP_ODDS.size()) - 1
-    var w: Array = (SHOP_ODDS[f] as Array).duplicate()
+    var w: Array = ((Guns.RARITY_ODDS[f] if weapon else SHOP_ODDS[f]) as Array).duplicate()
     match table:
         "treasure":
-            var leg := float(TREASURE_LEGENDARY[f])
+            var leg := float(Guns.TREASURE_LEGENDARY[f] if weapon else TREASURE_LEGENDARY[f])
             w = [0.0, float(w[0] + w[1]) - (leg - float(w[4])), float(w[2]), float(w[3]), leg]
         "boss":
             w = [0.0, 0.0, float(w[0] + w[1] + w[2]), float(w[3]), float(w[4])]
@@ -851,8 +868,8 @@ func rarity_weights(table: String, floor_number: int, luck: float = 0.0) -> Arra
 
 
 ## One rarity from `rarity_weights`, capped by the Shrine's rarity unlocks.
-func roll_rarity(table: String, floor_number: int, luck: float = 0.0) -> int:
-    var w := rarity_weights(table, floor_number, luck)
+func roll_rarity(table: String, floor_number: int, luck: float = 0.0, weapon: bool = false) -> int:
+    var w := rarity_weights(table, floor_number, luck, weapon)
     var total := 0.0
     for v in w:
         total += float(v)
@@ -947,9 +964,15 @@ func roll(difficulty: int, min_rarity: int = Rarity.COMMON, exclude: Array = [],
     return "iron_heart"
 
 
+## Arsenal expansion 6.1: new items start locked ("locked": true) and open with an
+## "item:<id>" unlock; everything older is in the pool from the start.
+func unlocked(id: String) -> bool:
+    return not bool(catalog.get(id, {}).get("locked", false)) or Progress.has("item:" + id)
+
+
 func _candidates(rarity: int, pool: String, exclude: Array, allow_seen: bool) -> Array:
     return _by_rarity[rarity].filter(func(id):
-        if exclude.has(id) or (not allow_seen and seen_run.has(id)):
+        if exclude.has(id) or (not allow_seen and seen_run.has(id)) or not unlocked(String(id)):
             return false
         if String(catalog[id].get("stack", "add")) == "once" and int(held.get(id, 0)) > 0:
             return false
@@ -1042,6 +1065,8 @@ func fire(player: Player, event: String, ctx: Dictionary) -> void:
             var t: Dictionary = triggers[ti]
             if not _event_matches(t["on"], event, ctx):
                 continue
+            if t.get("melee", false) and Guns.family_of(String(ctx.get("gun", ""))) != "melee":
+                continue   # a Blade item's trigger: only hits and kills by a melee weapon
             if t.has("every"):
                 var ckey := "%d:%s:%d" % [player.get_instance_id(), id, ti]
                 var seen: int = int(_counters.get(ckey, 0)) + 1
@@ -1420,6 +1445,48 @@ func _build_catalog() -> void:
 
     # ======================= NEW BEHAVIOUR ITEMS (3.2): each changes how a gun, an element,
     # a reaction or the dash works, and shows on screen.
+    # ======================= ARSENAL EXPANSION BATCH 1 (5.1, 5.2): Blade items. All start
+    # locked and open through the melee unlocks in progress.gd ("item:<id>"). "melee": true
+    # on a trigger means only hits and kills by a melee weapon fire it.
+    var B := { "tags": ["blade"], "locked": true }
+    var BO := { "tags": ["blade"], "locked": true, "stack": "once" }
+    # Blade passives (12, behaviour).
+    _add("long_reach", "Long Reach", "hands", C, "Melee reach +20%", { "reach": 0.20 }, [], B)
+    _add("follow_through", "Follow-Through", "hands", R, "Finishers swing twice", { "finisher_twice": 1 }, [], BO)
+    _add("riposte", "Riposte", "feet", R, "A dash makes your swings crit for 1 s", {}, [{ "on": "dash", "do": "buff", "key": "melee_crit", "amount": 1.0, "secs": 1.0, "secs_per": 0.5 }], { "tags": ["blade", "swift"], "locked": true })
+    _add("bloodletter", "Bloodletter", "trinket", U, "Cleave hits open a bleed", { "cleave_bleed": 1 }, [], { "tags": ["blade", "blood"], "locked": true })
+    _add("whirl", "Whirl", "ring", R, "Every 5th swing is a full spin", { "whirl": 1 }, [], BO)
+    _add("shock_edge", "Shock Edge", "ring", U, "Every 6th melee hit bursts in a small shock ring", {}, [{ "on": "hit", "melee": true, "every": 6, "every_per": -1, "do": "nova", "element": "shock", "radius": 70, "potency": 5 }], { "tags": ["blade", "shock"], "locked": true })
+    _add("frostbite_steel", "Frostbite Steel", "hands", U, "Melee hits on Wet foes chill them", {}, [{ "on": "hit", "melee": true, "if": "target_wet", "do": "apply", "element": "ice", "potency": 4 }], { "tags": ["blade", "ice"], "locked": true })
+    _add("thunder_grip", "Thunder Grip", "hands", R, "15% of melee hits arc lightning", {}, [{ "on": "hit", "melee": true, "chance": 0.15, "do": "chain", "potency": 5 }], { "tags": ["blade", "shock"], "locked": true })
+    _add("cutting_wind", "Cutting Wind", "chest", U, "Melee shoves 40% harder", { "melee_knock": 0.40 }, [], { "tags": ["blade", "gale"], "locked": true })
+    _add("marked_steel", "Marked Steel", "ring", U, "Every 3rd melee hit marks the foe", {}, [{ "on": "hit", "melee": true, "every": 3, "every_per": -1, "do": "mark", "secs": 3.0 }], { "tags": ["blade", "alchemy"], "locked": true })
+    _add("wildfire_edge", "Wildfire Edge", "trinket", R, "Melee hits on burning foes spread fire", {}, [{ "on": "hit", "melee": true, "if": "target_burning", "chance": 0.25, "do": "spread", "element": "fire", "radius": 70, "potency": 4 }], { "tags": ["blade", "fire"], "locked": true })
+    _add("edge_runner", "Edge Runner", "feet", U, "While moving, swings 20% faster", {}, [], { "tags": ["blade", "swift"], "locked": true, "cond_mods": { "moving": { "swing_speed": 0.20 } } })
+    # Melee mods (6): they fit any weapon; on a gun they do the gun part only.
+    _add("whetstone", "Whetstone", "mod", C, "This weapon: +15% damage; melee +10% reach", { "g_dmg": 0.15, "g_reach": 0.10 }, [], B)
+    _add("weighted_pommel", "Weighted Pommel", "mod", U, "This weapon: +25% damage, -10% speed", { "g_dmg": 0.25, "g_fire_rate": -0.10 }, [], B)
+    _add("long_haft", "Long Haft", "mod", U, "This weapon: melee +25% reach, guns +15% range", { "g_reach": 0.25, "g_range": 0.15 }, [], B)
+    _add("balanced_grip", "Balanced Grip", "mod", C, "This weapon: +15% swing or fire rate", { "g_fire_rate": 0.15 }, [], B)
+    _add("twin_edge", "Twin Edge", "mod", R, "This weapon: +1 swing or shot, -15% damage", { "g_count": 1, "g_dmg": -0.15 }, [], B)
+    _add("tempered_steel", "Tempered Steel", "mod", R, "This weapon: +10% damage, +1 pierce", { "g_dmg": 0.10, "g_pierce": 1 }, [], B)
+    # Melee actives (2).
+    _add("bulwark", "Bulwark", "active", U, "Use: block enemy shots for 2 s", {}, [],
+        { "tags": ["blade", "guard"], "locked": true, "active": { "charges": 2, "do": [{ "do": "ward", "secs": 2.0 }] } })
+    _add("whirlwind", "Whirlwind", "active", R, "Use: a spinning slash hits all within 140 px", {}, [],
+        { "tags": ["blade"], "locked": true, "active": { "charges": 2, "do": [{ "do": "nova", "element": "gun", "radius": 140, "potency": 10 }] } })
+    # Plain, element, healing and trade-off (10).
+    _add("honed_edge", "Honed Edge", "hands", C, "+12% melee damage", { "melee_dmg": 0.12 }, [], B)
+    _add("swift_strikes", "Swift Strikes", "hands", C, "+12% swing speed", { "swing_speed": 0.12 }, [], B)
+    _add("sword_belt", "Sword Belt", "chest", U, "+8% melee damage, +8% reach", { "melee_dmg": 0.08, "reach": 0.08 }, [], B)
+    _add("iron_wrists", "Iron Wrists", "hands", U, "+10% melee damage, +8% swing speed", { "melee_dmg": 0.10, "swing_speed": 0.08 }, [], B)
+    _add("berserker_oath", "Berserker Oath", "head", R, "Melee +30% damage, guns -20% damage", { "melee_dmg": 0.30, "gun_dmg": -0.20 }, [], BO)
+    _add("glass_blade", "Glass Blade", "trinket", U, "Melee +25% damage, -20 max health", { "melee_dmg": 0.25, "max_hp": -20 }, [], B)
+    _add("rime_whetstone", "Rime Whetstone", "trinket", U, "Frozen foes take +25% from melee", { "melee_vs_frozen": 0.25 }, [], { "tags": ["blade", "ice"], "locked": true, "element": "ice" })
+    _add("ember_whetstone", "Ember Whetstone", "trinket", U, "Burning foes take +25% from melee", { "melee_vs_burning": 0.25 }, [], { "tags": ["blade", "fire"], "locked": true, "element": "fire" })
+    _add("soaked_edge", "Soaked Edge", "ring", C, "20% of melee hits soak the foe", {}, [{ "on": "hit", "melee": true, "chance": 0.20, "do": "apply", "element": "wet", "potency": 4 }], { "tags": ["blade", "wet"], "locked": true, "element": "wet" })
+    _add("mending_steel", "Mending Steel", "chest", R, "Melee kills mend 1 health", {}, [{ "on": "kill", "melee": true, "do": "heal", "amount": 1 }], BO)
+
     _add("slipstream_boots", "Slipstream Boots", "feet", R, "Dashing leaves a 2 s trail of your vent element", {}, [{ "on": "dash", "do": "trail", "element": "vent", "secs": 2.0, "secs_per": 1.0 }], { "tags": ["swift", "vent"] })
     _add("shoulder_charge", "Shoulder Charge", "chest", R, "Dashing through enemies hits them for gun damage", { "dash_hit": 1.0 }, [], { "tags": ["swift", "guard"] })
     _add("second_wind", "Second Wind", "feet", R, "+1 dash charge", { "dash_charges": 1 }, [], { "tags": ["swift"] })

@@ -1508,6 +1508,12 @@ const FUSION_LOADOUTS := [
 ]
 
 
+## --family-probe=<family>: four Commons and Uncommons of one family (Arsenal expansion 8).
+const FAMILY_PROBE := {
+    "melee": ["tin_sabre", "frost_hatchet", "thorn_whip", "bone_club"],
+}
+
+
 ## --build=<id> profiles for late-floor probes. "storm" replays the human run 4487a37a46b6c384
 ## (Stormcaller, won all five floors): each floor entry is the build at the START of that
 ## floor, i.e. what the player carried when the previous floor ended: guns as id@tier, gear,
@@ -1725,6 +1731,24 @@ func _setup_autotest() -> void:
                 if p0.add_gun(parts[0], parts.size() == 1) and parts.size() > 1:
                     p0.guns[p0.guns.size() - 1].tier = int(parts[1])
             print("[LOADOUT] %s" % a.substr(10))
+        if a.begins_with("--family-probe="):
+            # Arsenal expansion 8: four weapons of one family at tier II and the human build's
+            # items (Emil's run 6980a749, floor 2). Use with --kite (the family probe) or
+            # --idle (the family stand-still check), and --mastery=full.
+            var fam := a.substr(15)
+            var pf := players[0]
+            pf.weight_capacity_base = 40
+            pf.recalc_stats()
+            for g in pf.guns.duplicate():
+                pf.drop_gun(g)
+            for gid in FAMILY_PROBE.get(fam, []):
+                if pf.add_gun(String(gid), false):
+                    pf.guns[pf.guns.size() - 1].tier = 2
+            if _bot_build().is_empty():   # with --build the profile's items are already on
+                for iid in BOT_BUILDS["human6980"][2]["gear"]:
+                    pf.equip(String(iid))
+            pf.recalc_stats()
+            print("[LOADOUT] family-probe=%s %s" % [fam, ",".join(FAMILY_PROBE.get(fam, []))])
         if a == "--fusion-probe" or a.begins_with("--fusion-probe="):
             # Tier-ladder probe: four light guns of four elements, so compounds, fusions and
             # cataclysms actually happen. The loadout rotates with --instance (or pick one

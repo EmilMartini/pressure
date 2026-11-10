@@ -33,12 +33,39 @@ const ARCHETYPES := {
     "turret": ["turret", "deploys a turret that fires on its own"],
 }
 
+## Arsenal expansion 2.1: every weapon belongs to one of five families. The family comes
+## from the archetype unless the entry names one. On screen a "gun" is a "weapon".
+const FAMILIES := ["gun", "melee", "thrown", "summon", "ground"]
+const FAMILY_OF := {
+    "melee": "melee",
+    "boomerang": "thrown", "mortar": "thrown", "thrower": "thrown",
+    "turret": "summon",
+    "nova": "ground", "mine": "ground",
+}
+const FAMILY_NAMES := { "gun": "Gun", "melee": "Melee", "thrown": "Thrown", "summon": "Summon", "ground": "Ground" }
+## Family -> the item tag a carried weapon counts toward (5.3, Brotato's classes).
+const FAMILY_TAGS := { "gun": "gunslinger", "melee": "blade", "thrown": "thrown", "summon": "swarm", "ground": "ground" }
+## Arsenal expansion 3.1: rarity is fixed per weapon (Common to Legendary, Items.Rarity);
+## the power premium on the weight band is small on purpose.
+const RARITY_PREMIUM := [1.00, 1.05, 1.10, 1.18, 1.25]
+## Section 2.3: the seven melee swing styles (Melee draws and resolves them).
+const MELEE_STYLES := ["sweep", "cleave", "thrust", "slam", "lash", "jab", "spin"]
+
 @export var id: String = ""
 @export var display_name: String = "Gun"
 @export var archetype: String = ""          # a key of ARCHETYPES
 ## How a trigger pull works (see Gun.fire): "shot" (projectiles, flying by `behaviour`),
 ## "beam", "cone", "chain", "nova", "melee", "charge", "mine", "turret".
 @export var mechanic: String = "shot"
+## Arsenal expansion 2.1: family ("gun", "melee", "thrown", "summon", "ground"), rarity
+## (0 Common to 4 Legendary), style (the sub-kind inside the family: a melee swing style,
+## a thrown, summon or ground kind), cap (live bodies or effects per weapon, 0 = the
+## family default) and unique (legendaries only: the id of their rule).
+@export var family: String = "gun"
+@export var rarity: int = 0
+@export var style: String = ""
+@export var cap: int = 0
+@export var unique: String = ""
 @export var element: Element.Kind = Element.Kind.NONE
 @export var weight: int = 1
 @export var damage: float = 5.0             # per projectile, beam or spray tick, arc, ring, sweep, rail, mine, pool tick, orb pulse
@@ -86,6 +113,14 @@ const CHAIN_FALLOFF := 0.75
 const SPIN_FLOOR := 0.4
 
 
+func family_name() -> String:
+    return String(FAMILY_NAMES.get(family, "Gun"))
+
+
+func family_tag() -> String:
+    return String(FAMILY_TAGS.get(family, "gunslinger"))
+
+
 func color() -> Color:
     return Element.COLORS[element]
 
@@ -103,7 +138,9 @@ func dps_at(dmg: float, rate: float) -> float:
     match mechanic:
         "charge":
             return dmg * shots / maxf(0.05, charge_time + 1.0 / maxf(0.05, rate))
-        "beam", "cone", "chain", "nova", "melee", "mine":
+        "melee":
+            return dmg * rate * shots * Melee.single_mult(self)
+        "beam", "cone", "chain", "nova", "mine":
             return dmg * rate * shots
         "turret":
             return dmg * rate * float(projectile_count)
@@ -161,7 +198,7 @@ func how() -> String:
         "nova":
             return "Ring around you: hits all within %.0f px, pushes out" % max_range
         "melee":
-            return "Sweeps a %.0f deg arc, %.0f px reach, knocks back" % [arc_deg, max_range]
+            return Melee.how(self)
         "charge":
             return "Charges %.1f s, then a rail through every enemy in line" % charge_time
         "mine":

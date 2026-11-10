@@ -457,8 +457,10 @@ func _arena_reward() -> void:
 func _arena_gun_pick() -> void:
     if main.floor_number != 1 or main.floor_arenas_done() > FLOOR1_GUN_PICKS:
         return
-    var a := Drops.roll_gun(main.players, _maxed_gun_ids())
-    var b := Drops.roll_gun(main.players, _maxed_gun_ids() + [a])
+    # Arsenal expansion 3.2: Common or Uncommon only; one of the two from a family you
+    # don't carry yet, when one is unlocked.
+    var a := Drops.roll_gun(main.players, _maxed_gun_ids(), mini(Items.roll_rarity("shop", 1, main.party_luck(), true), Items.Rarity.UNCOMMON))
+    var b := Drops.roll_gun(main.players, _maxed_gun_ids() + [a], mini(Items.roll_rarity("shop", 1, main.party_luck(), true), Items.Rarity.UNCOMMON), 0, true)
     var cards: Array = []
     for id in [a, b]:
         if id != "":
@@ -470,7 +472,7 @@ func _arena_gun_pick() -> void:
         return
     main.loot_cards(cards.size())
     _build_pedestals()
-    main.announce("Choose 1 of %d guns" % cards.size())
+    main.announce("Choose 1 of %d weapons" % cards.size())
 
 
 ## Pick-1-of-N reward cards (boss, challenge): `wants` per card ("" any, "stat",
@@ -478,6 +480,9 @@ func _arena_gun_pick() -> void:
 func _reward_cards(group: String, pool: String, table: String, wants: Array, min_rarity: int, y: float) -> void:
     var luck := main.party_luck()
     var ids: Array = []
+    # Arsenal expansion 3.2: one card of the row is a weapon now and then (Rare or better).
+    var share := Guns.CHALLENGE_WEAPON if group == "challenge" else (Guns.BOSS_WEAPON if group == "boss" and main.floor_number >= Guns.BOSS_WEAPON_FROM else 0.0)
+    var weapon_at := randi() % wants.size() if randf() < share else -1
     for i in wants.size():
         var rar := mini(maxi(min_rarity, Items.roll_rarity(table, main.floor_number, luck)), Items.max_rarity_unlocked())
         var id := Drops.roll_item_at(rar, ids + FloorGen._mod_ids(), pool, main.players, String(wants[i]))
@@ -487,9 +492,40 @@ func _reward_cards(group: String, pool: String, table: String, wants: Array, min
                 id = sc   # the missing half of a synergy you started (section 12)
         ids.append(id)
         var o := Items.offer(id, 0, Vector2((float(i) - float(wants.size() - 1) / 2.0) * 210.0, y))
+        if i == weapon_at:
+            var wid := Drops.roll_gun(main.players, _maxed_gun_ids(), Items.roll_rarity("boss", main.floor_number, luck, true), Items.Rarity.RARE)
+            if wid != "" and Guns.rarity_of(wid) >= Items.Rarity.RARE:
+                o = FloorGen.offer("gun", wid, 0)
+                o["pos"] = Vector2((float(i) - float(wants.size() - 1) / 2.0) * 210.0, y)
         o["group"] = group
         data.stock.append(o)
     main.loot_cards(wants.size())
+
+
+## A deal card's price (scrap, max health or a curse, logged). False when it can't be paid.
+func _pay_deal(pl: Player, o: Dictionary) -> bool:
+    var deal := String(o.get("deal", ""))
+    if deal == "money":
+        var cost := FloorGen.deal_money(main.scrap, main.floor_number)
+        if main.scrap < cost:
+            pl.say("Need %d scrap" % cost)
+            Sfx.play("error")
+            return false
+        main.scrap -= cost
+        Telemetry.event("deal", { "floor": main.floor_number, "id": String(o["id"]), "kind": deal, "cost": cost })
+    elif deal == "hp":
+        var hp_cost := FloorGen.deal_hp(o)
+        if pl.max_hp - float(hp_cost) < FloorGen.DEAL_HP_FLOOR:
+            pl.say("Too frail: max health would fall under %d" % int(FloorGen.DEAL_HP_FLOOR))
+            Sfx.play("error")
+            return false
+        pl.max_hp_base -= hp_cost
+        pl.recalc_stats()
+        pl.hp = minf(pl.hp, pl.max_hp)
+        Telemetry.event("deal", { "floor": main.floor_number, "id": String(o["id"]), "kind": deal, "cost": hp_cost })
+    elif deal == "curse":
+        Telemetry.event("deal", { "floor": main.floor_number, "id": String(o["id"]), "kind": deal, "curse": String(o.get("curse", "")) })
+    return true
 
 
 ## Take one card of a pick-1-of-N row: the rest vanish.
@@ -1710,7 +1746,7 @@ func add_gun_choice() -> void:
         var o := FloorGen.offer("gun", pool[i], 0)
         o["choice"] = true
         data.stock.append(o)
-    main.announce("Choose your first gun")
+    main.announce("Choose your first weapon")
     _build_pedestals()
 
 
@@ -1835,8 +1871,19 @@ func activate(ped: Pedestal, pl: Player) -> void:
                 pl.say("Too heavy: %s is %d, %d free" % [gdata.display_name, gdata.weight, pl.weight_capacity - pl.total_weight()])
                 Sfx.play("error")
                 return
+            if String(o.get("deal", "")) != "" and not _pay_deal(pl, o):
+                return
             main.scrap -= o["price"]
-            pl.add_gun(o["id"])
+            if o.has("curse"):
+                main.add_curse(String(o["curse"]), String(o.get("curse_span", "floor")))
+            var into: Gun = pl.merge_target(String(o["id"]))
+            if pl.add_gun(o["id"]):
+                var arrive := int(o.get("tier", 1))
+                if arrive > 1:
+                    # A deep Common arrives at tier II (Arsenal expansion 3.2).
+                    var g: Gun = into if into != null else pl.guns[pl.guns.size() - 1]
+                    g.tier = mini(Gun.MAX_TIER, g.tier + arrive - 1 if into != null else arrive)
+                    pl.recalc_stats()
             Sfx.play("buy")
             o["taken"] = true
             _take_group(o)
@@ -1875,27 +1922,8 @@ func activate(ped: Pedestal, pl: Player) -> void:
                     # More than one gun could take it: let the player choose.
                     main.gun_pick.pick(pl, candidates, o["id"], func(g): if g != null: _fit_mod(pl, g, o))
                 return
-            var deal := String(o.get("deal", ""))
-            if deal == "money":
-                var cost := FloorGen.deal_money(main.scrap, main.floor_number)
-                if main.scrap < cost:
-                    pl.say("Need %d scrap" % cost)
-                    Sfx.play("error")
-                    return
-                main.scrap -= cost
-                Telemetry.event("deal", { "floor": main.floor_number, "id": String(o["id"]), "kind": deal, "cost": cost })
-            elif deal == "hp":
-                var hp_cost := FloorGen.deal_hp(o)
-                if pl.max_hp - float(hp_cost) < FloorGen.DEAL_HP_FLOOR:
-                    pl.say("Too frail: max health would fall under %d" % int(FloorGen.DEAL_HP_FLOOR))
-                    Sfx.play("error")
-                    return
-                pl.max_hp_base -= hp_cost
-                pl.recalc_stats()
-                pl.hp = minf(pl.hp, pl.max_hp)
-                Telemetry.event("deal", { "floor": main.floor_number, "id": String(o["id"]), "kind": deal, "cost": hp_cost })
-            elif deal == "curse":
-                Telemetry.event("deal", { "floor": main.floor_number, "id": String(o["id"]), "kind": deal, "curse": String(o.get("curse", "")) })
+            if String(o.get("deal", "")) != "" and not _pay_deal(pl, o):
+                return
             main.scrap -= o["price"]
             if o.has("curse"):
                 main.add_curse(String(o["curse"]), String(o.get("curse_span", "floor")))

@@ -9,7 +9,7 @@ signal unlocked(unlock_id: String, achievement_name: String)
 const SAVE_PATH := "user://save.json"
 
 ## Always available, run one included.
-const BASE_UNLOCKS := ["gun:water_pistol", "gun:arc_rifle", "gun:flare_pistol", "gun:slick_wand", "obstacle:pool", "mark:vagrant"]
+const BASE_UNLOCKS := ["gun:water_pistol", "gun:arc_rifle", "gun:flare_pistol", "gun:slick_wand", "gun:tin_sabre", "obstacle:pool", "mark:vagrant"]
 
 ## stat: the Progress stat that counts toward it. goal: the number to reach.
 ## Phase 3: the counter guns below moved to lessons (scripts/lessons.gd): oil_slinger,
@@ -162,6 +162,53 @@ const ACHIEVEMENTS := [
         "stat": "kills", "goal": 3750, "rewards": ["gun:railgun"] },
     { "id": "spelunker", "name": "Spelunker", "desc": "Clear 50 floors",
         "stat": "floors", "goal": 50, "rewards": ["gun:boulder_mortar"] },
+    # Arsenal expansion batch 1 (6.2): melee. Play goals open the Commons and two Uncommons,
+    # each with one Blade item; melee mastery (kills by melee weapons) opens the rest in
+    # family order, each with one or two Blade items. Tin Sabre is in BASE_UNLOCKS.
+    { "id": "melee_play_1", "name": "Bladesmith", "desc": "Kill 150 enemies",
+        "stat": "kills", "goal": 150, "rewards": ["gun:tide_spear", "item:honed_edge"] },
+    { "id": "melee_play_2", "name": "Knuckle Down", "desc": "Clear 12 rooms",
+        "stat": "rooms", "goal": 12, "rewards": ["gun:spark_knuckles", "item:swift_strikes"] },
+    { "id": "melee_play_3", "name": "Hot Iron", "desc": "Vent 25 times",
+        "stat": "vents", "goal": 25, "rewards": ["gun:ember_brand", "item:sword_belt"] },
+    { "id": "melee_play_4", "name": "Thornwork", "desc": "Set off 400 reactions",
+        "stat": "reactions", "goal": 400, "rewards": ["gun:thorn_whip", "item:soaked_edge"] },
+    { "id": "melee_play_5", "name": "Bone Idle", "desc": "Start 4 runs",
+        "stat": "runs_started", "goal": 4, "rewards": ["gun:bone_club", "item:balanced_grip"] },
+    { "id": "melee_play_6", "name": "Hatchet Job", "desc": "Kill 8 elites",
+        "stat": "elites", "goal": 8, "rewards": ["gun:frost_hatchet", "item:whetstone"] },
+    { "id": "melee_play_7", "name": "Reaper's Apprentice", "desc": "Clear 6 floors",
+        "stat": "floors", "goal": 6, "rewards": ["gun:hollow_sickle", "item:iron_wrists"] },
+    { "id": "melee_play_8", "name": "Etcher", "desc": "Kill 600 enemies",
+        "stat": "kills", "goal": 600, "rewards": ["gun:etching_claws", "item:edge_runner"] },
+    { "id": "melee_play_9", "name": "Fencer", "desc": "Discover 9 different reactions",
+        "stat": "reactions_discovered", "goal": 9, "rewards": ["gun:blood_rapier", "item:long_reach"] },
+    { "id": "melee_mastery_1", "name": "Blades I", "desc": "Kill 60 enemies with melee weapons",
+        "stat": "kills_melee", "goal": 60, "rewards": ["gun:pitch_cleaver", "item:bloodletter", "item:cutting_wind"] },
+    { "id": "melee_mastery_2", "name": "Blades II", "desc": "Kill 150 enemies with melee weapons",
+        "stat": "kills_melee", "goal": 150, "rewards": ["gun:gale_glaive", "item:rime_whetstone", "item:weighted_pommel"] },
+    { "id": "melee_mastery_3", "name": "Blades III", "desc": "Kill 300 enemies with melee weapons",
+        "stat": "kills_melee", "goal": 300, "rewards": ["gun:sanctified_mace", "item:marked_steel", "item:mending_steel"] },
+    { "id": "melee_mastery_4", "name": "Blades IV", "desc": "Kill 500 enemies with melee weapons",
+        "stat": "kills_melee", "goal": 500, "rewards": ["gun:storm_lash", "item:thunder_grip", "item:long_haft"] },
+    { "id": "melee_mastery_5", "name": "Blades V", "desc": "Kill 800 enemies with melee weapons",
+        "stat": "kills_melee", "goal": 800, "rewards": ["gun:parry_blade", "item:riposte", "item:bulwark"] },
+    { "id": "melee_mastery_6", "name": "Blades VI", "desc": "Kill 1200 enemies with melee weapons",
+        "stat": "kills_melee", "goal": 1200, "rewards": ["gun:venom_pike", "item:wildfire_edge", "item:ember_whetstone"] },
+    { "id": "melee_mastery_7", "name": "Blades VII", "desc": "Kill 1600 enemies with melee weapons",
+        "stat": "kills_melee", "goal": 1600, "rewards": ["gun:riptide_whip", "item:shock_edge", "item:tempered_steel"] },
+    { "id": "melee_mastery_8", "name": "Blades VIII", "desc": "Kill 2000 enemies with melee weapons",
+        "stat": "kills_melee", "goal": 2000, "rewards": ["gun:rimefang", "item:follow_through", "item:berserker_oath"] },
+    { "id": "melee_mastery_9", "name": "Blades IX", "desc": "Kill 2600 enemies with melee weapons",
+        "stat": "kills_melee", "goal": 2600, "rewards": ["gun:crimson_gauntlets", "item:twin_edge"] },
+    { "id": "melee_mastery_10", "name": "Blades X", "desc": "Kill 3200 enemies with melee weapons",
+        "stat": "kills_melee", "goal": 3200, "rewards": ["gun:magma_maul", "item:whirl", "item:whirlwind"] },
+    { "id": "melee_mastery_11", "name": "Blades XI", "desc": "Kill 4000 enemies with melee weapons",
+        "stat": "kills_melee", "goal": 4000, "rewards": ["gun:thunder_halberd", "item:glass_blade"] },
+    { "id": "melee_mastery_12", "name": "Blades XII", "desc": "Kill 5000 enemies with melee weapons",
+        "stat": "kills_melee", "goal": 5000, "rewards": ["gun:twin_fangs", "item:frostbite_steel"] },
+    { "id": "melee_mastery_13", "name": "Blades XIII", "desc": "Kill 6500 enemies with melee weapons",
+        "stat": "kills_melee", "goal": 6500, "rewards": ["gun:eclipse_scythe"] },
 ]
 
 var save_path := SAVE_PATH
@@ -237,6 +284,8 @@ func unlock_label(unlock_id: String) -> String:
     match parts[0]:
         "gun":
             return Guns.make(parts[1]).display_name
+        "item":
+            return String(Items.get_item(parts[1]).get("name", parts[1]))
         "obstacle":
             return { "pool": "Pool obstacles", "thicket": "Thicket obstacles", "valve": "Valve obstacles",
                 "ward": "Ward obstacles", "rubble": "Rubble obstacles", "miasma": "Miasma obstacles" }.get(parts[1], parts[1])
@@ -309,6 +358,9 @@ func achievement_icon_path(a: Dictionary) -> String:
 
 
 func achievement_icon(a: Dictionary) -> Texture2D:
+    var rewards: Array = a.get("rewards", [])
+    if not rewards.is_empty() and String(rewards[0]).begins_with("gun:"):
+        return Art.gun_icon(String(rewards[0]).substr(4))   # code-drawn weapons too
     return Art.icon(achievement_icon_path(a))
 
 

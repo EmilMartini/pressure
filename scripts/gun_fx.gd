@@ -13,6 +13,7 @@ var half := 0.0
 var width := 3.0
 var color := Color.WHITE
 var back := false
+var shape := ""
 var life := 0.2
 var _t := 0.0
 static var _add_material: CanvasItemMaterial
@@ -30,6 +31,22 @@ static func sweep(parent: Node, c: Vector2, p_dir: Vector2, p_reach: float, p_ha
     g.color = col
     g.back = p_back
     g.life = 0.18
+    parent.add_child(g)
+
+
+## A melee smear (Arsenal expansion 2.3): the swing's shape at 35% alpha for 0.1 s,
+## drawn by WeaponLooks.draw_smear. `p_shape`: a style, or "spin" for a full circle.
+static func smear(parent: Node, c: Vector2, p_dir: Vector2, p_reach: float, p_half: float, col: Color, p_back: bool, p_shape: String) -> void:
+    var g := GunFx.new()
+    g.kind = "smear"
+    g.shape = p_shape
+    g.a = c
+    g.dir = p_dir
+    g.reach = p_reach
+    g.half = p_half
+    g.color = col
+    g.back = p_back
+    g.life = 0.1
     parent.add_child(g)
 
 
@@ -67,6 +84,8 @@ func _process(delta: float) -> void:
 func _draw() -> void:
     var f := clampf(_t / life, 0.0, 1.0)
     match kind:
+        "smear":
+            WeaponLooks.draw_smear(self, shape, a, dir, reach, half, color, back, f)
         "sweep":
             # The swept area fades; the edge runs from one side to the other.
             var from := -half if not back else half

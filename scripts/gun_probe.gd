@@ -101,7 +101,7 @@ func _run() -> void:
         await _card_sheet()
         get_tree().quit()
         return
-    print("[GUN-PROBE] id archetype mechanic element weight single pack budget  (dps, %.0f s per scenario)" % _secs)
+    print("[GUN-PROBE] id archetype mechanic element weight single pack budget family style rarity  (dps, %.0f s per scenario)" % _secs)
     for id in _ids:
         var data := Guns.make(String(id))
         var single := await _measure(String(id), [SINGLE_AT])
@@ -109,8 +109,9 @@ func _run() -> void:
         for k in 7:
             pack_spots.append(PACK_AT + Vector2.RIGHT.rotated(TAU * float(k) / 7.0) * 38.0)
         var pack := await _measure(String(id), pack_spots)
-        print("[GUN-PROBE] %s %s %s %s w%d single=%.1f pack=%.1f budget=%.1f" % [
-            id, data.archetype, data.mechanic, Element.NAMES[data.element], data.weight, single, pack, data.dps()])
+        print("[GUN-PROBE] %s %s %s %s w%d single=%.1f pack=%.1f budget=%.1f %s %s %s" % [
+            id, data.archetype, data.mechanic, Element.NAMES[data.element], data.weight, single, pack, data.dps(),
+            data.family, data.style, Items.RARITY_NAMES[data.rarity]])
     get_tree().quit()
 
 
