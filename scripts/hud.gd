@@ -300,6 +300,7 @@ func _process(delta: float) -> void:
             _toasts.remove_at(i)
     _watch_pickups(delta)
     _tick_discovery(delta)
+    _tick_banner(get_process_delta_time() / maxf(Engine.time_scale, 0.001))
     queue_redraw()
 
 
@@ -315,7 +316,11 @@ func _watch_pickups(delta: float) -> void:
         if not is_instance_valid(p):
             continue
         var pid: int = p.get_instance_id()
-        var items: Array = p.equipped_item_ids()
+        var items: Array = []
+        var counts: Dictionary = p.gear_counts()
+        for cid in counts.keys():
+            for c in int(counts[cid]):
+                items.append(cid)
         var guns: Array = []
         for g in p.guns:
             guns.append(g.data.id)
@@ -341,10 +346,10 @@ func _announce_item(p: Player, id: String) -> void:
     var it: Dictionary = Items.get_item(id)
     if it.is_empty():
         return
-    var lines := ItemCard.describe_mods(it)
-    var effect := ", ".join(lines.slice(0, 2))
-    if lines.size() > 2:
-        effect += ", ..."
+    var effect := String(it.get("desc", ""))
+    var n := p.item_count(id)
+    if n > 1:
+        effect = "x%d   %s" % [n, effect]
     _pick = {
         "name": String(it["name"]), "effect": effect, "col": Items.rarity_text_color(it),
         "frame": Items.rarity_color(it), "tag": Items.rarity_name(it).to_upper(),
@@ -384,6 +389,45 @@ func _draw() -> void:
     _draw_edge_arrows(vp)
     _draw_discovery(vp)
     _draw_dash_hint(vp)
+    _draw_banner(vp)
+
+
+## Synergy and resonance banners (section 12): top band only, one at a time, at most one
+## every BANNER_GAP s (the rest queue), BANNER_SECS on screen. Title 28 px, line 22 px.
+const BANNER_SECS := 2.0
+const BANNER_GAP := 8.0
+var _banners: Array = []          # queued { title, line, color, big }
+var _banner: Dictionary = {}      # showing now, with "t"
+var _banner_ready := 0.0          # real seconds until the next may show
+
+
+func banner(title: String, line: String, color: Color, big: bool) -> void:
+    _banners.append({ "title": title, "line": line, "color": color, "big": big })
+
+
+func _tick_banner(delta: float) -> void:
+    _banner_ready = maxf(0.0, _banner_ready - delta)
+    if not _banner.is_empty():
+        _banner["t"] = float(_banner["t"]) - delta
+        if float(_banner["t"]) <= 0.0:
+            _banner = {}
+    if _banner.is_empty() and not _banners.is_empty() and _banner_ready <= 0.0:
+        _banner = _banners.pop_front()
+        _banner["t"] = BANNER_SECS
+        _banner_ready = BANNER_GAP
+
+
+func _draw_banner(vp: Vector2) -> void:
+    if _banner.is_empty():
+        return
+    var a := clampf(float(_banner["t"]) / 0.4, 0.0, 1.0) * clampf((BANNER_SECS - float(_banner["t"])) / 0.15 + 0.2, 0.0, 1.0)
+    var col: Color = _banner["color"]
+    var w := maxf(_body_width(String(_banner["title"]), 28), _body_width(String(_banner["line"]), 22)) + 60.0
+    var box := Rect2((vp.x - w) / 2.0, vp.y * 0.11, w, 70.0)
+    draw_rect(box, Color(0.04, 0.03, 0.05, 0.9 * a))
+    draw_rect(box, Color(col, a), false, 3.0 if bool(_banner["big"]) else 2.0)
+    _body_in(Rect2(box.position + Vector2(0, 4), Vector2(w, 34)), String(_banner["title"]), 28, Color(col, a))
+    _body_in(Rect2(box.position + Vector2(0, 38), Vector2(w, 28)), String(_banner["line"]), 22, Color(UiTheme.BONE, a))
 
 
 ## First room of a run, until the first dash ever: one prompt (section 7.3).
@@ -899,9 +943,15 @@ func _draw_gun_slot(gun: Gun, slot: Rect2) -> void:
 const ACTIVE_GAP := 10.0
 
 
+## The item strip (Core loop reset 3.1: no slots): the active, then up to STRIP_ITEMS items,
+## rarest first, each with its "x3" count; "+N" when more are owned. Resonance chips sit
+## above it.
+const STRIP_ITEMS := 8
+
+
 func _gear_width(s: float) -> float:
     var gap := 4.0 if s >= GEAR_BIG else 3.0
-    return float(Player.EQUIP_KEYS.size()) * (s + gap) - gap + ACTIVE_GAP
+    return float(STRIP_ITEMS + 1) * (s + gap) - gap + ACTIVE_GAP
 
 
 func _draw_main_gear(p: Player, bottom: float) -> void:
@@ -912,24 +962,47 @@ func _draw_main_gear(p: Player, bottom: float) -> void:
 
 func _draw_gear(p: Player, origin: Vector2, s: float) -> void:
     var gap := 4.0 if s >= GEAR_BIG else 3.0
-    for k in Player.EQUIP_KEYS.size():
-        var key: String = Player.EQUIP_KEYS[k]
-        var is_active := key == "active"
-        var gbox := Rect2(origin.x + float(k) * (s + gap) + (ACTIVE_GAP if is_active else 0.0), origin.y, s, s)
-        draw_rect(gbox, Color(0.08, 0.06, 0.08, 0.9))
-        if p.equipment.has(key):
-            var it := Items.get_item(p.equipment[key])
-            var charged := not is_active or p.active_charges > 0
-            _icon_tex(Items.icon(it), gbox.grow(-2.0), Items.ui_icon_tint(it) if charged else Color(0.4, 0.38, 0.4))
-            draw_rect(gbox, Items.rarity_color(it), false, 2.0)
-            if s >= GEAR_BIG:
-                # Rarity as a count too (1 Common .. 5 Legendary), not colour alone.
-                ItemCard.draw_pips(self, gbox.position + Vector2(3, 3), int(it.get("rarity", 0)) + 1, Items.rarity_color(it), 3.0)
-            if is_active:
-                _draw_charge_pips(gbox, p.active_charges, Items.active_max_charges(p))
-        else:
-            _icon_tex(Items.slot_icon(key), gbox.grow(-2.0), Color(0.32, 0.3, 0.32, 0.8))
-            draw_rect(gbox, Color(0.25, 0.22, 0.24), false, 1.0)
+    var abox := Rect2(origin, Vector2(s, s))
+    draw_rect(abox, Color(0.08, 0.06, 0.08, 0.9))
+    if p.equipment.has("active"):
+        var ait := Items.get_item(p.equipment["active"])
+        var charged := p.active_charges > 0
+        _icon_tex(Items.icon(ait), abox.grow(-2.0), Items.ui_icon_tint(ait) if charged else Color(0.4, 0.38, 0.4))
+        draw_rect(abox, Items.rarity_color(ait), false, 2.0)
+        _draw_charge_pips(abox, p.active_charges, Items.active_max_charges(p))
+    else:
+        _icon_tex(Items.slot_icon("active"), abox.grow(-2.0), Color(0.32, 0.3, 0.32, 0.8))
+        draw_rect(abox, Color(0.25, 0.22, 0.24), false, 1.0)
+    var ids: Array = p.inventory.keys()
+    ids.sort_custom(func(a, b):
+        var ra := int(Items.get_item(a).get("rarity", 0))
+        var rb := int(Items.get_item(b).get("rarity", 0))
+        return ra > rb if ra != rb else int(p.inventory[a]) > int(p.inventory[b]))
+    var x := origin.x + s + gap + ACTIVE_GAP
+    for k in mini(ids.size(), STRIP_ITEMS):
+        var box := Rect2(x + float(k) * (s + gap), origin.y, s, s)
+        draw_rect(box, Color(0.08, 0.06, 0.08, 0.9))
+        if k == STRIP_ITEMS - 1 and ids.size() > STRIP_ITEMS:
+            _body_in(box, "+%d" % (ids.size() - STRIP_ITEMS + 1), 18 if s >= GEAR_BIG else 14, UiTheme.BONE)
+            draw_rect(box, Color(0.45, 0.42, 0.44), false, 1.0)
+            continue
+        var it := Items.get_item(String(ids[k]))
+        _icon_tex(Items.icon(it), box.grow(-2.0), Items.ui_icon_tint(it))
+        draw_rect(box, Items.rarity_color(it), false, 2.0)
+        var n := int(p.inventory[ids[k]])
+        if n > 1 and s >= GEAR_BIG:
+            _body_in(Rect2(box.position + Vector2(0, s * 0.45), Vector2(s - 2.0, s * 0.55)), "x%d" % n, 18, UiTheme.BONE, HORIZONTAL_ALIGNMENT_RIGHT)
+    if s >= GEAR_BIG:
+        # Resonance chips: "Vent II" in the tag's colour, over the strip.
+        var cx := origin.x
+        for t in p.resonance_tiers.keys():
+            var label := "%s%s" % [Items.tag_name(String(t)), " II" if int(p.resonance_tiers[t]) >= 2 else ""]
+            var w := _body_width(label, 18) + 14.0
+            var chip := Rect2(cx, origin.y - 34.0, w, 26.0)
+            draw_rect(chip, Color(0.05, 0.04, 0.06, 0.9))
+            draw_rect(chip, Items.tag_color(String(t)), false, 2.0)
+            _body_in(chip, label, 18, Items.tag_color(String(t)))
+            cx += w + 6.0
 
 
 ## The last pickup in one line over the gear row: icon, name in its rarity colour, then
@@ -938,7 +1011,7 @@ func _draw_pick(bottom: float) -> void:
     if _pick.is_empty():
         return
     var a := clampf(float(_pick["t"]) / 0.5, 0.0, 1.0)
-    var y := bottom - GEAR_BIG - 16.0 - 34.0
+    var y := bottom - GEAR_BIG - 16.0 - 34.0 - (34.0 if not main.players[0].resonance_tiers.is_empty() else 0.0)
     var name_text := String(_pick["name"])
     if main.players.size() > 1:
         name_text = "%s: %s" % [_pick["who"], name_text]

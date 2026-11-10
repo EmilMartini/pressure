@@ -309,6 +309,9 @@ func _process(delta: float) -> void:
 func _begin_arena() -> void:
     data.started = true
     active = true
+    for pl in main.players:
+        if is_instance_valid(pl):
+            Items.fire(pl, "room_enter", { "pos": pl.global_position })
     var diff := main.difficulty()
     wave_duration = clampf(18.0 + 2.2 * float(diff), 18.0, 60.0)
     if not Main.old_balance:
@@ -478,6 +481,10 @@ func _reward_cards(group: String, pool: String, table: String, wants: Array, min
     for i in wants.size():
         var rar := mini(maxi(min_rarity, Items.roll_rarity(table, main.floor_number, luck)), Items.max_rarity_unlocked())
         var id := Drops.roll_item_at(rar, ids + FloorGen._mod_ids(), pool, main.players, String(wants[i]))
+        if i == wants.size() - 1 and randf() < Drops.SYNERGY_CARD_CHANCE:
+            var sc := Drops.synergy_card(ids)
+            if sc != "":
+                id = sc   # the missing half of a synergy you started (section 12)
         ids.append(id)
         var o := Items.offer(id, 0, Vector2((float(i) - float(wants.size() - 1) / 2.0) * 210.0, y))
         o["group"] = group
@@ -690,6 +697,9 @@ func _challenge_won() -> void:
 func _begin_boss() -> void:
     data.started = true
     active = true
+    for pl in main.players:
+        if is_instance_valid(pl):
+            Items.fire(pl, "room_enter", { "pos": pl.global_position })
     # The boss rises on the far side of the room from wherever the party came in, never
     # on top of a player who just stepped through the door.
     var party := Vector2.ZERO
@@ -1718,17 +1728,28 @@ func has_gun_choice() -> bool:
 
 
 func _handle_interact() -> void:
+    # 4.2: never more than one card on screen: the pedestal nearest a player within
+    # Pedestal.CARD_RANGE shows its card.
+    var card_ped: Pedestal = null
+    var card_d := Pedestal.CARD_RANGE
     for ped in pedestals:
         if not is_instance_valid(ped):
             continue
         var near := main.nearest_alive_player(ped.global_position)
         ped.highlighted = not ped.empty() and near != null and near.global_position.distance_to(ped.global_position) <= Pedestal.RANGE
+        ped.show_card = false
+        if near != null and not ped.empty():
+            var dc := near.global_position.distance_to(ped.global_position)
+            if dc <= card_d:
+                card_d = dc
+                card_ped = ped
         if near != null:
             ped.prompt_key = near.input.prompt("interact")
             ped.prompt_kind = near.input.last_kind
+    if card_ped != null:
+        card_ped.show_card = true
     for pl in main.players:
         if pl.alive and pl.input.take_pressed("swap"):
-            # Ring / trinket pedestal with both of the pair worn: replace the other one.
             var near_ped := _nearest_pedestal(pl)
             if near_ped != null and not Main.old_balance and near_ped.offer.get("ware", false):
                 # Core loop reset 6.3: lock a ware; it stays through rerolls and waits in the
@@ -1738,11 +1759,6 @@ func _handle_interact() -> void:
                 Telemetry.event("lock", { "floor": main.floor_number, "id": String(near_ped.offer["id"]), "locked": near_ped.offer["locked"] })
                 near_ped.queue_redraw()
                 continue
-            if near_ped != null and near_ped.kind() == "item":
-                var slot := String(near_ped.item().get("slot", ""))
-                if pl.jewel_key(slot) != "":
-                    pl.cycle_jewel(slot)
-                    Sfx.play("ui_move")
         if not pl.alive or not pl.input.take_pressed("interact"):
             continue
         var best: Pedestal = null
@@ -1881,7 +1897,7 @@ func activate(ped: Pedestal, pl: Player) -> void:
                 main.add_curse(String(o["curse"]), String(o.get("curse_span", "floor")))
             if not o.get("returned", false):
                 main.loot_note("free" if int(o["price"]) == 0 else "bought")
-            var replaced := pl.equip(o["id"], pl.jewel_key(String(item["slot"])))
+            var replaced := pl.equip(o["id"])   # stacks; only an active swaps the old one out
             Progress.add("items_picked")
             Sfx.play("buy")
             o["taken"] = true

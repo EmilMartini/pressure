@@ -189,10 +189,15 @@ static func worn_of(player) -> Dictionary:
     var out: Dictionary = {}
     if player == null or not is_instance_valid(player):
         return out
-    for slot in SLOTS:
-        var id := String(player.equipment.get(slot, ""))
-        if id != "":
-            out[slot] = id
+    # No slots (Core loop reset 3.1): each body part shows the highest-rarity item that
+    # dresses it.
+    for id in player.inventory.keys():
+        var it: Dictionary = Items.get_item(String(id))
+        var slot := String(it.get("slot", ""))
+        if not SLOTS.has(slot):
+            continue
+        if not out.has(slot) or int(it.get("rarity", 0)) > int(Items.get_item(String(out[slot])).get("rarity", 0)):
+            out[slot] = String(id)
     return out
 
 

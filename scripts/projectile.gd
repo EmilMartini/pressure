@@ -47,6 +47,11 @@ var fork_count := 0         # fork: bolts on the first hit
 var ricochet_walls := false # ricochet: walls reflect while bounces last
 var helix_sign := 0.0       # helix: which side of the line it weaves to first
 var home_target: Node2D = null   # homing: the enemy this seeker was sent after
+var grow := 0.0             # Long Fuse: the shot swells by this share over its flight
+var pull := 0.0             # Gravity Shot: drags enemies within this many px toward it
+var rebound := 0            # Rebound: walls send it back this many times
+var signature := Color(0, 0, 0, 0)   # a synergy's colour: halo and tail (section 12)
+var _r0 := 4.0
 
 var _hit: Dictionary = {}
 var _clouds_hit: Dictionary = {}
@@ -74,6 +79,7 @@ func _ready() -> void:
     z_index = 5
     _life0 = maxf(0.01, lifetime)
     _pierce0 = pierce
+    _r0 = radius
     _base = global_position
     if home_target != null:
         _home_target = home_target
@@ -114,6 +120,13 @@ func _physics_process(delta: float) -> void:
         return
     _age += delta
     var lobbed := behaviour == "lob" or behaviour == "pool"
+    if grow > 0.0:
+        radius = _r0 * (1.0 + grow * clampf(_age / _life0, 0.0, 1.0))
+    if pull > 0.0 and not lobbed and Engine.get_physics_frames() % 3 == 0:
+        for e in EnemyGrid.overlapping(get_tree(), global_position, pull + radius):
+            if is_instance_valid(e) and e.boss_kind == "" and not e.is_queued_for_deletion():
+                var to: Vector2 = global_position - e.global_position
+                e.global_position += to.limit_length(minf(to.length() * 0.5, 240.0 * delta * 3.0))
     if behaviour == "orb":
         _tick_orb(delta)
     elif not lobbed:
@@ -179,6 +192,13 @@ func _physics_process(delta: float) -> void:
                 if is_queued_for_deletion():
                     return
                 break   # a prop let the shot through (pierce): fly on
+    if rebound > 0 and not ricochet_walls and behaviour != "boomerang":
+        var keep := bounces
+        if _ricochet():
+            bounces = keep
+            rebound -= 1
+            queue_redraw()
+            return
     # Interior walls of a room layout stop shots (chasms they fly over).
     var rm := Room.here
     if not spectral and rm != null and rm.has_walls and rm.blocks_shot(global_position):
@@ -245,6 +265,9 @@ func _turn_back() -> void:
     _returning = true
     _hit.clear()
     pierce = _pierce0
+    if shooter != null and is_instance_valid(shooter) and shooter.stat("syn_reapers_return") > 0.0:
+        pierce = 99   # Reaper's Return: the way back cuts through everything
+        Items.note_syn("reapers_return")
     _ob_grace = 0.2
     velocity = -velocity
     lifetime = maxf(lifetime, _life0 * 0.5 + 0.8)
@@ -324,6 +347,17 @@ func _burst_shards(exclude: Node) -> void:
         s.shooter = shooter
         s.gun_id = gun_id
         s.position = position
+        if shooter != null and is_instance_valid(shooter):
+            if shooter.stat("syn_hunting_shards") > 0.0:
+                Items.note_syn("hunting_shards")
+                s.behaviour = "homing"   # Hunting Shards: the shards hunt
+                s.homing_turn = 5.0
+                s.lifetime = 0.6
+                s.signature = signature
+            if shooter.stat("syn_cluster_bomb") > 0.0:
+                Items.note_syn("cluster_bomb")
+                s.splash_radius = 30.0   # Cluster Bomb: they burst where they land
+                s.signature = signature
         if exclude != null:
             s._hit[exclude] = true
         parent.add_child.call_deferred(s)
@@ -368,6 +402,12 @@ func _draw() -> void:
         draw_circle(Vector2.ZERO, radius * (1.2 - 0.4 * sin(PI * t)), Color(0, 0, 0, 0.45))
         draw_set_transform(Vector2(0, -h), 0.0, Vector2.ONE)
     elif _trail.size() > 1 and element != Element.Kind.OIL:
+        if signature.a > 0.0:
+            # A synergy's signature: a wide tail and a halo in its colour.
+            for i in range(_trail.size() - 1):
+                var g := 1.0 - float(i) / float(_trail.size())
+                draw_line(to_local(_trail[i]), to_local(_trail[i + 1]), Color(signature, 0.55 * g), maxf(2.0, radius * 2.6 * g))
+            draw_arc(Vector2.ZERO, radius * 1.9, 0.0, TAU, 16, Color(signature, 0.8), 1.5)
         for i in range(_trail.size() - 1):
             var f := 1.0 - float(i) / float(_trail.size())
             draw_line(to_local(_trail[i]), to_local(_trail[i + 1]), Color(color, 0.45 * f), maxf(1.0, radius * 1.3 * f))

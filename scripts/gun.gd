@@ -159,6 +159,12 @@ func extra_elements() -> Array:
     if data.extra_element != Element.Kind.NONE:
         out.append(data.extra_element)
     out.append_array(boon_elements)
+    # Overheat (after a vent) and Second Nature (the first gun): your vent element rides along.
+    if player != null and is_instance_valid(player):
+        if player.stat("vent_shots") > 0.0 or (player.stat("second_nature") > 0.0 and not player.guns.is_empty() and player.guns[0] == self):
+            var ve: int = Items.vent_element(player)
+            if ve != data.element and not out.has(ve):
+                out.append(ve)
     return out
 
 
@@ -194,7 +200,12 @@ func top_fire_rate() -> float:
 ## Shots, beams, arcs, rings, sweeps, rails, mines or flasks per trigger: projectile_count
 ## plus the projectile stat and mods.
 func shot_count() -> int:
-    return maxi(1, data.projectile_count + int(player.stat("proj_count")) + int(_gm("g_count")))
+    var n := data.projectile_count + int(player.stat("proj_count")) + int(_gm("g_count"))
+    if not player.guns.is_empty() and player.guns[0] == self:
+        n += int(player.stat("first_gun_count"))   # Gunslinger resonance
+    if data.mechanic == "beam":
+        n += int(player.stat("fork"))   # Fork: a beam reaches one more enemy
+    return maxi(1, n)
 
 
 func shot_pierce() -> int:
@@ -404,11 +415,41 @@ func shoot_from(muzzle: Vector2, dir: Vector2, focus := false) -> void:
         if lobbed:
             p.lifetime = maxf(0.15, lob_dist * randf_range(0.9, 1.1) / maxf(1.0, speed))
             p.bounces = 0
+        _item_shot(p)
         p.global_position = muzzle
         world.add_child(p)
+    # Rear Guard: one more shot straight back per copy.
+    var rear := int(player.stat("rear_shots"))
+    if rear > 0 and not lobbed:
+        for r in rear:
+            var q := Projectile.new()
+            q.velocity = (-dir).rotated(deg_to_rad(randf_range(-12.0, 12.0) + (float(r) - float(rear - 1) * 0.5) * 14.0)) * speed
+            q.damage = base.damage
+            q.element = data.element
+            q.extra_elements = base.extras
+            q.potency = base.potency
+            q.lifetime = lifetime
+            q.pierce = pierce
+            q.radius = data.projectile_radius * size_mult
+            q.color = Element.COLORS[data.element]
+            q.shooter = player
+            q.gun_id = data.id
+            _item_shot(q)
+            q.global_position = muzzle
+            world.add_child(q)
     Sfx.shoot(shot_element, muzzle)
     if "fx" in world and world.fx != null:
         world.fx.puff(Art.PARTICLES["light"], muzzle, Color(Element.COLORS[shot_element], 0.9), 22.0 + float(data.weight) * 4.0, 0.08, true)
+
+
+## Item and synergy rules every shot of this gun carries (Long Fuse, Gravity Shot, Rebound,
+## the synergy signature colour).
+func _item_shot(p: Projectile) -> void:
+    p.grow = player.stat("grow")
+    p.pull = player.stat("pull")
+    p.rebound = 1 if player.stat("rebound") > 0.0 else 0
+    if not player.synergies.is_empty():
+        p.signature = Items.synergy(String(player.synergies[player.synergies.size() - 1])).get("color", Color(0, 0, 0, 0))
 
 
 ## Up to `n` live enemies within `r` of `pos`, nearest first.

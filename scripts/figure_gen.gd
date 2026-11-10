@@ -217,13 +217,12 @@ static func profile(player: Player) -> Dictionary:
         var gth := element_theme(int(g.data.element))
         if gth != "":
             _add(out, gth, GUN_WEIGHT)
-    var counts: Dictionary = Items.set_counts(player)
-    for sid in counts.keys():
-        var set_items: Array = Items.SETS[sid]["items"]
-        if int(counts[sid]) >= mini(4, set_items.size()):
-            var sth := set_theme(String(sid))
-            if sth != "":
-                _add(out, sth, SET_WEIGHT)
+    # A formed resonance (3 items of a tag) leans the figure toward its theme.
+    var res: Dictionary = Items.resonances(player)
+    for t in res.keys():
+        var sth := set_theme(String(t))
+        if sth != "":
+            _add(out, sth, SET_WEIGHT * float(res[t]))
     return out
 
 

@@ -38,12 +38,14 @@ back, shoulders to switch Journal tabs. Prompts appear on the things themselves:
 to a pedestal and a key cap shows A or E depending on whether you last touched the pad
 or the keyboard. F1 shows a full control strip if you want one.
 
-## Character sheet
+## Character sheet (the Build page)
 
-C, the pad's Back button, or the pause menu's Character entry. A paper doll: gear slots
-around your figure, your guns below it, a tooltip for whatever you move to, and a readable
-stat panel on the right grouped into attributes, offense, elements, pressure, sustain and
-set bonuses. Press a gun in the row to drop it on the floor of the current room, where it
+C, the pad's Back button, or the pause menu's Character entry. Every item you own as a
+48 px icon with its count ("x3"), grouped by tag with each tag's resonance progress
+("Vent 2/3"); your guns below with tier pips and mods; the card of whatever you move to;
+and on the right the key numbers first (damage, fire rate, reaction power, crit, max HP,
+armour as the share it takes off, speed, dash charges, the Mending left), then synergies,
+resonances and the full stat groups. Press a gun in the row to drop it on the floor of the current room, where it
 sits on a plinth and can be picked up again. Shoulders cycle players in co-op.
 
 ## Rooms and loot
@@ -363,12 +365,17 @@ Reactions crack elite and boss shields; the attuned reaction cracks twice.
 
 ## Gear
 
-About 240 items (166 hand-made across five rarities plus six per element), including
-twenty shot modifiers (homing, shards, splash, boomerang, spectral, orbitals, shot size)
-that change how every gun fires, Isaac style, and all of it drawn on the figure,
-ten hand-made sets and one per element. Items drop from elites and bosses and sit in
-shops, treasure, hidden and challenge rooms.
-Eight gear slots plus a mod slot per gun. Every item is a few lines of data in
+About 145 items with no gear slots (Core loop reset section 3, 2026-11-10): 113 passives
+that stack (rule `add`, `dim` or `once`), 21 gun mods that sit in a gun's mod slots, and 11
+actives (one held; a new one swaps the old out). Every item carries 1 or 2 tags (an
+element, or Vent, Guard, Gunslinger, Seeker, Alchemy, Swift, Fortune); 3 items of a tag form
+its resonance and 5 double it. Twenty synergies (`Items.SYNERGIES`) need two specific items
+(or an item and a resonance) and change your shots' look as well as their numbers. Armour
+takes a share off each hit: damage x 15 / (15 + armour). Old item ids map to new ones in
+`Items.LEGACY_IDS` (also `tools/legacy_ids.json`); saves migrate to version 5 on load.
+Every card is one Brotato-style layout (`item_card.gd`): icon, name, rarity, one effect
+line, tag chips, green and red changes to your build, the resonance or synergy it would
+form, the price. Every item is a few lines of data in
 [items.gd](scripts/items.gd): stat modifiers, conditional modifiers and triggered effects
 that all compose. To add an item, add one `_add(...)` line; the drop tables, pedestals,
 HUD and effect engine pick it up with no other change.
@@ -698,7 +705,13 @@ level-ups print `[PICK]`; `[CURSE]` and `[CHALLENGE]` lines too. `--quit-probe` 
 run at the first room clear from floor 2 and prints `[QUIT-CHECK]` (75% of the death award);
 `--challenge=timed|elite` gives every floor a challenge room of that kind. The same numbers
 for real runs: `python tools/pressure_report.py runs.jsonl --shops --loot` (the `shop_leave`
-and `floor_loot` events).
+and `floor_loot` events). Session 4 (items, cards, synergies): `--card-shot` measures every
+card (items, mods, actives, guns, level-up options) against the 4.4 rules, writes
+`autotest/cards/cards.csv`, prints `[CARDS] PASS n` or `[CARDS] FAIL` lines, and in a real
+window also saves contact sheets (`autotest/cards/sheet_N.png`). `--synergy-probe[=a|b]`
+grants every synergy pair (or one half of the list), fights an arena and prints
+`[SYNERGY] name ok` per synergy and `[SYNERGY-PROBE] PASS`. Bots print `[SYNERGY] formed`
+and `[RESONANCE]` lines when one forms; `floor_end` telemetry lists the synergies.
 
 `--fusion-probe` starts with four w1 guns of four elements so compounds, fusions and
 cataclysms actually happen; the loadout rotates with `--instance` (wet/fire/shock/gale,
@@ -808,7 +821,7 @@ each (the throwaway save opens what is asked for); every run prints `[GATE-LOADO
 before/after checks. `--well-probe` drops the first worn item down the first Well and
 prints `[WELL]` lines; a `--hub-walk --keep-save` on the same instance then buys it back
 from the Wellkeeper (`[HUB-RELIC]`) and checks the Gate's slots (`[HUB-LOADOUT]`). A save
-older than the current version (4) prints `[MIGRATE]` when it loads.
+older than the current version (5) prints `[MIGRATE]` when it loads (version 5 maps old item ids).
 Shortcuts (`scripts/shortcuts.gd`, design doc "Phase 4"): every run prints `[SHORTCUT]` (the
 floor's gate laid, skipped, opened or walked through), `[TRAVEL]` (seconds from floor start to
 the boss room, and whether the gate was open) and `[BOSS-CHECK] PASS/FAIL` at every way down.

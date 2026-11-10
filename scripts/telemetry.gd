@@ -19,7 +19,7 @@ extends Node
 ## VERSION: bump it by hand with each phase or shared build (date plus phase tag).
 ## COMMIT: stays "dev" in the repository; the export steps (`.github/workflows/deploy.yml`,
 ## `tools/export_exe.sh`) stamp the short commit hash into it before exporting.
-const VERSION := "2026.11.10-closest-aim"
+const VERSION := "2026.11.10-items"
 const COMMIT := "dev"
 const BUILD := VERSION + "+" + COMMIT
 ## Where finished runs are POSTed (a Cloudflare Worker or Apps Script URL). Empty = local only.
@@ -280,9 +280,14 @@ func _floor_end(main: Node) -> void:
         level = maxi(level, int(p.level))
         for g in p.guns:
             guns.append("%s@%d" % [g.data.id, g.tier])
-        for id in p.equipped_item_ids():
-            items.append(String(id))
-    event("floor_end", { "floor": _floor, "secs": snappedf(_clock - _floor_t0, 0.1), "kills": _floor_kills, "level": level, "guns": guns, "items": items, "hp_pct": _party_hp_pct(main) })
+        var counts: Dictionary = p.gear_counts()
+        for id in counts.keys():
+            for c in int(counts[id]):
+                items.append(String(id))   # one entry per copy (items stack, 3.1)
+    var syns: Array = []
+    for p in main.get("players"):
+        syns.append_array(p.synergies)
+    event("floor_end", { "floor": _floor, "secs": snappedf(_clock - _floor_t0, 0.1), "kills": _floor_kills, "level": level, "guns": guns, "items": items, "synergies": syns, "hp_pct": _party_hp_pct(main) })
 
 
 ## `award` is the Shrine's payout for the run (Mastery.award): total and breakdown.
@@ -316,8 +321,10 @@ func _death(main: Node) -> void:
         level = maxi(level, int(p.level))
         for g in p.guns:
             guns.append("%s@%d" % [g.data.id, g.tier])
-        for id in p.equipped_item_ids():
-            items.append(String(id))
+        var dcounts: Dictionary = p.gear_counts()
+        for id in dcounts.keys():
+            for c in int(dcounts[id]):
+                items.append(String(id))
     event("death", {
         "floor": _floor,
         "room": _room_type(room),

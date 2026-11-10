@@ -56,8 +56,18 @@ var weight_capacity_base := 10
 var weight_capacity := 10
 var guns: Array[Gun] = []
 
-## Equipped gear: EQUIP_KEYS -> item id. Gun mods live on the guns.
+## Core loop reset 3.1: no gear slots. `inventory` holds every passive as id -> copies;
+## `equipment` holds only the one active item ("active" -> id). Gun mods live on the guns.
+var inventory: Dictionary = {}
 var equipment: Dictionary = {}
+var synergies: Array = []          # synergy ids formed (Items.SYNERGIES), in the order formed
+var resonance_tiers: Dictionary = {}   # tag -> 1 (3 items) or 2 (5 items)
+var _buffs: Array = []             # timed stat buffs: [key, amount, until life_t]
+var _cond_ids: Array = []          # owned items with conditional mods (stat() reads only these)
+var mirror_left := 0               # Mirror Hide: hits this room that still bounce back
+var guard_left := 0                # Guard resonance: the first hit this room is halved
+var ward_t := 0.0                  # Ward Vent: seconds the ring still stops enemy shots
+var _dash_hit: Dictionary = {}     # Shoulder Charge: enemies already hit this dash
 var active_charges := 0           # charges on the active item (equipment["active"])
 var _stats: Dictionary = {}
 
@@ -65,7 +75,6 @@ var _stats: Dictionary = {}
 var xp := 0.0
 var level := 1
 var bonus_stats: Dictionary = {}
-var jewel_target := { "ring": "", "trinket": "" }   # swap pick at a pedestal (ring1 / ring2...)
 var xp_total := 0.0               # all XP earned this run (bot pacing logs)
 var boon_triggers: Array = []    # level-up boons that work like gear triggers (Items.fire)
 
@@ -172,6 +181,7 @@ const DASH_MIN_COOLDOWN := 0.5
 const DASH_MAX_CHARGES := 3
 const DODGE_HEAL := 0.03
 const DODGE_CAP := 0.40
+const ARMOR_K := 15.0   # damage taken = amount x 15 / (15 + armour)
 var dash_charges := 1
 var dash_recharge := 0.0      # seconds until the next charge comes back
 var dashes := 0               # dashes this run (telemetry, bots)
@@ -415,43 +425,10 @@ func mod_candidates() -> Array:
     return guns.filter(func(g): return g.mods.size() < g.tier)
 
 
-## Equip an item. Returns the id it replaced, or "".
-## Which ring or trinket slot a new piece of `slot` ("ring" / "trinket") replaces when both
-## are full: the one the player picked at the pedestal (swap button), else the weaker piece
-## (lower rarity, then the cheaper one). Empty when a slot of the pair is free.
-func jewel_key(slot: String) -> String:
-    if not (slot in ["ring", "trinket"]) or not equipment.has(slot + "1") or not equipment.has(slot + "2"):
-        return ""
-    var chosen := String(jewel_target.get(slot, ""))
-    if chosen != "":
-        return chosen
-    var a := Items.get_item(String(equipment[slot + "1"]))
-    var b := Items.get_item(String(equipment[slot + "2"]))
-    var ra := int(a.get("rarity", 0))
-    var rb := int(b.get("rarity", 0))
-    if rb < ra or (rb == ra and Items.price(b, 0) < Items.price(a, 0)):
-        return slot + "2"
-    return slot + "1"
-
-
-## The other piece of a full pair (the one that stays), or "".
-func jewel_kept(slot: String) -> String:
-    var k := jewel_key(slot)
-    if k == "":
-        return ""
-    return slot + ("2" if k.ends_with("1") else "1")
-
-
-## Swap button at a pedestal: replace the other ring / trinket instead.
-func cycle_jewel(slot: String) -> void:
-    var k := jewel_kept(slot)
-    if k != "":
-        jewel_target[slot] = k
-
-
-## Equip an item. `key` picks the slot for rings and trinkets ("ring2"); empty means a free
-## one, else jewel_key (the player's pick at the pedestal, or the weaker piece).
-func equip(id: String, key_hint: String = "") -> String:
+## Take an item (3.1): a passive stacks one more copy, a mod goes on a gun with a free mod
+## slot, an active swaps the old one out (returned so the caller can drop it). `_hint` is
+## kept for old callers and ignored.
+func equip(id: String, _hint: String = "") -> String:
     var item := Items.get_item(id)
     if item.is_empty():
         return ""
@@ -464,38 +441,49 @@ func equip(id: String, key_hint: String = "") -> String:
             return ""
         equip_mod_on(g, id)
         return ""
+    if slot == "active":
+        old = equipment.get("active", "")
+        equipment["active"] = id
+        active_charges = Items.active_max_charges(self)
+        Telemetry.equip(id, "active", old)
     else:
-        var key := slot
-        if slot in ["ring", "trinket"]:
-            if key_hint.begins_with(slot) and key_hint in [slot + "1", slot + "2"]:
-                key = key_hint
-            elif not equipment.has(slot + "1"):
-                key = slot + "1"
-            elif not equipment.has(slot + "2"):
-                key = slot + "2"
-            else:
-                key = jewel_key(slot)
-            jewel_target[slot] = ""   # the next pedestal starts from the default again
-        old = equipment.get(key, "")
-        equipment[key] = id
-        Telemetry.equip(id, key, old)
-        if slot == "active":
-            active_charges = Items.active_max_charges(self)
-        say("Equipped %s" % item["name"])
-        Sfx.item_pickup(int(item.get("rarity", 0)), self)
+        inventory[id] = int(inventory.get(id, 0)) + 1
+        Telemetry.equip(id, "passive", "")
+    Sfx.item_pickup(int(item.get("rarity", 0)), self)
     recalc_stats()
     return old
 
 
-## Take a worn item off (it leaves the run: the Well). False when it is not worn.
+## Copies of an item the player owns (passives, the active, and mods across the guns).
+func item_count(id: String) -> int:
+    return int(gear_counts().get(id, 0))
+
+
+## id -> copies of everything the player owns: passives, the active and every gun mod.
+func gear_counts() -> Dictionary:
+    var out: Dictionary = inventory.duplicate()
+    var act := String(equipment.get("active", ""))
+    if act != "":
+        out[act] = int(out.get(act, 0)) + 1
+    for g in guns:
+        for m in g.mods:
+            out[m] = int(out.get(m, 0)) + 1
+    return out
+
+
+## Remove one copy of an item (it leaves the run: the Well). False when not owned.
 func unequip_item(id: String) -> bool:
-    for key in equipment.keys():
-        if String(equipment[key]) == id:
-            equipment.erase(key)
-            if key == "active":
-                active_charges = 0
-            recalc_stats()
-            return true
+    if String(equipment.get("active", "")) == id:
+        equipment.erase("active")
+        active_charges = 0
+        recalc_stats()
+        return true
+    if int(inventory.get(id, 0)) > 0:
+        inventory[id] = int(inventory[id]) - 1
+        if int(inventory[id]) <= 0:
+            inventory.erase(id)
+        recalc_stats()
+        return true
     return false
 
 
@@ -507,39 +495,136 @@ func use_active() -> bool:
     return used
 
 
+## Every distinct item the player owns (passives, the active, gun mods).
 func equipped_item_ids() -> Array:
-    var out: Array = equipment.values().duplicate()
-    for g in guns:
-        out.append_array(g.mods)
+    return gear_counts().keys()
+
+
+## What the figure wears (3.1: "slot" is only a look): the highest-rarity item per body part,
+## two ring and trinket looks at most, and the active.
+func worn_look_ids() -> Array:
+    var best: Dictionary = {}   # look slot -> [ids by rarity]
+    for id in inventory.keys():
+        var it := Items.get_item(String(id))
+        var sl := String(it.get("slot", ""))
+        if not best.has(sl):
+            best[sl] = []
+        best[sl].append(String(id))
+    var out: Array = []
+    for sl in best.keys():
+        var ids: Array = best[sl]
+        ids.sort_custom(func(a, b): return int(Items.get_item(a).get("rarity", 0)) > int(Items.get_item(b).get("rarity", 0)))
+        for k in mini(2 if sl in ["ring", "trinket"] else 1, ids.size()):
+            out.append(ids[k])
+    if equipment.has("active"):
+        out.append(String(equipment["active"]))
     return out
 
 
+## Stats from items (each by its stack rule), resonances and synergies. Announces a synergy
+## or resonance the moment it forms (always at a pickup, so outside a fight).
 func recalc_stats() -> void:
     var old_max := max_hp
     _stats = {}
-    for id in equipment.values():
-        var mods: Dictionary = Items.get_item(id).get("mods", {})
+    var counts := gear_counts()
+    _cond_ids = inventory.keys().filter(func(x): return not (Items.get_item(String(x)).get("cond_mods", {}) as Dictionary).is_empty())
+    for id in counts.keys():
+        var it := Items.get_item(String(id))
+        if String(it.get("slot", "")) == "mod":
+            continue   # g_* keys are read by the gun they sit on
+        var f := Items.stack_factor(String(it.get("stack", "add")), int(counts[id]))
+        var mods: Dictionary = it.get("mods", {})
         for k in mods.keys():
-            _stats[k] = float(_stats.get(k, 0.0)) + float(mods[k])
-    var set_mods := Items.set_bonus_mods(self)
-    for k in set_mods.keys():
-        _stats[k] = float(_stats.get(k, 0.0)) + float(set_mods[k])
+            if mods[k] is String:
+                continue
+            _stats[k] = float(_stats.get(k, 0.0)) + float(mods[k]) * f
+    var res := Items.resonances_for(counts)
+    for t in res.keys():
+        var rm := Items.resonance_mods(String(t), int(res[t]))
+        for k in rm.keys():
+            _stats[k] = float(_stats.get(k, 0.0)) + float(rm[k])
+    var syn := Items.synergies_for(counts, res)
+    for sid in syn:
+        var sd := Items.synergy(String(sid))
+        _stats["syn_" + String(sid)] = 1.0
+        var sm: Dictionary = sd.get("mods", {})
+        for k in sm.keys():
+            _stats[k] = float(_stats.get(k, 0.0)) + float(sm[k])
+    for sid in syn:
+        if not synergies.has(sid):
+            synergies.append(sid)
+            _announce_synergy(String(sid))
+    synergies = synergies.filter(func(x): return syn.has(x))
+    for t in res.keys():
+        if int(res[t]) > int(resonance_tiers.get(t, 0)):
+            _announce_resonance(String(t), int(res[t]))
+    resonance_tiers = res
+    if index == 0:
+        Items.held = counts
     max_hp = maxf(20.0, max_hp_base + stat("max_hp"))
     hp = clampf(hp + maxf(0.0, max_hp - old_max), 1.0, max_hp)
     weight_capacity = weight_capacity_base + int(stat("carry"))
 
 
-## Summed modifier for a key: gear, set bonuses, level-ups, Shrine talents (their
-## conditional ones too), and conditional gear modifiers that currently hold.
+func _announce_synergy(sid: String) -> void:
+    var sd := Items.synergy(sid)
+    var mn := main()
+    var fl: int = mn.floor_number if mn != null else 0
+    Telemetry.event("synergy", { "id": sid, "floor": fl, "items": inventory.size() })
+    if mn != null and mn.hud != null and mn.hud.has_method("banner"):
+        mn.hud.banner("SYNERGY: " + String(sd["name"]), String(sd["line"]), sd.get("color", Color.WHITE), false)
+    _dodge_flash = 0.3
+    Sfx.play("level_up", -2.0)
+    if mn != null:
+        mn.hitstop(0.08)
+    if mn != null and mn.autotest:
+        print("[SYNERGY] formed %s on floor %d" % [sid, fl])
+
+
+func _announce_resonance(tag: String, tier: int) -> void:
+    var mn := main()
+    var fl: int = mn.floor_number if mn != null else 0
+    Telemetry.event("resonance", { "tag": tag, "tier": tier, "floor": fl })
+    if mn != null and mn.hud != null and mn.hud.has_method("banner"):
+        var title := "RESONANCE: %s%s" % [Items.tag_name(tag), " II" if tier >= 2 else ""]
+        mn.hud.banner(title, Items.resonance_line(tag) + (" (doubled)" if tier >= 2 else ""), Items.tag_color(tag), true)
+    Sfx.play("level_up", -2.0)
+    # Half speed for 0.4 s, never with an enemy close (clarity rules, section 12).
+    if mn != null and nearest_enemy(300.0) == null:
+        mn.hitstop(0.4, 0.5)
+    if mn != null and mn.autotest:
+        print("[RESONANCE] %s tier %d on floor %d" % [tag, tier, fl])
+
+
+## A timed stat buff (Close Shave, the Monocle, Overheat): refreshes a running one.
+func add_buff(key: String, amount: float, secs: float) -> void:
+    for b in _buffs:
+        if String(b[0]) == key:
+            b[1] = maxf(float(b[1]), amount)
+            b[2] = maxf(float(b[2]), life_t + secs)
+            return
+    _buffs.append([key, amount, life_t + secs])
+
+
+## Summed modifier for a key: items, resonances, synergies, level-ups, Shrine talents (their
+## conditional ones too), conditional item modifiers that hold, and timed buffs. Keys in
+## Items.STAT_CAPS are capped.
 func stat(key: String) -> float:
     var v := float(_stats.get(key, 0.0)) + float(bonus_stats.get(key, 0.0))
     if _mastery != null:
         v += _mastery.bonus(key) + _mastery.cond_bonus(key, self)
-    for id in equipment.values():
-        var cm: Dictionary = Items.get_item(id).get("cond_mods", {})
+    for id in _cond_ids:
+        var it := Items.get_item(id)
+        var cm: Dictionary = it.get("cond_mods", {})
+        var f := Items.stack_factor(String(it.get("stack", "add")), int(inventory.get(id, 0)))
         for cond in cm.keys():
             if cm[cond].has(key) and Items.condition(cond, self, {}):
-                v += float(cm[cond][key])
+                v += float(cm[cond][key]) * f
+    for b in _buffs:
+        if String(b[0]) == key and float(b[2]) > life_t:
+            v += float(b[1])
+    if Items.STAT_CAPS.has(key):
+        v = minf(v, float(Items.STAT_CAPS[key]))
     return v
 
 
@@ -630,11 +715,7 @@ func mend_rate() -> float:
 
 ## A new floor (or the run's start) fills the Mending reserve. Called by Main.
 func refill_mending() -> void:
-    var bandages := 0
-    for v in equipment.values():
-        if String(v) == "bandage_roll":
-            bandages += 1
-    mend_max = max_hp * (MEND_RESERVE + MEND_PER_BANDAGE * float(bandages))
+    mend_max = max_hp * (MEND_RESERVE + stat("mend"))   # Bandage Roll: +10% a copy
     if Main.curses.has("brittle"):
         mend_max *= 0.5   # Brittle curse (Core loop reset 11.1)
     mend_left = mend_max
@@ -718,7 +799,21 @@ func take_damage(amount: float, attacker: Node2D = null, from: Vector2 = Vector2
         say("Dodged")
         invuln = 0.25
         return
-    amount = maxf(1.0, amount - stat("armor"))
+    if mirror_left > 0 and attacker != null and is_instance_valid(attacker):
+        # Mirror Hide: the hit bounces back as a nova and never lands.
+        mirror_left -= 1
+        Items.nova(self, global_position, Element.Kind.HOLY, 140.0, maxf(12.0, amount * 2.0))
+        invuln = 0.4
+        _dodge_flash = 0.18
+        return
+    if Main.old_balance:
+        amount = maxf(1.0, amount - stat("armor"))
+    else:
+        # Armour as a percentage (3.1): 3 takes 17% off, 10 takes 40%, 30 takes 67%.
+        amount = maxf(1.0, amount * ARMOR_K / (ARMOR_K + maxf(0.0, stat("armor"))))
+    if guard_left > 0:
+        guard_left -= 1
+        amount = maxf(1.0, amount * 0.5)   # Guard resonance: the first hit each room halved
     if Main.curses.has("frailty"):
         amount *= 1.25   # Frailty curse (Core loop reset 11.1)
     hurt_total += minf(amount, maxf(0.0, hp))
@@ -851,6 +946,7 @@ func _physics_process(delta: float) -> void:
         _manual_dir = mv.normalized()
     var want := mv * move_speed() * (Room.WADE if _wading else 1.0)
     _tick_dash(delta)
+    _tick_items(delta)
     if input.just_pressed("dash") and BossShow.hold <= 0.0:
         dash(mv)
     if _dash_t > 0.0:
@@ -1147,6 +1243,39 @@ func _tick_dash(delta: float) -> void:
     for gh in _ghosts:
         gh[1] = float(gh[1]) + delta
     _ghosts = _ghosts.filter(func(gh): return float(gh[1]) < 0.2)
+
+
+## Item effects that run every frame: Shoulder Charge hits along the dash, Ward Vent stops
+## enemy shots near you, expired buffs drop.
+func _tick_items(delta: float) -> void:
+    if _dash_t > 0.0 and stat("dash_hit") > 0.0:
+        var dmg := gun_damage_avg() * stat("dash_hit")
+        for e in EnemyGrid.overlapping(get_tree(), global_position, radius + 12.0):
+            if not is_instance_valid(e) or _dash_hit.has(e) or e.emerge > 0.0:
+                continue
+            _dash_hit[e] = true
+            e.take_damage(dmg, Color(0.9, 0.9, 1.0), true, self)
+    elif not _dash_hit.is_empty():
+        _dash_hit.clear()
+    if ward_t > 0.0:
+        ward_t -= delta
+        for b in get_tree().get_nodes_in_group("enemy_projectiles"):
+            if is_instance_valid(b) and not b.is_queued_for_deletion() and b.global_position.distance_to(global_position) <= WARD_RADIUS:
+                b.queue_free()
+        queue_redraw()
+    if not _buffs.is_empty():
+        _buffs = _buffs.filter(func(b): return float(b[2]) > life_t)
+
+
+const WARD_RADIUS := 110.0
+
+
+## A typical hit of the first gun with your damage bonus (Shoulder Charge).
+func gun_damage_avg() -> float:
+    if guns.is_empty() or guns[0].data == null:
+        return 10.0
+    var g: Gun = guns[0]
+    return g.data.damage * g.tier_mult() * maxf(0.1, 1.0 + stat("dmg"))
 
 
 ## An enemy hit landed inside the dash window: a dodge. A soft chime and a white flash, no
@@ -1492,6 +1621,11 @@ func orbital_offset(i: int, n: int) -> Vector2:
 
 ## The first gun's element, or none.
 func orbital_element() -> int:
+    if stat("syn_living_orbit") > 0.0:
+        # Living Orbit: the orbit carries your vial's element.
+        for id in inventory.keys():
+            if String(id).begins_with("vial_"):
+                return int(Items.ELEMENTS.get(String(Items.get_item(id).get("element", "")), Element.Kind.NONE))
     if guns.is_empty():
         return Element.Kind.NONE
     return guns[0].data.element
@@ -1516,7 +1650,9 @@ func _update_orbitals(delta: float) -> void:
     var dmg := orbital_damage()
     var kind := orbital_element()
     var col: Color = Element.COLORS[kind]
-    var carry_element := stat("orbital_element") > 0.0 and kind != Element.Kind.NONE
+    var carry_element := (stat("orbital_element") > 0.0 or stat("syn_living_orbit") > 0.0) and kind != Element.Kind.NONE
+    if stat("syn_living_orbit") > 0.0 and kind != Element.Kind.NONE:
+        Items.note_syn("living_orbit")
     for i in n:
         var at := global_position + orbital_offset(i, n)
         for e in get_tree().get_nodes_in_group("enemies"):

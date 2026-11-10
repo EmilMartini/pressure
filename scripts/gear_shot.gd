@@ -9,7 +9,7 @@ extends Node
 ## autotest/gear_fight_<n>.png (the window) and gear_zoom_<n>.png (the player cropped and
 ## scaled 4x): one calm shot in the entrance, then shots while the bot fights.
 
-const WEAR := ["thinking_cap", "patched_coat", "worn_gloves", "leather_boots"]
+const WEAR := ["thinking_cap", "plate_scrap", "hair_trigger", "light_boots"]
 const SHOTS := [1.5, 8.0, 14.0, 20.0, 26.0, 32.0]
 const CROP := 60.0   # logical screen pixels around the player
 

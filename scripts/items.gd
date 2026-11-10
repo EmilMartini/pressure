@@ -321,6 +321,34 @@ const ICONS := {
     "blood_chalice": "gui/spells/necromancy/sublimation_of_blood.png",
     "pressure_bomb": "gui/spells/fire/delayed_fireball.png",
     "prism_engine": "gui/spells/conjuration/fulminant_prism.png",
+    # Core loop reset 3.2: new and merged items reuse the tiles their old ids freed.
+    "iron_heart": "item/armor/torso/chain_mail_1.png",
+    "plate_scrap": "item/armor/torso/plate_1.png",
+    "light_boots": "item/armor/feet/low_boots.png",
+    "slipstream_boots": "item/armor/feet/boots_4_green.png",
+    "shoulder_charge": "item/armor/torso/banded_mail_1.png",
+    "second_wind": "gui/spells/components/running.png",
+    "pressure_kick": "item/armor/feet/boots_iron_2.png",
+    "close_shave": "gui/abilities/jump.png",
+    "rear_guard": "item/armor/torso/studded_leather_armor.png",
+    "mortar_kit": "gui/spells/fire/fire_storm_new.png",
+    "gravity_shot": "item/ring/artefact/urand_shadows_new.png",
+    "long_fuse": "gui/spells/translocation/portal_projectile_new.png",
+    "fork": "gui/spells/components/hand_4.png",
+    "marking_rounds": "item/ring/artefact/urand_octoring.png",
+    "rebound": "item/armor/hands/glove_4_new.png",
+    "death_shards": "gui/spells/earth/shatter_new.png",
+    "reaction_trail": "gui/spells/earth/ledas_liquefaction.png",
+    "wide_arc": "item/ring/diamond.png",
+    "split_reaction": "item/misc/misc_bottle.png",
+    "overheat": "item/armor/torso/splint_mail_1.png",
+    "ward_vent": "item/armor/torso/crystal_plate_mail.png",
+    "mirror_hide": "item/armor/artefact/urand_augmentation.png",
+    "scavengers_eye": "gui/spells/divination/detect_creatures.png",
+    "second_nature": "item/ring/moonstone.png",
+    "transmuter": "item/ring/emerald.png",
+    "overcharge": "gui/spells/air/shock_new.png",
+    "spreading_taint": "item/amulet/penta_green.png",
 }
 ## Generated per-element families: "<family>_<el>" -> the element's tile when the pack has
 ## a matching colour, else `base` with a faint element tint of strength `tint`.
@@ -388,38 +416,6 @@ const ELEMENT_TITLES := {
     "poison": "Venom", "acid": "Caustic", "blood": "Crimson", "void": "Abyssal",
     "holy": "Radiant", "gale": "Zephyr", "stone": "Granite",
 }
-## Fourth-piece bonus for each elemental set; the first three are shared.
-const ELEMENT_SET_CAPSTONES := {
-    "wet": { "lifesteal": 1 }, "shock": { "crit": 0.10 }, "fire": { "crit_dmg": 0.5 },
-    "ice": { "armor": 3 }, "oil": { "speed": 0.10 }, "poison": { "state_duration": 0.3 },
-    "acid": { "dmg": 0.10 }, "blood": { "regen": 1 }, "void": { "range": 0.20 },
-    "holy": { "max_hp": 25 }, "gale": { "proj_speed": 0.25 }, "stone": { "armor": 4 },
-}
-
-## Sets: wear several pieces for bonuses at 2, 3 and 4 pieces. Gun mods count.
-## Elemental sets are generated per element in _build_sets; these are the hand-made ones.
-const BASE_SETS := {
-    "scavenger": { "name": "Scavenger", "color": Color(0.85, 0.72, 0.35), "items": ["scavenger_hood", "scrap_magnet", "mudwaders", "lucky_cog"],
-        "bonuses": { 2: { "scrap_gain": 0.20 }, 3: { "carry": 2 } } },
-    "overloader": { "name": "Overloader", "color": Color(1.00, 0.50, 0.20), "items": ["boiler_cap", "overclock", "signet_of_overload", "hot_rod"],
-        "bonuses": { 2: { "pressure_limit": 20 }, 3: { "dmg": 0.15 } } },
-    "warden": { "name": "Warden", "color": Color(0.70, 0.75, 0.85), "items": ["padded_vest", "rusted_helm", "worn_gloves", "leather_boots", "bone_ring"],
-        "bonuses": { 2: { "max_hp": 15 }, 3: { "armor": 2 }, 4: { "regen": 1 } } },
-    "gunslinger": { "name": "Gunslinger", "color": Color(0.95, 0.80, 0.55), "items": ["hair_trigger", "bandolier", "gun_oil", "marksman_monocle"],
-        "bonuses": { 2: { "fire_rate": 0.08 }, 3: { "proj_speed": 0.15 }, 4: { "pierce": 1 } } },
-    "bulwark": { "name": "Bulwark", "color": Color(0.55, 0.65, 0.80), "items": ["iron_pot", "riveted_plate", "spiked_gauntlets", "anvil_boots"],
-        "bonuses": { 2: { "armor": 2 }, 3: { "thorns": 6 }, 4: { "max_hp": 30 } } },
-    "alchemist": { "name": "Alchemist", "color": Color(0.45, 0.95, 0.55), "items": ["reagent_satchel", "fume_mask", "catalyst_ring", "alembic"],
-        "bonuses": { 2: { "potency": 0.10 }, 3: { "state_duration": 0.20 }, 4: { "lifesteal": 1 } } },
-    "windrunner": { "name": "Windrunner", "color": Color(0.60, 1.00, 0.95), "items": ["feather_cap", "runner_wraps", "slipstream_cloak", "quicksilver_band"],
-        "bonuses": { 2: { "speed": 0.08 }, 3: { "dodge": 0.06 }, 4: { "crit": 0.08 } } },
-    "prospector": { "name": "Prospector", "color": Color(1.00, 0.85, 0.30), "items": ["miners_lamp", "coin_purse", "ledger", "gilded_ring"],
-        "bonuses": { 2: { "luck": 0.10 }, 3: { "xp_gain": 0.15 }, 4: { "scrap_gain": 0.25 } } },
-    "steamworks": { "name": "Steamworks", "color": Color(0.90, 0.55, 0.40), "items": ["gasket_ring", "bellows", "heat_gauge", "exhaust_pipes"],
-        "bonuses": { 2: { "vent_radius": 0.15 }, 3: { "vent_power": 0.20 }, 4: { "pressure_limit": 25 } } },
-}
-
-var SETS: Dictionary = {}
 var catalog: Dictionary = {}   # id -> item
 var _by_rarity: Array = [[], [], [], [], []]
 var _depth := 0
@@ -428,52 +424,287 @@ var seen_run: Dictionary = {}    # item id -> true once it has appeared this run
 var _last_vent: Dictionary = {}  # player instance id -> element kind last vented
 
 
-func _build_sets() -> void:
-    SETS = BASE_SETS.duplicate(true)
-    for e in ELEMENTS.keys():
-        SETS[e] = {
-            "name": ELEMENT_TITLES[e],
-            "items": ["ring_%s" % e, "vial_%s" % e, "gloves_%s" % e, "coating_%s" % e, "mantle_%s" % e],
-            "bonuses": { 2: { "dmg_%s" % e: 0.10 }, 3: { "potency_%s" % e: 0.20 }, 4: ELEMENT_SET_CAPSTONES[e] },
-        }
+## Core loop reset 3.2: every old item id -> its successor. Nothing was dropped without one.
+## Saves (Progress), bot builds and telemetry readers run old ids through `migrate_id`.
+const LEGACY_IDS := {
+    "rusted_helm": "iron_heart", "leather_cap": "iron_heart", "quilted_jerkin": "iron_heart",
+    "sturdy_boots": "iron_heart", "bone_ring": "iron_heart", "oak_ring": "iron_heart",
+    "iron_band": "iron_heart", "chain_shirt": "iron_heart",
+    "iron_pot": "plate_scrap", "padded_vest": "plate_scrap", "patched_coat": "plate_scrap",
+    "hobnail_boots": "plate_scrap", "riveted_plate": "plate_scrap",
+    "feather_cap": "light_boots", "leather_boots": "light_boots", "runner_wraps": "light_boots",
+    "mudwaders": "slipstream_cloak",
+    "hide_vest": "bandage_roll", "gardening_gloves": "bandage_roll", "sandals": "bandage_roll",
+    "jade_ring": "bandage_roll", "jogging_shoes": "bandage_roll",
+    "worn_gloves": "hair_trigger", "ticking_clock": "hair_trigger", "quick_hands": "hair_trigger",
+    "fingerless_gloves": "hair_trigger", "bandolier": "hair_trigger",
+    "knuckle_wraps": "whetstone",
+    "lab_apron": "lab_gloves", "reagent_satchel": "lab_gloves", "catalyst_ring": "lab_gloves",
+    "steady_gloves": "copper_ring", "sniper_visor": "copper_ring",
+    "wide_brim": "brass_spyglass", "ring_of_reach": "brass_spyglass", "rifled_sleeve": "brass_spyglass",
+    "four_leaf_clover": "wishbone_ring", "lucky_cog": "wishbone_ring", "gilded_ring": "wishbone_ring",
+    "ledger": "wishbone_ring", "seer_circlet": "wishbone_ring",
+    "cargo_vest": "scrap_magnet", "tin_ring": "scrap_magnet", "scavenger_hood": "scrap_magnet",
+    "scrappers_mitts": "scrap_magnet",
+    "miners_lamp": "thinking_cap", "treaders": "thinking_cap",
+    "heat_gauge": "gasket_ring", "bellows": "gasket_ring", "hothead": "gasket_ring",
+    "spiked_gauntlets": "thorn_vest", "stompers": "thorn_vest", "anvil_boots": "thorn_vest",
+    "fume_mask": "alembic", "pocket_watch": "alembic", "band_of_lingering": "alembic",
+    "divers_goggles": "sigil_wet", "ring_of_embers": "sigil_fire", "cinder_clogs": "sigil_fire",
+    "lead_shot": "big_iron", "quicksilver_band": "tidewalkers",
+    "vampiric_loop": "leech_mail", "grisly_trophy": "leech_mail",
+    "tracker_boots": "seeker_lens", "cerebral_spark": "seeker_lens", "feral_fang": "seeker_lens",
+    "cluster_rounds": "splinter_charm", "shrapnel_vest": "splinter_charm",
+    "detonator_cap": "powder_horn", "phantom_shroud": "wisp_lantern", "twin_moons": "bone_orbit",
+    "crown_of_focus": "ricochet_gloves", "ammo_harness": "twin_triggers",
+    "chilled_knuckles": "vial_ice", "puddle_jumpers": "vial_wet", "spark_plug": "vial_shock",
+    "greased_soles": "tar_coat", "storm_hood": "conductors_mail",
+    "sight_rail": "long_barrel", "oiled_bolt": "gun_oil", "exhaust_pipes": "pressure_coupler",
+    "smelling_salts": "blood_chalice", "tin_whistle": "blood_chalice", "dowsing_rod": "pocket_storm",
+}
+const LEGACY_FAMILIES := ["charm", "ring", "mantle", "gloves"]
 
 
-## set id -> number of that set's pieces the player has equipped.
-func set_counts(player: Player) -> Dictionary:
+## An old item id's successor, or the id itself. Needs no catalog (Progress loads first).
+func legacy_successor(id: String) -> String:
+    if LEGACY_IDS.has(id):
+        return String(LEGACY_IDS[id])
+    var fam := id.get_slice("_", 0)
+    var el := id.substr(fam.length() + 1)
+    if fam in LEGACY_FAMILIES and ELEMENTS.has(el):
+        return "sigil_" + el
+    return id
+
+
+## An old item id's successor in today's catalog, or "" when unknown.
+func migrate_id(id: String) -> String:
+    var nid := legacy_successor(id)
+    return nid if catalog.has(nid) else ""
+
+
+## Stacking (3.1): "add" each copy adds the full effect, "dim" each copy adds 60% of the one
+## before, "once" only the first counts (and it is never offered again once owned).
+static func stack_factor(rule: String, n: int) -> float:
+    if n <= 0:
+        return 0.0
+    match rule:
+        "once":
+            return 1.0
+        "dim":
+            return (1.0 - pow(0.6, float(n))) / 0.4
+    return float(n)
+
+
+## Caps so stacking can't break the game (3.1). Player.stat clamps these keys.
+const STAT_CAPS := { "dodge": 0.40, "crit": 1.0, "speed": 0.60, "scrap_gain": 0.50, "luck": 0.60 }
+## Each Vial's chance per copy is capped here (Items.fire scales chance triggers by count).
+const VIAL_CHANCE_CAP := 0.60
+
+## Tags and resonances (3.1, section 12; Emil's decision: sets became these). Owning 3 items
+## with a tag forms its resonance; 5 doubles it and adds a visual tier.
+const TAGS := ["vent", "guard", "gunslinger", "seeker", "alchemy", "swift", "fortune"]
+const TAG_NAMES := { "vent": "Vent", "guard": "Guard", "gunslinger": "Gunslinger", "seeker": "Seeker",
+    "alchemy": "Alchemy", "swift": "Swift", "fortune": "Fortune" }
+const TAG_COLORS := {
+    "vent": Color(1.00, 0.55, 0.25), "guard": Color(0.65, 0.72, 0.85), "gunslinger": Color(0.95, 0.80, 0.50),
+    "seeker": Color(0.55, 0.85, 1.00), "alchemy": Color(0.50, 0.95, 0.55), "swift": Color(0.60, 1.00, 0.92),
+    "fortune": Color(1.00, 0.85, 0.30),
+}
+const RESONANCE_AT := [3, 5]
+## Tag -> [mods at 3, line at 3]. At 5 every number doubles. An element tag gives +25%
+## reaction power for that element and your shots carry its glow.
+const RESONANCES := {
+    "vent": [{ "vent_charge": 0.30, "vent_radius": 0.25 }, "Vent fills 30% faster, +25% radius"],
+    "guard": [{ "armor": 3, "guard_halve": 1 }, "+3 armour; the first hit each room is halved"],
+    "gunslinger": [{ "first_gun_count": 1 }, "Your first gun fires 1 more shot"],
+    "seeker": [{ "homing": 0.6 }, "All your shots home lightly"],
+    "alchemy": [{ "state_duration": 0.40 }, "Elements last 40% longer"],
+    "swift": [{ "dash_charges": 1 }, "+1 dash charge"],
+    "fortune": [{ "shop_wares": 1, "luck": 0.10 }, "Shops stock 1 more ware"],
+}
+
+## Synergies (section 12): two specific items (or an item and a tag's resonance), built on
+## purpose. `needs`: item ids, "any:<prefix>" (any item whose id starts with it) or
+## "res:<tag>" (that tag's resonance). `mods` join the player's stats while it holds; the
+## flag `syn_<id>` switches its special rule on in the code that reads it. `color` is its
+## signature: the shots and the figure take it on.
+const SYNERGIES := [
+    { "id": "hunting_shards", "name": "Hunting Shards", "needs": ["seeker_lens", "splinter_charm"], "line": "Your shards now hunt", "color": Color(0.55, 0.9, 1.0) },
+    { "id": "reapers_return", "name": "Reaper's Return", "needs": ["mothers_blade", "grip_of_pierce"], "line": "Returning blades cut through everything", "color": Color(0.95, 0.3, 0.35) },
+    { "id": "living_orbit", "name": "Living Orbit", "needs": ["bone_orbit", "any:vial_"], "line": "Your orbit carries your vial's element", "color": Color(0.6, 1.0, 0.6) },
+    { "id": "wake_of_ruin", "name": "Wake of Ruin", "needs": ["slipstream_boots", "reaction_trail"], "line": "Your dash trail drenches what it passes", "color": Color(1.0, 0.55, 0.2) },
+    { "id": "storm_lattice", "name": "Storm Lattice", "needs": ["wide_arc", "fork"], "line": "Chains fork at every jump", "color": Color(0.75, 0.85, 1.0) },
+    { "id": "pinball", "name": "Pinball", "needs": ["ricochet_gloves", "gravity_shot"], "line": "Bouncing shots drag foes along", "mods": { "bounce": 1, "pull": 40 }, "color": Color(1.0, 0.5, 0.9) },
+    { "id": "cluster_bomb", "name": "Cluster Bomb", "needs": ["splinter_charm", "powder_horn"], "line": "Splinters burst where they land", "color": Color(1.0, 0.7, 0.3) },
+    { "id": "thunderhead", "name": "Thunderhead", "needs": ["conductors_mail", "overcharge"], "line": "Chain Lightning hits like a storm", "mods": { "potency:Chain Lightning": 0.6 }, "color": Color(0.7, 0.8, 1.0) },
+    { "id": "hellfire", "name": "Hellfire", "needs": ["hot_rod", "overheat"], "line": "Burning foes take 30% more damage", "mods": { "vs_burning": 0.3 }, "color": Color(1.0, 0.4, 0.15) },
+    { "id": "duelist", "name": "Duelist", "needs": ["marksman_monocle", "close_shave"], "line": "Every dash sharpens your aim: +15% crit", "mods": { "crit": 0.15 }, "color": Color(1.0, 0.9, 0.5) },
+    { "id": "juggernaut", "name": "Juggernaut", "needs": ["shoulder_charge", "res:guard"], "line": "Your dash hits twice as hard", "mods": { "dash_hit": 1.0 }, "color": Color(0.8, 0.8, 0.9) },
+    { "id": "crossfire", "name": "Crossfire", "needs": ["rear_guard", "twin_triggers"], "line": "Your guns fire two shots backward", "mods": { "rear_shots": 1 }, "color": Color(1.0, 0.75, 0.4) },
+    { "id": "mirror_ward", "name": "Mirror Ward", "needs": ["mirror_hide", "ward_vent"], "line": "Two hits each room bounce back", "mods": { "mirror": 1 }, "color": Color(0.85, 0.85, 1.0) },
+    { "id": "plague_bloom", "name": "Plague Bloom", "needs": ["spreading_taint", "plague_censer"], "line": "Elements leap to 2 more foes", "mods": { "taint": 1 }, "color": Color(0.55, 0.95, 0.35) },
+    { "id": "echo_chamber", "name": "Echo Chamber", "needs": ["echo_loop", "split_reaction"], "line": "+20% reaction power", "mods": { "potency": 0.2 }, "color": Color(0.8, 0.6, 1.0) },
+    { "id": "bone_storm", "name": "Bone Storm", "needs": ["bone_orbit", "skull_choir"], "line": "Two more bones join your orbit", "mods": { "orbitals": 2 }, "color": Color(0.95, 0.92, 0.8) },
+    { "id": "blood_tithe", "name": "Blood Tithe", "needs": ["leech_mail", "blood_pact"], "line": "Reactions near you heal 1 more", "mods": { "lifesteal": 1 }, "color": Color(0.9, 0.15, 0.25) },
+    { "id": "sunburst", "name": "Sunburst", "needs": ["godhead", "mortar_kit"], "line": "Your shots burst 30 px wider", "mods": { "splash": 30 }, "color": Color(1.0, 0.95, 0.6) },
+    { "id": "long_shot", "name": "Long Shot", "needs": ["long_fuse", "brass_spyglass"], "line": "Far shots hit like boulders: +30% size", "mods": { "shot_size": 0.3, "range": 0.2 }, "color": Color(0.9, 0.8, 0.6) },
+    { "id": "frostbite", "name": "Frostbite", "needs": ["transmuter", "frost_treads"], "line": "Frozen foes take 40% more damage", "mods": { "vs_frozen": 0.4 }, "color": Color(0.6, 0.9, 1.0) },
+]
+
+## Synergy rules that fired this run (the --synergy-probe reads it): id -> times.
+var syn_hits: Dictionary = {}
+
+
+func note_syn(id: String) -> void:
+    syn_hits[id] = int(syn_hits.get(id, 0)) + 1
+
+
+## The local player's item counts, kept by Player.recalc_stats: a roll weights the missing
+## half of a synergy you have started (x3), so a synergy is something you can build toward.
+var held: Dictionary = {}
+const SYNERGY_NUDGE := 3.0
+
+
+## Tag -> number of owned items carrying it (each copy counts).
+func tag_counts(player: Player) -> Dictionary:
     var out: Dictionary = {}
-    var ids: Array = player.equipped_item_ids()
-    for sid in SETS.keys():
-        var n := 0
-        for id in SETS[sid]["items"]:
-            if ids.has(id):
-                n += 1
-        if n > 0:
-            out[sid] = n
+    if player == null or not is_instance_valid(player):
+        return out
+    var counts: Dictionary = player.gear_counts()
+    for id in counts.keys():
+        for t in get_item(String(id)).get("tags", []):
+            out[t] = int(out.get(t, 0)) + int(counts[id])
     return out
 
 
-## Merged mods from every set threshold the player currently meets.
-func set_bonus_mods(player: Player) -> Dictionary:
-    var mods: Dictionary = {}
-    var counts := set_counts(player)
-    for sid in counts.keys():
-        for threshold in SETS[sid]["bonuses"].keys():
-            if counts[sid] >= int(threshold):
-                for k in SETS[sid]["bonuses"][threshold].keys():
-                    mods[k] = float(mods.get(k, 0.0)) + float(SETS[sid]["bonuses"][threshold][k])
-    return mods
+## 0, 1 (3 items) or 2 (5 items): a tag's resonance tier for this many items.
+static func resonance_tier(n: int) -> int:
+    return 2 if n >= RESONANCE_AT[1] else (1 if n >= RESONANCE_AT[0] else 0)
 
 
-## Which set an item belongs to, or "".
+## { tag: tier } for every resonance the player has formed.
+func resonances(player: Player) -> Dictionary:
+    var out: Dictionary = {}
+    var tc := tag_counts(player)
+    for t in tc.keys():
+        var tier := resonance_tier(int(tc[t]))
+        if tier > 0:
+            out[t] = tier
+    return out
+
+
+## One resonance's mods at `tier` (an element tag: +25% reaction power for it, and a glow).
+func resonance_mods(tag: String, tier: int) -> Dictionary:
+    var out: Dictionary = {}
+    var base: Dictionary = RESONANCES[tag][0] if RESONANCES.has(tag) else { "potency_" + tag: 0.25, "glow_" + tag: 1 }
+    for k in base.keys():
+        out[k] = float(base[k]) * float(tier)
+    return out
+
+
+func resonance_line(tag: String) -> String:
+    if RESONANCES.has(tag):
+        return String(RESONANCES[tag][1])
+    return "+25%% %s reaction power, shots glow" % tag.capitalize()
+
+
+func tag_name(tag: String) -> String:
+    if TAG_NAMES.has(tag):
+        return String(TAG_NAMES[tag])
+    return tag.capitalize()
+
+
+func tag_color(tag: String) -> Color:
+    if TAG_COLORS.has(tag):
+        return TAG_COLORS[tag]
+    if ELEMENTS.has(tag):
+        return Element.COLORS[ELEMENTS[tag]]
+    return Color.WHITE
+
+
+## Does a count map (and its resonances) meet one synergy need?
+func _need_met(need: String, counts: Dictionary, res: Dictionary) -> bool:
+    if need.begins_with("res:"):
+        return res.has(need.substr(4))
+    if need.begins_with("any:"):
+        var pre := need.substr(4)
+        for id in counts.keys():
+            if String(id).begins_with(pre) and int(counts[id]) > 0:
+                return true
+        return false
+    return int(counts.get(need, 0)) > 0
+
+
+## Synergies a set of counts forms (ids), given its resonances.
+func synergies_for(counts: Dictionary, res: Dictionary) -> Array:
+    var out: Array = []
+    for s in SYNERGIES:
+        var ok := true
+        for need in s["needs"]:
+            if not _need_met(String(need), counts, res):
+                ok = false
+                break
+        if ok:
+            out.append(String(s["id"]))
+    return out
+
+
+func synergy(id: String) -> Dictionary:
+    for s in SYNERGIES:
+        if String(s["id"]) == id:
+            return s
+    return {}
+
+
+## Resonance tiers a count map reaches (for cards that ask "what would taking this do").
+func resonances_for(counts: Dictionary) -> Dictionary:
+    var tc: Dictionary = {}
+    for id in counts.keys():
+        for t in get_item(String(id)).get("tags", []):
+            tc[t] = int(tc.get(t, 0)) + int(counts[id])
+    var out: Dictionary = {}
+    for t in tc.keys():
+        var tier := resonance_tier(int(tc[t]))
+        if tier > 0:
+            out[t] = tier
+    return out
+
+
+## The synergy taking `id` would form for this player (its dictionary), or {}.
+func synergy_if_taken(player: Player, id: String) -> Dictionary:
+    if player == null or not is_instance_valid(player):
+        return {}
+    var before: Dictionary = player.gear_counts()
+    var after := before.duplicate()
+    after[id] = int(after.get(id, 0)) + 1
+    var had := synergies_for(before, resonances_for(before))
+    for sid in synergies_for(after, resonances_for(after)):
+        if not had.has(sid):
+            return synergy(String(sid))
+    return {}
+
+
+## True when `id` is one half of a synergy whose other half the local player holds.
+func _completes_held(id: String) -> bool:
+    if held.is_empty():
+        return false
+    for s in SYNERGIES:
+        var needs: Array = s["needs"]
+        if not needs.has(id):
+            continue
+        for need in needs:
+            if String(need) != id and _need_met(String(need), held, {}):
+                return true
+    return false
+
+
+## Kept so old callers (journal, figure) read something sensible: an item's first tag.
 func set_of(item_id: String) -> String:
-    for sid in SETS.keys():
-        if SETS[sid]["items"].has(item_id):
-            return sid
-    return ""
+    var tags: Array = get_item(item_id).get("tags", [])
+    return String(tags[0]) if not tags.is_empty() else ""
 
 
 func _ready() -> void:
-    _build_sets()
     _build_catalog()
 
 
@@ -575,7 +806,11 @@ func _apply_icons() -> void:
             continue
         var family := String(id).get_slice("_", 0)
         var el := String(it.get("element", ""))
-        if el == "" or not FAMILY_ICONS.has(family) or String(id) != "%s_%s" % [family, el]:
+        if el == "" or String(id) != "%s_%s" % [family, el]:
+            continue
+        if family == "sigil":
+            family = "charm"   # the Sigils wear the old element charms' amulets
+        if not FAMILY_ICONS.has(family):
             continue
         var fam: Dictionary = FAMILY_ICONS[family]
         if fam.has(el):
@@ -709,12 +944,14 @@ func roll(difficulty: int, min_rarity: int = Rarity.COMMON, exclude: Array = [],
                 if not ids.is_empty():
                     return _pick_weighted(ids)
                 step -= 1
-    return "bone_ring"
+    return "iron_heart"
 
 
 func _candidates(rarity: int, pool: String, exclude: Array, allow_seen: bool) -> Array:
     return _by_rarity[rarity].filter(func(id):
         if exclude.has(id) or (not allow_seen and seen_run.has(id)):
+            return false
+        if String(catalog[id].get("stack", "add")) == "once" and int(held.get(id, 0)) > 0:
             return false
         return pool == "" or catalog[id].get("pools", POOLS).has(pool))
 
@@ -722,13 +959,20 @@ func _candidates(rarity: int, pool: String, exclude: Array, allow_seen: bool) ->
 func _pick_weighted(ids: Array) -> String:
     var total := 0.0
     for id in ids:
-        total += float(catalog[id].get("weight", 1.0))
+        total += _weight(String(id))
     var at := randf() * total
     for id in ids:
-        at -= float(catalog[id].get("weight", 1.0))
+        at -= _weight(String(id))
         if at <= 0.0:
             return id
     return ids[ids.size() - 1]
+
+
+func _weight(id: String) -> float:
+    var w := float(catalog[id].get("weight", 1.0))
+    if _completes_held(id):
+        w *= SYNERGY_NUDGE
+    return w
 
 
 ## Isaac's pool quality: treasure and hidden rooms never offer commons.
@@ -750,6 +994,8 @@ func pool_items(pool: String) -> Array:
 ## Start of a run: every item is back in its pool.
 func new_run() -> void:
     seen_run.clear()
+    held.clear()
+    syn_hits.clear()
     _counters.clear()
     _last_vent.clear()
 
@@ -778,10 +1024,20 @@ func fire(player: Player, event: String, ctx: Dictionary) -> void:
         _last_vent[player.get_instance_id()] = int(ctx.get("element", Element.Kind.FIRE))
     elif event == "room_clear":
         recharge_active(player, 1)
+    if event == "room_clear" or event == "room_enter":
+        player.mirror_left = int(player.stat("mirror"))
+        player.guard_left = 1 if player.stat("guard_halve") > 0.0 else 0
     _depth += 1
-    for id in player.equipped_item_ids():
+    var counts: Dictionary = player.gear_counts()
+    for id in counts.keys():
         var item: Dictionary = catalog.get(id, {})
         var triggers: Array = item.get("triggers", [])
+        if triggers.is_empty():
+            continue
+        # Stacking (3.1): a "once" item counts once; chance triggers scale their chance by
+        # the copies (a Vial is capped at VIAL_CHANCE_CAP); "<key>_per" grows a number per
+        # extra copy; anything else fires once per copy.
+        var n: int = 1 if String(item.get("stack", "add")) == "once" else int(counts[id])
         for ti in triggers.size():
             var t: Dictionary = triggers[ti]
             if not _event_matches(t["on"], event, ctx):
@@ -790,13 +1046,23 @@ func fire(player: Player, event: String, ctx: Dictionary) -> void:
                 var ckey := "%d:%s:%d" % [player.get_instance_id(), id, ti]
                 var seen: int = int(_counters.get(ckey, 0)) + 1
                 _counters[ckey] = seen
-                if seen % maxi(1, int(t["every"])) != 0:
+                var every := maxi(2, int(t["every"]) + int(t.get("every_per", 0)) * (n - 1))
+                if seen % every != 0:
                     continue
-            if t.has("chance") and randf() > float(t["chance"]):
-                continue
+            var reps := n
+            if t.has("chance"):
+                var cap := VIAL_CHANCE_CAP if String(id).begins_with("vial_") else 1.0
+                if randf() > minf(cap, float(t["chance"]) * float(n)):
+                    continue
+                reps = 1
             if t.has("if") and not condition(t["if"], player, ctx):
                 continue
-            _do(t, player, ctx)
+            var tt := t
+            if _has_per(t):
+                tt = _scaled(t, n)
+                reps = 1
+            for r in reps:
+                _do(tt, player, ctx)
     # Level-up boons that act like gear triggers (LevelUps echo boons).
     for t in player.boon_triggers:
         if not _event_matches(t["on"], event, ctx):
@@ -807,6 +1073,24 @@ func fire(player: Player, event: String, ctx: Dictionary) -> void:
             continue
         _do(t, player, ctx)
     _depth -= 1
+
+
+func _has_per(t: Dictionary) -> bool:
+    for k in t.keys():
+        if String(k).ends_with("_per") and String(k) != "every_per":
+            return true
+    return false
+
+
+## A trigger with its "<key>_per" numbers applied for `n` copies.
+func _scaled(t: Dictionary, n: int) -> Dictionary:
+    var out := t.duplicate()
+    for k in t.keys():
+        var key := String(k)
+        if key.ends_with("_per") and key != "every_per":
+            var base := key.substr(0, key.length() - 4)
+            out[base] = float(t.get(base, 0.0)) + float(t[k]) * float(n - 1)
+    return out
 
 
 func _event_matches(on: String, event: String, ctx: Dictionary) -> bool:
@@ -860,10 +1144,14 @@ func condition(c: String, player: Player, ctx: Dictionary) -> bool:
     return false
 
 
-func _element_of(t: Dictionary, ctx: Dictionary) -> int:
+func _element_of(t: Dictionary, ctx: Dictionary, player: Player = null) -> int:
     var e: String = t.get("element", "wet")
     if e == "last":
         return int(ctx.get("element", Element.Kind.WET))
+    if e == "vent" and player != null:
+        return vent_element(player)
+    if e == "gun" and player != null:
+        return int(player.guns[0].data.element) if not player.guns.is_empty() and player.guns[0].data != null else Element.Kind.FIRE
     return ELEMENTS.get(e, Element.Kind.WET)
 
 
@@ -877,9 +1165,9 @@ func _do(t: Dictionary, player: Player, ctx: Dictionary) -> void:
     match t["do"]:
         "apply":
             if tv:
-                target.apply_element(_element_of(t, ctx), potency, player)
+                target.apply_element(_element_of(t, ctx, player), potency, player)
         "nova":
-            nova(player, pos, _element_of(t, ctx), float(t.get("radius", 120.0)), potency)
+            nova(player, pos, _element_of(t, ctx, player), float(t.get("radius", 120.0)), potency)
         "heal":
             player.heal(float(t.get("amount", 10.0)), "active" if ctx.get("active", false) else "item")
         "scrap":
@@ -887,7 +1175,7 @@ func _do(t: Dictionary, player: Player, ctx: Dictionary) -> void:
         "pressure":
             player.add_pressure(float(t.get("amount", 0.0)))
         "shoot":
-            shoot(player, pos, _element_of(t, ctx), int(t.get("count", 3)), potency, target if tv else null)
+            shoot(player, pos, _element_of(t, ctx, player), int(t.get("count", 3)), potency, target if tv else null)
         "shield":
             player.invuln = maxf(player.invuln, float(t.get("amount", 1.0)))
         "slow":
@@ -903,13 +1191,46 @@ func _do(t: Dictionary, player: Player, ctx: Dictionary) -> void:
             elif tv:
                 Elements._chain_lightning(target, potency)
         "spread":
-            var kind := _element_of(t, ctx)
+            var kind := _element_of(t, ctx, player)
             var col: Color = Element.COLORS[kind]
             Elements.nova.emit(pos, float(t.get("radius", 140.0)), Color(col, 0.3))
             for e in _enemies_within(pos, float(t.get("radius", 140.0))):
                 e.apply_element(kind, potency, player)
         "xp":
             player.gain_xp(float(t.get("amount", 5.0)))
+        "buff":
+            player.add_buff(String(t.get("key", "dmg")), float(t.get("amount", 0.1)), float(t.get("secs", 2.0)))
+        "trail":
+            # The dash leaves patches of an element along its line (Slipstream Boots).
+            var el := _element_of(t, ctx, player)
+            var dir: Vector2 = ctx.get("dir", Vector2.RIGHT)
+            var parent := player.get_parent()
+            for k in 4:
+                Cloud.spawn(parent, pos + dir * 40.0 * float(k), el, 42.0, float(t.get("secs", 2.0)), 4.0, player)
+            if player.stat("syn_wake_of_ruin") > 0.0:
+                note_syn("wake_of_ruin")
+                for e in _enemies_within(pos + dir * 60.0, 120.0):
+                    e.apply_element(el, 6.0, player)
+        "cloud":
+            Cloud.spawn(player.get_parent(), pos, _element_of(t, ctx, player), float(t.get("radius", 60.0)), float(t.get("secs", 3.0)), maxf(3.0, potency * 0.5), player)
+        "mark":
+            if tv:
+                target.marked_t = maxf(float(target.marked_t), float(t.get("secs", 4.0)))
+        "split":
+            var a := int(ctx.get("element", -1))
+            var b := int(ctx.get("other", -1))
+            for el2 in [a, b]:
+                if el2 > Element.Kind.NONE:
+                    shoot(player, pos, el2, int(t.get("count", 1)), potency, target if tv else null)
+        "ward":
+            player.ward_t = maxf(player.ward_t, float(t.get("secs", 3.0)))
+
+
+## The element a vent makes for this player: what they last vented, else hot fire / cold ice.
+func vent_element(player: Player) -> int:
+    if _last_vent.has(player.get_instance_id()):
+        return int(_last_vent[player.get_instance_id()])
+    return Element.Kind.ICE if player.pressure < 0.0 else Element.Kind.FIRE
 
 
 # --- Active items ----------------------------------------------------------
@@ -1012,261 +1333,168 @@ func _add(id: String, name: String, slot: String, rarity: int, desc: String, mod
 
 
 func _build_catalog() -> void:
+    # Core loop reset 3.2: about 145 items, no slots. "slot" is only the body part an item
+    # dresses (its look); mods sit on guns and actives in the one active slot. Every old id
+    # maps to a successor in LEGACY_IDS. Lines follow 4.4: one line, at most 10 words and
+    # two numbers, a verb first for behaviour, a signed number with a unit for stats.
     var C := Rarity.COMMON
     var U := Rarity.UNCOMMON
     var R := Rarity.RARE
     var E := Rarity.EPIC
     var L := Rarity.LEGENDARY
-
-    # ======================= HEAD
-    # Common
-    _add("rusted_helm", "Rusted Helm", "head", C, "+15 max HP", { "max_hp": 15 })
-    _add("iron_pot", "Iron Pot", "head", C, "+1 armour", { "armor": 1 })
-    _add("feather_cap", "Feather Cap", "head", C, "+6% move speed", { "speed": 0.06 })
-    _add("miners_lamp", "Miner's Lamp", "head", C, "+8% XP gain", { "xp_gain": 0.08 })
-    _add("leather_cap", "Leather Cap", "head", C, "+12 max HP", { "max_hp": 12 })
-    _add("wide_brim", "Wide Brim Hat", "head", C, "+12% range", { "range": 0.12 })
-    # Uncommon
-    _add("scavenger_hood", "Scavenger Hood", "head", U, "+15% scrap, +6% XP gain", { "scrap_gain": 0.15, "xp_gain": 0.06 })
-    _add("fume_mask", "Fume Mask", "head", U, "+6% potency, elements last 10% longer", { "potency": 0.06, "state_duration": 0.10 })
-    _add("sniper_visor", "Sniper Visor", "head", U, "+10% range, +3% crit chance", { "range": 0.10, "crit": 0.03 })
-    _add("hothead", "Hothead Bandana", "head", U, "+10% damage, vent charges 15% faster", { "dmg": 0.10, "vent_charge": 0.15 })
-    _add("divers_goggles", "Diver's Goggles", "head", U, "+10% damage to wet and shocked foes", { "vs_wet": 0.10, "vs_shocked": 0.10 })
-    _add("thinking_cap", "Thinking Cap", "head", U, "+12% XP gain, +4% potency", { "xp_gain": 0.12, "potency": 0.04 })
-    # Rare
-    _add("crown_of_focus", "Crown of Focus", "head", R, "Shots bounce +1, +4% crit chance", { "bounce": 1, "crit": 0.04 })
-    _add("marksman_monocle", "Marksman's Monocle", "head", R, "+6% crit. Standing still: +50% crit damage", { "crit": 0.06 }, [], { "cond_mods": { "still": { "crit_dmg": 0.5 } } })
-    _add("storm_hood", "Storm Hood", "head", R, "Chains jump to 2 more enemies, +5% potency", { "chain_jumps": 2, "potency": 0.05 })
-    _add("seer_circlet", "Seer's Circlet", "head", R, "+15% luck, +10% XP gain", { "luck": 0.15, "xp_gain": 0.10 })
-    # Epic
-    _add("boiler_cap", "Boiler Cap", "head", E, "+40 vent capacity, +30% vent power, -8% speed", { "pressure_limit": 40, "vent_power": 0.30, "speed": -0.08 })
-    _add("berserker_helm", "Berserker Helm", "head", E, "Below 40% HP: +40% damage, +20% fire rate", {}, [], { "cond_mods": { "low_hp": { "dmg": 0.40, "fire_rate": 0.20 } } })
-    # Legendary
-    _add("skullcap_vented", "Skullcap of the Vented", "head", L, "Venting fires 8 shots of its element. +15% vent radius", { "vent_radius": 0.15 }, [{ "on": "vent", "do": "shoot", "element": "last", "count": 8, "potency": 8 }])
-
-    # ======================= CHEST
-    # Common
-    _add("padded_vest", "Padded Vest", "chest", C, "+2 armour", { "armor": 2 })
-    _add("quilted_jerkin", "Quilted Jerkin", "chest", C, "+15 max HP", { "max_hp": 15 })
-    _add("hide_vest", "Hide Vest", "chest", C, "+0.4 HP regen per second", { "regen": 0.4 })
-    _add("lab_apron", "Lab Apron", "chest", C, "+6% reaction potency", { "potency": 0.06 })
-    _add("patched_coat", "Patched Coat", "chest", C, "+1 armour", { "armor": 1 })
-    _add("cargo_vest", "Cargo Vest", "chest", C, "+12% scrap", { "scrap_gain": 0.12 })
-    # Uncommon
-    _add("thorn_vest", "Thorn Vest", "chest", U, "Attackers take 4 damage, +1 armour", { "thorns": 4, "armor": 1 })
-    _add("tar_coat", "Tar-stained Coat", "chest", U, "When hurt, oil everything nearby", {}, [{ "on": "hurt", "do": "nova", "element": "oil", "radius": 140, "potency": 3 }])
-    _add("riveted_plate", "Riveted Plate", "chest", U, "+2 armour, -4% move speed", { "armor": 2, "speed": -0.04 })
-    _add("bandolier", "Bandolier", "chest", U, "+6% fire rate, carry +1", { "fire_rate": 0.06, "carry": 1 })
-    _add("slipstream_cloak", "Slipstream Cloak", "chest", U, "+6% move speed, 4% dodge", { "speed": 0.06, "dodge": 0.04 })
-    _add("bellows", "Bellows", "chest", U, "+12% vent power, +8% vent radius", { "vent_power": 0.12, "vent_radius": 0.08 })
-    _add("chain_shirt", "Chainmail Shirt", "chest", U, "+15 max HP, +1 armour", { "max_hp": 15, "armor": 1 })
-    # Rare
-    _add("conductors_mail", "Conductor's Mail", "chest", R, "Chain Lightning +40% potency and +2 jumps", { "potency:Chain Lightning": 0.4, "chain_jumps": 2 })
-    _add("leech_mail", "Leech Mail", "chest", R, "Heal 1 per reaction (3 a second), +15 max HP", { "lifesteal": 1, "max_hp": 15 })
-    _add("spiked_cuirass", "Spiked Cuirass", "chest", R, "Attackers take 10. Hurt: 20% to slow all nearby", { "thorns": 10 }, [{ "on": "hurt", "chance": 0.20, "do": "slow", "radius": 180 }])
-    # Epic
-    _add("glacier_plate", "Glacier Plate", "chest", E, "4 armour, -8% speed. When hurt, frost nova", { "armor": 4, "speed": -0.08 }, [{ "on": "hurt", "do": "nova", "element": "ice", "radius": 130, "potency": 6 }])
-    _add("ammo_harness", "Ammo Harness", "chest", E, "Every gun fires +1 projectile, -12% move speed", { "proj_count": 1, "speed": -0.12 }, [], { "weight": 0.5 })
-    # Legendary
-    _add("phoenix_mantle", "Phoenix Mantle", "chest", L, "+20 max HP. Hurt below 40%: may heal 30 and erupt", { "max_hp": 20 }, [{ "on": "hurt", "if": "low_hp", "chance": 0.35, "do": "heal", "amount": 30 }, { "on": "hurt", "if": "low_hp", "chance": 0.35, "do": "nova", "element": "fire", "radius": 220, "potency": 14 }])
-    _add("gilded_carapace", "Gilded Carapace", "chest", L, "+25% luck and scrap. Elites pay 25, rooms 15 XP", { "luck": 0.25, "scrap_gain": 0.25 }, [{ "on": "elite_kill", "do": "scrap", "amount": 25 }, { "on": "room_clear", "do": "xp", "amount": 15 }], { "weight": 0.5 })
-
-    # ======================= HANDS
-    # Common
-    _add("worn_gloves", "Worn Gloves", "hands", C, "+8% fire rate", { "fire_rate": 0.08 })
-    _add("hair_trigger", "Hair Trigger", "hands", C, "+7% fire rate", { "fire_rate": 0.07 })
-    _add("knuckle_wraps", "Knuckle Wraps", "hands", C, "+6% damage", { "dmg": 0.06 })
-    _add("steady_gloves", "Steady Gloves", "hands", C, "+4% crit chance", { "crit": 0.04 })
-    _add("gardening_gloves", "Gardening Gloves", "hands", C, "+0.3 HP regen per second", { "regen": 0.3 })
-    _add("lab_gloves", "Lab Gloves", "hands", C, "+7% reaction potency", { "potency": 0.07 })
-    # Uncommon
-    _add("quick_hands", "Quick Hands", "hands", U, "+10% fire rate, +10% projectile speed", { "fire_rate": 0.10, "proj_speed": 0.10 })
-    _add("spiked_gauntlets", "Spiked Gauntlets", "hands", U, "Attackers take 4 damage, +1 armour", { "thorns": 4, "armor": 1 })
-    _add("fingerless_gloves", "Fingerless Gloves", "hands", U, "+6% fire rate, +3% crit chance", { "fire_rate": 0.06, "crit": 0.03 })
-    _add("chilled_knuckles", "Chilled Knuckles", "hands", U, "10% of hits chill the target", {}, [{ "on": "hit", "chance": 0.10, "do": "apply", "element": "ice", "potency": 3 }])
-    _add("scrappers_mitts", "Scrapper's Mitts", "hands", U, "+10% scrap, +4% fire rate", { "scrap_gain": 0.10, "fire_rate": 0.04 })
-    # Rare
-    _add("grip_of_pierce", "Grip of Pierce", "hands", R, "All shots pierce +1", { "pierce": 1 })
-    _add("ricochet_gloves", "Ricochet Gloves", "hands", R, "Shots bounce +1, -5% damage", { "bounce": 1, "dmg": -0.05 })
-    _add("kindling_mitts", "Kindling Mitts", "hands", R, "18% of hits on oiled foes set them alight", {}, [{ "on": "hit", "if": "target_oiled", "chance": 0.18, "do": "apply", "element": "fire", "potency": 5 }])
-    # Epic
-    _add("twin_triggers", "Twin Triggers", "hands", E, "Every gun fires +1 projectile, -10% damage", { "proj_count": 1, "dmg": -0.10 }, [], { "weight": 0.5 })
-    _add("executioners_grip", "Executioner's Grip", "hands", E, "+12% crit, +0.5x crit dmg, -12% fire rate", { "crit": 0.12, "crit_dmg": 0.5, "fire_rate": -0.12 }, [{ "on": "elite_kill", "do": "heal", "amount": 20 }])
-    # Legendary
-    _add("hands_of_storm", "Hands of the Storm", "hands", L, "15% of hits arc lightning. Chains jump +2", { "chain_jumps": 2 }, [{ "on": "hit", "chance": 0.15, "do": "chain", "potency": 6 }])
-
-    # ======================= FEET
-    # Common
-    _add("leather_boots", "Leather Boots", "feet", C, "+8% move speed", { "speed": 0.08 })
-    _add("runner_wraps", "Runner Wraps", "feet", C, "+7% move speed", { "speed": 0.07 })
-    _add("hobnail_boots", "Hobnail Boots", "feet", C, "+1 armour", { "armor": 1 })
-    _add("sturdy_boots", "Sturdy Boots", "feet", C, "+12 max HP", { "max_hp": 12 })
-    _add("sandals", "Pilgrim Sandals", "feet", C, "+0.4 HP regen per second", { "regen": 0.4 })
-    _add("treaders", "Wanderer's Treads", "feet", C, "+8% XP gain", { "xp_gain": 0.08 })
-    # Uncommon
-    _add("mudwaders", "Mudwaders", "feet", U, "+8% move speed, 4% dodge", { "speed": 0.08, "dodge": 0.04 })
-    _add("jogging_shoes", "Jogging Shoes", "feet", U, "+7% move speed, +0.3 HP regen", { "speed": 0.07, "regen": 0.3 })
-    _add("puddle_jumpers", "Puddle Jumpers", "feet", U, "10% of hits soak the target", {}, [{ "on": "hit", "chance": 0.10, "do": "apply", "element": "wet", "potency": 3 }])
-    _add("stompers", "Stompers", "feet", U, "+1 armour, attackers take 3 damage", { "armor": 1, "thorns": 3 })
-    _add("cinder_clogs", "Cinder Clogs", "feet", U, "+10% damage to burning foes, +4% speed", { "vs_burning": 0.10, "speed": 0.04 })
-    # Rare
-    _add("frost_treads", "Frost Treads", "feet", R, "Whatever hurts you gets frozen solid", {}, [{ "on": "hurt", "do": "apply", "element": "ice", "potency": 6 }, { "on": "hurt", "do": "apply", "element": "wet", "potency": 6 }])
-    _add("anvil_boots", "Anvil Boots", "feet", R, "+3 armour, attackers take 6, -5% speed", { "armor": 3, "thorns": 6, "speed": -0.05 })
-    _add("greased_soles", "Greased Soles", "feet", R, "8% dodge. When hurt, oil spills all around", { "dodge": 0.08 }, [{ "on": "hurt", "do": "spread", "element": "oil", "radius": 160, "potency": 4 }])
-    _add("tidewalkers", "Tidewalkers", "feet", R, "+20% reaction potency while moving", {}, [], { "cond_mods": { "moving": { "potency": 0.20 } } })
-    # Epic
-    _add("hover_greaves", "Hover Greaves", "feet", E, "15% dodge, +12% move speed, -15 max HP", { "dodge": 0.15, "speed": 0.12, "max_hp": -15 })
-    _add("vent_striders", "Vent Striders", "feet", E, "+30% vent radius, -10 max HP. Venting shields you", { "vent_radius": 0.30, "max_hp": -10 }, [{ "on": "vent", "do": "shield", "amount": 1.5 }])
-    # Legendary
-    _add("seven_league", "Seven-League Boots", "feet", L, "+20% speed, 8% dodge, +20% damage while moving", { "speed": 0.20, "dodge": 0.08 }, [], { "cond_mods": { "moving": { "dmg": 0.20 } } })
-
-    # ======================= TRINKETS
-    # Common
-    _add("scrap_magnet", "Scrap Magnet", "trinket", C, "+12% scrap", { "scrap_gain": 0.12 })
-    _add("reagent_satchel", "Reagent Satchel", "trinket", C, "+7% reaction potency", { "potency": 0.07 })
-    _add("four_leaf_clover", "Four-leaf Clover", "trinket", C, "+5% luck", { "luck": 0.05 }, [], { "price": 18 })
-    _add("whetstone", "Whetstone", "trinket", C, "+7% damage", { "dmg": 0.07 })
-    _add("bandage_roll", "Bandage Roll", "trinket", C, "+0.5 HP regen per second", { "regen": 0.5 })
-    _add("brass_spyglass", "Brass Spyglass", "trinket", C, "+15% range", { "range": 0.15 })
-    _add("ticking_clock", "Ticking Clock", "trinket", C, "+6% fire rate", { "fire_rate": 0.06 })
-    # Uncommon
-    _add("lucky_cog", "Lucky Cog", "trinket", U, "+10% luck, +3% crit chance", { "luck": 0.10, "crit": 0.03 })
-    _add("coin_purse", "Coin Purse", "trinket", U, "+15% scrap, -5 max HP", { "scrap_gain": 0.15, "max_hp": -5 })
-    _add("ledger", "Dusty Ledger", "trinket", U, "+10% luck, +8% XP gain", { "luck": 0.10, "xp_gain": 0.08 })
-    _add("pocket_watch", "Pocket Watch", "trinket", U, "Elements last 10% longer, +4% fire rate", { "state_duration": 0.10, "fire_rate": 0.04 })
-    _add("spark_plug", "Spark Plug", "trinket", U, "10% of hits shock the target", {}, [{ "on": "hit", "chance": 0.10, "do": "apply", "element": "shock", "potency": 3 }])
-    _add("heat_gauge", "Heat Gauge", "trinket", U, "+15 vent capacity, +8% vent power", { "pressure_limit": 15, "vent_power": 0.08 })
-    # Rare
-    _add("steam_whistle", "Steam Whistle", "trinket", R, "Steam soaks everything nearby", {}, [{ "on": "reaction:Steam", "do": "nova", "element": "wet", "radius": 140, "potency": 3 }])
-    _add("pressure_valve", "Pressure Valve", "trinket", R, "Vent charges 40% faster, +15% vent power", { "vent_charge": 0.4, "vent_power": 0.15 })
-    _add("alembic", "Alembic", "trinket", R, "Elements last 25% longer, +8% potency", { "state_duration": 0.25, "potency": 0.08 })
-    _add("rabbit_foot", "Rabbit's Foot", "trinket", R, "+20% luck", { "luck": 0.20 }, [], { "price": 38 })
-    _add("grisly_trophy", "Grisly Trophy", "trinket", R, "+5% damage. Kills have 15% to heal 4", { "dmg": 0.05 }, [{ "on": "kill", "chance": 0.15, "do": "heal", "amount": 4 }])
-    _add("static_jar", "Static Jar", "trinket", R, "15% of hits on wet foes arc lightning", {}, [{ "on": "hit", "if": "target_wet", "chance": 0.15, "do": "chain", "potency": 4 }])
-    # Epic
-    _add("hot_rod", "Hot Rod", "trinket", E, "+35% damage while hot", {}, [], { "cond_mods": { "hot": { "dmg": 0.35 } } })
-    _add("cold_snap", "Cold Snap", "trinket", E, "+35% reaction potency while cold", {}, [], { "cond_mods": { "cold": { "potency": 0.35 } } })
-    _add("blood_pact", "Blood Pact", "trinket", E, "+30% damage, -25 max HP", { "dmg": 0.30, "max_hp": -25 })
-    _add("plague_censer", "Plague Censer", "trinket", E, "Reactions have 30% to spread poison around", {}, [{ "on": "reaction", "chance": 0.30, "do": "spread", "element": "poison", "radius": 150, "potency": 4 }])
-    # Legendary
-    _add("heart_of_forge", "Heart of the Forge", "trinket", L, "Burning foes explode on death. +15% vs burning", { "vs_burning": 0.15 }, [{ "on": "kill", "if": "target_burning", "do": "nova", "element": "fire", "radius": 140, "potency": 9 }])
-    _add("permafrost_core", "Permafrost Core", "trinket", L, "Deep Freeze throws shards; frozen kills burst", {}, [{ "on": "reaction:Deep Freeze", "do": "shoot", "element": "ice", "count": 5, "potency": 6 }, { "on": "kill", "if": "target_frozen", "do": "nova", "element": "ice", "radius": 120, "potency": 6 }])
-
-    # ======================= RINGS
-    # Common
-    _add("bone_ring", "Bone Ring", "ring", C, "+10 max HP", { "max_hp": 10 })
-    _add("gasket_ring", "Gasket Ring", "ring", C, "+10% vent radius", { "vent_radius": 0.10 })
-    _add("copper_ring", "Copper Ring", "ring", C, "+3% crit chance", { "crit": 0.03 })
-    _add("tin_ring", "Tin Ring", "ring", C, "+10% scrap", { "scrap_gain": 0.10 })
-    _add("jade_ring", "Jade Ring", "ring", C, "+0.3 HP regen per second", { "regen": 0.3 })
-    _add("oak_ring", "Oak Ring", "ring", C, "+15 max HP", { "max_hp": 15 })
-    _add("wishbone_ring", "Wishbone Ring", "ring", C, "+5% luck", { "luck": 0.05 }, [], { "price": 18 })
-    # Uncommon
-    _add("ring_of_reach", "Ring of Reach", "ring", U, "+15% range, +10% projectile speed", { "range": 0.15, "proj_speed": 0.10 })
-    _add("catalyst_ring", "Catalyst Ring", "ring", U, "+7% reaction potency, +4% damage", { "potency": 0.07, "dmg": 0.04 })
-    _add("gilded_ring", "Gilded Ring", "ring", U, "+10% luck, +5% scrap", { "luck": 0.10, "scrap_gain": 0.05 })
-    _add("iron_band", "Iron Band", "ring", U, "+1 armour, +10 max HP", { "armor": 1, "max_hp": 10 })
-    _add("ring_of_embers", "Ring of Embers", "ring", U, "+12% vs burning, +6% fire potency", { "vs_burning": 0.12, "potency_fire": 0.06 })
-    # Rare
-    _add("band_of_lingering", "Band of Lingering", "ring", R, "Elements linger 35% longer on enemies", { "state_duration": 0.35 })
-    _add("vampiric_loop", "Vampiric Loop", "ring", R, "Heal 2 per reaction (3 a second)", { "lifesteal": 2 })
-    _add("quicksilver_band", "Quicksilver Band", "ring", R, "6% dodge. +15% fire rate while moving", { "dodge": 0.06 }, [], { "cond_mods": { "moving": { "fire_rate": 0.15 } } })
-    _add("bloodstone", "Bloodstone", "ring", R, "+0.8 regen. Below 40% HP: +20% damage", { "regen": 0.8 }, [], { "cond_mods": { "low_hp": { "dmg": 0.20 } } })
-    _add("echo_loop", "Echo Loop", "ring", R, "Reactions have 15% to fling 2 elemental shards", {}, [{ "on": "reaction", "chance": 0.15, "do": "shoot", "element": "last", "count": 2, "potency": 4 }])
-    # Epic
-    _add("ring_of_multiplicity", "Ring of Multiplicity", "ring", E, "25% of hits fire an extra shot of that element", {}, [{ "on": "hit", "chance": 0.25, "do": "shoot", "element": "last", "count": 1, "potency": 5 }])
-    _add("frenzy_band", "Frenzy Band", "ring", E, "+30% fire rate, -20 max HP", { "fire_rate": 0.30, "max_hp": -20 })
-    # Legendary
-    _add("signet_of_overload", "Signet of Overload", "ring", L, "Venting detonates a huge nova of its element", {}, [{ "on": "vent", "do": "nova", "element": "last", "radius": 300, "potency": 24 }])
-    _add("storm_halo", "Storm Halo", "ring", L, "Shots bounce +2 and 30% of hits shock", { "bounce": 2 }, [{ "on": "hit", "chance": 0.30, "do": "apply", "element": "shock", "potency": 4 }], { "weight": 0.3 })
-
-    # ======================= GUN MODS (g_* keys only; triggers work as usual)
-    # Common
-    _add("sight_rail", "Sight Rail", "mod", C, "This gun: +15% range", { "g_range": 0.15 })
-    _add("oiled_bolt", "Oiled Bolt", "mod", C, "This gun: +10% fire rate", { "g_fire_rate": 0.10 })
-    # Uncommon
-    _add("heavy_barrel", "Heavy Barrel", "mod", U, "This gun: +20% damage, -8% fire rate", { "g_dmg": 0.20, "g_fire_rate": -0.08 })
-    _add("long_barrel", "Long Barrel", "mod", U, "This gun: +30% range, +20% shot speed", { "g_range": 0.3, "g_speed": 0.2 })
-    _add("gun_oil", "Gun Oil", "mod", U, "This gun: +15% fire rate, -5% range", { "g_fire_rate": 0.15, "g_range": -0.05 })
-    _add("exhaust_pipes", "Exhaust Pipes", "mod", U, "This gun: +25% pressure, +6% fire rate", { "g_pressure": 0.25, "g_fire_rate": 0.06 })
-    # Rare
-    _add("piercing_rounds", "Piercing Rounds", "mod", R, "This gun: pierce +2", { "g_pierce": 2 })
-    _add("pressure_coupler", "Pressure Coupler", "mod", R, "This gun: +40% pressure, +15% damage", { "g_pressure": 0.4, "g_dmg": 0.15 })
-    _add("arc_emitter", "Arc Emitter", "mod", R, "12% of hits arc lightning. Gun: -5% fire rate", { "g_fire_rate": -0.05 }, [{ "on": "hit", "chance": 0.12, "do": "chain", "potency": 4 }])
-    # Epic
-    _add("overclock", "Overclock", "mod", E, "This gun: +40% fire rate, +50% pressure", { "g_fire_rate": 0.4, "g_pressure": 0.5 })
-    _add("split_chamber", "Split Chamber", "mod", E, "This gun: +1 projectile, -20% damage", { "g_count": 1, "g_dmg": -0.2 }, [], { "weight": 0.6 })
-    # Legendary
-    _add("chain_reactor", "Chain Reactor", "mod", L, "Reactions have 25% to burst into more. Gun +10% dmg", { "g_dmg": 0.10 }, [{ "on": "reaction", "chance": 0.25, "do": "nova", "element": "last", "radius": 120, "potency": 8 }], { "weight": 0.4 })
-
-    # ======================= SHOT MODIFIERS (Isaac's tear effects; treasure pool, low weights)
     var TR := ["treasure"]
     var TH := ["treasure", "hidden"]
-    # Rare
-    _add("seeker_lens", "Seeker Lens", "head", R, "Shots curve toward foes", { "homing": 1.5 }, [], { "pools": TR, "weight": 0.6 })
-    _add("tracker_boots", "Tracker's Boots", "feet", R, "Shots drift toward foes, +5% speed", { "homing": 0.8, "speed": 0.05 }, [], { "pools": TR, "weight": 0.6 })
-    _add("bone_orbit", "Bone Orbit", "trinket", R, "A bone circles you, striking what it touches", { "orbitals": 1 }, [], { "pools": TR, "weight": 0.6 })
-    _add("powder_horn", "Powder Horn", "trinket", R, "Shots splash for 30 px when they land", { "splash": 30 }, [], { "pools": TR, "weight": 0.6 })
-    _add("lead_shot", "Lead Shot", "ring", R, "+25% shot size, -10% shot speed", { "shot_size": 0.25, "shot_speed": -0.10 }, [], { "pools": TR, "weight": 0.6 })
-    _add("wisp_lantern", "Wisp Lantern", "trinket", R, "Spectral shots: they pass through obstacles", { "spectral": 1 }, [], { "pools": TR, "weight": 0.5 })
-    _add("rifled_sleeve", "Rifled Sleeve", "hands", R, "+25% shot speed, +10% range", { "shot_speed": 0.25, "range": 0.10 }, [], { "pools": TR, "weight": 0.7 })
-    _add("splinter_charm", "Splinter Charm", "ring", R, "Shots break into 2 splinters, -5% damage", { "shards": 2, "dmg": -0.05 }, [], { "pools": TR, "weight": 0.5 })
-    # Epic
-    _add("cluster_rounds", "Cluster Rounds", "hands", E, "Shots burst into 3 shards", { "shards": 3 }, [], { "pools": TR, "weight": 0.4 })
-    _add("big_iron", "Big Iron", "ring", E, "+60% shot size, -15% fire rate", { "shot_size": 0.6, "fire_rate": -0.15 }, [], { "pools": TH, "weight": 0.4 })
-    _add("cerebral_spark", "Cerebral Spark", "head", E, "Shots hunt foes hard. -10% damage", { "homing": 3.0, "dmg": -0.10 }, [], { "pools": TR, "weight": 0.4 })
-    _add("twin_moons", "Twin Moons", "trinket", E, "Two moons orbit you. -10 max HP", { "orbitals": 2, "max_hp": -10 }, [], { "pools": TR, "weight": 0.4 })
-    _add("shrapnel_vest", "Shrapnel Vest", "chest", E, "2 shards and 20 px splash, -8% speed", { "shards": 2, "splash": 20, "speed": -0.08 }, [], { "pools": TR, "weight": 0.4 })
-    _add("phantom_shroud", "Phantom Shroud", "chest", E, "Spectral, lightly homing shots. -15 max HP", { "spectral": 1, "homing": 1.0, "max_hp": -15 }, [], { "pools": TH, "weight": 0.4 })
-    _add("detonator_cap", "Detonator Cap", "head", E, "Shots splash 60 px, -10% fire rate", { "splash": 60, "fire_rate": -0.10 }, [], { "pools": TR, "weight": 0.4 })
-    _add("feral_fang", "Feral Fang", "ring", E, "Homing, +30% shot speed, -10 max HP", { "homing": 1.5, "shot_speed": 0.30, "max_hp": -10 }, [], { "pools": TR, "weight": 0.4 })
-    # Legendary
-    _add("mothers_blade", "Mother's Blade", "hands", L, "Shots return like boomerangs. +40% damage", { "boomerang": 1, "dmg": 0.40 }, [], { "pools": TR, "weight": 0.3 })
-    _add("skull_choir", "Skull Choir", "trinket", L, "3 skulls orbit you and carry your element", { "orbitals": 3, "orbital_element": 1 }, [], { "pools": TR, "weight": 0.3 })
-    _add("godhead", "Godhead", "head", L, "Shots seek, swell and burst in light", { "homing": 2.5, "splash": 40, "shot_size": 0.2 }, [], { "pools": TH, "weight": 0.3 })
-    _add("hive_heart", "Hive Heart", "chest", L, "Shots burst into 4 shards. A drone orbits you", { "shards": 4, "orbitals": 1 }, [], { "pools": TH, "weight": 0.3 })
+
+    # ======================= PLAIN STATS (72 old items became these 19)
+    _add("iron_heart", "Iron Heart", "chest", C, "+15 max HP", { "max_hp": 15 }, [], { "tags": ["guard"] })
+    _add("plate_scrap", "Plate Scrap", "chest", C, "+3 armour", { "armor": 3 }, [], { "tags": ["guard"] })
+    _add("light_boots", "Light Boots", "feet", C, "+6% move speed", { "speed": 0.06 }, [], { "tags": ["swift"] })
+    _add("slipstream_cloak", "Slipstream Cloak", "chest", U, "+6% speed, +4% dodge", { "speed": 0.06, "dodge": 0.04 }, [], { "tags": ["swift"] })
+    _add("bandage_roll", "Bandage Roll", "trinket", C, "+10% Mending reserve", { "mend": 0.10 }, [], { "tags": ["guard"] })
+    _add("hair_trigger", "Hair Trigger", "hands", C, "+8% fire rate", { "fire_rate": 0.08 }, [], { "tags": ["gunslinger"] })
+    _add("whetstone", "Whetstone", "trinket", C, "+8% damage", { "dmg": 0.08 }, [], { "tags": ["gunslinger"] })
+    _add("lab_gloves", "Lab Gloves", "hands", C, "+8% reaction power", { "potency": 0.08 }, [], { "tags": ["alchemy"] })
+    _add("copper_ring", "Copper Ring", "ring", C, "+4% crit chance", { "crit": 0.04 }, [], { "tags": ["gunslinger"] })
+    _add("brass_spyglass", "Spyglass", "trinket", C, "+15% range", { "range": 0.15 }, [], { "tags": ["seeker"] })
+    _add("wishbone_ring", "Wishbone", "ring", C, "+8% luck", { "luck": 0.08 }, [], { "tags": ["fortune"] })
+    _add("rabbit_foot", "Rabbit's Foot", "trinket", R, "+20% luck", { "luck": 0.20 }, [], { "tags": ["fortune"], "price": 38 })
+    _add("scrap_magnet", "Scrap Magnet", "trinket", C, "+10% scrap", { "scrap_gain": 0.10 }, [], { "tags": ["fortune"] })
+    _add("coin_purse", "Coin Purse", "trinket", U, "+25% scrap, -10 max HP", { "scrap_gain": 0.25, "max_hp": -10 }, [], { "tags": ["fortune"] })
+    _add("thinking_cap", "Thinking Cap", "head", U, "+15% XP", { "xp_gain": 0.15 }, [], { "tags": ["fortune"] })
+    _add("gasket_ring", "Gasket", "ring", C, "+15 vent capacity", { "pressure_limit": 15 }, [], { "tags": ["vent"] })
+    _add("pressure_valve", "Pressure Valve", "trinket", R, "Vent fills 40% faster, +15% vent power", { "vent_charge": 0.4, "vent_power": 0.15 }, [], { "tags": ["vent"] })
+    _add("thorn_vest", "Thorn Vest", "chest", U, "Attackers take 6 damage", { "thorns": 6 }, [], { "tags": ["guard"] })
+    _add("alembic", "Alembic", "trinket", R, "Elements last 25% longer", { "state_duration": 0.25 }, [], { "tags": ["alchemy"] })
+
+    # ======================= TRADE-OFFS (one gain, one cost)
+    _add("boiler_cap", "Boiler Cap", "head", E, "+40% vent power, -8% move speed", { "vent_power": 0.40, "speed": -0.08 }, [], { "tags": ["vent"] })
+    _add("berserker_helm", "Berserker Helm", "head", E, "Below 40% HP: +50% damage", {}, [], { "tags": ["gunslinger"], "cond_mods": { "low_hp": { "dmg": 0.50 } } })
+    _add("blood_pact", "Blood Pact", "trinket", E, "+30% damage, -25 max HP", { "dmg": 0.30, "max_hp": -25 }, [], { "tags": ["blood"] })
+    _add("frenzy_band", "Frenzy Band", "ring", E, "+30% fire rate, -20 max HP", { "fire_rate": 0.30, "max_hp": -20 }, [], { "tags": ["gunslinger"] })
+    _add("hot_rod", "Hot Rod", "trinket", E, "+35% damage while your gauge runs hot", {}, [], { "tags": ["vent", "fire"], "cond_mods": { "hot": { "dmg": 0.35 } } })
+    _add("cold_snap", "Cold Snap", "trinket", E, "+35% reaction power while your gauge runs cold", {}, [], { "tags": ["vent", "ice"], "cond_mods": { "cold": { "potency": 0.35 } } })
+    _add("hover_greaves", "Hover Greaves", "feet", E, "+15% dodge, -15 max HP", { "dodge": 0.15, "max_hp": -15 }, [], { "tags": ["swift"] })
+    _add("executioners_grip", "Executioner's Grip", "hands", E, "+80% crit damage, -12% fire rate", { "crit_dmg": 0.8, "fire_rate": -0.12 }, [], { "tags": ["gunslinger"] })
+    _add("big_iron", "Big Iron", "ring", E, "+60% shot size, -15% fire rate", { "shot_size": 0.6, "fire_rate": -0.15 }, [], { "tags": ["gunslinger"], "pools": TH, "weight": 0.4 })
+    _add("tidewalkers", "Tidewalkers", "feet", R, "+20% reaction power while moving", {}, [], { "tags": ["swift", "alchemy"], "cond_mods": { "moving": { "potency": 0.20 } } })
+    _add("bloodstone", "Bloodstone", "ring", R, "Below 40% HP: +25% damage", {}, [], { "tags": ["blood"], "cond_mods": { "low_hp": { "dmg": 0.25 } } })
+    _add("seven_league", "Seven-League Boots", "feet", L, "+20% speed, +20% damage while moving", { "speed": 0.20 }, [], { "tags": ["swift"], "cond_mods": { "moving": { "dmg": 0.20 } } })
+    _add("marksman_monocle", "Marksman's Monocle", "head", R, "+50% crit damage for 2 s after a dash", {}, [{ "on": "dash", "do": "buff", "key": "crit_dmg", "amount": 0.5, "secs": 2.0, "secs_per": 1.0 }], { "tags": ["gunslinger", "swift"] })
+
+    # ======================= HEALING
+    _add("leech_mail", "Leech Mail", "chest", R, "Reactions near you heal 1", { "lifesteal": 1 }, [], { "tags": ["blood", "guard"] })
+    _add("phoenix_mantle", "Phoenix Mantle", "chest", L, "Hit below 40% HP: may heal 30 and erupt", { "max_hp": 20 }, [{ "on": "hurt", "if": "low_hp", "chance": 0.35, "do": "heal", "amount": 30 }, { "on": "hurt", "if": "low_hp", "chance": 0.35, "do": "nova", "element": "fire", "radius": 220, "potency": 14 }], { "tags": ["fire", "guard"], "stack": "once" })
+
+    # ======================= BEHAVIOUR, KEPT AND MERGED
+    _add("seeker_lens", "Seeker Lens", "head", R, "Shots curve toward enemies", { "homing": 1.5 }, [], { "tags": ["seeker"], "pools": TR, "weight": 0.6 })
+    _add("godhead", "Godhead", "head", L, "Shots seek, swell and burst in light", { "homing": 2.5, "splash": 40, "shot_size": 0.2 }, [], { "tags": ["seeker", "holy"], "stack": "dim", "pools": TH, "weight": 0.3 })
+    _add("splinter_charm", "Splinter Charm", "ring", R, "Shots break into 2 splinters", { "shards": 2 }, [], { "tags": ["gunslinger"], "pools": TR, "weight": 0.5 })
+    _add("hive_heart", "Hive Heart", "chest", L, "Shots burst into 4 shards; a drone orbits you", { "shards": 4, "orbitals": 1 }, [], { "tags": ["gunslinger", "guard"], "stack": "once", "pools": TH, "weight": 0.3 })
+    _add("powder_horn", "Powder Horn", "trinket", R, "Shots splash 30 px where they land", { "splash": 30 }, [], { "tags": ["gunslinger"], "pools": TR, "weight": 0.6 })
+    _add("wisp_lantern", "Wisp Lantern", "trinket", R, "Shots pass through rocks and crates", { "spectral": 1 }, [], { "tags": ["seeker"], "stack": "once", "pools": TR, "weight": 0.5 })
+    _add("bone_orbit", "Bone Orbit", "trinket", R, "A bone circles you, striking what it touches", { "orbitals": 1 }, [], { "tags": ["guard"], "pools": TR, "weight": 0.6 })
+    _add("skull_choir", "Skull Choir", "trinket", L, "3 skulls orbit you, carrying your element", { "orbitals": 3, "orbital_element": 1 }, [], { "tags": ["guard", "void"], "stack": "once", "pools": TR, "weight": 0.3 })
+    _add("ricochet_gloves", "Ricochet Gloves", "hands", R, "Shots bounce to 1 more enemy", { "bounce": 1 }, [], { "tags": ["gunslinger"] })
+    _add("storm_halo", "Storm Halo", "ring", L, "Shots bounce twice; 30% of hits shock", { "bounce": 2 }, [{ "on": "hit", "chance": 0.30, "do": "apply", "element": "shock", "potency": 4 }], { "tags": ["shock", "gunslinger"], "stack": "once", "weight": 0.3 })
+    _add("grip_of_pierce", "Grip of Pierce", "hands", R, "Shots pierce 1 more enemy", { "pierce": 1 }, [], { "tags": ["gunslinger"] })
+    _add("twin_triggers", "Twin Triggers", "hands", E, "Every gun fires 1 more shot, -10% damage", { "proj_count": 1, "dmg": -0.10 }, [], { "tags": ["gunslinger"], "stack": "dim", "weight": 0.5 })
+    _add("mothers_blade", "Mother's Blade", "hands", L, "Shots return like boomerangs, +40% damage", { "boomerang": 1, "dmg": 0.40 }, [], { "tags": ["gunslinger"], "stack": "once", "pools": TR, "weight": 0.3 })
+    _add("static_jar", "Static Jar", "trinket", R, "15% of hits on Wet foes arc lightning", {}, [{ "on": "hit", "if": "target_wet", "chance": 0.15, "do": "chain", "potency": 4 }], { "tags": ["shock", "wet"] })
+    _add("kindling_mitts", "Kindling Mitts", "hands", R, "18% of hits on Oiled foes ignite them", {}, [{ "on": "hit", "if": "target_oiled", "chance": 0.18, "do": "apply", "element": "fire", "potency": 5 }], { "tags": ["fire", "oil"] })
+    _add("tar_coat", "Tar Coat", "chest", U, "When hurt, oil everything nearby", {}, [{ "on": "hurt", "do": "nova", "element": "oil", "radius": 140, "radius_per": 40, "potency": 3 }], { "tags": ["oil", "guard"] })
+    _add("frost_treads", "Frost Treads", "feet", R, "Whatever hurts you freezes solid", {}, [{ "on": "hurt", "do": "apply", "element": "wet", "potency": 6 }, { "on": "hurt", "do": "apply", "element": "ice", "potency": 6 }], { "tags": ["ice", "guard"], "stack": "once" })
+    _add("glacier_plate", "Glacier Plate", "chest", E, "+4 armour; when hurt, a frost nova", { "armor": 4 }, [{ "on": "hurt", "do": "nova", "element": "ice", "radius": 130, "radius_per": 30, "potency": 6 }], { "tags": ["ice", "guard"] })
+    _add("spiked_cuirass", "Spiked Cuirass", "chest", R, "Attackers take 10 damage and may slow", { "thorns": 10 }, [{ "on": "hurt", "chance": 0.20, "do": "slow", "radius": 180 }], { "tags": ["guard"] })
+    _add("conductors_mail", "Conductor's Mail", "chest", R, "Chain Lightning: +40% power, +2 jumps", { "potency:Chain Lightning": 0.4, "chain_jumps": 2 }, [], { "tags": ["shock"] })
+    _add("hands_of_storm", "Storm Hands", "hands", L, "15% of hits arc lightning", { "chain_jumps": 2 }, [{ "on": "hit", "chance": 0.15, "do": "chain", "potency": 6 }], { "tags": ["shock"], "stack": "once" })
+    _add("echo_loop", "Echo Loop", "ring", R, "Reactions may fling 2 elemental shards", {}, [{ "on": "reaction", "chance": 0.15, "do": "shoot", "element": "last", "count": 2, "count_per": 1, "potency": 4 }], { "tags": ["alchemy"] })
+    _add("ring_of_multiplicity", "Ring of Multiplicity", "ring", E, "25% of hits fire an extra shot", {}, [{ "on": "hit", "chance": 0.25, "do": "shoot", "element": "last", "count": 1, "potency": 5 }], { "tags": ["gunslinger"] })
+    _add("plague_censer", "Plague Censer", "trinket", E, "Reactions may spread poison around", {}, [{ "on": "reaction", "chance": 0.30, "do": "spread", "element": "poison", "radius": 150, "potency": 4 }], { "tags": ["poison", "alchemy"] })
+    _add("heart_of_forge", "Forge Heart", "trinket", L, "Burning foes explode when they die", { "vs_burning": 0.15 }, [{ "on": "kill", "if": "target_burning", "do": "nova", "element": "fire", "radius": 140, "potency": 9 }], { "tags": ["fire"], "stack": "once" })
+    _add("permafrost_core", "Permafrost Core", "trinket", L, "Frozen foes burst into ice shards on death", {}, [{ "on": "reaction:Deep Freeze", "do": "shoot", "element": "ice", "count": 5, "potency": 6 }, { "on": "kill", "if": "target_frozen", "do": "nova", "element": "ice", "radius": 120, "potency": 6 }], { "tags": ["ice"], "stack": "once" })
+    _add("steam_whistle", "Steam Whistle", "trinket", R, "Steam soaks everything nearby", {}, [{ "on": "reaction:Steam", "do": "nova", "element": "wet", "radius": 140, "radius_per": 40, "potency": 3 }], { "tags": ["wet", "alchemy"] })
+    _add("signet_of_overload", "Signet of Overload", "ring", L, "Venting detonates a huge nova", {}, [{ "on": "vent", "do": "nova", "element": "last", "radius": 300, "potency": 24 }], { "tags": ["vent"], "stack": "once" })
+    _add("skullcap_vented", "Vented Skullcap", "head", L, "Venting fires 8 shots of its element", { "vent_radius": 0.15 }, [{ "on": "vent", "do": "shoot", "element": "last", "count": 8, "count_per": 4, "potency": 8 }], { "tags": ["vent"] })
+    _add("vent_striders", "Vent Striders", "feet", E, "Venting shields you; +30% vent radius", { "vent_radius": 0.30 }, [{ "on": "vent", "do": "shield", "amount": 1.5 }], { "tags": ["vent", "guard"] })
+    _add("gilded_carapace", "Gilded Carapace", "chest", L, "Elites pay 25 scrap, +25% luck", { "luck": 0.25 }, [{ "on": "elite_kill", "do": "scrap", "amount": 25 }], { "tags": ["fortune"], "stack": "once", "weight": 0.5 })
+
+    # ======================= NEW BEHAVIOUR ITEMS (3.2): each changes how a gun, an element,
+    # a reaction or the dash works, and shows on screen.
+    _add("slipstream_boots", "Slipstream Boots", "feet", R, "Dashing leaves a 2 s trail of your vent element", {}, [{ "on": "dash", "do": "trail", "element": "vent", "secs": 2.0, "secs_per": 1.0 }], { "tags": ["swift", "vent"] })
+    _add("shoulder_charge", "Shoulder Charge", "chest", R, "Dashing through enemies hits them for gun damage", { "dash_hit": 1.0 }, [], { "tags": ["swift", "guard"] })
+    _add("second_wind", "Second Wind", "feet", R, "+1 dash charge", { "dash_charges": 1 }, [], { "tags": ["swift"] })
+    _add("pressure_kick", "Pressure Kick", "feet", U, "Each dash adds 15 pressure", {}, [{ "on": "dash", "do": "pressure", "amount": 15, "amount_per": 10 }], { "tags": ["swift", "vent"] })
+    _add("close_shave", "Close Shave", "chest", R, "Dodge a hit with a dash: +30% damage for 3 s", {}, [{ "on": "perfect_dodge", "do": "buff", "key": "dmg", "amount": 0.3, "secs": 3.0, "secs_per": 1.0 }], { "tags": ["swift", "gunslinger"] })
+    _add("rear_guard", "Rear Guard", "chest", R, "Your guns also fire one shot backward", { "rear_shots": 1 }, [], { "tags": ["gunslinger", "guard"] })
+    _add("mortar_kit", "Mortar Kit", "trinket", R, "Every 5th hit bursts into a cloud of its element", {}, [{ "on": "hit", "every": 5, "every_per": -1, "do": "cloud", "element": "last", "at": "target", "radius": 60, "secs": 3.0 }], { "tags": ["alchemy", "gunslinger"] })
+    _add("gravity_shot", "Gravity Shot", "ring", R, "Shots pull enemies within 40 px", { "pull": 40 }, [], { "tags": ["seeker"], "pools": TR, "weight": 0.6 })
+    _add("long_fuse", "Long Fuse", "ring", U, "Shots grow up to +80% size in flight", { "grow": 0.8 }, [], { "tags": ["gunslinger"] })
+    _add("fork", "Fork", "hands", R, "Chains and beams reach 1 more enemy", { "chain_jumps": 1, "fork": 1 }, [], { "tags": ["shock", "seeker"] })
+    _add("marking_rounds", "Marking Rounds", "ring", R, "Every 6th hit marks; reactions hit marked foes +40%", {}, [{ "on": "hit", "every": 6, "every_per": -1, "do": "mark", "secs": 4.0 }], { "tags": ["alchemy", "seeker"] })
+    _add("rebound", "Rebound", "hands", R, "Shots that hit a wall come back once", { "rebound": 1 }, [], { "tags": ["gunslinger"], "stack": "once" })
+    _add("death_shards", "Death Shards", "trinket", U, "Kills fire 2 shards of your element", {}, [{ "on": "kill", "do": "shoot", "element": "gun", "count": 2, "count_per": 1, "potency": 5 }], { "tags": ["gunslinger"] })
+    _add("reaction_trail", "Reaction Trail", "trinket", R, "Reactions leave a 2 s patch of their element", {}, [{ "on": "reaction", "chance": 0.2, "do": "cloud", "element": "last", "at": "target", "radius": 50, "secs": 2.0, "secs_per": 1.0 }], { "tags": ["alchemy"] })
+    _add("wide_arc", "Wide Arc", "ring", E, "Chain Lightning jumps through any element", { "wide_arc": 1 }, [], { "tags": ["shock"], "stack": "once", "element": "shock" })
+    _add("split_reaction", "Split Reaction", "trinket", R, "Reactions fire a shot of each element in them", {}, [{ "on": "reaction", "chance": 0.3, "do": "split", "count": 1, "count_per": 1, "potency": 5 }], { "tags": ["alchemy"] })
+    _add("overheat", "Overheat", "chest", R, "After a vent, shots carry its element for 3 s", {}, [{ "on": "vent", "do": "buff", "key": "vent_shots", "amount": 1.0, "secs": 3.0, "secs_per": 1.0 }], { "tags": ["vent", "fire"] })
+    _add("ward_vent", "Ward Vent", "chest", R, "Venting raises a 3 s ring that stops enemy shots", {}, [{ "on": "vent", "do": "ward", "secs": 3.0, "secs_per": 1.0 }], { "tags": ["vent", "guard"] })
+    _add("mirror_hide", "Mirror Hide", "chest", R, "The first hit each room bounces back as a nova", { "mirror": 1 }, [], { "tags": ["guard"] })
+    _add("scavengers_eye", "Scavenger's Eye", "head", R, "Secret rooms hold 1 more item", { "secret_loot": 1 }, [], { "tags": ["fortune", "seeker"] })
+    _add("second_nature", "Second Nature", "ring", E, "Your first gun also applies your vent element", { "second_nature": 1 }, [], { "tags": ["vent", "alchemy"], "stack": "once" })
+    _add("transmuter", "Transmuter", "trinket", E, "Your Wet hits freeze instead of soaking", { "transmute": 1 }, [], { "tags": ["ice", "wet"], "stack": "once", "element": "ice" })
+    _add("overcharge", "Overcharge", "ring", E, "Chain Lightning strikes each target twice", { "overcharge": 1 }, [], { "tags": ["shock"], "element": "shock" })
+    _add("spreading_taint", "Spreading Taint", "trinket", E, "Elements you apply spread to 1 nearby foe", { "taint": 1 }, [], { "tags": ["alchemy", "poison"] })
+
+    # ======================= GUN MODS (g_* keys only; triggers work as usual)
+    _add("long_barrel", "Long Barrel", "mod", U, "This gun: +30% range, +20% shot speed", { "g_range": 0.3, "g_speed": 0.2 }, [], { "tags": ["seeker"] })
+    _add("gun_oil", "Gun Oil", "mod", C, "This gun: +15% fire rate", { "g_fire_rate": 0.15 }, [], { "tags": ["gunslinger"] })
+    _add("heavy_barrel", "Heavy Barrel", "mod", U, "This gun: +20% damage, -8% fire rate", { "g_dmg": 0.20, "g_fire_rate": -0.08 }, [], { "tags": ["gunslinger"] })
+    _add("pressure_coupler", "Pressure Coupler", "mod", R, "This gun: +40% pressure, +15% damage", { "g_pressure": 0.4, "g_dmg": 0.15 }, [], { "tags": ["vent"] })
+    _add("piercing_rounds", "Piercing Rounds", "mod", R, "This gun: shots pierce 2 more", { "g_pierce": 2 }, [], { "tags": ["gunslinger"] })
+    _add("arc_emitter", "Arc Emitter", "mod", R, "This gun: 12% of hits arc lightning", {}, [{ "on": "hit", "chance": 0.12, "do": "chain", "potency": 4 }], { "tags": ["shock"] })
+    _add("overclock", "Overclock", "mod", E, "This gun: +40% fire rate, +50% pressure", { "g_fire_rate": 0.4, "g_pressure": 0.5 }, [], { "tags": ["vent", "gunslinger"] })
+    _add("split_chamber", "Split Chamber", "mod", E, "This gun: 1 more shot, -20% damage", { "g_count": 1, "g_dmg": -0.2 }, [], { "tags": ["gunslinger"], "weight": 0.6 })
+    _add("chain_reactor", "Chain Reactor", "mod", L, "Reactions may burst into more reactions", { "g_dmg": 0.10 }, [{ "on": "reaction", "chance": 0.25, "do": "nova", "element": "last", "radius": 120, "potency": 8 }], { "tags": ["alchemy"], "weight": 0.4 })
 
     # ======================= ACTIVE ITEMS (press "active"; a room clear refills one charge)
-    _add("smelling_salts", "Smelling Salts", "active", C, "Use: heal 15. 2 charges", {}, [],
-        { "active": { "charges": 2, "do": [{ "do": "heal", "amount": 15 }] } })
-    _add("flash_powder", "Flash Powder", "active", C, "Use: slow everything nearby. 2 charges", {}, [],
+    _add("flash_powder", "Flash Powder", "active", C, "Use: slow everything nearby", {}, [],
         { "active": { "charges": 2, "do": [{ "do": "slow", "radius": 220 }] } })
-    _add("tin_whistle", "Tin Whistle", "active", C, "Use: untouchable for 1.5 s. 2 charges", {}, [],
-        { "active": { "charges": 2, "do": [{ "do": "shield", "amount": 1.5 }] } })
-    _add("pocket_storm", "Pocket Storm", "active", U, "Use: shock nova around you. 2 charges", {}, [],
+    _add("pocket_storm", "Pocket Storm", "active", U, "Use: a shock nova around you", {}, [],
         { "active": { "charges": 2, "do": [{ "do": "nova", "element": "shock", "radius": 160, "potency": 6 }] } })
-    _add("water_bucket", "Bucket of Water", "active", U, "Use: soak everything nearby. 3 charges", {}, [],
+    _add("water_bucket", "Bucket of Water", "active", U, "Use: soak everything nearby", {}, [],
         { "active": { "charges": 3, "do": [{ "do": "spread", "element": "wet", "radius": 220, "potency": 5 }] } })
-    _add("ember_flask", "Ember Flask", "active", U, "Use: fire burst on the nearest foe. 2 charges", {}, [],
+    _add("ember_flask", "Ember Flask", "active", U, "Use: a fire burst on the nearest foe", {}, [],
         { "active": { "charges": 2, "do": [{ "do": "nova", "at": "target", "element": "fire", "radius": 130, "potency": 8 }] } })
     _add("grease_gun", "Grease Gun", "active", R, "Use: oil everything nearby, then ignite it", {}, [],
         { "active": { "charges": 2, "do": [{ "do": "spread", "element": "oil", "radius": 200, "potency": 5 }, { "do": "nova", "element": "fire", "radius": 200, "potency": 6 }] } })
-    _add("frost_grenade", "Frost Grenade", "active", R, "Use: freezing blast on the nearest foe", {}, [],
+    _add("frost_grenade", "Frost Grenade", "active", R, "Use: a freezing blast on the nearest foe", {}, [],
         { "active": { "charges": 2, "do": [{ "do": "spread", "at": "target", "element": "wet", "radius": 150, "potency": 5 }, { "do": "nova", "at": "target", "element": "ice", "radius": 150, "potency": 10 }] } })
-    _add("dowsing_rod", "Dowsing Rod", "active", R, "Use: find 15 scrap and 10 XP. 1 charge", {}, [],
-        { "active": { "charges": 1, "do": [{ "do": "scrap", "amount": 15 }, { "do": "xp", "amount": 10 }] } })
     _add("tesla_coil", "Tesla Coil", "active", E, "Use: lightning arcs from the 6 nearest foes", {}, [],
         { "active": { "charges": 2, "do": [{ "do": "chain", "count": 6, "radius": 500, "potency": 8 }] } })
     _add("overpressure", "Overpressure Valve", "active", E, "Use: +60 pressure and a 1 s shield", {}, [],
         { "active": { "charges": 1, "do": [{ "do": "pressure", "amount": 60 }, { "do": "shield", "amount": 1.0 }] } })
     _add("blood_chalice", "Blood Chalice", "active", E, "Use: heal 40 and splash blood around", {}, [],
         { "active": { "charges": 1, "do": [{ "do": "heal", "amount": 40 }, { "do": "nova", "element": "blood", "radius": 160, "potency": 10 }] } })
-    _add("pressure_bomb", "Pressure Bomb", "active", L, "Use: huge nova of your last vent, +20 scrap", {}, [],
+    _add("pressure_bomb", "Pressure Bomb", "active", L, "Use: a huge nova of your last vent", {}, [],
         { "weight": 0.5, "active": { "charges": 1, "do": [{ "do": "nova", "element": "last", "radius": 320, "potency": 30 }, { "do": "scrap", "amount": 20 }] } })
     _add("prism_engine", "Prism Engine", "active", L, "Use: drench, shock and ignite all nearby", {}, [],
         { "weight": 0.5, "active": { "charges": 1, "do": [{ "do": "spread", "element": "wet", "radius": 260, "potency": 6 }, { "do": "spread", "element": "shock", "radius": 260, "potency": 8 }, { "do": "nova", "element": "fire", "radius": 260, "potency": 10 }] } })
 
-    # --- Elemental families: one of each per element.
+    # --- Elemental families: a Sigil, a Vial and a Coating per element.
     for e in ELEMENTS.keys():
         var T: String = ELEMENT_TITLES[e]
         var en: String = e.capitalize()
-        _add("charm_%s" % e, "%s Charm" % T, "trinket", C, "+10%% %s reaction potency" % en, { "potency_%s" % e: 0.10 }, [], { "element": e })
-        _add("ring_%s" % e, "Ring of %s" % T, "ring", U, "+20%% %s damage" % en, { "dmg_%s" % e: 0.20 }, [], { "element": e })
-        _add("vial_%s" % e, "%s Vial" % T, "trinket", U, "12%% of hits also apply %s" % en, {}, [{ "on": "hit", "chance": 0.12, "do": "apply", "element": e, "potency": 4 }], { "element": e })
-        _add("gloves_%s" % e, "%s-touched Gloves" % T, "hands", R, "%s guns: +15%% fire rate, pierce +1" % en, { "fire_rate_%s" % e: 0.15, "pierce_%s" % e: 1 }, [], { "element": e })
-        _add("coating_%s" % e, "%s Coating" % T, "mod", R, "This gun also applies %s with every hit" % en, { "extra_element": e }, [], { "element": e })
-        _add("mantle_%s" % e, "Mantle of %s" % T, "chest", E, "+30%% potency for %s reactions, +15 max HP" % en, { "potency_%s" % e: 0.3, "max_hp": 15 }, [], { "element": e })
+        _add("sigil_%s" % e, "%s Sigil" % T, "trinket", U, "+15%% %s damage and %s reactions" % [en, en], { "dmg_%s" % e: 0.15, "potency_%s" % e: 0.15 }, [], { "element": e, "tags": [e] })
+        _add("vial_%s" % e, "%s Vial" % T, "trinket", U, "15%% of hits also apply %s" % en, {}, [{ "on": "hit", "chance": 0.15, "do": "apply", "element": e, "potency": 4 }], { "element": e, "tags": [e] })
+        _add("coating_%s" % e, "%s Coating" % T, "mod", R, "This gun also applies %s" % en, { "extra_element": e }, [], { "element": e, "tags": [e] })
 
+    for id in catalog.keys():
+        var it: Dictionary = catalog[id]
+        if not it.has("stack"):
+            it["stack"] = "add"
+        if not it.has("tags"):
+            it["tags"] = [String(it["element"])] if it.has("element") else []
+        it["kind"] = "mod" if it["slot"] == "mod" else ("active" if it["slot"] == "active" else "passive")
     _apply_looks()
     _apply_icons()
 
@@ -1465,29 +1693,25 @@ func look_of(item: Dictionary) -> Dictionary:
 
 
 func set_color(sid: String) -> Color:
-    if ELEMENTS.has(sid):
-        return Element.COLORS[ELEMENTS[sid]]
-    return SETS.get(sid, {}).get("color", Color.WHITE)
+    return tag_color(sid)
 
 
-## The colour of a completed set (4 pieces, or all of a smaller set), or transparent.
+## The colour of the player's strongest resonance (the figure's aura), or transparent.
 func full_set_color(player: Player) -> Color:
-    var counts := set_counts(player)
-    for sid in counts.keys():
-        var need := mini(4, SETS[sid]["items"].size())
-        if counts[sid] >= need:
-            return set_color(sid)
-    return Color(0, 0, 0, 0)
+    var t := full_set_id(player)
+    return tag_color(t) if t != "" else Color(0, 0, 0, 0)
 
 
-## The id of the first completed set (4 pieces, or all of a smaller set), or "".
+## The tag of the player's strongest resonance (most items), or "".
 func full_set_id(player: Player) -> String:
-    var counts := set_counts(player)
-    for sid in counts.keys():
-        var need := mini(4, SETS[sid]["items"].size())
-        if counts[sid] >= need:
-            return String(sid)
-    return ""
+    var best := ""
+    var best_n := 0
+    var tc := tag_counts(player)
+    for t in tc.keys():
+        if int(tc[t]) >= RESONANCE_AT[0] and int(tc[t]) > best_n:
+            best = String(t)
+            best_n = int(tc[t])
+    return best
 
 
 # --- Forms: a paper-doll figure generated from the class and the gear (FigureGen) ----
@@ -1509,12 +1733,11 @@ const THEME_KEYS := {
     "boomerang": "gunslinger",
     "scrap_gain": "merchant", "luck": "merchant", "xp_gain": "merchant", "carry": "merchant",
 }
-## The theme of each hand-made set (its pieces lean on it; completing it adds 2.5).
-## Elemental sets use their element.
+## The theme of each tag (its items lean on it; a resonance adds more). Element tags use
+## their element.
 const SET_THEMES := {
-    "bulwark": "plate", "warden": "plate", "alchemist": "acid", "steamworks": "oil",
-    "windrunner": "scout", "prospector": "merchant", "scavenger": "merchant",
-    "gunslinger": "gunslinger", "overloader": "fire",
+    "guard": "plate", "alchemy": "acid", "vent": "fire", "swift": "scout",
+    "fortune": "merchant", "gunslinger": "gunslinger", "seeker": "arcane",
 }
 
 var _form_cache: Dictionary = {}   # player instance id -> { key, form }
@@ -1532,7 +1755,7 @@ func form_for(player: Player) -> Dictionary:
     var gun_els: Array = []
     for g in player.guns:
         gun_els.append(int(g.data.element) if g.data != null else 0)
-    var key := hash([ids, cid, gun_els, player.color])
+    var key := hash([player.gear_counts(), cid, gun_els, player.color])
     var pid := player.get_instance_id()
     var cached: Dictionary = _form_cache.get(pid, {})
     if not cached.is_empty() and int(cached["key"]) == key:
@@ -1579,16 +1802,24 @@ func draw_costume(canvas: CanvasItem, player: Player, center: Vector2, unit: flo
             for i in 6:
                 var sp := center + Vector2(unit * 13.0, 0).rotated(t * 1.2 + TAU * float(i) / 6.0) * Vector2(1.0, 0.6)
                 canvas.draw_rect(Rect2(sp - Vector2(unit, unit) * 0.6, Vector2(unit, unit) * 1.2), Color(fa, 0.8))
-    for key in Player.EQUIP_KEYS:
-        if not player.equipment.has(key):
-            continue
-        var it := get_item(player.equipment[key])
+    # Synergy signatures (section 12): a ring of motes per synergy, in its colour, orbiting
+    # the figure: obvious from across the room, under the hostile layer.
+    var syns: Array = player.synergies
+    for si in syns.size():
+        var sc: Color = synergy(String(syns[si])).get("color", Color.WHITE)
+        var rr := unit * (16.0 + 3.0 * float(si))
+        for i in 4:
+            var mp := center + Vector2(rr, 0).rotated(-t * (1.6 + 0.3 * float(si)) + TAU * float(i) / 4.0 + float(si)) * Vector2(1.0, 0.55)
+            canvas.draw_rect(Rect2(mp - Vector2(unit, unit) * 0.7, Vector2(unit, unit) * 1.4), Color(sc, 0.9))
+    var worn: Array = player.worn_look_ids()
+    for wi in worn.size():
+        var it := get_item(String(worn[wi]))
         if it.is_empty():
             continue
         var lk := look_of(it)
         var tint: Color = lk["tint"]
         var slot := String(it.get("slot", ""))
-        var second := String(key).ends_with("2")
+        var second := wi % 2 == 1
         if lk.has("aura"):
             var ac: Color = lk["aura"]
             var s := unit * 26.0

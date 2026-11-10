@@ -298,10 +298,15 @@ func _fill_gear() -> void:
             continue
         _header("%s   (%d items)" % [Items.RARITY_NAMES[r], ids.size()], col)
         var sorted: Array = ids.duplicate()
-        sorted.sort_custom(func(a, b): return Items.get_item(a)["slot"] < Items.get_item(b)["slot"])
+        # Sorted by tag (3.3: no slots); the label names the item's tags.
+        sorted.sort_custom(func(a, b): return Items.set_of(a) + String(Items.get_item(a)["name"]) < Items.set_of(b) + String(Items.get_item(b)["name"]))
         for id in sorted:
             var it := Items.get_item(id)
-            var b := _entry("%s   [%s]" % [it["name"], ItemCard.SLOT_TITLES.get(it["slot"], it["slot"])], col)
+            var tag_names: Array = []
+            for t in it.get("tags", []):
+                tag_names.append(Items.tag_name(String(t)))
+            var label: String = ", ".join(tag_names) if not tag_names.is_empty() else String(ItemCard.SLOT_TITLES.get(it["slot"], it["slot"]))
+            var b := _entry("%s   [%s]" % [it["name"], label], col)
             _set_icon(b, Items.icon(it), false)
             for k in ["icon_normal_color", "icon_focus_color", "icon_hover_color", "icon_pressed_color"]:
                 b.add_theme_color_override(k, Items.ui_icon_tint(it))

@@ -216,6 +216,11 @@ var fusion_cd := 0.0          # after a fusion: no new fusion and no new compoun
 var _dot_tags := { "burn": [], "poison": [], "bleed": [] }   # Telemetry.dot_tag() of whoever set each DoT
 var burn_dps := 0.0
 var burn_time := 0.0
+var marked_t := 0.0               # Marking Rounds: seconds this foe stays marked
+const MARK_BONUS := 1.4
+const TAINT_CHANCE := 0.25
+const TAINT_RANGE := 120.0
+static var _tainting := false
 var frozen_time := 0.0
 var slow_time := 0.0
 var _lunge_t := 0.0
@@ -573,6 +578,24 @@ func weakness_name() -> String:
 func apply_element(kind: int, potency: float, source: Player = null) -> String:
     if kind == Element.Kind.NONE or emerge > 0.0:
         return ""
+    if source != null and is_instance_valid(source):
+        # Transmuter: your Wet hits freeze instead of soaking.
+        if kind == Element.Kind.WET and source.stat("transmute") > 0.0:
+            kind = Element.Kind.ICE
+        # Spreading Taint: a share of what you apply jumps to the nearest foes.
+        var taint := int(source.stat("taint"))
+        if taint > 0 and not _tainting and randf() < TAINT_CHANCE:
+            _tainting = true
+            var near := EnemyGrid.overlapping(get_tree(), global_position, TAINT_RANGE)
+            var n := 0
+            for e in near:
+                if n >= taint:
+                    break
+                if e != self and is_instance_valid(e) and not e.is_queued_for_deletion():
+                    e.apply_element(kind, potency * 0.6, source)
+                    Elements.lightning_arc.emit(global_position, e.global_position)
+                    n += 1
+            _tainting = false
     if source != null:
         last_hit_by = source
     if boss_kind == "void_herald" and source != null:
@@ -625,6 +648,8 @@ func apply_element(kind: int, potency: float, source: Player = null) -> String:
         states.erase(existing)
         if source != null:
             potency *= 1.0 + source.stat("potency:" + reaction)
+        if marked_t > 0.0:
+            potency *= MARK_BONUS   # Marking Rounds
         _react_window = 0.3
         expose()
         _on_reaction_pair(existing, kind)
@@ -1203,6 +1228,8 @@ func contact_reach() -> float:
 
 
 func _physics_process(delta: float) -> void:
+    if marked_t > 0.0:
+        marked_t -= delta
     if _corpse:
         _fuse -= delta
         _fx_t += delta

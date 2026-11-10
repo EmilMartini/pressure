@@ -668,17 +668,38 @@ func _chain_lightning(enemy: Node2D, jump_potency: float) -> void:
     var current: Node2D = enemy
     var source: Player = enemy.last_hit_by if "last_hit_by" in enemy else null
     var jumps := 6
+    var wide := false        # Wide Arc: jumps through any element, not only Wet
+    var strikes := 1         # Overcharge: each target struck again
+    var lattice := false     # Storm Lattice synergy: forks at every jump
     if source != null and is_instance_valid(source):
         jumps += int(source.stat("chain_jumps"))
-    enemy.take_damage(damage, COLORS[Kind.SHOCK], true, source)
+        wide = source.stat("wide_arc") > 0.0
+        strikes += int(source.stat("overcharge"))
+        lattice = source.stat("syn_storm_lattice") > 0.0
+    for s in strikes:
+        if is_instance_valid(enemy):
+            enemy.take_damage(damage, COLORS[Kind.SHOCK], true, source)
     for i in jumps:
+        if not is_instance_valid(current):
+            break
         var next := _nearest_with_state(current.global_position, Kind.WET, 240.0, visited)
+        if next == null and wide:
+            next = _nearest_marked(current.global_position, 240.0, visited)
         if next == null:
             break
         visited[next] = true
         lightning_arc.emit(current.global_position, next.global_position)
         next.clear_state(Kind.WET)
-        next.take_damage(damage, COLORS[Kind.SHOCK], true, source)
+        for s in strikes:
+            if is_instance_valid(next):
+                next.take_damage(damage, COLORS[Kind.SHOCK], true, source)
+        if lattice:
+            var side := _nearest_marked(current.global_position, 240.0, visited)
+            if side != null:
+                Items.note_syn("storm_lattice")
+                visited[side] = true
+                lightning_arc.emit(current.global_position, side.global_position)
+                side.take_damage(damage * 0.7, COLORS[Kind.SHOCK], true, source)
         current = next
 
 
@@ -713,6 +734,20 @@ func _nearby_with_state(origin: Vector2, kind: int, radius: float) -> Array[Node
         if e.has_state(kind):
             out.append(e)
     return out
+
+
+## The nearest foe within `radius` carrying any element state (Wide Arc, Storm Lattice).
+func _nearest_marked(origin: Vector2, radius: float, exclude: Dictionary) -> Node2D:
+    var best: Node2D = null
+    var best_d := radius * radius
+    for e in _enemies():
+        if exclude.has(e) or not is_instance_valid(e) or e.is_queued_for_deletion() or e.states.is_empty():
+            continue
+        var d: float = e.global_position.distance_squared_to(origin)
+        if d < best_d:
+            best_d = d
+            best = e
+    return best
 
 
 func _nearest_with_state(origin: Vector2, kind: int, radius: float, exclude: Dictionary) -> Node2D:

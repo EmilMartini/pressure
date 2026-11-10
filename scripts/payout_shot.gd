@@ -83,13 +83,12 @@ func _ready() -> void:
     await _shot("spoils_salvage")
     # Ring swap: both rings worn, a third on a plinth.
     p.equip("copper_ring")
-    p.equip("vampiric_loop")
-    room.data.stock.append(Items.offer("band_of_lingering", 0, Vector2(-260, -140)))
+    p.equip("leech_mail")
+    room.data.stock.append(Items.offer("alembic", 0, Vector2(-260, -140)))
     room._build_pedestals()
     p.global_position = Vector2(-260, -106)
     await _wait(0.6)
     await _shot("ring_swap_a")
-    p.cycle_jewel("ring")
     await _wait(0.4)
     await _shot("ring_swap_b")
     # A gun you already carry: it merges.

@@ -1370,6 +1370,113 @@ spectacle.
 - This is the largest session. If it runs long, split it at the line between the catalog and
   card work and the synergies, and hand over the rest.
 
+### Session 4 done (2026-11-10, build `2026.11.10-items`)
+
+**Built**
+- **Items without slots (3.1, 3.2).** 238 items became 145: 113 passives (19 plain stats,
+  12 Sigils, 13 trade-offs, 2 healing, 43 kept behaviour items with the 12 Vials, and the 24
+  new behaviour items), 21 gun mods, 11 actives. `Player.inventory` is id -> copies;
+  `equipment` holds only the active. Stack rules `add` / `dim` / `once` (a `once` item is never
+  offered again once owned); chance triggers scale with copies (a Vial caps at 60%), and
+  `<key>_per` numbers grow per copy. Caps in `Items.STAT_CAPS`. Armour is a share:
+  x 15 / (15 + armour). Every old id maps in `Items.LEGACY_IDS` (and `tools/legacy_ids.json`).
+  The 24 new items each have their hook: dash trail (Cloud patches), Shoulder Charge hits along
+  the dash, timed buffs (Close Shave, Monocle, Overheat), Rear Guard shots, Mortar Kit clouds,
+  Gravity Shot pull, Long Fuse growth, Fork (+1 chain jump, +1 beam), Marking Rounds (+40%
+  reaction power on marked foes), Rebound, Death Shards, Reaction Trail, Wide Arc and Overcharge
+  (Chain Lightning), Split Reaction, Ward Vent (enemy shots near you vanish), Mirror Hide,
+  Scavenger's Eye (secret rooms always hold items, +1), Second Nature, Transmuter, Spreading
+  Taint. The figure wears the rarest item per body part (`Player.worn_look_ids`).
+- **Tags and resonances (Emil's decision 4).** Every item has 1 or 2 tags; 3 of a tag form its
+  resonance, 5 double it (`Items.RESONANCES`; Fortune adds a 5th shop ware). Sets are gone.
+- **Synergies (12).** 20 in `Items.SYNERGIES` (the six of the spec plus 14). When one forms: a
+  banner in the top band (28 px name, 22 px line, 2 s, one per 8 s, the rest queue), a 0.08 s
+  hit-stop, a flash and a chime; its signature shows at once: a ring of motes in its colour
+  orbits the figure, and every shot takes a halo and a wide tail in that colour. Resonances get
+  the banner, 0.4 s at half speed (only with no enemy within 300 px) and a chip over the item
+  strip. Six have their own rule (shards hunt, returning blades pierce everything, the orbit
+  takes the vial's element, the dash trail soaks foes, chains fork at every jump, splinters
+  splash); the rest add a stat bonus. Free reward rows (treasure, boss, challenge) offer the
+  missing half of a synergy you started 40% of the time (`Drops.SYNERGY_CARD_CHANCE`), and any
+  roll weights it x3; the card says "Forms SYNERGY: name".
+- **The card (4.1).** One layout for reward rows, shops, deals, the Build page and the
+  journal: 96 px icon on a rarity plate, name 28 px, rarity word 18 px (with the red CURSED
+  chip), up to 3 tag chips, "You have 2. Taking this makes 3.", one effect line (22 px), up to 3
+  green or red changes to your build ("Fire rate +8% -> +16%"), one resonance or synergy line,
+  the curse line, the price (24 px, "need 12 more" in red). No "replaces", no swap prompt, no set
+  lists. Deltas drop first when a card would pass 25 words or 300 px. Gun cards: how it fires,
+  DPS and heat, weight, mods, the twin to combine. Level-up cards keep their own big layout
+  (name 30, headline 36 to 44, before -> after 30); they already meet the word rule.
+- **Pickups (4.2).** Items and guns stand at 2x on the plinth over a rarity glow (Common none,
+  Uncommon small, Rare medium, Epic large pulsing at 1 Hz, Legendary with a beam of light), with
+  only the name and price until you come within 90 px; then the nearest one shows its card.
+  Never more than one card on screen.
+- **Build page (4.3).** The character sheet: items as 48 px icons with "x3", grouped by tag with
+  "Vent 2/3"; guns with tier pips and mods; key numbers first (damage, fire rate, reaction
+  power, crit, max HP, armour and the share it takes off, speed, dash charges, Mending left);
+  then synergies and resonances. The HUD's gear row is an item strip (the active, the 8 rarest
+  items with counts, "+N"), with resonance chips above.
+- **Save version 5 (3.3).** Relics, Well items and the Gate's Relic map through `LEGACY_IDS` on
+  load; two Relics that become one item collapse and the dropped one's Relic price (at the new
+  item's rarity) is refunded in Embers; a Well item that is already a Relic leaves the Well.
+  Bot builds map their old ids at load, so `--build=human6980` and `storm` keep working.
+- **Tests:** `--card-shot` and `--synergy-probe[=a|b]` (README); `[SYNERGY] formed` and
+  `[RESONANCE]` bot lines; `floor_end` telemetry lists synergies and one item entry per copy.
+
+**Deviations, and why**
+- **The tutorial's first items** are the Iron Heart and Flash Powder (the helm and the salts
+  were merged away).
+- **Level-up cards keep their layout** (above). The item card's effect line wraps to a second
+  row on 2 of 113 passives at 360 px; it is still one line of text (`wrapped` in cards.csv).
+- **The synergy card** is not in the spec: with only pairs and roll weights, no synergy formed in
+  4 human-build runs. Mortar Kit bursts on every 5th *hit*, not a lobbed shot. Overheat triggers
+  on a vent (the vent fires on its own at full pressure).
+- **The bot buys every item it can afford** (stacking: every item adds), actives only to upgrade.
+- **Not built:** the floor-end card with each synergy's share of damage, and tagging synergy
+  damage for the power curve's half count (`Enemy.synergy_depth` still has no source).
+
+**Measured** (headless, `--fixed-fps 60`, `--build=human6980 --mastery=full --start-floor=2`,
+route Ossuary Gate, Rust Ruins, Frostvault, the Forge, the Rift; logs `autotest/s4/`)
+
+| Check | Result | Pass |
+|---|---|---|
+| Card readability (`--card-shot`) | `[CARDS] PASS 337` (145 items, 43 guns, 149 level-up options); most words 23, tallest 278 px, smallest font 18 | yes |
+| Stand-still: 4 idle runs | 4 of 4 die on floor 2 (85 to 111 s); lt50 0.65 to 0.78, 1.46 to 1.91 bars a minute | yes |
+| Mover reaches floor 4 | 6 of 8 (2 of 4, then 4 of 4); one run won the game, bosses 23 to 32 s on floors 3 to 5 | yes (3 of 4) |
+| Idle at least 2x mover damage (floor 2) | 1.46 to 1.91 against 0.04 to 0.19 | yes |
+| Mover floor 3 lt50 / damage a minute | 0.00 to 0.52 / 0.12 to 0.71 (decision 21: 0.16 to 0.79 / 0.51 to 0.59) | |
+| Shops (36 visits) | 89% spent down, median leftover 37 x m, median rerolls 1, never over 2 | yes |
+| Loot per floor | free 1 to 4, bought 3 to 4 (the bot buys what it can afford), guns 0 to 1, cards 13 to 23 | bought sometimes 4 |
+| Synergies | with the synergy card: 3 of 4 human-build runs (2 of them formed two: Pinball, Living Orbit), 1 of 4 fresh floor-1 runs (3 died on floors 1 and 2); without it 0 of 4 | about 1 in 3 or more |
+| Resonances | 2 to 10 a run on the human build | |
+| `--synergy-probe=a` and `=b` | `[SYNERGY-PROBE] PASS 10 of 10` both; all 20 formed and fired | yes |
+| Save migration, copy of Emil's version-4 save with 9 old Relics and 62 Well items | 68 ids mapped, `[MIGRATE] relic rusted_helm+leather_cap -> iron_heart, refunded 15`, version 5, the Gate's Relic mapped; a plain copy keeps his Relic | yes |
+| Old rule: idle six-gun bot, first region | died on floor 1 at 34 s | yes |
+| Fusion probe, hub walk, load check | `[FUSION-CHECK] PASS`, `[HUB-WALK] PASS`, `[HUB-FRESH] PASS`; 0 `SCRIPT ERROR` in every log | yes |
+| `tools/exe_smoke.sh` | `[SMOKE] ALL PASS` | yes |
+
+The hub walk with `--keep-save` on a copy of Emil's save prints `[HUB-LOADOUT] FAIL`: it cycles
+the Gate's Relic once from "none" and expects the first Relic, and his Gate already has that
+Relic selected. That is the walk's assumption, not the migration (his Relic is kept).
+
+**What's left, and for Emil**
+- **Synergy rate on human runs.** If synergies feel common, lower `Drops.SYNERGY_CARD_CHANCE`
+  (0.4) toward 0.2; if rare, raise `Items.SYNERGY_NUDGE` (3).
+- **Strong late runs shorten bosses** (23 s on floors 4 and 5 in the winning run) without a
+  synergy: stacking adds power. Watch Emil's boss times before tuning.
+- **Fresh runs** still die on floors 1 and 2 for the bot (as in sessions 2 and 3); one Brute
+  King took 160 s at 63 dps.
+- **Emil's next run:** take items freely (they stack), read a card, open the Build page
+  (Start, Character), and look for a "Forms SYNERGY" card in a treasure or boss row.
+
+**Screenshots to take while Emil is away** (windowed bot launcher, never while he plays):
+1. `--card-shot` in a window: the contact sheets in `autotest/cards/` (Emil reads one).
+2. A treasure row of three pedestals: rarity glows (Epic pulse, Legendary beam), names and
+   prices only, one card beside the nearest.
+3. The Build page (pause, Character) on a floor-3 human build: tag groups, counts, key numbers.
+4. A synergy forming: `--synergy-probe=a` shows the banner, the orbiting motes and the tinted
+   shot tails; and a resonance chip over the item strip.
+
 ---
 
 ---

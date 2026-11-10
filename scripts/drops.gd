@@ -38,9 +38,8 @@ static func party_profile(players: Array) -> Dictionary:
                 archetypes[arch] = int(archetypes.get(arch, 0)) + 1
             var gid := gun.data.id
             carried[gid] = mini(int(carried.get(gid, Gun.MAX_TIER)), gun.tier)
-        var equipment: Dictionary = pl.equipment
-        for slot in equipment.keys():
-            var item: Dictionary = Items.get_item(String(equipment[slot]))
+        for iid in pl.inventory.keys():
+            var item: Dictionary = Items.get_item(String(iid))
             if item.has("element"):
                 _add_weight(weights, _kind_of(String(item["element"])), 0.6)
     var total := 0.0
@@ -117,7 +116,7 @@ static func roll_item(difficulty: int, min_rarity: int = Items.Rarity.COMMON, ex
                     break
                 step -= 1
     if picked == "":
-        picked = "bone_ring"
+        picked = "iron_heart"
     Items.mark_seen(picked)
     return picked
 
@@ -146,9 +145,33 @@ static func roll_item_at(rarity: int, exclude: Array = [], pool: String = "", pl
                         picked = _pick_item(ids, profile)
                     step -= 1
     if picked == "":
-        picked = "bone_ring"
+        picked = "iron_heart"
     Items.mark_seen(picked)
     return picked
+
+
+## Section 12: an item that completes a synergy the local player has started (Items.held),
+## or "" when there is none. Free reward rows offer one now and then (SYNERGY_CARD_CHANCE),
+## so a synergy is something you can see coming and choose.
+const SYNERGY_CARD_CHANCE := 0.4
+
+
+static func synergy_card(exclude: Array) -> String:
+    var cap := Items.max_rarity_unlocked()
+    var out: Array = []
+    for id in Items.catalog.keys():
+        var it: Dictionary = Items.catalog[id]
+        if exclude.has(id) or String(it.get("slot", "")) == "mod" or int(it.get("rarity", 0)) > cap:
+            continue
+        if String(it.get("stack", "add")) == "once" and int(Items.held.get(id, 0)) > 0:
+            continue
+        if int(Items.held.get(id, 0)) == 0 and Items._completes_held(String(id)):
+            out.append(id)
+    if out.is_empty():
+        return ""
+    var pick := String(out.pick_random())
+    Items.mark_seen(pick)
+    return pick
 
 
 static func _wants(it: Dictionary, want: String) -> bool:
@@ -216,6 +239,8 @@ static func _item_candidates(source: Array, rarity: int, exclude: Array, allow_s
         if exclude.has(id) or (not allow_seen and Items.seen_run.has(id)):
             continue
         var item: Dictionary = Items.get_item(String(id))
+        if String(item.get("stack", "add")) == "once" and int(Items.held.get(id, 0)) > 0:
+            continue   # a "once" item is never offered again once owned (3.1)
         if int(item.get("rarity", 0)) == rarity:
             out.append(id)
     return out
@@ -255,7 +280,7 @@ static func _pick_item(ids: Array, profile: Dictionary) -> String:
     var off_w: Array = []
     for id in ids:
         var item: Dictionary = Items.get_item(String(id))
-        var base := float(item.get("weight", 1.0))
+        var base := Items._weight(String(item.get("id", "")))
         var bias := _item_bias(item, profile)
         if bias > 1.0:
             on.append(id)

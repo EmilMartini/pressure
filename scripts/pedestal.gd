@@ -4,6 +4,10 @@ extends Node2D
 ## stairs, or the challenge sigil. The Room decides what activating it does.
 
 const RANGE := 52.0
+## Core loop reset 4.2: the full card shows for the one pedestal nearest a player within
+## CARD_RANGE (Room sets show_card); everything else shows its name and price only.
+const CARD_RANGE := 90.0
+const ITEM_SCALE := 2.0   # item and gun icons stand at 2x (64 px)
 ## 32 px icons at 1.25x sit where the old 16 px tiles did at 2.5x.
 const ICON_SCALE := 1.25
 ## Boon id -> icon under Art.ICON_ROOT.
@@ -24,6 +28,7 @@ const KIND_ICONS := {
 
 var offer: Dictionary
 var highlighted := false
+var show_card := false     # the one card on screen (Room picks the nearest within CARD_RANGE)
 var prompt_key := "E"      # set by the room from the nearest player's device
 var prompt_kind := "kb"    # "pad" or "kb"
 var _sprite: Sprite2D
@@ -54,12 +59,12 @@ func _ready() -> void:
     # the card carry the rarity); stairs and sigils keep their 1-bit tiles.
     match kind():
         "gun":
-            _sprite = Art.icon_sprite(Art.gun_icon(offer["id"]), ICON_SCALE)
+            _sprite = Art.icon_sprite(Art.gun_icon(offer["id"]), ITEM_SCALE)
         "item" when offer.get("mystery", false):
             _sprite = Art.icon_sprite(Art.icon(String(KIND_ICONS["reroll"])), ICON_SCALE)
             _sprite.modulate = Color(0.6, 0.5, 0.8)
         "item":
-            _sprite = Art.icon_sprite(Items.icon(item()), ICON_SCALE)
+            _sprite = Art.icon_sprite(Items.icon(item()), ITEM_SCALE)
             _sprite.modulate = Items.icon_tint(item())
         "boon":
             _sprite = Art.icon_sprite(Art.icon(String(BOON_ICONS.get(offer["id"], "item/gold/gold_pile_25.png"))), ICON_SCALE)
@@ -229,7 +234,7 @@ func _process(delta: float) -> void:
     if offer.has("say_age"):
         offer["say_age"] = float(offer["say_age"]) + delta
     if _sprite != null and kind() not in ["sigil", "stairs"]:
-        _sprite.position.y = -38.0 + sin(_t * 2.2) * 3.0
+        _sprite.position.y = (-50.0 if kind() in ["item", "gun"] else -38.0) + sin(_t * 2.2) * 3.0
         _sprite.rotation = sin(_t * 1.1) * 0.08
     elif _sprite != null:
         _sprite.position.y = -12.0
@@ -253,8 +258,11 @@ func _draw() -> void:
         return
     var c := color()
     var glow: Texture2D = Art.PARTICLES["light"]
-    var g := 110.0 + sin(_t * 2.2) * 8.0
-    draw_texture_rect(glow, Rect2(Vector2(-g / 2.0, -g / 2.0 - 36.0), Vector2(g, g)), false, Color(c, 0.16 + (0.1 if highlighted else 0.0)))
+    if kind() in ["item", "gun"] and not offer.get("mystery", false):
+        _draw_rarity_glow(glow, c)
+    else:
+        var g := 110.0 + sin(_t * 2.2) * 8.0
+        draw_texture_rect(glow, Rect2(Vector2(-g / 2.0, -g / 2.0 - 36.0), Vector2(g, g)), false, Color(c, 0.16 + (0.1 if highlighted else 0.0)))
     if kind() == "archivist":
         Npc.draw(self, "archivist", Vector2(0, 14), _t, highlighted, not offer.get("freed", false))
         return
@@ -289,6 +297,34 @@ func _draw() -> void:
         draw_circle(Vector2(0, -14), 10.0, Color(0, 0, 0, 0.35))
         if highlighted:
             draw_rect(Rect2(-18, -12, 36, 6), Color(c, 0.6))
+
+
+## 4.2: a soft pool of the rarity colour under the item: Common none, Uncommon small, Rare
+## medium, Epic large and pulsing at 1 Hz, Legendary large with a thin beam of light upward.
+## Kept dim (the clarity pass's caps): the pool is under 0.3 alpha.
+func _draw_rarity_glow(glow: Texture2D, c: Color) -> void:
+    var r := 0
+    if kind() == "item":
+        r = int(item().get("rarity", 0))
+    else:
+        r = Items.tier_rarity((_merge_into().tier + 1) if _merge_into() != null else 1)
+    if r <= Items.Rarity.COMMON:
+        return
+    var sizes := [0.0, 70.0, 110.0, 150.0, 160.0]
+    var g: float = sizes[r]
+    var a := 0.14 + 0.03 * float(r)
+    if r >= Items.Rarity.EPIC:
+        var pulse := 0.5 + 0.5 * sin(_t * TAU)   # 1 Hz
+        g *= 0.92 + 0.12 * pulse
+        a += 0.06 * pulse
+    draw_set_transform(Vector2(0, -4), 0.0, Vector2(1.0, 0.55))
+    draw_texture_rect(glow, Rect2(Vector2(-g / 2.0, -g / 2.0), Vector2(g, g)), false, Color(c, a + (0.06 if show_card else 0.0)))
+    draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+    draw_texture_rect(glow, Rect2(Vector2(-g * 0.35, -g * 0.35 - 50.0), Vector2(g * 0.7, g * 0.7)), false, Color(c, a * 0.6))
+    if r >= Items.Rarity.LEGENDARY:
+        var bw := 4.0 + sin(_t * 3.0)
+        draw_rect(Rect2(-bw / 2.0, -260.0, bw, 250.0), Color(c, 0.22))
+        draw_rect(Rect2(-bw / 6.0, -260.0, bw / 3.0, 250.0), Color(1.0, 0.95, 0.85, 0.25))
 
 
 const WELL_WATER := Color(0.42, 0.68, 0.92)
@@ -440,7 +476,8 @@ func _draw_labels(cv: CanvasItem) -> void:
     cv.draw_string(body, Vector2(-141, y + 1), title(), HORIZONTAL_ALIGNMENT_CENTER, 280, 20, Color(0, 0, 0, 0.8))
     cv.draw_string(body, Vector2(-140, y), title(), HORIZONTAL_ALIGNMENT_CENTER, 280, 20, title_col)
     y += 22.0
-    var rw := rarity_word()
+    var short_label := kind() in ["item", "gun"] and not Main.old_balance
+    var rw := "" if short_label else rarity_word()
     if rw != "":
         # The rarity in words (colour-blind safe), and the element as a neutral badge.
         var el := Element.Kind.NONE
@@ -457,7 +494,7 @@ func _draw_labels(cv: CanvasItem) -> void:
         if bs.x > 0.0:
             ItemCard.draw_element_badge(cv, Vector2(x0 + tw + 8.0, y - 15.0), el, 16)
         y += 22.0
-    var cl := curse_line()
+    var cl := "" if short_label else curse_line()
     if cl != "":
         # The red Cursed chip and its drawback.
         var red := Color(1.0, 0.25, 0.25)
@@ -475,7 +512,7 @@ func _draw_labels(cv: CanvasItem) -> void:
         cv.draw_string(body, Vector2(-141, y + 1), pt, HORIZONTAL_ALIGNMENT_CENTER, 280, 20, Color(0, 0, 0, 0.8))
         cv.draw_string(body, Vector2(-140, y), pt, HORIZONTAL_ALIGNMENT_CENTER, 280, 20, Art.SCRAP_TINT)
         y += 22.0
-    if highlighted:
+    if highlighted or (show_card and short_label):
         # Items and guns show their full ItemCard beside the plinth (see _draw_card).
         var desc := ""
         match kind():
@@ -494,7 +531,7 @@ func _draw_labels(cv: CanvasItem) -> void:
             cv.draw_rect(Rect2(-170, y - 4, 340, box_h), Color(0.05, 0.04, 0.06, 0.92))
             cv.draw_multiline_string(body, Vector2(-162, y + 16), desc, HORIZONTAL_ALIGNMENT_CENTER, 324, 20, 2, Color(0.92, 0.9, 0.85))
             y += box_h + 4.0
-        var verb := "begin" if kind() == "sigil" else ("descend" if kind() == "stairs" else ("equip" if kind() == "item" else "take"))
+        var verb := "begin" if kind() == "sigil" else ("descend" if kind() == "stairs" else "take")
         if offer.get("ware", false) and not Main.old_balance:
             verb += ("     Y / R: unlock" if offer.get("locked", false) else "     Y / R: lock")
         if kind() == "archivist":
@@ -539,23 +576,25 @@ func _draw_region_profile(cv: CanvasItem, y: float) -> float:
 ## The item or gun card, beside the plinth on whichever side keeps it on screen, compared
 ## against what the nearest player wears in that slot.
 func _draw_card(cv: CanvasItem) -> void:
-    if not highlighted or empty() or not (kind() in ["item", "gun"]) or offer.get("mystery", false):
+    var want_card := show_card if Room.here != null else highlighted
+    if not want_card or empty() or not (kind() in ["item", "gun"]) or offer.get("mystery", false):
         return
     var p := _nearest_player()
     var price := int(offer.get("price", 0))
     var opts := { "player": p, "price": price, "width": ItemCard.DEFAULT_WIDTH }
     if p != null and p.main() != null:
         opts["afford"] = p.main().scrap >= price
+        opts["short"] = maxi(0, price - p.main().scrap)
+    if offer.has("deal"):
+        opts.erase("price")
+        opts["notes"] = [price_text()]
     var h := 0.0
     var it := item()
     if kind() == "item":
-        var rival := ItemCard.rival_for(p, it)
-        if not rival.is_empty():
-            opts["compare"] = rival
-            var slot := String(it.get("slot", ""))
-            if p != null and p.jewel_kept(slot) != "":
-                opts["keeps"] = Items.get_item(String(p.equipment[p.jewel_kept(slot)]))
-                opts["swap_key"] = p.input.prompt("swap")
+        if offer.has("curse"):
+            opts["curse"] = String(offer["curse"])
+        if offer.get("deal", "") == "curse":
+            opts["cursed"] = true
         h = ItemCard.height_for(it, opts)
     else:
         if _gun_data == null:

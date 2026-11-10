@@ -31,12 +31,16 @@ extends RefCounted
 ## compact (bool: names only for mods).
 
 const PAD := 14.0
-const ICON := 64.0   # a 32 px Dungeon Crawl tile at 2x
-const TITLE_SIZE := 26
-const LABEL_SIZE := 22
-const TEXT_SIZE := 20
+const ICON := 96.0   # a 32 px Dungeon Crawl tile at 3x (4.1)
+const TITLE_SIZE := 28
+const LABEL_SIZE := 18
+const TEXT_SIZE := 22
+const PRICE_SIZE := 24
 const LINE_GAP := 4.0
-const DEFAULT_WIDTH := 340.0
+const DEFAULT_WIDTH := 360.0
+const MAX_WORDS := 25        # 4.4: name, effect, stack, deltas and resonance lines
+const MAX_HEIGHT := 300.0    # 4.4
+const CURSED_COL := Color(1.0, 0.25, 0.25)
 
 const BG := Color(0.05, 0.04, 0.06, 0.92)
 const PROMPT_COL := Color(0.6, 1.0, 1.0)   # a button hint, like the pedestal's verb
@@ -130,23 +134,9 @@ static func describe_mods(item: Dictionary) -> Array[String]:
 
 
 ## The item that equipping `item` would replace (mirrors Player.equip), or {}.
-static func rival_for(player, item: Dictionary) -> Dictionary:
-    if player == null or not is_instance_valid(player) or item.is_empty():
-        return {}
-    var slot := String(item.get("slot", ""))
-    if slot == "" or slot == "mod":
-        return {}
-    var key := slot
-    if slot == "ring" or slot == "trinket":
-        # Both of the pair worn: the one this would replace (the player's swap pick, else
-        # the weaker piece; Player.jewel_key).
-        key = player.jewel_key(slot)
-        if key == "":
-            return {}
-    var rival: Dictionary = Items.get_item(String(player.equipment.get(key, "")))
-    if rival.get("id", "") == item.get("id", ""):
-        return {}
-    return rival
+## Items stack (3.1): nothing is replaced, so there is never a rival. Kept for old callers.
+static func rival_for(_player, _item: Dictionary) -> Dictionary:
+    return {}
 
 
 # --- Public: guns ---------------------------------------------------------------
@@ -194,6 +184,23 @@ static func draw_frame(canvas: CanvasItem, r: Rect2, col: Color, highlight: bool
         var corner: Vector2 = c
         canvas.draw_rect(Rect2(corner - Vector2(4, 4), Vector2(8, 8)), Color(0, 0, 0, 0.9))
         canvas.draw_rect(Rect2(corner - Vector2(3, 3), Vector2(6, 6)), edge)
+
+
+## A tag chip (4.1): an element tag is its element badge; any other tag the same neutral
+## chip with a small swatch in the tag colour and its name.
+static func draw_tag_chip(canvas: CanvasItem, pos: Vector2, tag: String, size: int = BADGE_SIZE) -> Vector2:
+    if Items.ELEMENTS.has(tag):
+        return draw_element_badge(canvas, pos, tag, size)
+    var font: Font = Art.FONT
+    var label := Items.tag_name(tag)
+    var tw := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
+    var sw := float(size) * 0.6
+    var box := Rect2(pos, Vector2(8.0 + sw + 6.0 + tw + 8.0, float(size) + 6.0))
+    canvas.draw_rect(box, BADGE_FILL)
+    canvas.draw_rect(box, BADGE_EDGE, false, 1.0)
+    canvas.draw_rect(Rect2(pos + Vector2(8.0, (box.size.y - sw) / 2.0), Vector2(sw, sw)), Items.tag_color(tag))
+    canvas.draw_string(font, pos + Vector2(8.0 + sw + 6.0, 3.0 + font.get_ascent(size)), label, HORIZONTAL_ALIGNMENT_LEFT, -1, size, BADGE_TEXT)
+    return box.size
 
 
 ## Element.Kind of an element given as a Kind int or an item element key ("fire").
@@ -407,125 +414,6 @@ static func _effect_rows(item: Dictionary) -> Array:
     return rows
 
 
-static func _item_model(item: Dictionary, opts: Dictionary) -> Dictionary:
-    var rarity := clampi(int(item.get("rarity", 0)), 0, Items.RARITY_COLORS.size() - 1)
-    var rc: Color = Items.RARITY_COLORS[rarity]
-    var slot := String(item.get("slot", "trinket"))
-    var rows: Array = _effect_rows(item)
-    var player = opts.get("player", null)
-    if player != null and not is_instance_valid(player):
-        player = null
-
-    # Set: pieces worn (counting this one if you take it) and the next bonus.
-    var sid := Items.set_of(String(item.get("id", "")))
-    if sid != "":
-        var s: Dictionary = Items.SETS[sid]
-        var total: int = (s["items"] as Array).size()
-        var scol: Color = SET_COL
-        rows.append(_sep())
-        var thresholds: Array = s["bonuses"].keys()
-        thresholds.sort()
-        if player == null:
-            rows.append(_row("%s set  (%d pieces)" % [s["name"], total], LABEL_SIZE, scol))
-            for th in thresholds:
-                rows.append(_row("%d: %s" % [int(th), _bonus_text(s["bonuses"][th])], TEXT_SIZE, DIM, 0.0, 8.0))
-        else:
-            var have := int(Items.set_counts(player).get(sid, 0))
-            var worn: bool = player.equipped_item_ids().has(item.get("id", ""))
-            var after := have if worn else have + 1
-            var suffix := "" if worn else "  with this"
-            rows.append(_row("%s set  %d / %d pieces%s" % [s["name"], after, total, suffix], LABEL_SIZE, scol))
-            var next_found := false
-            for th in thresholds:
-                if after >= int(th):
-                    rows.append(_row("%d: %s" % [int(th), _bonus_text(s["bonuses"][th])], TEXT_SIZE, GOOD, 0.0, 8.0))
-                elif not next_found:
-                    next_found = true
-                    rows.append(_row("Next at %d: %s" % [int(th), _bonus_text(s["bonuses"][th])], TEXT_SIZE, DIM, 0.0, 8.0))
-
-    # Comparison with what it would replace.
-    var cmp: Dictionary = opts.get("compare", {})
-    if not cmp.is_empty() and cmp.get("id", "") != item.get("id", ""):
-        rows.append(_sep())
-        rows.append(_row("> Replaces %s (%s)" % [cmp.get("name", "?"), Items.rarity_name(cmp)], LABEL_SIZE, Items.rarity_text_color(cmp)))
-        rows.append_array(_compare_rows(item, cmp))
-        # A full ring / trinket pair: the piece that stays, and the button that swaps them.
-        var keeps: Dictionary = opts.get("keeps", {})
-        if not keeps.is_empty():
-            rows.append(_row("Keeps %s (%s)" % [keeps.get("name", "?"), Items.rarity_name(keeps)], TEXT_SIZE, DIM, 2.0))
-            rows.append(_row("%s: replace %s instead" % [String(opts.get("swap_key", "Y")), keeps.get("name", "?")], TEXT_SIZE, PROMPT_COL, 2.0))
-
-    if opts.has("price"):
-        rows.append(_sep())
-        var price := int(opts["price"])
-        var afford: bool = bool(opts.get("afford", true))
-        var ptext := "FREE" if price <= 0 else "%d scrap" % price
-        if price > 0 and not afford:
-            ptext += "  (not enough)"
-        rows.append(_row(ptext, LABEL_SIZE, SCRAP_COL if afford or price <= 0 else BAD))
-    for n in opts.get("notes", []):
-        rows.append(_row(String(n), TEXT_SIZE, DIM, 2.0))
-
-    var badges: Array = []
-    if item.has("element"):
-        var ek := element_kind(item["element"])
-        if ek != Element.Kind.NONE:
-            badges.append(ek)
-    if not badges.is_empty():
-        rows.push_front(_badges(badges))
-    var tc: Color = Items.RARITY_TEXT_COLORS[rarity]
-    return {
-        "icon": Items.icon(item), "icon_tint": Items.ui_icon_tint(item),
-        "title": String(item.get("name", "?")), "title_col": tc,
-        "sub": "%s %s" % [Items.RARITY_NAMES[rarity], SLOT_TITLES.get(slot, slot.capitalize())],
-        "sub_col": tc, "frame": rc, "pips": rarity + 1, "rows": rows,
-    }
-
-
-## "+12% damage (was +8%)" for stats both touch, then what you would lose.
-static func _compare_rows(item: Dictionary, old: Dictionary) -> Array:
-    var rows: Array = []
-    var nm: Dictionary = item.get("mods", {})
-    var om: Dictionary = old.get("mods", {})
-    for k in nm.keys():
-        var key := String(k)
-        if not om.has(k) or key == "extra_element" or FLAGS.has(key):
-            continue
-        var nv := float(nm[k])
-        var ov := float(om[k])
-        var col := TEXT
-        if nv > ov + 0.0001:
-            col = GOOD
-        elif nv < ov - 0.0001:
-            col = BAD
-        rows.append(_row("%s (was %s)" % [stat_line(key, nm[k]), stat_value(key, om[k])], TEXT_SIZE, col))
-    for k in om.keys():
-        var key := String(k)
-        if nm.has(k):
-            continue
-        var lost_bad := true
-        if key != "extra_element" and not FLAGS.has(key):
-            lost_bad = float(om[k]) > 0.0
-        rows.append(_row("Lose %s" % stat_line(key, om[k]), TEXT_SIZE, BAD if lost_bad else GOOD))
-    var ocm: Dictionary = old.get("cond_mods", {})
-    var ncm: Dictionary = item.get("cond_mods", {})
-    for cond in ocm.keys():
-        for k in ocm[cond].keys():
-            if ncm.has(cond) and ncm[cond].has(k):
-                continue
-            rows.append(_row("Lose %s: %s" % [CONDS.get(String(cond), String(cond)), stat_line(String(k), ocm[cond][k])], TEXT_SIZE, BAD))
-    var new_trig: Array = []
-    for t in item.get("triggers", []):
-        new_trig.append(trigger_line(t))
-    for t in old.get("triggers", []):
-        var line := trigger_line(t)
-        if not new_trig.has(line):
-            rows.append(_row("Lose %s" % line, TEXT_SIZE, BAD))
-    if old.has("active") and old.get("id", "") != item.get("id", ""):
-        rows.append(_row("Lose the %s active" % old.get("name", "?"), TEXT_SIZE, BAD))
-    return rows
-
-
 ## "Heats you 3 per shot"; continuous guns (beams, sprays) say it per second.
 static func _pressure_text(verb: String, data: GunData, rate: float) -> String:
     var v := absf(data.pressure_per_shot)
@@ -534,6 +422,219 @@ static func _pressure_text(verb: String, data: GunData, rate: float) -> String:
     return "%s you %.0f per shot" % [verb, v]
 
 
+## Core loop reset 4.1: one card, Brotato style. A big icon on a rarity plate, the name, the
+## rarity word, up to 3 tag chips, "you have 2" when owned; then ONE effect line, up to 3
+## deltas against your build (green better, red worse), one resonance or synergy line, the
+## curse, the price. No slots, no "replaces", no set lists. Cards keep to MAX_WORDS words
+## (name, effect, stack, deltas, resonance) and MAX_HEIGHT px: deltas are dropped first.
+static func _item_model(item: Dictionary, opts: Dictionary) -> Dictionary:
+    var rarity := clampi(int(item.get("rarity", 0)), 0, Items.RARITY_COLORS.size() - 1)
+    var rc: Color = Items.RARITY_COLORS[rarity]
+    var tc: Color = Items.RARITY_TEXT_COLORS[rarity]
+    var id := String(item.get("id", ""))
+    var player = opts.get("player", null)
+    if player != null and not is_instance_valid(player):
+        player = null
+    var width := float(opts.get("width", DEFAULT_WIDTH))
+    var rows: Array = []
+    var words := _words(String(item.get("name", "")))
+
+    # The one effect line (Items' authored line: verb first, or a signed number and unit).
+    var effect := String(item.get("desc", ""))
+    rows.append(_row(effect, TEXT_SIZE, TEXT))
+    words += _words(effect)
+
+    # Stack: "You have 2. Taking this makes 3." (in the header, dim).
+    var stack := ""
+    var owned := 0
+    if player != null and id != "":
+        owned = int(player.item_count(id))
+        if bool(opts.get("owned", false)):
+            stack = "You have %d." % owned if owned > 1 else ""
+        elif owned > 0 and String(item.get("slot", "")) != "active":
+            stack = "You have %d. Taking this makes %d." % [owned, owned + 1]
+            if String(item.get("stack", "add")) == "once":
+                stack = "You have it: a copy adds nothing."
+        words += _words(stack)
+
+    # Synergy, else resonance: one line in its colour.
+    var extra: Array = []
+    if player != null and id != "" and not bool(opts.get("owned", false)):
+        var syn: Dictionary = Items.synergy_if_taken(player, id)
+        if not syn.is_empty():
+            extra.append(_row("Forms SYNERGY: %s" % syn["name"], TEXT_SIZE, syn.get("color", SET_COL)))
+        else:
+            var res_line := _resonance_line(player, item)
+            if not res_line.is_empty():
+                extra.append(res_line)
+    for e in extra:
+        words += _words(String(e["t"]))
+
+    # Curse (cursed loot, deal cards): the red line under the effect.
+    var curse := String(opts.get("curse", ""))
+    var curse_rows: Array = []
+    if curse != "" and Items.CURSES.has(curse):
+        curse_rows.append(_row("Curse: %s" % String(Items.CURSES[curse]["line"]), TEXT_SIZE, BAD))
+    var drawback := String(opts.get("drawback", ""))
+    if drawback != "":
+        curse_rows.append(_row(drawback, TEXT_SIZE, BAD))
+
+    # Actives swap: the one honest line about what leaves.
+    if player != null and String(item.get("slot", "")) == "active" and player.equipment.has("active") and String(player.equipment["active"]) != id:
+        var old: Dictionary = Items.get_item(String(player.equipment["active"]))
+        curse_rows.append(_row("Swaps out your %s" % String(old.get("name", "active")), LABEL_SIZE, DIM))
+
+    var price_rows: Array = []
+    if opts.has("price"):
+        var price := int(opts["price"])
+        var afford: bool = bool(opts.get("afford", true))
+        var ptext := "FREE" if price <= 0 else "%d scrap" % price
+        if price > 0 and not afford:
+            var short := int(opts.get("short", 0))
+            ptext += ("  need %d more" % short) if short > 0 else "  (not enough)"
+        price_rows.append(_row(ptext, PRICE_SIZE, SCRAP_COL if afford or price <= 0 else BAD, 2.0))
+    for n in opts.get("notes", []):
+        price_rows.append(_row(String(n), LABEL_SIZE, DIM, 2.0))
+
+    var chips: Array = []
+    for t in item.get("tags", []):
+        if chips.size() < 3:
+            chips.append(String(t))
+    var model := {
+        "icon": Items.icon(item), "icon_tint": Items.ui_icon_tint(item), "big": true,
+        "title": String(item.get("name", "?")), "title_col": tc,
+        "sub": _sub_line(item), "sub_col": tc, "frame": rc, "pips": rarity + 1,
+        "chips": chips, "stack": stack, "cursed": curse != "" or bool(opts.get("cursed", false)),
+        "rows": rows,
+    }
+    # Deltas against the build, as many as the word and height budgets allow.
+    var deltas: Array = _delta_rows(player, item, owned) if player != null and not bool(opts.get("owned", false)) else []
+    var fixed: Array = rows + extra + curse_rows + price_rows
+    model["rows"] = fixed
+    while not deltas.is_empty():
+        var dw := 0
+        for d in deltas:
+            dw += _words(String(d["t"]))
+        model["rows"] = rows + deltas + extra + curse_rows + price_rows
+        if words + dw <= MAX_WORDS and _model_height(model, width) <= MAX_HEIGHT:
+            break
+        deltas.pop_back()
+        model["rows"] = rows + deltas + extra + curse_rows + price_rows
+    for d in deltas:
+        words += _words(String(d["t"]))
+    model["words"] = words
+    return model
+
+
+## "Rare" (with "active, 2 charges" for an active, "gun mod" for a mod).
+static func _sub_line(item: Dictionary) -> String:
+    var word := Items.rarity_name(item)
+    match String(item.get("slot", "")):
+        "active":
+            var ch := int(item.get("active", {}).get("charges", 1))
+            return "%s active, %d charge%s" % [word, ch, "" if ch == 1 else "s"]
+        "mod":
+            return "%s gun mod" % word
+    return word
+
+
+## Words for the readability budget: spaces split, numbers count, "->" does not.
+static func _words(text: String) -> int:
+    var n := 0
+    for w in text.split(" ", false):
+        if w != "->" and w != ":":
+            n += 1
+    return n
+
+
+## Up to 3 stat lines this item changes on the build, before -> after, green or red.
+static func _delta_rows(player, item: Dictionary, owned: int) -> Array:
+    var out: Array = []
+    if String(item.get("slot", "")) in ["mod", "active"]:
+        return out
+    var rule := String(item.get("stack", "add"))
+    var marginal := Items.stack_factor(rule, owned + 1) - Items.stack_factor(rule, owned)
+    if marginal <= 0.0:
+        return out
+    var mods: Dictionary = item.get("mods", {})
+    for k in mods.keys():
+        var key := String(k)
+        if out.size() >= 3 or not DELTA_LABELS.has(key) or mods[k] is String:
+            continue
+        var add := float(mods[k]) * marginal
+        var before: float = player.max_hp if key == "max_hp" else player.stat(key)
+        var after := before + add
+        if Items.STAT_CAPS.has(key):
+            after = minf(after, float(Items.STAT_CAPS[key]))
+        if key == "max_hp":
+            after = maxf(20.0, after)
+        var lab: Array = DELTA_LABELS[key]
+        var line := "%s %s -> %s" % [lab[0], _dfmt(String(lab[1]), before), _dfmt(String(lab[1]), after)]
+        var col := TEXT
+        if after > before + 0.0001:
+            col = GOOD
+        elif after < before - 0.0001:
+            col = BAD
+        out.append(_row(line, TEXT_SIZE, col))
+    return out
+
+
+static func _dfmt(kind: String, v: float) -> String:
+    match kind:
+        "int":
+            return "%d" % roundi(v)
+        "pct0":
+            return "%d%%" % roundi(v * 100.0)
+        "x":
+            return "x%.1f" % (2.0 + v)
+    return "%+d%%" % roundi(v * 100.0)
+
+
+## Stats a card shows before -> after: label, format ("pct" signed share, "pct0" plain share,
+## "int", "x" crit multiplier).
+const DELTA_LABELS := {
+    "max_hp": ["Max HP", "int"], "armor": ["Armour", "int"], "speed": ["Speed", "pct"],
+    "dodge": ["Dodge", "pct0"], "fire_rate": ["Fire rate", "pct"], "dmg": ["Damage", "pct"],
+    "potency": ["Reaction power", "pct"], "crit": ["Crit", "pct0"], "crit_dmg": ["Crit hit", "x"],
+    "range": ["Range", "pct"], "luck": ["Luck", "pct"], "scrap_gain": ["Scrap", "pct"],
+    "xp_gain": ["XP", "pct"], "pressure_limit": ["Vent capacity", "int"],
+    "vent_power": ["Vent power", "pct"], "vent_charge": ["Vent fill", "pct"],
+    "vent_radius": ["Vent radius", "pct"], "thorns": ["Thorns", "int"],
+    "state_duration": ["Element time", "pct"], "mend": ["Mending", "pct"],
+    "shot_size": ["Shot size", "pct"], "lifesteal": ["Leech", "int"],
+    "bounce": ["Bounces", "int"], "pierce": ["Pierce", "int"], "proj_count": ["Shots", "int"],
+    "dash_charges": ["Dash charges", "int"], "orbitals": ["Orbitals", "int"], "shards": ["Shards", "int"],
+}
+
+
+## The resonance this item completes or advances: "Vent 2/3 -> 3/3: resonance!" in the tag's
+## colour, or {} when it has no tag.
+static func _resonance_line(player, item: Dictionary) -> Dictionary:
+    var tags: Array = item.get("tags", [])
+    if tags.is_empty():
+        return {}
+    var tc: Dictionary = Items.tag_counts(player)
+    var best := ""
+    var best_score := -1
+    for t in tags:
+        var n := int(tc.get(t, 0))
+        var completes := n + 1 == Items.RESONANCE_AT[0] or n + 1 == Items.RESONANCE_AT[1]
+        var score := (100 if completes else 0) + n
+        if score > best_score:
+            best_score = score
+            best = String(t)
+    var have := int(tc.get(best, 0))
+    var goal := Items.RESONANCE_AT[0] if have < Items.RESONANCE_AT[0] else Items.RESONANCE_AT[1]
+    if have >= Items.RESONANCE_AT[1]:
+        return {}
+    var text := "%s %d/%d -> %d/%d" % [Items.tag_name(best), have, goal, have + 1, goal]
+    if have + 1 == goal:
+        text += ": resonance!"
+    return _row(text, TEXT_SIZE, Items.tag_color(best))
+
+
+## A gun card (4.1): name, tier pips, element badges, one line for how it fires, damage per
+## second and pressure, weight, copies; mods by name on a carried gun; the price.
 static func _gun_model(data: GunData, opts: Dictionary) -> Dictionary:
     var gun = opts.get("gun", null)
     if gun != null and not is_instance_valid(gun):
@@ -551,100 +652,91 @@ static func _gun_model(data: GunData, opts: Dictionary) -> Dictionary:
     if gun != null:
         rate = gun.fire_rate()
     if gun != null and data.spin_up > 0.0:
-        rate = gun.top_fire_rate()   # repeaters show their full speed
+        rate = gun.top_fire_rate()
     var dps := data.dps_at(dmg, rate)
     var rows: Array = []
-    var badges: Array = [data.element]
-    for extra in [data.alt_element, data.extra_element]:
-        if extra != Element.Kind.NONE and not badges.has(extra):
-            badges.append(extra)
-    rows.append(_badges(badges))
-    if data.mechanic == "charge":
-        rows.append(_row("%.0f damage every %.1f s" % [dmg, data.charge_time + 1.0 / maxf(0.05, rate)], LABEL_SIZE, TEXT))
-    else:
-        rows.append(_row("%.0f damage x %.1f / s" % [dmg, rate], LABEL_SIZE, TEXT))
-    rows.append(_row("DPS %.0f" % dps, LABEL_SIZE, Color.WHITE))
-    # How it fires, in plain words (GunData.how), then counts it does not already say.
-    if data.how() != "":
-        rows.append(_row(data.how(), TEXT_SIZE, TEXT))
-    if data.projectile_count > 1 and data.mechanic == "shot" and not data.archetype in ["shotgun", "homing", "helix"]:
-        rows.append(_row("%d projectiles per shot" % data.projectile_count, TEXT_SIZE, TEXT))
-    if data.pierce > 0 and data.pierce < 10 and data.mechanic != "beam":
-        rows.append(_row("Pierce %d" % data.pierce, TEXT_SIZE, TEXT))
-    if data.alt_element != Element.Kind.NONE:
-        rows.append(_row("Every other shot: %s" % Element.NAMES[data.alt_element], TEXT_SIZE, TEXT))
-    if data.extra_element != Element.Kind.NONE:
-        rows.append(_row("Every hit also applies %s" % Element.NAMES[data.extra_element], TEXT_SIZE, TEXT))
+    var how := data.how()
+    if how == "" or how.length() > 60:
+        how = (data.archetype.capitalize() if data.archetype != "" else "Gun")
+    rows.append(_row(how, TEXT_SIZE, TEXT))
+    var heat := ""
     if data.pressure_per_shot > 0.0:
-        rows.append(_row(_pressure_text("Heats", data, rate), TEXT_SIZE, TEXT))
+        heat = ", heats %.0f" % absf(data.pressure_per_shot)
     elif data.pressure_per_shot < 0.0:
-        rows.append(_row(_pressure_text("Chills", data, rate), TEXT_SIZE, TEXT))
+        heat = ", chills %.0f" % absf(data.pressure_per_shot)
+    rows.append(_row("DPS %.0f%s" % [dps, heat], TEXT_SIZE, Color.WHITE))
     var weight_text := "Weight %d" % data.weight
     var weight_col := TEXT
     if player != null and gun == null:
         var free: int = int(player.weight_capacity) - int(player.total_weight())
-        weight_text += "  (%d free)" % free
+        weight_text += ", %d free" % free
         if free < data.weight:
             weight_col = BAD
-    rows.append(_row(weight_text, TEXT_SIZE, weight_col))
-
-    # Mods fitted (a carried gun) or slots it would have.
+    rows.append(_row(weight_text, LABEL_SIZE, weight_col))
     if gun != null or not mods.is_empty():
-        rows.append(_sep())
-        rows.append(_row("Mod slots %d / %d" % [mods.size(), tier], LABEL_SIZE, DIM))
+        var names: Array = []
         for mid in mods:
             var m: Dictionary = Items.get_item(String(mid))
-            if m.is_empty():
-                continue
-            rows.append(_row("%s (%s)" % [m["name"], Items.rarity_name(m)], TEXT_SIZE, Items.rarity_text_color(m), 0.0, 8.0))
-            if not bool(opts.get("compact", false)):
-                for line in describe_mods(m):
-                    rows.append(_row(line, TEXT_SIZE, DIM, 0.0, 20.0))
-
-    # Copies: duplicates are a build, two at one tier combine into the next.
+            if not m.is_empty():
+                names.append(String(m["name"]))
+        rows.append(_row("Mods %d/%d%s" % [mods.size(), tier, (": " + ", ".join(names)) if not names.is_empty() else ""], LABEL_SIZE, DIM))
     if player != null:
-        var copies: Array = []
         for g in player.guns:
-            if g != gun and g.data.id == data.id:
-                copies.append(g)
-        if not copies.is_empty():
-            rows.append(_sep())
-            var twin = null
-            for g in copies:
-                if int(g.tier) == tier:
-                    twin = g
-                    break
-            if twin != null and tier < Gun.MAX_TIER:
-                var lead := "Twin carried" if gun != null else "You carry one"
-                rows.append(_row("%s: combines to tier %s" % [lead, ROMAN[tier]], LABEL_SIZE, GOOD))
-            else:
-                var tiers: Array = []
-                for g in copies:
-                    tiers.append(ROMAN[clampi(int(g.tier) - 1, 0, ROMAN.size() - 1)])
-                rows.append(_row("Copies carried: tier %s" % ", ".join(tiers), TEXT_SIZE, DIM))
-
+            if g != gun and g.data.id == data.id and int(g.tier) == tier and tier < Gun.MAX_TIER:
+                rows.append(_row("You carry one: combines to tier %s" % ROMAN[tier], LABEL_SIZE, GOOD))
+                break
     if opts.has("price"):
-        rows.append(_sep())
         var price := int(opts["price"])
         var afford: bool = bool(opts.get("afford", true))
         var ptext := "FREE" if price <= 0 else "%d scrap" % price
         if price > 0 and not afford:
-            ptext += "  (not enough)"
-        rows.append(_row(ptext, LABEL_SIZE, SCRAP_COL if afford or price <= 0 else BAD))
+            var short := int(opts.get("short", 0))
+            ptext += ("  need %d more" % short) if short > 0 else "  (not enough)"
+        rows.append(_row(ptext, PRICE_SIZE, SCRAP_COL if afford or price <= 0 else BAD, 2.0))
     for n in opts.get("notes", []):
-        rows.append(_row(String(n), TEXT_SIZE, DIM, 2.0))
-
-    var arche := data.archetype.capitalize() if data.archetype != "" else "Gun"
+        rows.append(_row(String(n), LABEL_SIZE, DIM, 2.0))
     var title := data.display_name
     if tier > 1:
         title += " " + ROMAN[clampi(tier - 1, 0, ROMAN.size() - 1)]
-    # A tier wears the rarity palette (Items.tier_rarity); the element is the badge row.
     var tr := Items.tier_rarity(tier)
+    var chips: Array = [data.element]
+    for extra in [data.alt_element, data.extra_element]:
+        if extra != Element.Kind.NONE and not chips.has(extra):
+            chips.append(extra)
+    var words := _words(title)
+    for r in rows:
+        if r.has("t") and String(r["t"]).find("scrap") < 0 and r["s"] != PRICE_SIZE:
+            words += _words(String(r["t"]))
     return {
-        "icon": Art.gun_icon(data.id), "icon_tint": Color.WHITE, "title": title, "title_col": Items.RARITY_TEXT_COLORS[tr],
-        "sub": "%s %s  tier %s" % [Items.RARITY_NAMES[tr], arche, ROMAN[clampi(tier - 1, 0, ROMAN.size() - 1)]],
-        "sub_col": Items.RARITY_TEXT_COLORS[tr], "frame": Items.RARITY_COLORS[tr], "pips": clampi(tier, 1, 5), "rows": rows,
+        "icon": Art.gun_icon(data.id), "icon_tint": Color.WHITE, "big": true, "title": title,
+        "title_col": Items.RARITY_TEXT_COLORS[tr],
+        "sub": "%s, tier %s" % [Items.RARITY_NAMES[tr], ROMAN[clampi(tier - 1, 0, ROMAN.size() - 1)]],
+        "sub_col": Items.RARITY_TEXT_COLORS[tr], "frame": Items.RARITY_COLORS[tr], "pips": clampi(tier, 1, 5),
+        "chips": chips.slice(0, 3), "rows": rows, "words": words,
     }
+
+
+## Readability numbers of one card (the --card-shot test): words, effect lines, smallest
+## font, height.
+static func card_stats(item: Dictionary, opts: Dictionary = {}) -> Dictionary:
+    var model := _item_model(item, opts)
+    return _stats_of(model, opts)
+
+
+static func gun_stats(data: GunData, opts: Dictionary = {}) -> Dictionary:
+    return _stats_of(_gun_model(data, opts), opts)
+
+
+static func _stats_of(model: Dictionary, opts: Dictionary) -> Dictionary:
+    var w := float(opts.get("width", DEFAULT_WIDTH))
+    var smallest := TITLE_SIZE
+    for r in model.get("rows", []):
+        if r.has("s"):
+            smallest = mini(smallest, int(r["s"]))
+    smallest = mini(smallest, LABEL_SIZE if (model.get("chips", []) as Array).size() > 0 or String(model.get("stack", "")) != "" else smallest)
+    var eff_lines := 1
+    return { "words": int(model.get("words", 0)), "effect_lines": eff_lines, "font": smallest,
+        "height": _model_height(model, w), "wrapped": _wrap(String(model["rows"][0]["t"]), TEXT_SIZE, w - PAD * 2.0).size() }
 
 
 static func _bonus_text(mods: Dictionary) -> String:
@@ -661,6 +753,10 @@ static func _header_height(model: Dictionary, width: float) -> float:
     var tw := width - PAD * 2.0 - ICON - 8.0 - 10.0
     var lines := _wrap(String(model.get("title", "")), TITLE_SIZE, tw).size()
     var text_h := float(lines) * (TITLE_SIZE + LINE_GAP) + LABEL_SIZE + LINE_GAP
+    if not (model.get("chips", []) as Array).is_empty():
+        text_h += float(BADGE_SIZE) + 6.0 + LINE_GAP
+    if String(model.get("stack", "")) != "":
+        text_h += float(_wrap(String(model["stack"]), LABEL_SIZE, tw).size()) * (LABEL_SIZE + LINE_GAP)
     return maxf(ICON + 8.0, text_h) + 12.0
 
 
@@ -691,7 +787,8 @@ static func _render(canvas: CanvasItem, rect: Rect2, model: Dictionary, opts: Di
     # Header: the icon at 2x, the title (wrapped), slot and rarity.
     var ib := Rect2(r.position + Vector2(PAD, PAD), Vector2(ICON + 8.0, ICON + 8.0))
     canvas.draw_rect(ib, Color(0, 0, 0, 0.55))
-    canvas.draw_rect(ib, Color(frame, 0.6), false, 2.0)
+    canvas.draw_rect(ib, Color(frame, 0.22))   # the rarity plate
+    canvas.draw_rect(ib, Color(frame, 0.75), false, 2.0)
     if model.has("icon"):
         Art.draw_icon(canvas, model["icon"], Rect2(ib.position + Vector2(4, 4), Vector2(ICON, ICON)), model.get("icon_tint", Color.WHITE))
     if model.has("pips"):
@@ -702,7 +799,30 @@ static func _render(canvas: CanvasItem, rect: Rect2, model: Dictionary, opts: Di
     for line in _wrap(String(model.get("title", "")), TITLE_SIZE, tw):
         _text(canvas, Vector2(tx, y), line, TITLE_SIZE, model.get("title_col", TEXT))
         y += TITLE_SIZE + LINE_GAP
-    _text(canvas, Vector2(tx, y), String(model.get("sub", "")), LABEL_SIZE, model.get("sub_col", DIM))
+    var sub := String(model.get("sub", ""))
+    _text(canvas, Vector2(tx, y), sub, LABEL_SIZE, model.get("sub_col", DIM))
+    if bool(model.get("cursed", false)):
+        # The red CURSED chip beside the rarity word (cursed loot and deals, 11.1).
+        var cx := tx + Art.FONT.get_string_size(sub, HORIZONTAL_ALIGNMENT_LEFT, -1, LABEL_SIZE).x + 10.0
+        var cw := Art.FONT.get_string_size("CURSED", HORIZONTAL_ALIGNMENT_LEFT, -1, LABEL_SIZE).x + 12.0
+        var chip := Rect2(cx, y - 1.0, cw, LABEL_SIZE + 4.0)
+        canvas.draw_rect(chip, Color(0.35, 0.03, 0.05, 0.95))
+        canvas.draw_rect(chip, CURSED_COL, false, 1.5)
+        _text(canvas, Vector2(cx + 6.0, y + 1.0), "CURSED", LABEL_SIZE, Color(1.0, 0.85, 0.85))
+    y += LABEL_SIZE + LINE_GAP
+    var chips: Array = model.get("chips", [])
+    if not chips.is_empty():
+        var bx := tx
+        for c in chips:
+            if c is int:
+                bx += draw_element_badge(canvas, Vector2(bx, y + 2.0), c).x + 6.0
+            else:
+                bx += draw_tag_chip(canvas, Vector2(bx, y + 2.0), String(c)).x + 6.0
+        y += float(BADGE_SIZE) + 6.0 + LINE_GAP
+    if String(model.get("stack", "")) != "":
+        for line in _wrap(String(model["stack"]), LABEL_SIZE, tw):
+            _text(canvas, Vector2(tx, y), line, LABEL_SIZE, DIM)
+            y += LABEL_SIZE + LINE_GAP
     y = r.position.y + PAD + _header_height(model, w) - 8.0
     canvas.draw_line(Vector2(r.position.x + PAD, y), Vector2(r.end.x - PAD, y), Color(frame, 0.5), 2.0)
     y += 8.0

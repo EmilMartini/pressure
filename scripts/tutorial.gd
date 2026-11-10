@@ -22,8 +22,8 @@ const STEPS := [
     { "id": "aim", "text": "Your guns aim and fire on their own", "sub": "Stay in range of the dummies. Water makes them Wet.", "action": "move" },
     { "id": "react", "text": "Take the Flare Pistol", "sub": "Water + fire = Steam. Every pair of elements reacts.", "action": "interact" },
     { "id": "vent", "text": "Dash through danger", "sub": "A dash is a short dodge: nothing touches you while you dash.\nFiring fills the gauge under your health; the vent blasts it out on its own.", "action": "dash" },
-    { "id": "gear", "text": "Equip the Rusted Helm", "sub": "Gear fills slots: head, chest, hands, feet, two rings, two trinkets, an active.", "action": "interact" },
-    { "id": "active", "text": "Take the Smelling Salts", "sub": "An active item does something when you use it.", "action": "interact" },
+    { "id": "gear", "text": "Take the Iron Heart", "sub": "Items stack: every one you take adds to your build.", "action": "interact" },
+    { "id": "active", "text": "Take the Flash Powder", "sub": "An active item does something when you use it.", "action": "interact" },
     { "id": "door", "text": "The door is open: walk through to the hub", "sub": "Every run is five floors, each ends in a boss.\nDying keeps your unlocks and Embers. The hub is where you spend them.", "action": "move" },
 ]
 
@@ -126,9 +126,9 @@ func _enter_step(i: int) -> void:
         "vent":
             _vented = false
         "gear":
-            _add_offer(Items.offer("rusted_helm", 0), Vector2(-320, -60))
+            _add_offer(Items.offer("iron_heart", 0), Vector2(-320, -60))
         "active":
-            _add_offer(Items.offer("smelling_salts", 0), Vector2(-60, -190))
+            _add_offer(Items.offer("flash_powder", 0), Vector2(-60, -190))
         "door":
             if current.doors.has(DOOR_DIR):
                 current.doors[DOOR_DIR].set_state(Door.State.OPEN)
@@ -188,14 +188,14 @@ func _check_step() -> bool:
             return _vented
 
         "gear":
-            if _sub == 0 and p.equipment.values().has("rusted_helm"):
+            if _sub == 0 and p.inventory.has("iron_heart"):
                 _sub = 1
                 Sfx.play("ui_confirm")
             elif _sub == 1 and _sheet_open():
                 _sub = 2
             return _sub == 2 and not _sheet_open()
         "active":
-            if _sub == 0 and p.equipment.get("active", "") == "smelling_salts":
+            if _sub == 0 and p.equipment.get("active", "") == "flash_powder":
                 _sub = 1
                 if p.active_charges <= 0:
                     p.active_charges = 1
@@ -234,7 +234,7 @@ func _instruction() -> Array:
         "active":
             if _sub == 1:
                 text = "Use your active item"
-                sub = "Smelling Salts heal you. Active items recharge as you clear rooms."
+                sub = "Flash Powder slows everything near you. Active items recharge as you clear rooms."
                 action = "active"
     return [text, sub, action]
 

@@ -288,7 +288,7 @@ func _ready() -> void:
         # several rendered frames pass before the next physics tick.
         if current != null and not current.pedestals.is_empty():
             var p0 := players[0]
-            p0.equip("bone_ring")
+            p0.equip("iron_heart")
             p0.input._edges["interact"] = true
             var ped0: Pedestal = current.pedestals[0]
             p0.global_position = ped0.global_position
@@ -615,7 +615,7 @@ func start_floor(n: int) -> void:
     _loot = { "free": 0, "bought": 0, "guns": 0, "hearts": 0, "cards": 0, "levels": 0, "scrap_max": scrap, "earned": 0 }
     if autotest and not players.is_empty():
         print("[FLOOR] %d region=%s at t=%.0f kills=%d scrap=%d hp=%.0f level=%d guns=%d items=%d" % [
-            n, region_id, _clock, total_kills, scrap, players[0].hp, players[0].level, players[0].guns.size(), players[0].equipment.size()])
+            n, region_id, _clock, total_kills, scrap, players[0].hp, players[0].level, players[0].guns.size(), players[0].inventory.size()])
     Telemetry.floor_start(self)
     pressure_meter.start_floor(n, region_id)
     rooms = FloorGen.generate(region_id, party_luck(), players)
@@ -1103,7 +1103,7 @@ func _loadout_stats(p: Player) -> String:
     var gun_ids: Array = []
     for g in p.guns:
         gun_ids.append(g.data.id)
-    var items: Array = p.equipment.values()
+    var items: Array = p.gear_counts().keys()
     items.sort()
     var keys := ["speed", "armor", "crit", "luck", "regen", "lifesteal", "scrap_gain", "state_duration"]
     for ek in Element.NAMES.values():
@@ -1386,13 +1386,14 @@ func _place_well() -> void:
             return
 
 
-## Worn items a player could drop in a Well (gear, not gun mods).
+## Items a player could drop in a Well (passives and the active, not gun mods).
 func well_choices(pl: Player) -> Array:
     var out: Array = []
-    for key in pl.equipment.keys():
-        var id := String(pl.equipment[key])
-        if not Items.get_item(id).is_empty() and not out.has(id):
-            out.append(id)
+    for id in pl.inventory.keys():
+        if not Items.get_item(String(id)).is_empty():
+            out.append(String(id))
+    if pl.equipment.has("active"):
+        out.append(String(pl.equipment["active"]))
     return out
 
 
@@ -1625,15 +1626,20 @@ func _apply_bot_build(build: Dictionary, n: int) -> void:
         var parts: PackedStringArray = String(spec).split("@")
         if p.add_gun(parts[0], false):
             p.guns[p.guns.size() - 1].tier = int(parts[1]) if parts.size() > 1 else 1
-    for slot in p.equipment.keys():
-        p.equipment.erase(slot)
+    p.equipment.clear()
+    p.inventory.clear()
+    # Builds keep their old ids: they map to today's catalog here (Items.LEGACY_IDS), and
+    # copies stack now that slots are gone.
     for id in entry["gear"]:
-        p.equip(id)
+        var nid := Items.migrate_id(String(id))
+        if nid != "":
+            p.equip(nid)
     for spec in entry["mods"]:
         var parts: PackedStringArray = String(spec).split("@")
+        var mid := Items.migrate_id(parts[0])
         for g in p.guns:
-            if g.data.id == parts[1] and g.mods.size() < g.tier:
-                p.equip_mod_on(g, parts[0])
+            if mid != "" and g.data.id == parts[1] and g.mods.size() < g.tier:
+                p.equip_mod_on(g, mid)
                 break
     var by_id := {}
     for opt in LevelUps.options():
@@ -1658,7 +1664,7 @@ func _apply_bot_build(build: Dictionary, n: int) -> void:
     for g in p.guns:
         guns.append("%s@%d%s" % [g.data.id, g.tier, ("+" + "+".join(g.mods)) if not g.mods.is_empty() else ""])
     print("[BUILD] floor %d: level %d, max hp %.0f, lifesteal %.0f, regen %.1f, armor %.0f, guns %s, gear %s" % [
-        n, p.level, p.max_hp, p.stat("lifesteal"), p.stat("regen"), p.stat("armor"), ", ".join(guns), str(p.equipment.values())])
+        n, p.level, p.max_hp, p.stat("lifesteal"), p.stat("regen"), p.stat("armor"), ", ".join(guns), str(p.gear_counts())])
 
 
 func _setup_autotest() -> void:
@@ -1682,6 +1688,8 @@ func _setup_autotest() -> void:
     _apply_bot_build(_bot_build(), _bot_start_floor())
     if GearShot.wanted():
         add_child(GearShot.new(self))   # worn-gear sheets and fight close-ups (gear_shot.gd)
+    if CardShot.wanted():
+        add_child(CardShot.new(self))   # card readability numbers and sheets (card_shot.gd)
     if ClarityShot.wanted():
         add_child(ClarityShot.new(self))   # before/after readability shots and numbers (clarity_shot.gd)
     if AliveShot.wanted():
@@ -1731,6 +1739,58 @@ func _setup_autotest() -> void:
         pf.equip_mod_on(pf.guns[0], "split_chamber")
         _focus_probe_t = FOCUS_PROBE_ADD
         print("[LOADOUT] focus-probe: etcher_beam+split_chamber (beams %d)" % pf.guns[0].shot_count())
+    var syn_arg := ""
+    for a in OS.get_cmdline_user_args():
+        if a == "--synergy-probe" or a.begins_with("--synergy-probe="):
+            syn_arg = a
+    if syn_arg != "":
+        # Section 12 check: every synergy pair granted at once (a resonance need gets 3
+        # items of its tag), four guns that make Wet and Shock, one arena; after
+        # SYNERGY_PROBE_SECS each synergy prints [SYNERGY] name ok when it formed and its rule
+        # fired (or its stat bonus holds).
+        var ps := players[0]
+        ps.weight_capacity_base = 40
+        ps.recalc_stats()
+        for g in ps.guns.duplicate():
+            ps.drop_gun(g)
+        # Straight shooters (shards, boomerangs and bounces need them), Wet and Shock first.
+        var picked: Array = []
+        var els: Array = []
+        for want in [Element.Kind.WET, Element.Kind.SHOCK, -1, -1]:
+            for gid in Guns.all_ids():
+                var gd: GunData = Guns.make(String(gid))
+                if picked.has(gid) or gd.mechanic != "shot" or gd.behaviour != "straight":
+                    continue
+                if (want >= 0 and gd.element != want) or (want < 0 and els.has(gd.element)):
+                    continue
+                picked.append(gid)
+                els.append(gd.element)
+                break
+        for gid in picked:
+            ps.add_gun(String(gid), false)
+        # --synergy-probe=a / =b: the first or second half of the list (Transmuter, in the
+        # second half, turns Wet into ice, which would starve the first half's chains).
+        _synergy_probe_list = Items.SYNERGIES.duplicate()
+        var half := Items.SYNERGIES.size() / 2
+        if syn_arg.ends_with("=a"):
+            _synergy_probe_list = Items.SYNERGIES.slice(0, half)
+        elif syn_arg.ends_with("=b"):
+            _synergy_probe_list = Items.SYNERGIES.slice(half)
+        print("[LOADOUT] synergy-probe guns: %s" % ",".join(picked))
+        for sd in _synergy_probe_list:
+            for need in sd["needs"]:
+                var n := String(need)
+                if n.begins_with("res:"):
+                    for k in 3:
+                        ps.equip("plate_scrap" if n == "res:guard" else "iron_heart")
+                elif n.begins_with("any:"):
+                    if not ps.inventory.has(n.substr(4) + "wet"):
+                        ps.equip(n.substr(4) + "wet")
+                elif Items.get_item(n).get("stack", "add") != "once" or not ps.inventory.has(n):
+                    if not ps.inventory.has(n):
+                        ps.equip(n)
+        _synergy_probe_t = SYNERGY_PROBE_SECS
+        print("[LOADOUT] synergy-probe: %d synergies formed" % ps.synergies.size())
     if OS.get_cmdline_user_args().has("--arsenal"):
         var p := players[0]
         p.weight_capacity_base = 80
@@ -1747,6 +1807,27 @@ func _setup_autotest() -> void:
 
 const FOCUS_PROBE_ADD := 25.0
 var _focus_probe_t := -1.0
+var _synergy_probe_t := -1.0
+var _synergy_probe_list: Array = []
+const SYNERGY_PROBE_SECS := 70.0
+
+
+func _synergy_report(p: Player) -> void:
+    var ok := 0
+    for sd in _synergy_probe_list:
+        var id := String(sd["id"])
+        var formed := p.synergies.has(id)
+        var fired := int(Items.syn_hits.get(id, 0))
+        var mods: Dictionary = sd.get("mods", {})
+        var holds := not mods.is_empty()
+        for k in mods.keys():
+            if p.stat(String(k)) < float(mods[k]) - 0.0001:
+                holds = false
+        var good := formed and (fired > 0 or holds)
+        if good:
+            ok += 1
+        print("[SYNERGY] %s %s (formed %s, fired %d%s)" % [sd["name"], "ok" if good else "FAIL", formed, fired, ", stat bonus holds" if holds else ""])
+    print("[SYNERGY-PROBE] %s %d of %d" % ["PASS" if ok == _synergy_probe_list.size() else "FAIL", ok, _synergy_probe_list.size()])
 
 
 func _autotest_tick(delta: float) -> void:
@@ -1757,6 +1838,10 @@ func _autotest_tick(delta: float) -> void:
             for gid in ["arc_rifle", "flare_pistol", "frost_caster"]:
                 players[0].add_gun(gid, false)
             print("[LOADOUT] focus-probe: four guns at t=%.0f" % _clock)
+    if _synergy_probe_t > 0.0:
+        _synergy_probe_t -= delta
+        if _synergy_probe_t <= 0.0 and not players.is_empty():
+            _synergy_report(players[0])
 
     if _perf_probe:
         # Every 2 s a sample line, but only with --perf-lines: printing costs a hitch, so a
@@ -1848,7 +1933,7 @@ func _autotest_tick(delta: float) -> void:
         _shots_taken["sheet"] = true
         # Gear for the sheet screenshot only with --gear: it biased the shock reactions.
         if OS.get_cmdline_user_args().has("--gear"):
-            for id in ["conductors_mail", "ring_shock", "vial_shock", "lucky_cog", "quick_hands"]:
+            for id in ["conductors_mail", "sigil_shock", "vial_shock", "wishbone_ring", "hair_trigger"]:
                 p.equip(id)
         pause_menu.show_for_test("res://autotest/sheet.png", p)
     for shot_time in [15.0, 60.0, 120.0, 180.0, 240.0]:
@@ -2128,9 +2213,9 @@ func _bot_wants(o: Dictionary, p: Player) -> bool:
                 var slot: String = String(Items.get_item(o["id"]).get("slot", ""))
                 if slot == "mod":
                     return p.mod_target() != null
-                if slot in ["ring", "trinket"]:
-                    return not (p.equipment.has(slot + "1") and p.equipment.has(slot + "2"))
-                return not p.equipment.has(slot)
+                if slot == "active":
+                    return not p.equipment.has("active")
+                return true
             return true
         "carry":
             if not old_balance:
@@ -2180,17 +2265,12 @@ func _bot_wants_item(o: Dictionary, p: Player) -> bool:
         return p.mod_target() != null
     if o["price"] == 0:
         return true
-    var worn := ""
-    if slot in ["ring", "trinket"]:
-        if not (p.equipment.has(slot + "1") and p.equipment.has(slot + "2")):
+    if slot == "active":
+        if not p.equipment.has("active"):
             return true
-        var a := int(Items.get_item(String(p.equipment[slot + "1"])).get("rarity", 0))
-        var b := int(Items.get_item(String(p.equipment[slot + "2"])).get("rarity", 0))
-        return int(it.get("rarity", 0)) > mini(a, b)
-    if not p.equipment.has(slot):
-        return true
-    worn = String(p.equipment[slot])
-    return int(it.get("rarity", 0)) > int(Items.get_item(worn).get("rarity", 0)) or o.get("mystery", false)
+        var worn := String(p.equipment["active"])
+        return int(it.get("rarity", 0)) > int(Items.get_item(worn).get("rarity", 0)) or o.get("mystery", false)
+    return true   # items stack (3.1): every one adds to the build
 
 
 func _bot_offer_score(ped) -> float:
@@ -2199,7 +2279,9 @@ func _bot_offer_score(ped) -> float:
     var o: Dictionary = ped.offer
     match String(o["kind"]):
         "item":
-            return 10.0 + float(Items.get_item(String(o["id"])).get("rarity", 0)) + float(o["price"]) * 0.001
+            # Like a player: a card that forms a synergy wins (section 12).
+            var syn := 6.0 if not players.is_empty() and not Items.synergy_if_taken(players[0], String(o["id"])).is_empty() else 0.0
+            return 10.0 + syn + float(Items.get_item(String(o["id"])).get("rarity", 0)) + float(o["price"]) * 0.001
         "gun":
             return 9.0
         "repair":

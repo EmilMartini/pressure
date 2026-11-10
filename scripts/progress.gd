@@ -194,7 +194,7 @@ var run_lesson := ""
 ## opened } } }. Opened shortcuts never close. Version 4 of the save; older saves load
 ## with an empty world.
 var world: Dictionary = {}
-const SAVE_VERSION := 4
+const SAVE_VERSION := 5   # 5: items without slots (Core loop reset 3.3)
 
 
 func _ready() -> void:
@@ -499,7 +499,7 @@ func load_save() -> void:
     var saved_world = parsed.get("world", {})
     if saved_world is Dictionary:
         world = saved_world
-    if int(parsed.get("version", 1)) < SAVE_VERSION:
+    if int(parsed.get("version", 1)) < 4:
         # Version 3 and older had no world state: nothing opened yet. Written back at once
         # so the file says version 4.
         print("[MIGRATE] save version %d -> %d: world state added (%d shortcuts)" % [int(parsed.get("version", 1)), SAVE_VERSION, (world.get("shortcuts", {}) as Dictionary).size()])
@@ -513,17 +513,42 @@ func load_save() -> void:
     var saved_loadout = parsed.get("loadout", {})
     if saved_loadout is Dictionary:
         loadout = saved_loadout
+    # Version 5 (Core loop reset 3.3): old item ids run through Items.LEGACY_IDS. Two Relics
+    # that map to one item collapse; the dropped one's Relic price is refunded in Embers
+    # once Mastery has loaded. A Well item that is already a Relic leaves the Well.
+    var refunds: Array = []
+    var first_old: Dictionary = {}
+    var mapped := 0
     for key in ["relics", "well_saved"]:
         var arr = parsed.get(key, [])
         if arr is Array:
             var clean: Array = []
             for id in arr:
+                var nid := Items.legacy_successor(String(id))
+                if nid != String(id):
+                    mapped += 1
+                    print("[MIGRATE] %s %s -> %s" % [key, String(id), nid])
+                if clean.has(nid) or (key == "well_saved" and relics.has(nid)):
+                    if key == "relics":
+                        refunds.append([String(first_old.get(nid, nid)), String(id), nid])
+                    continue
+                if key == "relics":
+                    first_old[nid] = String(id)
                 # The Progress autoload loads before Items has built its catalog: only drop
                 # unknown ids once the catalog exists, or a load that saves at once (a
                 # migration) would wipe every Relic.
-                if Items.catalog.is_empty() or not Items.get_item(String(id)).is_empty():
-                    clean.append(String(id))
+                if Items.catalog.is_empty() or not Items.get_item(nid).is_empty():
+                    clean.append(nid)
             set(key, clean)
+    var lrelic := String(loadout.get("relic", ""))
+    if lrelic != "" and Items.legacy_successor(lrelic) != lrelic:
+        loadout["relic"] = Items.legacy_successor(lrelic)
+        mapped += 1
+    if int(parsed.get("version", 1)) < 5:
+        print("[MIGRATE] save version %d -> 5: items without slots, %d old item ids mapped" % [int(parsed.get("version", 1)), mapped])
+        migrated += 1
+    if not refunds.is_empty():
+        _refund_relics.call_deferred(refunds)
     var saved_names: Array = parsed.get("names", [])
     for i in mini(4, saved_names.size()):
         names[i] = str(saved_names[i]).strip_edges().left(12)
@@ -553,6 +578,19 @@ func _settle(touched := false) -> void:
 
 
 # --- The Well and Relics (Loadout) -----------------------------------------
+
+
+## Version 5: two old Relics that became one item. Refunds the dropped one's Relic price
+## (priced at the item it became) once Items and Mastery have loaded.
+func _refund_relics(refunds: Array) -> void:
+    var total := 0
+    for r in refunds:
+        var n := Loadout.relic_price(String(r[2]))
+        total += n
+        print("[MIGRATE] relic %s+%s -> %s, refunded %d" % [r[0], r[1], r[2], n])
+    if total > 0:
+        Mastery.embers += total
+        Mastery.save()
 
 
 ## Items dropped in a Well this run wait for the Wellkeeper, however the run ended. Her

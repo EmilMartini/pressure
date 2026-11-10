@@ -1,8 +1,8 @@
 class_name CharacterSheet
 extends PanelContainer
-## One player's character screen, paper-doll style. Gear slots sit around the figure (the
-## same form the player has in game), guns below, the focused thing's ItemCard in the
-## middle and a grouped stat panel on the right.
+## The Build page (Core loop reset 4.3): every item you own as a 48 px icon with its count,
+## grouped by tag with each tag's resonance progress ("Vent 2/3"); your guns with tier pips
+## and mods below; the focused thing's card in the middle; key numbers first on the right.
 ##
 ## Controls (no Godot focus: the sheet polls pads itself and reads keys in _input):
 ##   d-pad / left stick / arrows / WASD  move through the slots and guns in reading order
@@ -15,7 +15,9 @@ extends PanelContainer
 
 const PANEL_SIZE := Vector2(1240, 684)
 const TOP := 56.0                 # header band (title and the prompt legend)
-const SLOT_SIZE := 60.0
+const SLOT_SIZE := 48.0
+const ITEM_GAP := 6.0
+const LABEL_W := 118.0
 const DOLL_W := 400.0
 const DOLL_H := 330.0
 const GUN_CELL := 60.0
@@ -44,7 +46,8 @@ var on_close: Callable
 var player: Player
 var _canvas: Control
 var _stats_view: Control
-var _cells: Array = []            # { kind: "slot" | "gun", key, gun, rect, row }
+var _cells: Array = []            # { kind: "item" | "gun", id, gun, rect, row }
+var _groups: Array = []           # [tag, label rect y, [ids]] for the item area
 var _focus := 0
 var _stats: Array = []            # { h } | { n, v, c } | { t, c }
 var _stats_scroll := 0.0
@@ -108,10 +111,39 @@ func _rebuild() -> void:
     if player == null or not is_instance_valid(player):
         return
     var row := 0
-    for keys in SLOT_ROWS:
-        for key in keys:
-            var pos: Vector2 = SLOT_LAYOUT[key]
-            _cells.append({ "kind": "slot", "key": key, "rect": Rect2(Vector2(pos.x, TOP + pos.y), Vector2(SLOT_SIZE, SLOT_SIZE)), "row": row })
+    _groups.clear()
+    var by_tag: Dictionary = {}
+    var order: Array = []
+    if player.equipment.has("active"):
+        by_tag["active"] = [String(player.equipment["active"])]
+        order.append("active")
+    var ids: Array = player.inventory.keys()
+    ids.sort_custom(func(a, b): return int(Items.get_item(a).get("rarity", 0)) > int(Items.get_item(b).get("rarity", 0)))
+    var tc: Dictionary = Items.tag_counts(player)
+    for id in ids:
+        var tags: Array = Items.get_item(String(id)).get("tags", [])
+        var tag := "other"
+        var best := -1
+        for t in tags:
+            if int(tc.get(t, 0)) > best:
+                best = int(tc.get(t, 0))
+                tag = String(t)
+        if not by_tag.has(tag):
+            by_tag[tag] = []
+            order.append(tag)
+        by_tag[tag].append(String(id))
+    var per_row := int((DOLL_W - LABEL_W) / (SLOT_SIZE + ITEM_GAP))
+    var y := TOP + 8.0
+    for tag in order:
+        var list: Array = by_tag[tag]
+        _groups.append([tag, y, list])
+        for k in list.size():
+            if k > 0 and k % per_row == 0:
+                y += SLOT_SIZE + ITEM_GAP
+                row += 1
+            var x := LABEL_W + float(k % per_row) * (SLOT_SIZE + ITEM_GAP)
+            _cells.append({ "kind": "item", "id": list[k], "rect": Rect2(Vector2(x, y), Vector2(SLOT_SIZE, SLOT_SIZE)), "row": row })
+        y += SLOT_SIZE + ITEM_GAP
         row += 1
     var gy := _guns_top() + 34.0
     for i in player.guns.size():
@@ -455,52 +487,48 @@ func _draw_doll() -> void:
     var r := Rect2(Vector2(0, TOP), Vector2(DOLL_W, DOLL_H))
     _canvas.draw_rect(r, Color(0.05, 0.04, 0.06, 0.8))
     _canvas.draw_rect(r, Color(0.3, 0.26, 0.28), false, 2.0)
-    var form: Dictionary = Items.form_for(player)
-    var tint: Color = form["color"]
-    var center := Vector2(DOLL_W / 2.0, TOP + 170.0)
-    var t := float(Time.get_ticks_msec()) / 1000.0
-    _canvas.draw_texture_rect(Art.PARTICLES["light"], Rect2(center - Vector2(130, 130), Vector2(260, 260)), false, Color(tint, 0.16))
-    _canvas.draw_colored_polygon(PackedVector2Array([center + Vector2(-50, 84), center + Vector2(50, 84), center + Vector2(60, 104), center + Vector2(-60, 104)]), Color(0.3, 0.27, 0.29))
-    # The figure is the same generated one as in game, at 9 screen px per figure pixel
-    # (nearest filtering on the canvas keeps it crisp).
-    var bob := sin(t * 2.0) * 3.0
-    var body_center := center + Vector2(0, -8.0 + bob)
-    Items.draw_costume(_canvas, player, body_center, 9.0, 1.0, false)
-    var frames: Array = form["frames"]
-    var doll_tex: Texture2D = frames[0]
-    _canvas.draw_texture_rect(doll_tex, Rect2(body_center - Vector2(72, 72), Vector2(144, 144)), false, Color.WHITE)
-    Items.draw_costume(_canvas, player, body_center, 9.0, 1.0, true)
-    var form_name := String(form["name"])
-    var name_size := 22 if form_name.length() <= 18 else 20
-    _text(Vector2(center.x - 120.0, TOP + 290.0), form_name, name_size, tint.lerp(Color.WHITE, 0.3), HORIZONTAL_ALIGNMENT_CENTER, 240.0)
-    _text(Vector2(center.x - 120.0, TOP + 316.0), "%d / %d HP" % [int(ceilf(player.hp)), int(player.max_hp)], 20, UiTheme.BONE, HORIZONTAL_ALIGNMENT_CENTER, 240.0)
+    if _groups.is_empty():
+        _text(Vector2(16, TOP + 40.0), "No items yet. Treasure rooms, bosses and shops have them.", 20, UiTheme.DIM, HORIZONTAL_ALIGNMENT_LEFT, DOLL_W - 32.0)
+    var tc: Dictionary = Items.tag_counts(player)
+    for g in _groups:
+        var tag := String(g[0])
+        var gy := float(g[1])
+        if gy + SLOT_SIZE > TOP + DOLL_H:
+            break
+        var label := "Active" if tag == "active" else ("Other" if tag == "other" else Items.tag_name(tag))
+        var col: Color = UiTheme.BONE if tag in ["active", "other"] else Items.tag_color(tag)
+        _text(Vector2(10, gy + 18.0), label, 20, col)
+        if not tag in ["active", "other"]:
+            var n := int(tc.get(tag, 0))
+            var goal := 3 if n < 3 else 5
+            var prog := "%d/%d" % [n, goal] if n < 5 else "%d: II" % n
+            _text(Vector2(10, gy + 42.0), prog, 18, GOOD if n >= 3 else UiTheme.DIM)
     for i in _cells.size():
         var c: Dictionary = _cells[i]
-        if c["kind"] == "slot":
+        if c["kind"] == "item" and (c["rect"] as Rect2).end.y <= TOP + DOLL_H:
             _draw_slot(c, i == _focus)
 
 
 func _draw_slot(c: Dictionary, focused: bool) -> void:
-    var key := String(c["key"])
+    var id := String(c["id"])
     var rect: Rect2 = c["rect"]
-    var filled := player.equipment.has(key)
-    var it: Dictionary = Items.get_item(player.equipment[key]) if filled else {}
-    var border := Items.rarity_color(it) if filled else Color(0.3, 0.27, 0.3)
+    var it: Dictionary = Items.get_item(id)
+    var border := Items.rarity_color(it)
     if focused:
-        _canvas.draw_rect(rect.grow(6.0), Color(border, 0.3))
+        _canvas.draw_rect(rect.grow(5.0), Color(border, 0.3))
     _canvas.draw_rect(rect, Color(0.08, 0.06, 0.08, 0.95))
-    if filled:
-        var charged := key != "active" or player.active_charges > 0
-        Art.draw_icon(_canvas, Items.icon(it), rect.grow(-4.0), Items.ui_icon_tint(it) if charged else Color(0.4, 0.38, 0.4))
-        # Rarity as a count too (1 Common .. 5 Legendary), top-left: not colour alone.
-        ItemCard.draw_pips(_canvas, rect.position + Vector2(5, 5), int(it.get("rarity", 0)) + 1, border)
-        if key == "active":
-            var max_charges := Items.active_max_charges(player)
-            for k in max_charges:
-                var pip := Rect2(rect.position.x + 5.0 + float(k) * 9.0, rect.end.y - 9.0, 7.0, 5.0)
-                _canvas.draw_rect(pip, Color(1.0, 0.9, 0.4) if k < player.active_charges else Color(0.25, 0.22, 0.24))
-    else:
-        Art.draw_icon(_canvas, Items.slot_icon(key), rect.grow(-4.0), Color(0.32, 0.3, 0.32, 0.8))
+    var is_active := String(it.get("slot", "")) == "active"
+    var charged := not is_active or player.active_charges > 0
+    Art.draw_icon(_canvas, Items.icon(it), rect.grow(-3.0), Items.ui_icon_tint(it) if charged else Color(0.4, 0.38, 0.4))
+    ItemCard.draw_pips(_canvas, rect.position + Vector2(4, 4), int(it.get("rarity", 0)) + 1, border, 3.0)
+    var n := int(player.inventory.get(id, 0))
+    if n > 1:
+        _text(Vector2(rect.position.x, rect.end.y - 4.0), "x%d" % n, 18, UiTheme.BONE, HORIZONTAL_ALIGNMENT_RIGHT, rect.size.x - 3.0)
+    if is_active:
+        var max_charges := Items.active_max_charges(player)
+        for k in max_charges:
+            var pip := Rect2(rect.position.x + 4.0 + float(k) * 8.0, rect.end.y - 8.0, 6.0, 4.0)
+            _canvas.draw_rect(pip, Color(1.0, 0.9, 0.4) if k < player.active_charges else Color(0.25, 0.22, 0.24))
     _canvas.draw_rect(rect, Color.WHITE if focused else border, false, 3.0 if focused else 2.0)
 
 
@@ -567,17 +595,13 @@ func _draw_card() -> void:
             gun_opts["compact"] = true
         ItemCard.draw_gun(_canvas, rect, g.data, gun_opts)
         return
-    var key := String(c["key"])
-    if player.equipment.has(key):
-        var it: Dictionary = Items.get_item(player.equipment[key])
-        var opts := { "player": player, "width": CARD_W }
-        if it.has("active"):
-            opts["notes"] = ["Charges %d / %d. A cleared room refills one." % [player.active_charges, Items.active_max_charges(player)]]
-        ItemCard.draw(_canvas, rect, it, opts)
-    else:
-        var slot := key.rstrip("12")
-        ItemCard.draw_note(_canvas, rect, String(ItemCard.SLOT_TITLES.get(slot, slot.capitalize())), "Empty slot",
-            "Gear drops from elites and bosses, and sits in shops and treasure rooms.", Items.slot_icon(slot))
+    var it: Dictionary = Items.get_item(String(c.get("id", "")))
+    if it.is_empty():
+        return
+    var opts := { "player": player, "width": CARD_W, "owned": true }
+    if it.has("active"):
+        opts["notes"] = ["Charges %d / %d. A cleared room refills one." % [player.active_charges, Items.active_max_charges(player)]]
+    ItemCard.draw(_canvas, rect, it, opts)
 
 
 # --- Stats -------------------------------------------------------------------------
@@ -598,6 +622,36 @@ func _build_stats() -> void:
     _stats.clear()
     var p := player
     var groups: Array = []
+
+    # 4.3: eight key numbers with totals, and the Mending reserve left this floor.
+    _stats_begin()
+    _add("Damage", _pct(p.stat("dmg")))
+    _add("Fire rate", _pct(p.stat("fire_rate")))
+    _add("Reaction power", _pct(p.stat("potency")))
+    _add("Crit", "%d%%, hits x%.1f" % [roundi(p.stat("crit") * 100.0), 2.0 + p.stat("crit_dmg")])
+    _add("Max HP", "%d / %d" % [int(ceilf(p.hp)), int(p.max_hp)])
+    var arm := maxf(0.0, p.stat("armor"))
+    _add("Armour", "%d, takes %d%% off" % [int(arm), roundi(100.0 * arm / (Player.ARMOR_K + arm))])
+    _add("Speed", "%d  (%s)" % [int(p.move_speed()), _pct(p.stat("speed"))])
+    _add("Dash charges", "%d" % p.dash_max_charges())
+    _add("Mending left", "%d of %d HP" % [int(p.mend_left), int(p.mend_max)], Color(0.55, 0.95, 0.6))
+    groups.append(["BUILD", _stats_end()])
+
+    _stats_begin()
+    for sid in p.synergies:
+        var sd := Items.synergy(String(sid))
+        _add(String(sd["name"]), "", sd.get("color", GOOD))
+        _stats.append({ "t": String(sd["line"]), "c": UiTheme.DIM })
+    groups.append(["SYNERGIES", _stats_end()])
+
+    _stats_begin()
+    var tcount := Items.tag_counts(p)
+    for t in tcount.keys():
+        var have := int(tcount[t])
+        var goal := 3 if have < 3 else 5
+        _add(Items.tag_name(String(t)), "%d / %d" % [have, goal] if have < 5 else "%d: doubled" % have, Items.tag_color(String(t)))
+        _stats.append({ "t": "%s %s" % ["*" if have >= 3 else "at 3:", Items.resonance_line(String(t))], "c": GOOD if have >= 3 else UiTheme.DIM })
+    groups.append(["RESONANCES", _stats_end()])
 
     _stats_begin()
     _add("Max HP", "%d / %d" % [int(ceilf(p.hp)), int(p.max_hp)])
@@ -671,23 +725,7 @@ func _build_stats() -> void:
     _nz("Luck", p.stat("luck"), _pct(p.stat("luck")))
     groups.append(["PROGRESS", _stats_end()])
 
-    _stats_begin()
-    var counts := Items.set_counts(p)
-    for sid in counts.keys():
-        var s: Dictionary = Items.SETS[sid]
-        var have := int(counts[sid])
-        var col := ItemCard.SET_COL   # not the set's element colour: names stay neutral
-        _add(String(s["name"]), "%d / %d" % [have, (s["items"] as Array).size()], col)
-        var thresholds: Array = s["bonuses"].keys()
-        thresholds.sort()
-        for th in thresholds:
-            var bits: Array = []
-            for bk in s["bonuses"][th].keys():
-                bits.append(ItemCard.stat_line(String(bk), s["bonuses"][th][bk]))
-            var on := have >= int(th)
-            if on or th == _next_threshold(thresholds, have):
-                _stats.append({ "t": "%s %d: %s" % ["*" if on else "next", int(th), ", ".join(bits)], "c": GOOD if on else UiTheme.DIM })
-    groups.append(["SETS", _stats_end()])
+
 
     _stats.clear()
     for grp in groups:

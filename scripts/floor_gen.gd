@@ -266,6 +266,10 @@ static func _stock_rooms_reset(rooms: Dictionary, floor_number: int, luck: float
                 for i in n:
                     var rar := Items.roll_rarity("treasure", floor_number, luck)
                     var id := Drops.roll_item_at(rar, ids + _mod_ids(), "treasure", players, "behaviour", BEHAVIOUR_SHARE)
+                    if i == n - 1 and randf() < Drops.SYNERGY_CARD_CHANCE:
+                        var sc := Drops.synergy_card(ids)
+                        if sc != "":
+                            id = sc   # section 12: the missing half of a started synergy
                     ids.append(id)
                     cards.append(Items.offer(id, 0))
                 if floor_number >= CURSED_FROM and randf() < CURSED_CHANCE:
@@ -280,9 +284,13 @@ static func _stock_rooms_reset(rooms: Dictionary, floor_number: int, luck: float
                 r.chest_tier = n
             RoomData.Type.HIDDEN:
                 r.hearts = 1
-                if randf() < 0.5:
+                var eye := 0   # Scavenger's Eye: secrets always hold items, 1 more a copy
+                for pl in players:
+                    if pl != null and is_instance_valid(pl):
+                        eye = maxi(eye, int(pl.stat("secret_loot")))
+                if eye > 0 or randf() < 0.5:
                     var ids: Array = []
-                    for i in 2:
+                    for i in 2 + eye:
                         var rar := mini(maxi(Items.Rarity.RARE, Items.roll_rarity("boss", floor_number, luck)), Items.max_rarity_unlocked())
                         var id := Drops.roll_item_at(rar, ids + _mod_ids(), "hidden", players)
                         ids.append(id)
@@ -333,7 +341,11 @@ static func stock_shop(r: RoomData, floor_number: int, luck: float, players: Arr
             have_gunware = true
         elif o.get("ware", false):
             items += 1
-    while items < SHOP_ITEMS:
+    var extra := 0   # Fortune resonance: a 5th ware
+    for pl in players:
+        if pl != null and is_instance_valid(pl):
+            extra = maxi(extra, int(pl.stat("shop_wares")))
+    while items < SHOP_ITEMS + extra:
         r.stock.append(roll_item_ware(floor_number, luck, r.stock, players, floor_number >= 2 and randf() < MYSTERY_CHANCE))
         items += 1
     if not have_gunware:
