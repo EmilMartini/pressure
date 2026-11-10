@@ -89,6 +89,10 @@ var _sprite: Sprite2D
 var _anim_t := 0.0
 var _recoil := Vector2.ZERO
 var _squash := 0.0
+## Hit feel (Vision gap analysis 6.1): the figure stretches along a dash and squashes when it
+## lands; a puff of dust at each footstep. Visual only.
+var _stretch := 0.0
+var _step := 0
 var _mastery: Node = null
 var revives_left := 0             # Shrine's Last Breath charges left this run
 var levelup_rerolls := 0          # Shrine's Second Thoughts rerolls left this run
@@ -1070,6 +1074,17 @@ func _animate(delta: float, mv: Vector2) -> void:
     _squash = maxf(0.0, _squash - delta * 6.0)
     _recoil = _recoil.move_toward(Vector2.ZERO, 60.0 * delta)
     _sprite.scale = Vector2(_squash_scale * (1.0 + 0.3 * _squash), _squash_scale * (1.0 - 0.3 * _squash))
+    _stretch = move_toward(_stretch, 1.0 if _dash_t > 0.0 else 0.0, delta * 14.0)
+    if _stretch > 0.01:
+        _sprite.scale *= Fx.stretch(_dash_dir, 0.35 * _stretch)
+    if moving and _dash_t <= 0.0:
+        var step := int(_anim_t / PI)   # one footfall per hop
+        if step != _step:
+            _step = step
+            var mn := main()
+            if mn != null and mn.fx != null:
+                mn.fx.puff(Art.PARTICLES["smoke"], global_position + Vector2(randf_range(-4.0, 4.0), radius * 0.6),
+                        Color(0.62, 0.57, 0.5, 0.22), 14.0, 0.28)
     _sprite.position = Vector2(0, -hop) + _recoil
     _sprite.rotation = sin(_anim_t) * 0.08 if moving else 0.0
 
@@ -1237,6 +1252,8 @@ func _tick_dash(delta: float) -> void:
     _dodge_flash = maxf(0.0, _dodge_flash - delta)
     if _dash_t > 0.0:
         _dash_t -= delta
+        if _dash_t <= 0.0:
+            _squash = 0.7   # the landing
         # Three afterimages over the dash, each fading out in 0.2 s.
         if _ghosts.size() < 3 and _dash_t <= DASH_TIME * (1.0 - float(_ghosts.size()) / 3.0):
             _ghosts.append([global_position, 0.0, _sprite.flip_h, _sprite.texture])

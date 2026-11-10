@@ -787,6 +787,7 @@ runs. Every build over ~275 a second (7.7k / 28 s) meets the guard. Expected fig
 | 1,000 (Emil's median) | 7.7 s | 28 s, ~70% held back |
 | 570 (Emil's weakest recent) | 13 s | 28 s, ~50% held back |
 | 243 (his weakest, old build) | 32 s | 32 s |
+| 172 (his run of 11:40 today, blood build, rollout exe) | 50.9 s measured | 50.9 s, untouched |
 | 100 to 200 (bots) | 38 to 77 s | unchanged |
 
 **Measured (headless):** `--build=storm --build-floor=N --boss-only` (new flag: a deeper build

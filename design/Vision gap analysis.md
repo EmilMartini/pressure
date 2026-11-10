@@ -522,7 +522,7 @@ art.
 | 3 | Boss entrances and deaths (**DONE 2026-11-10**) | SLAM DUNK | High | 1 session |
 | 4 | Cataclysm moments: the rare chain becomes an event | SLAM DUNK | High | 1 session |
 | 5 | Combat text diet | SLAM DUNK | High (clarity and oomph) | Small |
-| 6 | Hit feel: knockback, squash and stretch, recoil, enemy hit reactions | SLAM DUNK | High | 1 session |
+| 6 | Hit feel: knockback, squash and stretch, recoil, enemy hit reactions (**DONE 2026-11-10**, headless; window check owed) | SLAM DUNK | High | 1 session |
 | 7 | Add a dash or roll | NEEDS EMIL | High | 1 session after the decision |
 | 8 | Art-pass recipes for every region, starting with the Ossuary | SLAM DUNK | Medium-high | 1 to 2 sessions |
 | 9 | Boss sprites with animation, a player sprite | NEEDS ARTIST | Very high | Weeks, money |
@@ -579,6 +579,40 @@ on start, stop and hurt, a texel of gun recoil on the figure, a muzzle flash, an
 Every effect sits on the existing shake and flash settings.
 Done: bots' clear times and deaths match the old code within noise (knockback changes
 spacing, so measure that); one short capture strip.
+
+**Done 2026-11-10 (build `2026.11.10-hitfeel`), headless only; the capture strip is owed.**
+Every effect is drawn on the sprite only; no body, collider or speed changes, so spacing and
+balance cannot move (a real knockback shove was ruled out for that reason).
+- Already in before this pass: an element-tinted hit fade (`_flash`), a squash on hit, the gun
+  sprite's kick (5 + weight px), a figure kick per shot (`Player.kick`, 1 + weight/2 px), a
+  muzzle light puff (0.08 s), a dash puff and afterimages, a death shrink-and-fade corpse.
+- **Enemies** (`enemy.gd`): one overbright white frame per hit (modulate x2.4; plain white with
+  Options flashes off), at most every 0.1 s, and **never while the enemy telegraphs** (red
+  crouch, lit fuse, wind-up), so the tell stays the clearest thing on screen. A sprite kick away
+  from the shooter: 20 to 100% of 6 px by the hit's share of max health (a quarter of it is a
+  full kick), x0.25 bosses, x0.5 elites, x0.7 brutes, x0.5 for the horde kinds (grunt, swarmer,
+  runner, splitter); it springs back at 70 px/s. A stretch along the lunge (runners, grunts,
+  swarmers, splitters: 30% longer, 15% thinner). A death pop: the corpse starts 30% larger and
+  white, and settles in 70 ms (`Fx.CORPSE_POP`) before the old sink and fade.
+- **Player** (`player.gd`): a 35% stretch along the dash, a squash on landing (dash end), and a
+  faint dust puff at each footfall (2 particles, alpha ~0.15, under the fight's colours).
+- Shared: `Fx.stretch(dir, k)` (longer along the move, thinner across).
+
+| Bots (headless, `--fixed-fps 60`) | Before (`7cb2e32`) | After |
+|---|---|---|
+| Movers `--build=human6980 --mastery=full --start-floor=2 --kite`, 4 each | 4/4 reach floor 4; 1 to floor 5 (time cap), 3 died on floor 4 at 632 to 756 s | 4/4 reach floor 4; 4 died on floor 4 at 678 to 832 s |
+| Floor 2 / floor 3 fight seconds | 223 to 229 / 276 to 283 | 218 to 238 / 267 to 277 |
+| Idle, same build | died on floor 2 (fight 86 s) | died on floor 2 (fight 73 s) |
+| Fusion probe, floor 1 | died at the Brute King, `[FUSION-CHECK] PASS` | died at the Brute King, PASS |
+| `SCRIPT ERROR` | 0 | 0 (hub walk PASS too) |
+
+Session 4 had movers reaching floor 4 in 6 of 8; both sides here are 4 of 4, and the floor-4
+deaths come at the same times. The floor-5 run on the before side is one run in four.
+
+**Owed (window, while Emil is away):** a capture strip of a white frame plus kick on a grunt
+and on the Brute King, a runner's lunge stretch, a death pop, the player's dash stretch and
+landing, and the footstep dust on the Ossuary floor; check that a lunging runner's red crouch
+never shows white. Also the boss pace guard's grey numbers and steel rim (Core loop reset 9).
 
 **8. Art-pass recipes for every region.**
 Files: `scripts/art_pass.gd` (`RECIPES`, `light_room`), `scripts/room.gd`, `scripts/hub.gd`.

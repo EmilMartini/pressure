@@ -340,6 +340,17 @@ var pace_secs := 0.0
 var pace_t := 0.0
 var pace_lost := 0.0
 var _pace_flash := 0.0
+## Hit feel (Vision gap analysis 6.1, 2026-11-10). Sprite-only: the body, its collision and
+## its spacing never move, so balance stays put. _white_frames: one overbright frame per hit
+## (at most every WHITE_CD s); _kick: a push of the sprite away from the shooter, sized by the
+## hit's share of max health; _stretch: the body lengthens along a lunge.
+var _white_frames := 0
+var _white_cd := 0.0
+var _kick := Vector2.ZERO
+var _stretch := 0.0
+const WHITE_CD := 0.1
+const KICK_PX := 6.0
+const KICK_CROWD := ["grunt", "swarmer", "runner", "splitter"]   # half the kick in a horde
 
 ## Damage every enemy has actually lost (overkill trimmed), all sources: the room reads it to
 ## measure the party's output per arena second, which sizes the boss (Room._begin_boss).
@@ -814,6 +825,10 @@ func take_damage(amount: float, color: Color, flash: bool = true, source: Player
         _flash = 0.12
         _flash_color = color
         _squash = 1.0
+        if _white_cd <= 0.0:
+            _white_frames = 1
+            _white_cd = WHITE_CD
+        _hit_kick(amount, source)
         Sfx.hit_enemy(self)
     if hp <= 0.0:
         _die()
@@ -830,6 +845,20 @@ func take_damage(amount: float, color: Color, flash: bool = true, source: Player
         _teleport_cd = 1.0
         _blink(150.0)
     queue_redraw()
+
+
+## Hit feel: kick the sprite away from the shooter, 20 to 100% of KICK_PX by the hit's share
+## of max health (a quarter of it is a full kick), times cc_resist (bosses a quarter, elites
+## half), halved for the horde kinds. Visual only; Enemy.shove is the real push.
+func _hit_kick(amount: float, source: Player) -> void:
+    if source == null or not is_instance_valid(source):
+        return
+    var away := global_position - source.global_position
+    if away.length_squared() < 1.0:
+        return
+    var k := clampf(amount / maxf(1.0, max_hp) * 4.0, 0.2, 1.0)
+    var px := KICK_PX * k * cc_resist() * (0.5 if kind_name in KICK_CROWD else 1.0)
+    _kick = (_kick + away.normalized() * px).limit_length(KICK_PX)
 
 
 func heal(amount: float, _source: String = "") -> void:
@@ -1348,6 +1377,7 @@ func _physics_process(delta: float) -> void:
     _flash = maxf(0.0, _flash - delta)
     _shield_flash = maxf(0.0, _shield_flash - delta)
     _pace_flash = maxf(0.0, _pace_flash - delta)
+    _white_cd = maxf(0.0, _white_cd - delta)
 
     _floor_t -= delta
     if _floor_t <= 0.0:
@@ -2968,6 +2998,12 @@ func _update_sprite() -> void:
         c = c.lerp(BossShow.accent(boss_kind), 0.15 if _phase == 2 else 0.35)
     if _flash > 0.0:
         c = c.lerp(Color.WHITE, 0.8)
+    if _white_frames > 0:
+        # One overbright frame: the body goes white for a beat. A telegraph (red crouch, lit
+        # fuse, wind-up) keeps its colour: the tell is the clearest thing on screen.
+        _white_frames -= 1
+        if _crouch_t <= 0.0 and _fuse < 0.0 and _mode != MODE_TELEGRAPH:
+            c = Color(2.4, 2.4, 2.4, c.a) if Settings.flag("flashes") else Color(1.0, 1.0, 1.0, c.a)
     _sprite.modulate = c
     if absf(velocity.x) > 1.0:
         _sprite.flip_h = velocity.x < 0.0
@@ -2983,11 +3019,15 @@ func _update_sprite() -> void:
         hop = 1.5 + 1.5 * sin(_fx_t * 5.0 + float(get_instance_id() % 7))   # a hover, not a hop
     var s := _sprite_scale * (_spawn_t + 0.35 * sin(_spawn_t * PI))
     _sprite.scale = Vector2(s * (1.0 + 0.4 * _squash), s * (1.0 - 0.4 * _squash))
+    _stretch = move_toward(_stretch, 1.0 if _lunge_t > 0.0 else 0.0, delta * 10.0)
+    if _stretch > 0.01:
+        _sprite.scale *= Fx.stretch(velocity, 0.3 * _stretch)
+    _kick = _kick.move_toward(Vector2.ZERO, 70.0 * delta)
     if kind_name == "boss":
         # Idle breathing: a slow heave, quicker as the phases climb.
         var br := sin(_fx_t * (2.2 + 0.7 * float(_phase - 1)))
         _sprite.scale *= Vector2(1.0 - 0.025 * br, 1.0 + 0.045 * br)
-    _sprite.position = Vector2(0, -hop)
+    _sprite.position = Vector2(0, -hop) + _kick
     _sprite.rotation = (sin(_anim_t) * 0.12 if moving else 0.0)
 
 

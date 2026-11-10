@@ -1021,6 +1021,22 @@ func label(pos: Vector2, text: String, color: Color, size: int = 30, life: float
     count_text("label")
 
 
+## Squash-and-stretch factor for a sprite moving along `dir`: longer by `k` along the move,
+## thinner by half of it across (a side-view figure: x is across the screen, y up it).
+static func stretch(dir: Vector2, k: float) -> Vector2:
+    if dir.length_squared() < 1.0:
+        return Vector2(1.0 - 0.5 * k, 1.0 + k)
+    var d := dir.normalized()
+    var ax := absf(d.x)
+    var ay := absf(d.y)
+    return Vector2(1.0 + k * ax - 0.5 * k * ay, 1.0 + k * ay - 0.5 * k * ax)
+
+
+## A body left where an enemy died: CORPSE_POP s of white pop (bigger, overbright), then it
+## sinks and fades over the rest of its half second.
+const CORPSE_POP := 0.07
+
+
 func corpse(tex: Texture2D, pos: Vector2, scale: float, color: Color, flip: bool) -> void:
     _corpses.append({ "tex": tex, "pos": pos, "scale": scale, "color": color, "flip": flip, "rot": randf_range(-1.2, 1.2), "t": 0.5, "life": 0.5 })
 
@@ -2106,6 +2122,12 @@ func _draw() -> void:
         var col: Color = c["color"]
         col = col.darkened(0.5 * k)
         col.a = 1.0 - k
+        var age: float = c["life"] - c["t"]
+        if age < CORPSE_POP:
+            var pop := 1.0 - age / CORPSE_POP
+            sx *= 1.0 + 0.3 * pop
+            sy *= 1.0 + 0.3 * pop
+            col = Color(1.0 + 1.4 * pop, 1.0 + 1.4 * pop, 1.0 + 1.4 * pop, 1.0)
         draw_set_transform(c["pos"] + Vector2(0, 6.0 * k), c["rot"] * k, Vector2(sx, sy))
         draw_texture(tex, -tex.get_size() / 2.0, col)
     draw_set_transform_matrix(Transform2D.IDENTITY)
