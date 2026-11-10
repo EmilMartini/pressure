@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"$CLAUDE_PROJECT_DIR/.claude/hooks/no_game_windows.py\"",
+            "timeout": 10,
+            "statusMessage": "Checking for game windows"
+          }
+        ]
+      }
+    ]
+  }
+}
