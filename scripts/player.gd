@@ -388,12 +388,18 @@ func drop_gun(gun: Gun) -> String:
     return id
 
 
-## Guns sit in a ring around the figure so what you carry is what you see.
+## Weapons hover at fixed spots around the figure (decision A8, Brotato-like): each slot
+## has its own spot, beside the body rather than over the head or under the feet, so the
+## figure stays readable. Guns fire from their spot; melee lunges out from it and back.
+const GUN_SPOTS := [Vector2(34, -14), Vector2(-34, -14), Vector2(-30, 20), Vector2(30, 20)]
 func _layout_guns() -> void:
     var n := guns.size()
     for i in n:
-        var angle := -PI / 2.0 + TAU * float(i) / float(n)
-        guns[i].position = Vector2.RIGHT.rotated(angle) * (GUN_RING + 4.0 * float(mini(n, 8)))
+        if n <= GUN_SPOTS.size():
+            guns[i].position = GUN_SPOTS[i]
+        else:
+            var angle := -PI / 2.0 + TAU * float(i) / float(n)
+            guns[i].position = Vector2.RIGHT.rotated(angle) * (GUN_RING + 4.0 * float(mini(n, 8)))
 
 
 func element_kinds() -> Array:

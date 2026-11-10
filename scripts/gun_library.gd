@@ -321,7 +321,7 @@ const DEFS := {
     # --- Melee (Arsenal expansion 2.3, 4.2) --------------------------------------------
     # Single-target dps about 130% of the gun band for the weight (the risk of standing
     # close), times the rarity premium: damage = band x 1.3 x premium / (rate x the style
-    # and rule factor in Melee.single_mult). Hits past the first in a swing take 75%, at
+    # and rule factor in Melee.single_mult). Hits past the first in a swing take 25%, at
     # most 12 a swing. Pressure per second about a gun's of the same weight.
     "tin_sabre": { "display_name": "Tin Sabre", "archetype": "melee", "style": "sweep", "rarity": 0, "element": K.NONE,
         "weight": 2, "damage": 20.0, "fire_rate": 1.6, "max_range": 100.0, "arc_deg": 130.0, "knockback": 60.0,
@@ -360,13 +360,13 @@ const DEFS := {
         "weight": 3, "damage": 49.0, "fire_rate": 0.85, "max_range": 60.0, "aura_radius": 70.0, "knockback": 40.0,
         "pressure_per_shot": 1.0, "reaction_mult": 1.2 },
     "hollow_sickle": { "display_name": "Hollow Sickle", "archetype": "melee", "style": "spin", "rarity": 1, "element": K.VOID,
-        "weight": 2, "damage": 27.0, "fire_rate": 1.25, "max_range": 100.0, "arc_deg": 150.0, "knockback": 40.0,
+        "weight": 2, "damage": 26.0, "fire_rate": 1.25, "max_range": 100.0, "arc_deg": 150.0, "knockback": 40.0,
         "pressure_per_shot": -1.0, "reaction_mult": 1.2 },
     "storm_lash": { "display_name": "Storm Lash", "archetype": "melee", "style": "lash", "rarity": 1, "element": K.SHOCK,
         "weight": 2, "damage": 22.0, "fire_rate": 1.2, "max_range": 180.0, "arc_deg": 45.0, "knockback": 20.0,
         "pressure_per_shot": 3.0, "reaction_mult": 1.2 },
     "parry_blade": { "display_name": "Parry Blade", "archetype": "melee", "style": "sweep", "rarity": 2, "element": K.GALE,
-        "weight": 3, "damage": 32.0, "fire_rate": 1.4, "max_range": 105.0, "arc_deg": 140.0, "knockback": 60.0,
+        "weight": 3, "damage": 29.0, "fire_rate": 1.4, "max_range": 105.0, "arc_deg": 140.0, "knockback": 60.0,
         "pressure_per_shot": -2.0, "reaction_mult": 1.0 },
     "magma_maul": { "display_name": "Magma Maul", "archetype": "melee", "style": "slam", "rarity": 2, "element": K.FIRE,
         "weight": 5, "damage": 100.0, "fire_rate": 0.75, "max_range": 60.0, "aura_radius": 70.0, "knockback": 60.0,

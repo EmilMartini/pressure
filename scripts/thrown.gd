@@ -357,6 +357,15 @@ static func hit(p: Projectile, e: Enemy, mult: float) -> void:
     p._deal_hit(e, p.damage * mult, p.potency * mult)
 
 
+## Where a throw returns to: the hover spot of the weapon that threw it (A8), else the
+## spot it left from.
+static func home(p: Projectile) -> Vector2:
+    for g in p.shooter.guns:
+        if is_instance_valid(g) and g.data.id == p.gun_id:
+            return g.global_position
+    return p.shooter.global_position + p._hand
+
+
 static func _return_mult(p: Projectile) -> float:
     var m := p.t_mult * (1.0 + _stat(p, "return_mult"))
     if p.behaviour != "disc" and p.behaviour != "star":
@@ -487,7 +496,7 @@ static func _tick_back(p: Projectile, delta: float) -> void:
         p._touch_enemies()
         if p.is_queued_for_deletion():
             return
-    var to := p.shooter.global_position - p.global_position
+    var to := home(p) - p.global_position
     var step := p.t_speed0 * RETURN_SPEED * maxf(1.0, p.t_mult) * delta
     if to.length() <= maxf(18.0, step):
         # Caught: it vanishes quietly, no effect and no sound.
@@ -725,8 +734,8 @@ static func draw(p: Projectile) -> bool:
             p.draw_circle(-o, r * 0.6, c)
         "anchor":
             if p.shooter != null and is_instance_valid(p.shooter):
-                var home := p.to_local(p.shooter.global_position)
-                p.draw_dashed_line(home, Vector2.ZERO, Color(0.55, 0.55, 0.6, 0.5), 1.5, 5.0)
+                var hm := p.to_local(home(p))
+                p.draw_dashed_line(hm, Vector2.ZERO, Color(0.55, 0.55, 0.6, 0.5), 1.5, 5.0)
             var up := -dir
             p.draw_line(up * r, -up * r * 0.6, Color(0.5, 0.52, 0.56), 3.0)
             p.draw_arc(-up * r * 0.2, r * 0.9, up.angle() + PI * 0.6, up.angle() + PI * 1.4, 10, c, 2.5)
@@ -738,7 +747,7 @@ static func draw(p: Projectile) -> bool:
         "harpoon":
             var back := Vector2.ZERO
             if p.shooter != null and is_instance_valid(p.shooter):
-                back = p.to_local(p.shooter.global_position)
+                back = p.to_local(home(p))
             p.draw_line(back.limit_length(70.0), Vector2.ZERO, Color(0.45, 0.4, 0.32, 0.45), 1.0)
             p.draw_line(-dir * r * 2.2, dir * r * 1.6, Color(0.6, 0.6, 0.65), 2.0)
             p.draw_colored_polygon(PackedVector2Array([dir * r * 2.6, dir * r * 1.2 + dir.orthogonal() * r * 0.8, dir * r * 1.2 - dir.orthogonal() * r * 0.8]), c)

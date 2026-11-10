@@ -52,6 +52,8 @@ var _target_k := 0        # homing: rotates which enemy each volley's first seek
 var melee_n := 0          # melee: swings so far (finishers, spins)
 var swing_tilt := 0.0     # melee: 1 at a swing, the held weapon tilts back and returns
 var _ready_t := 0.0       # melee: the ready pose re-aims every READY_EVERY s
+var swings: Array = []    # melee: live Melee.Swing, each travelling its path (A9)
+var _trail_on := false    # melee: drew a trail last frame (one more redraw clears it)
 var _mag := 0             # revolver: shots fired from the current magazine
 var _reload := 0.0        # revolver: seconds of reload left (drawn as a ring)
 const READY_EVERY := 0.15
@@ -110,36 +112,48 @@ func _process(delta: float) -> void:
                 if bd != Vector2.ZERO:
                     _aim = bd
             _shoot(_aim)
+    var face := _aim
+    var pose: Array = []
     if data.family == "melee":
         swing_tilt = maxf(0.0, swing_tilt - delta / 0.12)
+        Melee.tick(self, delta)
+        pose = Melee.pose(self)
         _ready_t -= delta
-        if _ready_t <= 0.0 and _since_fire > 0.3 and is_instance_valid(player):
+        if swings.is_empty() and _ready_t <= 0.0 and _since_fire > 0.3 and is_instance_valid(player):
             # The ready pose (2.1): with nothing in reach the weapon faces the closest enemy.
             _ready_t = READY_EVERY
             var near := player.nearest_enemy(500.0)
             if near != null:
                 _aim = (near.global_position - global_position).normalized()
-    _sprite.position = -_aim * _recoil
-    var left := _aim.x < 0.0
+    if not pose.is_empty():
+        # Mid-swing the weapon is out on its path (A9), its business end leading.
+        _sprite.position = pose[0]
+        face = pose[1]
+    else:
+        _sprite.position = -_aim * _recoil
+    var left := face.x < 0.0
     _sprite.flip_h = left
     if _upright:
         _sprite.rotation = 0.0
     else:
         # The tiles lie diagonally with the business end up and to the right (-45 degrees);
         # mirrored for a left aim it points up-left (-135 degrees). Turn that end to the aim.
-        _sprite.rotation = _aim.angle() + (PI * 0.75 if left else PI * 0.25)
-        if swing_tilt > 0.0:
+        _sprite.rotation = face.angle() + (PI * 0.75 if left else PI * 0.25)
+        if swing_tilt > 0.0 and pose.is_empty():
             # A swing tilts back over the first 0.05 s, then follows through.
             var back := sin(swing_tilt * PI) * 0.7
             _sprite.rotation += -back if not left else back
-    _sprite.scale = Vector2.ONE * (1.0 + 0.08 * float(tier - 1))
+    _sprite.scale = Vector2.ONE * (1.0 + 0.08 * float(tier - 1)) * (1.15 if not pose.is_empty() else 1.0)
     if _reload > 0.0:
         _reload = maxf(0.0, _reload - delta)
-    if _charging or data.spin_up > 0.0 or data.magazine > 0:
+    if _charging or data.spin_up > 0.0 or data.magazine > 0 or not swings.is_empty() or _trail_on:
+        _trail_on = not swings.is_empty()
         queue_redraw()
 
 
 func _draw() -> void:
+    if not swings.is_empty():
+        _draw_swings()
     # Charge: a glow gathering at the muzzle. Repeater: a ring that fills as it spins up.
     if _charging and data.charge_time > 0.0:
         var f := clampf(_charge / _charge_needed(), 0.0, 1.0)
@@ -156,6 +170,32 @@ func _draw() -> void:
         # Revolver: a thin ring fills while it reloads.
         var rl := 1.0 - clampf(_reload / maxf(0.05, data.reload_time), 0.0, 1.0)
         draw_arc(Vector2.ZERO, 13.0, -PI * 0.5, -PI * 0.5 + TAU * rl, 18, Color(0.85, 0.85, 0.9, 0.5), 1.5)
+
+
+## Melee: a faint trail along the path each live swing has travelled (under hostile
+## clarity: own-effects alpha, no additive), and Twin Fangs' second blade.
+func _draw_swings() -> void:
+    var a := WeaponLooks.SMEAR_ALPHA * Settings.own_fx()
+    var col := data.color()
+    for sw in swings:
+        var f := minf(1.0, sw.t / sw.dur)
+        var piv := to_local(Melee._pivot(self, sw))
+        if sw.style in ["thrust", "jab"] and not sw.full:
+            var bl: Array = Melee.blade(self, sw, f)
+            draw_line(piv, to_local(bl[1]), Color(col, a), 3.0)
+        elif sw.style != "slam" or sw.full:
+            var a0: float = sw.dir.angle() + Melee._sweep_ang(sw, maxf(0.08, f - 0.35))
+            var a1: float = sw.dir.angle() + Melee._sweep_ang(sw, f)
+            if absf(a1 - a0) > 0.02:
+                var w := clampf(sw.far * 0.18, 4.0, 14.0)
+                draw_arc(piv, sw.far - w * 0.5, a0, a1, 12, Color(col, a * (1.0 - f * 0.5)), w)
+        if sw.second:
+            var ps: Array = Melee.pose_of(self, sw)
+            var u: Vector2 = ps[1]
+            draw_set_transform(ps[0], u.angle() + PI * 0.25, Vector2.ONE * 1.15)
+            var tex := _sprite.texture
+            draw_texture(tex, -tex.get_size() * 0.5)
+            draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
 func display_name() -> String:

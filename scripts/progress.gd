@@ -176,7 +176,7 @@ const ACHIEVEMENTS := [
     { "id": "melee_play_5", "name": "Bone Idle", "desc": "Start 4 runs",
         "stat": "runs_started", "goal": 4, "rewards": ["gun:bone_club", "item:balanced_grip"] },
     { "id": "melee_play_6", "name": "Hatchet Job", "desc": "Kill 8 elites",
-        "stat": "elites", "goal": 8, "rewards": ["gun:frost_hatchet", "item:whetstone"] },
+        "stat": "elites", "goal": 8, "rewards": ["gun:frost_hatchet", "item:edge_whetstone"] },
     { "id": "melee_play_7", "name": "Reaper's Apprentice", "desc": "Clear 6 floors",
         "stat": "floors", "goal": 6, "rewards": ["gun:hollow_sickle", "item:iron_wrists"] },
     { "id": "melee_play_8", "name": "Etcher", "desc": "Kill 600 enemies",
@@ -608,6 +608,12 @@ func load_save() -> void:
                 unlocks["kit:" + String(lo["kit"])] = true
             migrated += 1
             continue
+        if uid == "item:whetstone":
+            # Batch 1's whetstone mod shared the old trinket's id; the mod is edge_whetstone
+            # now and the trinket is open to all again, so the unlock moves to the mod.
+            uid = "item:edge_whetstone"
+            print("[MIGRATE] unlock item:whetstone -> item:edge_whetstone")
+            migrated += 1
         unlocks[uid] = true
     for k in parsed.get("stats", {}).keys():
         stats[k] = int(parsed["stats"][k])

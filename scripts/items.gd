@@ -1473,7 +1473,7 @@ func _build_catalog() -> void:
     _add("wildfire_edge", "Wildfire Edge", "trinket", R, "Melee hits on burning foes spread fire", {}, [{ "on": "hit", "melee": true, "if": "target_burning", "chance": 0.25, "do": "spread", "element": "fire", "radius": 70, "potency": 4 }], { "tags": ["blade", "fire"], "locked": true })
     _add("edge_runner", "Edge Runner", "feet", U, "While moving, swings 20% faster", {}, [], { "tags": ["blade", "swift"], "locked": true, "cond_mods": { "moving": { "swing_speed": 0.20 } } })
     # Melee mods (6): they fit any weapon; on a gun they do the gun part only.
-    _add("whetstone", "Whetstone", "mod", C, "This weapon: +15% damage; melee +10% reach", { "g_dmg": 0.15, "g_reach": 0.10 }, [], B)
+    _add("edge_whetstone", "Edge Whetstone", "mod", C, "This weapon: +15% damage; melee +10% reach", { "g_dmg": 0.15, "g_reach": 0.10 }, [], B)
     _add("weighted_pommel", "Weighted Pommel", "mod", U, "This weapon: +25% damage, -10% speed", { "g_dmg": 0.25, "g_fire_rate": -0.10 }, [], B)
     _add("long_haft", "Long Haft", "mod", U, "This weapon: melee +25% reach, guns +15% range", { "g_reach": 0.25, "g_range": 0.15 }, [], B)
     _add("balanced_grip", "Balanced Grip", "mod", C, "This weapon: +15% swing or fire rate", { "g_fire_rate": 0.15 }, [], B)

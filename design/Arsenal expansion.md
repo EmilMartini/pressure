@@ -21,6 +21,8 @@ No game code changed in that session.
 | A5 | **Mostly elemental.** Most weapons carry an element, so reactions stay the heart of the game. A few plain or Stone weapons give contrast, and some legendaries carry two elements. |
 | A6 | **Mostly unlocked over time.** A fresh save starts with a core set, and the rest unlock through lessons, challenges and milestones, Isaac-style. |
 | A7 | **Code-drawn art now, the art pack later.** Each family gets a consistent code-drawn look now. When Emil picks an art pack, its weapon sprites replace them. |
+| A8 | **All four weapons are visible, hovering around the character**, each at its own spot (Brotato-like). Guns point and fire from their spot; melee weapons physically lunge or sweep out to the enemy and back. |
+| A9 | **A melee hit lands only where the blade actually passes.** Thrusts stab out in a line to the target and back; swings sweep a real arc; enemies are hit only if the weapon passes through them, with a little hit-stop and knockback on contact. |
 
 ## Rules that still apply
 
@@ -1107,6 +1109,84 @@ weak. The levers are the thrown share (100%) and the knives' 1.5 s stick.
 - Lobs (Boulder Mortar, the flasks): the 25% shadow only.
 - The TRIALS plinth in the Stair, and its board both locked and open (`--hub-shot
   --trials-open --keep-save`).
+
+#### Batch 2b done (2026-11-10, VERSION 2026.11.10-arsenal2b): decisions A8 and A9
+
+**Built:**
+- **A8, the weapon ring.** `Player.GUN_SPOTS`: up to four weapons hover at fixed spots
+  beside the body, upper right, upper left, lower left and lower right (34 px out, clear of
+  the head and feet). More than four weapons fall back to the old even ring. Each weapon's
+  code-drawn look (`Art.gun_icon`, with `WeaponLooks.sprite_for` as the art-pack swap) turns
+  to its target. Guns, beams and charges already fired from their own node, so they now fire
+  from the spot. Thrown weapons leave from the spot and fly back to it (`Thrown.home`), as do
+  the anchor's chain and the harpoon's line.
+- **A9, contact melee** (`melee.gd`). A swing is a `Melee.Swing` that lives for its `dur`
+  (0.12 to 0.26 s, cleave up to 0.32, slam 0.2 to 0.36, full spin at least 0.3), ticked by
+  `Gun._process`. The weapon really travels from its hover spot:
+  - sweep, cleave, lash and spin swing a real arc around the spot, from one edge of the arc
+    to the other, out to the reach (or to the target, if it is further);
+  - thrusts stab out along the line through the target to the full reach and back; jabs
+    punch to the target only;
+  - slams arc up and land the head on the target, then return;
+  - full spins pivot on the player, starting behind and passing the target half way.
+  Each frame the blade (a segment with a thickness: 6 px, jab 8, cleave 9, lash 5, wider
+  with shot size) is tested along the path it moved, in steps of about 10 px at the tip, against
+  enemy circles. Each enemy is hit at most once a swing, the first at 100% and the rest at
+  `FOLLOW` (25%), at most 12. The first contact pauses the blade for 0.045 s (a local hit-stop:
+  the world doesn't stop) and every contact knocks the foe away from the pivot and leaves a
+  small spark at the contact point (own-effects alpha). A faint trail follows the blade.
+- The style rules stay: slams stagger, the lash tip (the outer 30% of the blade) hits x1.5,
+  every 4th jab is a finisher, every 3rd spin is a full circle. Parry Blade cuts the enemy
+  shots its blade passes through; bounce and the Blade wave lengthen the blade past the reach.
+- **The whetstone bug.** Batch 1's mod is now `edge_whetstone` ("Edge Whetstone"). The old
+  +8% damage trinket `whetstone` is back in the pools and unlocked. The elites goal rewards
+  `item:edge_whetstone`. A save's `item:whetstone` unlock moves to `item:edge_whetstone`
+  when it loads (`[MIGRATE]`). Relics named `whetstone` stay the trinket, which is what they
+  were bought as. Tested on a copy of the real save (instance 77).
+
+**Deviations, and why:**
+| Spec | Built | Why |
+|---|---|---|
+| Jabs thrust like thrusts | Jabs stop at the target | At full reach the jab packs ran 14% over the best w1 gun (33.7 vs 29.5). |
+| Parry Blade 32 damage | 29 | Every probe dummy sits inside its arc, so the arc doesn't move the pack number. At 32 the pack was 132 against the best w3 gun's 121. |
+| Hollow Sickle 27 damage | 26 | Pack 88.9 against 87.5. |
+| Hit-stop | Local: the blade pauses, the world doesn't | Melee lands 1 to 3.5 swings a second per weapon; a world freeze each time would stutter. |
+
+**Damage numbers** (`--gun-probe`, 6 s): single-target damage sits at the weapon's
+budget (every swing connects): Tin Sabre 30.0, Tide Spear 33.0, Bone Club 39.2, Pitch Cleaver
+54.2, Rimefang 57.0, Magma Maul 83.3, Gale Glaive 35.6, Eclipse Scythe 39.6, Parry Blade 43.5.
+Before the fix, full spins started on the target and missed it, so spins fell to 55 to 70% of
+budget. Packs against the best gun of each weight:
+w1 22.5 to 22.7 (vs 29.5); w2 35.8 to 85.6 (vs 87.5); w3 53.4 to 119.6 (vs 121; Parry
+119.6, Twin Fangs 117.0); w4 71.3 to 199.1 (vs 204); w5 115.5 to 229.2 (vs 267). Every melee
+weapon is now at or under the best gun of its weight on packs.
+The probe's single gun sits at the upper-right spot, 34 px nearer the dummies, so its blade
+reaches the whole pack. In a real fight half the spots face away from the target.
+
+**Checks** (headless, at most 4 instances, 0 `SCRIPT ERROR` in every run):
+| Check | Result | Pass |
+|---|---|---|
+| Weapon bands (`--gun-probe`, 24 melee) | Numbers above: single-target at budget, every pack at or under the best gun of its weight | yes |
+| Family probe (`--family-probe=melee --kite --mastery=full`, 4 runs) | 4 of 4 reach floor 3; 3 reach floor 5, 1 dies on floor 4. Floor 3: 0.29 and 0.53 bars a minute (batch 1: 0.09 to 0.50) | yes |
+| Melee stand-still (`--idle --family-probe=melee --build=human6980 --mastery=full --start-floor=2`) | 2 of 2 die on floor 2, at 66 and 58 s; 2.46 bars a minute | yes |
+| Human-build stand-still | Dies on floor 2 at 119 s, 1.44 a minute | yes |
+| Human-build mover (`--kite`) | Reaches floor 4; floor 3 0.34 a minute, under 50% health 0.12 | yes |
+| Cards (`--card-shot`) | `[CARDS] PASS 452` (one more card: the Whetstone trinket is back) | yes |
+| Save migration (a copy of the real save, instance 77) | `[MIGRATE] unlock item:whetstone -> item:edge_whetstone` | yes |
+| Fusion probe, idle bot, hub walk, load check | `[FUSION-CHECK] PASS`; 0 errors; `[HUB-WALK] PASS`, `[HUB-FRESH] PASS`; clean | yes |
+| `tools/exe_smoke.sh` | `[SMOKE] ALL PASS` | yes |
+| The real `save.json`, `mastery.json`, `settings.json` | Unchanged (md5) across every bot run | yes |
+
+**Worth watching:** melee movers now take a little more damage on floor 3 than in batch 1,
+because a blade can miss what it doesn't pass through. They still clear floor 3 in all 4 runs.
+
+**Screenshots for when Emil is away (window runs, `--family-probe=melee`):**
+- The weapon ring: four weapons at their spots around the figure, standing still, and one
+  with guns (`--build=human6980`). Check nothing covers the figure or the health pips.
+- A thrust (Tide Spear): the spear out at full reach through a line of foes, and back.
+- A swing arc (Tin Sabre, Frost Hatchet): the blade halfway through its arc, with its trail.
+- A contact spark at the blade, and the 0.045 s blade pause on the first hit.
+- A slam landing on its target, and a full spin around the figure.
 
 ### Batch 3: Summons and drones
 
