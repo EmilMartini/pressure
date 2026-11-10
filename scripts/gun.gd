@@ -47,6 +47,9 @@ var _spray: Spray = null
 var _mines: Array = []
 var _turrets: Array = []
 var _target_k := 0        # homing: rotates which enemy each volley's first seeker takes
+## Focus targeting (Focus.update): ranked targets; shot or beam k goes to targets[k], extras
+## doubling up on targets[0]. Empty outside auto aim.
+var targets: Array = []
 
 
 func _init(p_data: GunData, p_player: Player) -> void:
@@ -286,11 +289,13 @@ func fire(dir: Vector2) -> void:
 
 ## Spawns one volley (shot_count projectiles) toward `dir` from the gun.
 func _shoot(dir: Vector2) -> void:
-    shoot_from(global_position + dir * 14.0, dir)
+    shoot_from(global_position + dir * 14.0, dir, player.focusing())
 
 
 ## Spawns one volley from `muzzle` (the gun, or a Turret this gun deployed).
-func shoot_from(muzzle: Vector2, dir: Vector2) -> void:
+## `focus`: aim each projectile at this gun's own ranked targets (auto aim, section 7.2);
+## guns that shoot a spread by design (projectile_count above 1) keep it around their target.
+func shoot_from(muzzle: Vector2, dir: Vector2, focus := false) -> void:
     var world := get_tree().current_scene
     var base := strike()
     var count := shot_count()
@@ -329,6 +334,11 @@ func shoot_from(muzzle: Vector2, dir: Vector2) -> void:
         targets = _targets_by_distance(muzzle, effective_range() * 1.2, maxi(count, 4))
         _target_k += 1
     var shot_element: int = data.element
+    var split := focus and count > 1 and data.projectile_count <= 1 and not lobbed and shape != "homing" and shape != "helix"
+    if focus and not targets.is_empty():
+        var t0 = targets[0]
+        if is_instance_valid(t0) and t0 is Enemy:
+            t0.add_pending(base.damage * float(count if not split else 1), muzzle.distance_to(t0.global_position) / maxf(60.0, speed) + 0.1)
     for i in count:
         var angle := 0.0
         if count > 1:
@@ -341,7 +351,15 @@ func shoot_from(muzzle: Vector2, dir: Vector2) -> void:
             angle = randf_range(-data.spread_deg, data.spread_deg) * 0.15 if i < 2 else angle
         shot_element = el
         var p := Projectile.new()
-        p.velocity = dir.rotated(deg_to_rad(angle)) * speed
+        var shot_dir := dir
+        if split:
+            var at := Focus.aim_point(self, i)
+            if at != Vector2.INF and at.distance_to(muzzle) > 4.0:
+                shot_dir = (at - muzzle).normalized()
+                angle = randf_range(-data.spread_deg, data.spread_deg) * 0.15
+                if i > 0 and i < targets.size() and is_instance_valid(targets[i]) and targets[i] is Enemy:
+                    targets[i].add_pending(base.damage, muzzle.distance_to(at) / maxf(60.0, speed) + 0.1)
+        p.velocity = shot_dir.rotated(deg_to_rad(angle)) * speed
         p.damage = base.damage
         p.element = el
         p.extra_elements = base.extras
@@ -421,7 +439,13 @@ func _fire_beam(dir: Vector2) -> void:
             Strike.world_parent(self).add_child(b)
             _beams[i] = b
         var off := 0.0 if n == 1 else lerpf(-1.0, 1.0, float(i) / float(n - 1)) * deg_to_rad(6.0 * float(n - 1))
-        b.tick(dir.rotated(off), s, reach, pierce, width)
+        var bdir := dir.rotated(off)
+        if player.focusing():
+            # Focus: beam i holds its own target; beams beyond the targets double up on the top one.
+            var at := Focus.aim_point(self, i)
+            if at != Vector2.INF and at.distance_to(global_position) > 4.0:
+                bdir = (at - global_position).normalized()
+        b.tick(bdir, s, reach, pierce, width)
 
 
 ## Radians per second a beam turns toward its aim (shot speed mods turn it faster).

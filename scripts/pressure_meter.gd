@@ -60,8 +60,34 @@ func player() -> Player:
     return main.players[0]
 
 
+## Core loop reset session 1: hands and screen per floor (dashes, perfect dodges, vents, the
+## Mending reserve used and left as shares of max health, fight text per minute).
+var _hands0 := {}
+
+
+func _hands_mark() -> void:
+    var p = main.players[0] if main != null and not main.players.is_empty() else null
+    _hands0 = { "dashes": p.dashes if p != null else 0, "dodges": p.perfect_dodges if p != null else 0,
+        "vents": p.vents if p != null else 0, "texts": Fx.fight_texts, "fsecs": Fx.fight_secs }
+
+
+func hands() -> Dictionary:
+    var p = main.players[0] if main != null and not main.players.is_empty() else null
+    if p == null or _hands0.is_empty():
+        return {}
+    var fmins := maxf(Fx.fight_secs - float(_hands0["fsecs"]), 1.0) / 60.0
+    var texts := Fx.fight_texts - int(_hands0["texts"])
+    var mh := maxf(1.0, p.max_hp)
+    return { "dashes": p.dashes - int(_hands0["dashes"]), "perfect_dodges": p.perfect_dodges - int(_hands0["dodges"]),
+        "vents": p.vents - int(_hands0["vents"]), "mend_max": snappedf(p.mend_max / mh, 0.001),
+        "mend_used": snappedf(p.mend_used / mh, 0.001), "mend_left": snappedf(p.mend_left / mh, 0.001),
+        "texts": texts, "texts_pm": snappedf(float(texts) / fmins, 0.01),
+        "focus_multi": p.focus.probe_multi_frames, "focus_distinct": p.focus.probe_multi_distinct }
+
+
 func start_floor(n: int, region: String) -> void:
     _floor = n
+    _hands_mark()
     _region = region
     _flushed = false
     _t = 0.0
@@ -198,6 +224,7 @@ func summary(died: bool) -> Dictionary:
         "moving": snappedf(moving / maxf(threat, 0.1), 0.001), "near_miss_pm": snappedf(float(near_miss) / mins, 0.01),
         "rooms": rooms, "clean": clean,
         "burst1": snappedf(_burst(1.0), 0.001), "burst3": snappedf(_burst(3.0), 0.001), "died": died,
+        "hands": hands(),
     }
 
 
@@ -216,6 +243,22 @@ func flush(died: bool = false) -> void:
             s["floor"], s["region"], s["fight"], s["lt50"], s["lt25"], s["dmg_pm"], s["heal_pm"], heal_txt.strip_edges(),
             s["hits"], s["max_hit"], s["close"], s["threat"], s["moving"], s["near_miss_pm"], s["clean"], s["rooms"],
             s["burst1"], s["burst3"], str(died)])
+        var h: Dictionary = s["hands"]
+        if not h.is_empty():
+            print("[HANDS] floor=%d dashes=%d perfect=%d vents=%d mend_max=%.2f mend_used=%.2f mend_left=%.2f texts=%d texts_pm=%.2f focus_multi=%d focus_distinct=%d" % [
+                s["floor"], h["dashes"], h["perfect_dodges"], h["vents"], h["mend_max"], h["mend_used"], h["mend_left"],
+                h["texts"], h["texts_pm"], h["focus_multi"], h["focus_distinct"]])
+            print("[QUIET] floor=%d texts_pm=%.2f kinds=%s" % [s["floor"], h["texts_pm"], str(Fx.fight_text_kinds)])
+            var pl = main.players[0] if not main.players.is_empty() else null
+            if pl != null:
+                var lat: Array = pl.focus.elite_latency.duplicate()
+                lat.sort()
+                print("[FOCUS] floor=%d beams_distinct=%.3f (%d of %d) elites=%d latency_med=%.2f latency_max=%.2f over_spread=%d" % [
+                    s["floor"], float(h["focus_distinct"]) / maxf(1.0, float(h["focus_multi"])), h["focus_distinct"], h["focus_multi"],
+                    lat.size(), float(lat[lat.size() / 2]) if not lat.is_empty() else -1.0, float(lat.back()) if not lat.is_empty() else -1.0,
+                    pl.focus.over_spread])
+
+
 
 
 func _exit_tree() -> void:

@@ -654,6 +654,13 @@ loadout and its power estimate. The log prints `[FLOOR]`, `[DEATH]` and `[EMBERS
 Every run with arguments after `--` uses throwaway `settings_`, `save_` and
 `mastery_autotest<_N>.json` files and `telemetry/runs<_N>.jsonl` from the first frame
 (`Main.bot_run()`), never the player's own.
+Core loop reset, session 1 (`design/Core loop reset.md`): `--focus-probe` starts with an
+Etcher Beam with two beams and adds three guns at 25 s; every bot floor prints `[HANDS]`
+(dashes, perfect dodges, vents, the Mending reserve, fight texts a minute), `[QUIET]` (fight
+texts by kind) and `[FOCUS]` (beams on distinct targets, elite latency, guns piled on one
+enemy). `--build=human6980` is Emil's run 6980a749 build by floor. Moving bots dash; `--idle`
+never does.
+
 `--fusion-probe` starts with four w1 guns of four elements so compounds, fusions and
 cataclysms actually happen; the loadout rotates with `--instance` (wet/fire/shock/gale,
 oil/fire/shock/gale, wet/fire/shock/blood, oil/fire/blood/gale), or pick one with

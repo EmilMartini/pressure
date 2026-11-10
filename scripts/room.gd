@@ -10,7 +10,7 @@ extends Node2D
 
 signal door_entered(dir: Vector2i)
 
-const SIZE := Vector2(1120, 720)   # the normal size; RoomData.room_size() picks per room
+const SIZE := Vector2(1000, 600)   # the normal size (Core loop reset 4.6: was 1120 x 720); RoomData.room_size() picks per room
 const WALL := 60.0
 const GAP := 150.0
 const NAV := RoomLayouts.CELL       # navigation / layout grid

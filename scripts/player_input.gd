@@ -2,7 +2,9 @@ class_name PlayerInput
 extends RefCounted
 ## Reads one player's input from a joypad, the keyboard + mouse, or both merged.
 ## Player 1 merges keyboard/mouse with joypad 0. Extra joypads join as new players.
-## Guns aim and fire on their own; the player moves, vents, interacts, and opens menus.
+## Guns aim and fire on their own; the player moves, dashes, uses the active, interacts and
+## opens menus (Core loop reset, section 7.1). The vent fires on its own unless Options
+## "Vent" is "button" (then LB / Space vents, the active moves to X / F and Space no longer dashes).
 
 const STICK_DEADZONE := 0.22
 
@@ -13,6 +15,7 @@ var use_keyboard: bool = false
 var force_move: Vector2 = Vector2.ZERO
 var force_fire := false      # the bot can hold the trigger
 var force_aim := Vector2.ZERO # and aim it
+var force_dash := false      # the bot presses dash (one physics frame)
 
 var _prev: Dictionary = {}
 var _cur: Dictionary = {}
@@ -32,16 +35,20 @@ var _aim_mouse := Vector2i(-1, -1)
 const PROMPTS := {
     "interact": ["A", "E"],
     "vent": ["LB", "Space"],
-    "active": ["X", "F"],
-    "fire": ["RT", "LMB"],
+    "active": ["LB", "Q"],
+    "dash": ["RB", "Space"],
+    "fire": ["LT", "LMB"],
     "pause": ["Start", "Esc"],
     "sheet": ["Back", "C"],
-    "swap": ["Y", "Q"],   # at a ring / trinket pedestal: replace the other piece
+    "swap": ["Y", "R"],   # at a ring / trinket pedestal: replace the other piece (until slots go)
 }
+## With the vent on a button (Options "Vent": "button").
+const PROMPTS_VENT_BUTTON := { "active": ["X", "F"], "dash": ["RB", "Shift"] }
+const TRIGGER_PRESS := 0.45
 const PAD_BUTTONS := [JOY_BUTTON_A, JOY_BUTTON_B, JOY_BUTTON_X, JOY_BUTTON_Y, JOY_BUTTON_LEFT_SHOULDER,
     JOY_BUTTON_RIGHT_SHOULDER, JOY_BUTTON_START, JOY_BUTTON_BACK, JOY_BUTTON_DPAD_UP, JOY_BUTTON_DPAD_DOWN,
     JOY_BUTTON_DPAD_LEFT, JOY_BUTTON_DPAD_RIGHT]
-const KB_KEYS := [KEY_W, KEY_A, KEY_S, KEY_D, KEY_E, KEY_Q, KEY_SPACE, KEY_C, KEY_ESCAPE]
+const KB_KEYS := [KEY_W, KEY_A, KEY_S, KEY_D, KEY_E, KEY_Q, KEY_F, KEY_R, KEY_SPACE, KEY_SHIFT, KEY_C, KEY_ESCAPE]
 
 
 func _init(p_device: int, p_keyboard: bool) -> void:
@@ -52,7 +59,14 @@ func _init(p_device: int, p_keyboard: bool) -> void:
 ## The label to show for an action on this player's current device.
 func prompt(action: String) -> String:
     var pair: Array = PROMPTS.get(action, ["?", "?"])
+    if not vent_auto() and PROMPTS_VENT_BUTTON.has(action):
+        pair = PROMPTS_VENT_BUTTON[action]
     return pair[0] if last_kind == "pad" else pair[1]
+
+
+## The vent fires on its own (the default) rather than from a button.
+static func vent_auto() -> bool:
+    return String(Settings.get_value("vent_mode")) != "button"
 
 
 func _update_kind() -> void:
@@ -92,13 +106,22 @@ func poll() -> void:
     _update_kind()
     _update_aim_idle()
     _prev = _cur.duplicate()
+    var auto_vent := vent_auto()
+    var rt := device >= 0 and Input.get_joy_axis(device, JOY_AXIS_TRIGGER_RIGHT) > TRIGGER_PRESS
+    var rmb := use_keyboard and DisplayServer.get_name() != "headless" and Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT)
     _cur = {
-        "vent": _button(JOY_BUTTON_LEFT_SHOULDER, KEY_SPACE),
         "interact": _button(JOY_BUTTON_A, KEY_E),
-        "active": _button(JOY_BUTTON_X, KEY_F),
         "start": _button(JOY_BUTTON_START, KEY_ENTER),
-        "swap": _button(JOY_BUTTON_Y, KEY_Q),
+        "swap": _button(JOY_BUTTON_Y, KEY_R),
+        "dash": force_dash or rt or rmb or _button(JOY_BUTTON_RIGHT_SHOULDER, KEY_SHIFT) or (auto_vent and _key(KEY_SPACE) > 0.0),
     }
+    if auto_vent:
+        _cur["active"] = _button(JOY_BUTTON_LEFT_SHOULDER, KEY_Q) or _button(JOY_BUTTON_X, KEY_F)
+        _cur["vent"] = false
+    else:
+        _cur["active"] = _button(JOY_BUTTON_X, KEY_F)
+        _cur["vent"] = _button(JOY_BUTTON_LEFT_SHOULDER, KEY_SPACE)
+    force_dash = false
     for action in _cur.keys():
         if _cur[action] and not _prev.get(action, false):
             _edges[action] = true
@@ -134,12 +157,13 @@ func take_pressed(action: String) -> bool:
     return false
 
 
-## Manual fire: right trigger on a pad, left mouse button on keyboard and mouse.
+## Manual fire: left trigger on a pad (RT dashes now), left mouse button on keyboard and mouse.
 func fire_held() -> bool:
     if force_fire:
         return true
-    if device >= 0 and Input.get_joy_axis(device, JOY_AXIS_TRIGGER_RIGHT) > 0.45:
+    if device >= 0 and Input.get_joy_axis(device, JOY_AXIS_TRIGGER_LEFT) > TRIGGER_PRESS:
         return true
+
     return use_keyboard and Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)
 
 

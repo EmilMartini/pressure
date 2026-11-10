@@ -925,6 +925,8 @@ var _hit_avg := 10.0
 
 func number(pos: Vector2, amount: float, color: Color, big := false, dim := false) -> void:
     if not Settings.flag("damage_numbers"):
+        _hit_avg = lerpf(_hit_avg, amount, 0.03)
+        _quiet_big_hit(pos, amount, big)
         return
     _hit_avg = lerpf(_hit_avg, amount, 0.03)
     if not big and amount < maxf(BIG_HIT_MIN, BIG_HIT * _hit_avg):
@@ -941,6 +943,47 @@ func number(pos: Vector2, amount: float, color: Color, big := false, dim := fals
     _texts.append({ "pos": p, "text": text, "color": col, "t": 0.9 if big else 0.7, "life": 0.9 if big else 0.7, "size": size,
         "vel": Vector2(randf_range(-20.0, 20.0), -70.0 if big else -50.0) })
     _cap_texts()
+    count_text("number")
+
+
+# --- Quiet fights (Core loop reset, section 4.5) ------------------------------
+
+## A crit at least QUIET_BIG x the running average hit prints one gold number, QUIET_SIZE px,
+## one at a time. Everything else stays off unless Options turn it back on.
+const QUIET_BIG := 3.0
+const QUIET_SIZE := 28
+## Texts drawn over the arena while a fight runs, and the fight seconds they fell in (the
+## quiet-screen check: at most 6 a minute). Bots print them as [QUIET].
+static var fight_texts := 0
+static var fight_secs := 0.0
+static var _fighting := false
+static var fight_text_kinds: Dictionary = {}   # kind -> count, for the [HANDS] breakdown
+## At most one big-hit number every QUIET_GAP seconds (the quiet budget is 6 texts a minute).
+const QUIET_GAP := 12.0
+var _big_hit_t := 0.0
+
+
+## Options "Fight text": "quiet" (default), "reactions" (names come back, small) or "everything".
+static func fight_text() -> String:
+    var v := String(Settings.get_value("fight_text"))
+    return v if v in ["quiet", "reactions", "everything"] else "quiet"
+
+
+## Count one text drawn over the fight (no-op outside fights).
+static func count_text(kind := "other") -> void:
+    if _fighting:
+        fight_texts += 1
+        fight_text_kinds[kind] = int(fight_text_kinds.get(kind, 0)) + 1
+
+
+func _quiet_big_hit(pos: Vector2, amount: float, crit: bool) -> void:
+    if not crit or amount < QUIET_BIG * _hit_avg or fight_secs < _big_hit_t:
+        return
+    _big_hit_t = fight_secs + QUIET_GAP
+    _texts.append({ "pos": pos + Vector2(0, -26.0), "text": str(maxi(1, roundi(amount))), "color": Color(1.0, 0.82, 0.3),
+        "t": 0.9, "life": 0.9, "size": QUIET_SIZE, "vel": Vector2(0.0, -55.0), "bighit": true })
+    _cap_texts()
+    count_text("bighit")
 
 
 ## Damage the player took: "-12" in hot red with a black outline, bigger and slower than
@@ -954,6 +997,7 @@ func hurt_number(pos: Vector2, amount: float) -> void:
     _texts.append({ "pos": p, "text": "-%d" % n, "color": Color(1.0, 0.16, 0.14), "t": 1.1, "life": 1.1, "size": 30,
         "vel": Vector2(randf_range(-12.0, 12.0), -60.0), "hurt": true })
     _cap_texts()
+    count_text("hurt")
 
 
 ## Drops the oldest number past MAX_TEXTS, never one of the player's own hurt numbers.
@@ -974,6 +1018,7 @@ func label(pos: Vector2, text: String, color: Color, size: int = 30, life: float
         "w": maxf(200.0, float(text.length() * size) * 0.75) })
     if _texts.size() > MAX_TEXTS:
         _texts.pop_front()
+    count_text("label")
 
 
 func corpse(tex: Texture2D, pos: Vector2, scale: float, color: Color, flip: bool) -> void:
@@ -1172,8 +1217,9 @@ func _on_arc(from: Vector2, to: Vector2) -> void:
 
 func _on_reaction(reaction_name: String, position: Vector2, color: Color) -> void:
     # Reactions speak through their visuals; only events that need words get text.
-    if reaction_name in ["ELITE", "Shield broken!", "Shield restored!", "Path opened!"]:
+    if reaction_name in ["ELITE", "Shield broken!", "Shield restored!", "Path opened!"] and (fight_text() != "quiet" or reaction_name == "Path opened!"):
         _texts.append({ "pos": position + Vector2(0, -30), "text": reaction_name, "color": color, "t": 0.95, "life": 0.95 })
+        count_text("popup")
     Sfx.reaction(reaction_name, position)
     var mom: Array = MOMENTS.get(reaction_name, [])
     if not mom.is_empty():
@@ -1396,6 +1442,10 @@ func _on_nova(position: Vector2, radius: float, color: Color) -> void:
 
 
 func _process(delta: float) -> void:
+    _fighting = main != null and main.current != null and is_instance_valid(main.current) and main.current.active
+    if _fighting:
+        fight_secs += delta
+
     _mats = Materials.find(self)
     if _mats != null and _mats.emit_scale != spectacle:
         _mats.emit_scale = spectacle   # a new room's grid picks up the run's spectacle

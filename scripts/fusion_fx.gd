@@ -59,7 +59,7 @@ static func play(main: Node, fusion_name: String, tier: int, pos: Vector2, reach
             # second name in the fight.
             var hud = main.get("hud")
             if hud != null:
-                hud.toast("New %s: %s" % ["cataclysm" if cata else "fusion", fusion_name])
+                hud.discover(fusion_name)   # quiet fights: one line at the left edge (section 4.5)
         # Clarity pass: one name per fusion every LABEL_GAP_MS, not one per fire.
         var now := Time.get_ticks_msec()
         if now - int(_last_label.get(fusion_name, -100000)) < LABEL_GAP_MS:
@@ -73,8 +73,12 @@ static func play(main: Node, fusion_name: String, tier: int, pos: Vector2, reach
         for pl in main.get("players"):
             if is_instance_valid(pl) and absf(lp.x - pl.global_position.x) < half_w + 16.0 and absf(lp.y - pl.global_position.y) < 70.0:
                 lp.y = pl.global_position.y - 100.0
-        if text != "":
-            fx.label(lp, text, col.lightened(0.35), 44 if cata else 28, 1.8 if cata else 1.2)
+        # Quiet fights (section 4.5): no names by default; "Reactions" brings them back small.
+        var mode := Fx.fight_text()
+        if text != "" and mode != "quiet":
+            var small := mode == "reactions"
+            fx.label(lp, text, col.lightened(0.35), (24 if cata else 18) if small else (44 if cata else 28), 1.8 if cata else 1.2)
+
     # Sound: the entry's layers, the first loudest.
     var sounds: Array = entry.get("sound", [])
     for i in sounds.size():

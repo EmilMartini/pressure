@@ -145,11 +145,55 @@ const LEECH_PER_SEC := 3.0
 ## exactly what it took on floors 2 to 5 (0.5 to 1.45 max health a fight minute, Leech 70% of
 ## it) and never went under half health; fading keeps small sustain whole and cuts a stack.
 ## Chosen heals stay whole: actives, pickups, altars, shrines, the stairs, repairs, revives.
-const MEND_SOFT := 0.2
-const MEND_SOURCES := ["leech", "regen", "item", "fusion"]
-var mend_used := 0.0          # passive healing this fight, as a share of max health
-var _mend_said := false       # "Mending fades" shown once per floor
-var _mend_fighting := false
+## Core loop reset, section 10 (2026-11-10): the fade is replaced by a visible Mending
+## reserve per floor. Each floor starts with MEND_RESERVE of max health (+MEND_PER_BANDAGE per
+## Bandage Roll worn); every passive heal (MEND_SOURCES, the perfect-dodge heal too) draws on
+## it, and when it is empty passive healing stops until the next floor. The HUD shows it as a
+## thin green bar under the health bar. Chosen heals (hearts, repairs, actives, revives) stay
+## outside it. --old-balance keeps passive healing whole.
+const MEND_RESERVE := 0.40
+const MEND_PER_BANDAGE := 0.10
+const MEND_SOURCES := ["leech", "regen", "item", "fusion", "dodge"]
+var mend_left := 0.0          # Mending reserve left this floor, in HP
+var mend_max := 0.0           # this floor's reserve at its start, in HP
+var mend_used := 0.0          # drawn from the reserve this floor, in HP (telemetry)
+
+## Leech only counts reactions on enemies this close (section 10: healing rewards risk).
+const LEECH_REACH := 200.0
+
+## Dash (section 7.3): 120 px in 0.15 s, untouchable for 0.2 s from the start, 1.0 s
+## cooldown, 1 charge (items: up to 3, cooldown never under 0.5 s). Through enemies and their
+## shots; walls, obstacles and closed doors still stop it. Guns keep firing.
+const DASH_SPEED := 800.0
+const DASH_TIME := 0.15
+const DASH_IFRAMES := 0.20
+const DASH_COOLDOWN := 1.0
+const DASH_MIN_COOLDOWN := 0.5
+const DASH_MAX_CHARGES := 3
+const DODGE_HEAL := 0.03
+const DODGE_CAP := 0.40
+var dash_charges := 1
+var dash_recharge := 0.0      # seconds until the next charge comes back
+var dashes := 0               # dashes this run (telemetry, bots)
+var perfect_dodges := 0
+var _dash_t := 0.0            # seconds of dash movement left
+var _dash_dir := Vector2.RIGHT
+var _dodge_window := 0.0      # seconds of dash invulnerability left
+var _dodged_this_dash := false
+var _dodge_flash := 0.0
+var _ghosts: Array = []       # afterimages: [world pos, age, flip]
+
+## Automatic vent (section 7.1): with the gauge full it fires once VENT_AUTO_CROWD enemies
+## are inside its radius, or after VENT_AUTO_WAIT s at full. Options "Vent" = "button" puts
+## it back on a button.
+const VENT_AUTO_CROWD := 3
+const VENT_AUTO_WAIT := 1.5
+const VENT_FULL := 0.95
+var _vent_full_t := 0.0
+
+var focus := Focus.new()
+var vents := 0                # vents this run (telemetry, bots)
+
 
 ## Burst guard (floors 2+, not with --old-balance): losing BURST_FRACTION of max health
 ## within BURST_WINDOW seconds buys BURST_INVULN seconds untouchable ("Steady"), at most
@@ -217,8 +261,10 @@ func total_weight() -> int:
     return w
 
 
-## Six gun slots like Brotato (items may add one or two), and the weight budget on top.
-const MAX_GUNS := 6
+## Four gun slots (Emil's decision 8, Core loop reset; was six), items may add one or two,
+## and the weight budget on top. No save holds more than the kit gun and runs are not
+## saved, so nothing migrates; bot builds with six keep their four strongest (Main).
+const MAX_GUNS := 4
 
 
 func gun_slots() -> int:
@@ -551,37 +597,41 @@ func heal(amount: float, source: String = "other") -> void:
     if alive:
         var mending := MEND_SOURCES.has(source) and not Main.old_balance
         if mending:
-            amount *= mend_rate()
+            amount = minf(amount, mend_left)
+            if amount <= 0.0:
+                return
         var before := hp
         hp = minf(max_hp, hp + amount)
         healed_total += hp - before
         if mending:
-            mend_used += (hp - before) / maxf(1.0, max_hp)
-            if not _mend_said and mend_rate() < 0.5 and _mend_fighting:
-                _mend_said = true
-                say("Mending fades")
+            mend_left = maxf(0.0, mend_left - (hp - before))
+            mend_used += hp - before
         var mn := main()
         if mn != null and mn.pressure_meter != null:
             mn.pressure_meter.on_heal(self, hp - before, source)
 
 
-## Share of passive healing that still lands in this fight (MEND_SOFT).
+## Share of the floor's Mending reserve still left (1 = full), for the HUD bar.
 func mend_rate() -> float:
-    return 1.0 / (1.0 + mend_used / MEND_SOFT)
+    return mend_left / mend_max if mend_max > 0.0 else 0.0
 
 
-## A fight starting refills Mending; called every physics frame.
-func _tick_mending() -> void:
-    var mn := main()
-    var fighting: bool = mn != null and mn.current != null and mn.current.active
-    if fighting and not _mend_fighting:
-        mend_used = 0.0
-    _mend_fighting = fighting
+## A new floor (or the run's start) fills the Mending reserve. Called by Main.
+func refill_mending() -> void:
+    var bandages := 0
+    for v in equipment.values():
+        if String(v) == "bandage_roll":
+            bandages += 1
+    mend_max = max_hp * (MEND_RESERVE + MEND_PER_BANDAGE * float(bandages))
+    mend_left = mend_max
+    mend_used = 0.0
 
 
 ## Called by enemies when a reaction this player caused fires.
-func on_reaction(_reaction_name: String) -> void:
+func on_reaction(_reaction_name: String, where := Vector2.INF) -> void:
     var steal := stat("lifesteal")
+    if where != Vector2.INF and where.distance_to(global_position) > LEECH_REACH and not Main.old_balance:
+        return   # Leech rewards fighting up close (section 10)
     if steal > 0.0 and (_leech_budget >= 1.0 or Main.old_balance):
         _leech_budget -= 1.0
         var h0 := healed_total
@@ -615,6 +665,7 @@ func vent() -> void:
     var kind: int = Element.Kind.FIRE if hot else Element.Kind.ICE
     var col: Color = Element.COLORS[kind]
     Telemetry.vent(kind, pressure)
+    vents += 1
     Elements.nova.emit(global_position, vent_radius, Color(col, 0.55))
     Elements.reaction_fired.emit("Fire Nova" if hot else "Frost Nova", global_position, col)
     for e in get_tree().get_nodes_in_group("enemies"):
@@ -642,9 +693,14 @@ func vent() -> void:
 func take_damage(amount: float, attacker: Node2D = null, from: Vector2 = Vector2.INF) -> void:
     # Who did it, read first: the hint a shot or a prop left must never outlive this call.
     var source := Telemetry.hurt_source(self, attacker)
-    if not alive or invuln > 0.0:
+    if not alive:
         return
-    if randf() < stat("dodge"):
+    if _dodge_window > 0.0:
+        _perfect_dodge()
+        return
+    if invuln > 0.0:
+        return
+    if randf() < minf(DODGE_CAP, stat("dodge")):
         say("Dodged")
         invuln = 0.25
         return
@@ -680,7 +736,7 @@ func take_damage(amount: float, attacker: Node2D = null, from: Vector2 = Vector2
         alive = false
         killed_by = source
         remove_from_group("players")
-        say("DOWN")
+        say("DOWN", true)
         Sfx.play("down")
         died.emit(self)
     queue_redraw()
@@ -731,7 +787,7 @@ func _last_breath() -> void:
     hp = maxf(1.0, max_hp * Mastery.REVIVE_FRACTION)
     invuln = Mastery.REVIVE_INVULN
     _squash = 1.0
-    say("Last Breath" if revives_left <= 0 else "Last Breath (%d left)" % revives_left)
+    say("Last Breath" if revives_left <= 0 else "Last Breath (%d left)" % revives_left, true)
     Sfx.play("revive")
     var scene := get_tree().current_scene
     if scene != null and scene.has_method("flash"):
@@ -743,9 +799,16 @@ func display_name() -> String:
     return Progress.player_name(index)
 
 
-func say(text: String) -> void:
+## A short line by the player card. Quiet fights (section 4.5): during a fight only
+## `important` lines show unless Options "Fight text" is Everything.
+func say(text: String, important := false) -> void:
+    if not important and Fx.fight_text() != "everything":
+        var mn := main()
+        if mn != null and mn.current != null and mn.current.active:
+            return
     last_message = text
     _message_time = 2.5
+    Fx.count_text("say:" + text)
 
 
 # --- Frame -----------------------------------------------------------------
@@ -771,21 +834,27 @@ func _physics_process(delta: float) -> void:
     if mv.length() > 0.2:
         _manual_dir = mv.normalized()
     var want := mv * move_speed() * (Room.WADE if _wading else 1.0)
-    if _on_ice:
+    _tick_dash(delta)
+    if input.just_pressed("dash") and BossShow.hold <= 0.0:
+        dash(mv)
+    if _dash_t > 0.0:
+        velocity = _dash_dir * DASH_SPEED
+    elif _on_ice:
         var keep := pow(Materials.ICE_KEEP, delta * 60.0)
         velocity = velocity * keep + want * (1.0 - keep)
     else:
         velocity = want
     move_and_slide()
 
-    if input.just_pressed("vent"):
+    if PlayerInput.vent_auto():
+        _auto_vent(delta)
+    elif input.just_pressed("vent"):
         vent()
     if input.take_pressed("active"):
         use_active()
 
     pressure = move_toward(pressure, 0.0, PRESSURE_DECAY * delta)
     invuln = maxf(0.0, invuln - delta)
-    _tick_mending()
     var regen := stat("regen")
     if regen > 0.0:
         var h1 := healed_total
@@ -797,6 +866,8 @@ func _physics_process(delta: float) -> void:
         last_message = ""
 
     _update_aim(delta)
+    if aim_mode() == "auto":
+        focus.update(self, delta)
     var nearest := nearest_enemy(900.0)
     aimed = nearest
     if _aim_firing and _aim_now != Vector2.ZERO:
@@ -835,7 +906,7 @@ func _feel_floor() -> void:
     _hazard_t = 0.6
     var dmg := hazard_damage(m)
     _warn_hazard(m, dmg)
-    if invuln > 0.0:
+    if invuln > 0.0 or _dodge_window > 0.0:
         return
     var before := hp
     _floor_hit = true
@@ -895,7 +966,7 @@ static func aim_mode() -> String:
     if aim_mode_override != "":
         return aim_mode_override
     var m := String(Settings.get_value("aim_mode"))
-    return m if AIM_MODES.has(m) else "assisted"
+    return m if AIM_MODES.has(m) else "auto"
 
 
 ## Decides once per frame whether the guns fire where aimed (_aim_firing, _aim_now) or
@@ -942,6 +1013,11 @@ func gun_dir(g: Gun) -> Vector2:
         return _aim_now
     if aim_mode() == "manual":
         return Vector2.ZERO
+    if aim_mode() == "auto":
+        var at := Focus.aim_point(g, 0)
+        if at != Vector2.INF and at.distance_to(g.global_position) > 1.0 and at.distance_to(global_position) <= g.effective_range() * 1.1:
+            return (at - g.global_position).normalized()
+        return Vector2.ZERO   # nothing focused in range: hold until the next pick
     var target := nearest_enemy(g.effective_range())
     if target == null:
         return Vector2.ZERO
@@ -994,7 +1070,104 @@ func _fire() -> void:
             g.fire(d)
 
 
+## True while the guns pick their own targets (auto aim, nothing held).
+func focusing() -> bool:
+    return alive and aim_mode() == "auto" and not _aim_firing
+
+
+# --- Dash ------------------------------------------------------------------
+
+
+func dash_max_charges() -> int:
+    return clampi(1 + int(stat("dash_charges")), 1, DASH_MAX_CHARGES)
+
+
+func dash_cooldown() -> float:
+    return maxf(DASH_MIN_COOLDOWN, DASH_COOLDOWN * (1.0 - stat("dash_cooldown")))
+
+
+## Dash toward `mv` (the move input), or the way we face with none. False when out of charges.
+func dash(mv: Vector2) -> bool:
+    if not alive or dash_charges <= 0 or _dash_t > 0.0:
+        return false
+    dash_charges -= 1
+    if dash_recharge <= 0.0:
+        dash_recharge = dash_cooldown()
+    _dash_dir = mv.normalized() if mv.length() > 0.2 else (aim_dir if aim_dir != Vector2.ZERO else _manual_dir)
+    _dash_t = DASH_TIME
+    _dodge_window = DASH_IFRAMES
+    _dodged_this_dash = false
+    dashes += 1
+    _squash = 0.6
+    _ghosts.clear()
+    var mn := main()
+    if mn != null and mn.fx != null:
+        mn.fx.puff(Art.PARTICLES["circle"], global_position + Vector2(0, radius * 0.6), Color(0.75, 0.7, 0.62, 0.55), 26.0, 0.3)
+    Sfx.play("dash", -4.0)
+    Items.fire(self, "dash", { "pos": global_position, "dir": _dash_dir })
+    if not Settings.flag("dash_learned") and not (mn != null and mn.autotest):
+        Settings.set_value("dash_learned", true)
+    return true
+
+
+
+func _tick_dash(delta: float) -> void:
+    var cap := dash_max_charges()
+    if dash_charges < cap:
+        dash_recharge -= delta
+        if dash_recharge <= 0.0:
+            dash_charges += 1
+            dash_recharge = dash_cooldown() if dash_charges < cap else 0.0
+    else:
+        dash_charges = cap
+        dash_recharge = 0.0
+    _dodge_window = maxf(0.0, _dodge_window - delta)
+    _dodge_flash = maxf(0.0, _dodge_flash - delta)
+    if _dash_t > 0.0:
+        _dash_t -= delta
+        # Three afterimages over the dash, each fading out in 0.2 s.
+        if _ghosts.size() < 3 and _dash_t <= DASH_TIME * (1.0 - float(_ghosts.size()) / 3.0):
+            _ghosts.append([global_position, 0.0, _sprite.flip_h, _sprite.texture])
+    for gh in _ghosts:
+        gh[1] = float(gh[1]) + delta
+    _ghosts = _ghosts.filter(func(gh): return float(gh[1]) < 0.2)
+
+
+## An enemy hit landed inside the dash window: a dodge. A soft chime and a white flash, no
+## text (quiet fights), the perfect_dodge item event, and DODGE_HEAL from the reserve.
+func _perfect_dodge() -> void:
+    if _dodged_this_dash:
+        return
+    _dodged_this_dash = true
+    perfect_dodges += 1
+    _dodge_flash = 0.18
+    Sfx.play("unlock", -10.0)
+    heal(max_hp * DODGE_HEAL, "dodge")
+    Items.fire(self, "perfect_dodge", { "pos": global_position })
+
+
+## Automatic vent (section 7.1).
+func _auto_vent(delta: float) -> void:
+    var limit := pressure_limit()
+    if absf(pressure) < limit * VENT_FULL:
+        _vent_full_t = 0.0
+        return
+    _vent_full_t += delta
+    var strength := absf(pressure) * (1.0 + stat("vent_power"))
+    var r := (110.0 + strength * 1.6) * (1.0 + stat("vent_radius"))
+    var near := 0
+    for e in EnemyGrid.nodes(get_tree(), &"enemies"):
+        if is_instance_valid(e) and e.emerge <= 0.0 and e.global_position.distance_squared_to(global_position) <= r * r:
+            near += 1
+            if near >= VENT_AUTO_CROWD:
+                break
+    if near >= VENT_AUTO_CROWD or _vent_full_t >= VENT_AUTO_WAIT:
+        _vent_full_t = 0.0
+        vent()
+
+
 func nearest_obstacle(max_range: float) -> Node2D:
+
     var best: Node2D = null
     var best_d := max_range * max_range
     for ob in get_tree().get_nodes_in_group("obstacles"):
@@ -1116,7 +1289,10 @@ func _draw() -> void:
         var k := 1.0 - since / 0.5
         draw_texture_rect(Art.PARTICLES["light"], Rect2(_sprite.position - Vector2(60, 60), Vector2(120, 120)), false, Color(glow, 0.7 * k))
         draw_arc(_sprite.position, 18.0 + 30.0 * (1.0 - k), 0.0, TAU, 24, Color(glow, k), 2.0)
-    if _hurt_flash > 0.0:
+    if _dodge_flash > 0.0:
+        body = Color(2.2, 2.2, 2.2)   # a perfect dodge: a white flash, no text
+    elif _hurt_flash > 0.0:
+
         # Hit: the figure flashes hot red-white for a beat (overbright, so it blooms).
         body = Color(2.4, 0.55, 0.5)
     elif invuln > 0.0 and fmod(invuln, 0.2) < 0.1:
@@ -1144,11 +1320,54 @@ func _draw() -> void:
         draw_set_transform(_sprite.position, _sprite.rotation, Vector2(sx, _sprite.scale.y))
         draw_texture(rim, -rim.get_size() / 2.0, Color(_rim_color(), 0.92 * body.a))
         draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+    _draw_dash_and_focus()
+
+
+## Dash afterimages (40 / 25 / 10% in the player colour, 0.2 s), the recharge arc under the
+## feet while a charge comes back, and a thin bracket on a focused elite or boss (section 7).
+func _draw_dash_and_focus() -> void:
+    var alphas := [0.4, 0.25, 0.1]
+    for i in _ghosts.size():
+        var gh: Array = _ghosts[i]
+        var tex: Texture2D = gh[3]
+        if tex == null:
+            continue
+        var fade := 1.0 - float(gh[1]) / 0.2
+        var at := to_local(gh[0]) + _sprite.position
+        draw_set_transform(at, 0.0, Vector2(_sprite.scale.x * (-1.0 if gh[2] else 1.0), _sprite.scale.y))
+        draw_texture(tex, -tex.get_size() / 2.0, Color(color.lightened(0.2), float(alphas[mini(i, 2)]) * fade))
+        draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+    if dash_charges < dash_max_charges() and dash_recharge > 0.0:
+        var k := 1.0 - dash_recharge / maxf(0.01, dash_cooldown())
+        draw_arc(Vector2(0, radius * 0.8), 19.0, PI * 0.5 - PI * k, PI * 0.5 + PI * k, 20, Color(0.9, 0.9, 0.85, 0.55), 2.0)
+    if not focusing():
+        return
+    var done := {}
+    for g in guns:
+        if g.targets.is_empty():
+            continue
+        var t = g.targets[0]
+        if not is_instance_valid(t) or not t is Enemy or done.has(t.get_instance_id()):
+            continue
+        if not (t.is_elite or t.kind_name == "boss"):
+            continue
+        done[t.get_instance_id()] = true
+        var c := to_local(t.global_position)
+        var r: float = t.radius * 1.6 + 6.0
+        var arm := r * 0.45
+        var col := Color(0.92, 0.92, 0.88, 0.7)
+        for sx in [-1.0, 1.0]:
+            for sy in [-1.0, 1.0]:
+                var corner := c + Vector2(sx * r, sy * r)
+                draw_line(corner, corner - Vector2(sx * arm, 0), col, 1.5)
+                draw_line(corner, corner - Vector2(0, sy * arm), col, 1.5)
 
 
 ## The rim's colour: the player's own, or the hurting floor's, pulsing toward white while
 ## we stand in it (and a moment after stepping off).
 func _rim_color() -> Color:
+    if _dodge_window > 0.0:
+        return Color(1, 1, 1)   # dash: a thin white rim while untouchable, never red
     var base := color.darkened(0.3)
     if _hazard_t <= 0.0 or not HAZARDS.has(hazard_mat):
         return base

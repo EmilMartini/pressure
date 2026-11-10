@@ -102,7 +102,7 @@ func _ready() -> void:
 
     camera = PixelCamera.new()
     camera.follow_speed = 7.0
-    camera.zoom = Vector2(1.3, 1.3)
+    camera.zoom = Vector2(CAMERA_ZOOM, CAMERA_ZOOM)
     add_child(camera)
     camera.make_current()
 
@@ -589,11 +589,16 @@ func start_floor(n: int) -> void:
     _scout_reveal()
     for p in players:
         p.pressure = 0.0
-        p._mend_said = false
         if not p.alive:
+            # Co-op: a partner who went down stands back up at 40% (no other stairs heal).
             p.alive = true
             p.add_to_group("players")
-        p.heal(maxf(0.0, p.max_hp * (0.6 if n <= 2 else 0.4) - p.hp), "stairs")   # deeper stairs patch you up less
+            p.hp = maxf(p.hp, p.max_hp * 0.4)
+        if Main.old_balance:
+            p.heal(maxf(0.0, p.max_hp * (0.6 if n <= 2 else 0.4) - p.hp), "stairs")
+        # Core loop reset, section 10: the stairs no longer heal; the Mending reserve refills.
+        p.refill_mending()
+
     enter_room(Vector2i(FloorGen.GRID / 2, FloorGen.GRID / 2), Vector2i.ZERO)
     announce(Regions.display_name(region_id))
     if autotest and OS.get_cmdline_user_args().has("--boss-only"):
@@ -1016,13 +1021,49 @@ func _on_player_died(_p: Player) -> void:
 # --- Frame -----------------------------------------------------------------
 
 
+## Core loop reset 4.6 (decision 20): closer camera, bigger characters. At the 1280 x 720
+## base the view shows about 800 x 450 world px (1.3 showed about 985 x 554).
+const CAMERA_ZOOM := 1.6
+## The camera leads up to CAMERA_LEAD of the view toward the nearest key threat, else the way
+## you move; the room's camera limits keep it inside the walls.
+const CAMERA_LEAD := 0.15
+var _cam_lead := Vector2.ZERO
+
+
+func _camera_lead(delta: float) -> Vector2:
+    var want := Vector2.ZERO
+    if players.size() == 1 and current != null and is_instance_valid(current) and cam_focus_w <= 0.0:
+        var p := players[0]
+        var view := get_viewport().get_visible_rect().size / maxf(0.01, camera.zoom.x)
+        var best: Node2D = null
+        var best_d := 700.0 * 700.0
+        for e in EnemyGrid.nodes(get_tree(), &"enemies"):
+            if not is_instance_valid(e) or not e is Enemy or e.emerge > 0.0:
+                continue
+            if not (e.is_elite or e.kind_name == "boss" or e.is_key_threat()):
+                continue
+            var d: float = e.global_position.distance_squared_to(p.global_position)
+            if d < best_d:
+                best_d = d
+                best = e
+        var dir := Vector2.ZERO
+        if best != null:
+            dir = (best.global_position - p.global_position).normalized()
+        elif p.velocity.length() > 40.0:
+            dir = p.velocity.normalized() * clampf(p.velocity.length() / Player.BASE_SPEED, 0.0, 1.0)
+        want = dir * view * CAMERA_LEAD
+    _cam_lead = _cam_lead.lerp(want, clampf(delta * 2.5, 0.0, 1.0))
+    return _cam_lead
+
+
 func _process(delta: float) -> void:
     if autotest:
         _autotest_tick(delta)
+
     _handle_joins()
     _handle_sheet_buttons()
     _serve_levelups()
-    camera.target = _party_center().lerp(cam_focus, cam_focus_w) if cam_focus_w > 0.0 else _party_center()
+    camera.target = (_party_center().lerp(cam_focus, cam_focus_w) if cam_focus_w > 0.0 else _party_center()) + _camera_lead(delta)
     camera.shake = Vector2(randf_range(-1.0, 1.0), randf_range(-1.0, 1.0)) * _shake
     _shake = move_toward(_shake, 0.0, 28.0 * delta)
     _message_time = maxf(0.0, _message_time - delta)
@@ -1221,7 +1262,11 @@ func _make_vignette() -> TextureRect:
 
 func _count_reaction(reaction_name: String, _pos: Vector2, _col: Color) -> void:
     _reaction_counts[reaction_name] = _reaction_counts.get(reaction_name, 0) + 1
+    var first := not Progress.discovered(reaction_name) and not Elements.def_by_name(reaction_name).is_empty()
     Progress.add_reaction(reaction_name)
+    if first and hud != null:
+        hud.discover(reaction_name)   # quiet fights: one line at the left edge (section 4.5)
+
 
 
 ## A fusion or cataclysm fired (Elements.fusion_fired, before its actions run): the show,
@@ -1280,7 +1325,32 @@ const BOT_BUILDS := {
             "mods": ["coating_shock@blowtorch", "coating_stone@blood_lance", "coating_ice@blood_lance", "coating_void@frost_caster", "oiled_bolt@venom_spitter"],
             "picks": ["dodge_0", "vent_1", "damage_1", "max_hp_1", "attack_speed_1"] },
     },
+    # Emil's run 6980a749 (2026-11-10, Alchemist, quit on floor 3): guns, tiers, items and
+    # level-up picks from its floor_end and levelup events, today's item ids. Which gun each
+    # mod sat on is not in telemetry: Split Chamber and Overclock go on the Etcher Beam (a
+    # second beam for the focus check), the coatings on the Arc Rifle. Floors 4 and 5 repeat
+    # floor 3 (he quit there). Session 4 maps it to the new catalog.
+    "human6980": {
+        "class": "alchemist",
+        2: { "guns": ["etcher_beam@2", "arc_rifle@1", "duality_burst@1", "cinder_flak@1"],
+            "gear": ["reagent_satchel", "ricochet_gloves", "vial_ice", "ring_ice", "wishbone_ring", "leech_mail"],
+            "mods": ["split_chamber@etcher_beam", "coating_poison@etcher_beam"],
+            "picks": ["max_hp_0", "attack_speed_0", "echo_ice_2"] },
+        3: { "guns": ["etcher_beam@2", "arc_rifle@2", "duality_burst@1", "cinder_flak@1"],
+            "gear": ["vial_holy", "ricochet_gloves", "vial_ice", "band_of_lingering", "ring_fire", "mantle_acid", "sandals", "pressure_bomb"],
+            "mods": ["split_chamber@etcher_beam", "overclock@etcher_beam", "coating_wet@arc_rifle", "coating_poison@arc_rifle"],
+            "picks": ["armor_3", "attack_speed_1", "speed_0", "regen_3"] },
+        4: { "guns": ["etcher_beam@2", "arc_rifle@2", "duality_burst@1", "cinder_flak@1"],
+            "gear": ["vial_holy", "ricochet_gloves", "vial_ice", "band_of_lingering", "ring_fire", "mantle_acid", "sandals", "pressure_bomb"],
+            "mods": ["split_chamber@etcher_beam", "overclock@etcher_beam", "coating_wet@arc_rifle", "coating_poison@arc_rifle"],
+            "picks": [] },
+        5: { "guns": ["etcher_beam@2", "arc_rifle@2", "duality_burst@1", "cinder_flak@1"],
+            "gear": ["vial_holy", "ricochet_gloves", "vial_ice", "band_of_lingering", "ring_fire", "mantle_acid", "sandals", "pressure_bomb"],
+            "mods": ["split_chamber@etcher_beam", "overclock@etcher_beam", "coating_wet@arc_rifle", "coating_poison@arc_rifle"],
+            "picks": [] },
+    },
     "mid": {
+
         "class": "stormcaller",
         2: { "guns": ["spark_needler@1", "blowtorch@1", "frost_caster@1", "venom_spitter@1"], "gear": ["hobnail_boots"], "mods": [], "random_levels": 4 },
         3: { "guns": ["spark_needler@1", "blowtorch@1", "frost_caster@1", "venom_spitter@1", "blood_lance@1"], "gear": ["hobnail_boots"], "mods": [], "random_levels": 6 },
@@ -1290,7 +1360,13 @@ const BOT_BUILDS := {
 }
 
 
+static func _spec_tier(spec: Variant) -> int:
+    var parts := String(spec).split("@")
+    return int(parts[1]) if parts.size() > 1 else 1
+
+
 func _bot_build() -> Dictionary:
+
     for a in OS.get_cmdline_user_args():
         if a.begins_with("--build="):
             return BOT_BUILDS.get(a.substr(8), {})
@@ -1330,7 +1406,10 @@ func _apply_bot_build(build: Dictionary, n: int) -> void:
     p.recalc_stats()
     for g in p.guns.duplicate():
         p.drop_gun(g)
-    for spec in entry["guns"]:
+    # Four gun slots (Core loop reset): a six-gun profile keeps its four highest tiers.
+    var specs: Array = entry["guns"].duplicate()
+    specs.sort_custom(func(a, b): return _spec_tier(a) > _spec_tier(b))
+    for spec in specs:
         var parts: PackedStringArray = String(spec).split("@")
         if p.add_gun(parts[0], false):
             p.guns[p.guns.size() - 1].tier = int(parts[1]) if parts.size() > 1 else 1
@@ -1361,6 +1440,7 @@ func _apply_bot_build(build: Dictionary, n: int) -> void:
             p.level += 1
     p.xp = 0.0
     p.hp = p.max_hp
+    p.refill_mending()
     scrap = 60
     var guns: Array = []
     for g in p.guns:
@@ -1427,6 +1507,18 @@ func _setup_autotest() -> void:
             print("[LOADOUT] fusion-probe %d: %s" % [posmod(k, FUSION_LOADOUTS.size()), ",".join(lo)])
             var bad := Fusions.validate()
             print("[FUSION-TABLES] %s" % ("valid" if bad.is_empty() else "%d errors: %s" % [bad.size(), "; ".join(bad.slice(0, 5))]))
+    if OS.get_cmdline_user_args().has("--focus-probe"):
+        # Focus check (Core loop reset 13.2): one beam gun with two beams first, then at
+        # FOCUS_PROBE_ADD s three more guns. [HANDS] and [FOCUS] lines report it.
+        var pf := players[0]
+        pf.weight_capacity_base = 40
+        pf.recalc_stats()
+        for g in pf.guns.duplicate():
+            pf.drop_gun(g)
+        pf.add_gun("etcher_beam", false)
+        pf.equip_mod_on(pf.guns[0], "split_chamber")
+        _focus_probe_t = FOCUS_PROBE_ADD
+        print("[LOADOUT] focus-probe: etcher_beam+split_chamber (beams %d)" % pf.guns[0].shot_count())
     if OS.get_cmdline_user_args().has("--arsenal"):
         var p := players[0]
         p.weight_capacity_base = 80
@@ -1441,8 +1533,19 @@ func _setup_autotest() -> void:
     DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path("res://autotest"))
 
 
+const FOCUS_PROBE_ADD := 25.0
+var _focus_probe_t := -1.0
+
+
 func _autotest_tick(delta: float) -> void:
     _clock += delta
+    if _focus_probe_t > 0.0:
+        _focus_probe_t -= delta
+        if _focus_probe_t <= 0.0 and not players.is_empty():
+            for gid in ["arc_rifle", "flare_pistol", "frost_caster"]:
+                players[0].add_gun(gid, false)
+            print("[LOADOUT] focus-probe: four guns at t=%.0f" % _clock)
+
     if _perf_probe:
         # Every 2 s a sample line, but only with --perf-lines: printing costs a hitch, so a
         # plain --perf run prints its frame-time summary once, at the end (Perf.summary).
@@ -1506,6 +1609,8 @@ func _autotest_tick(delta: float) -> void:
             p.input.force_move = (inner.get_center() - p.global_position).normalized()
         if _bot_aim:
             _bot_aim_at(p, t)
+        if not _bot_idle_fights:
+            _bot_dash(p)
         _bot_idle = 0.0
     else:
         _bot_idle += delta
@@ -1590,6 +1695,42 @@ func _bot_aim_at(p: Player, t: Node2D) -> void:
     var to := at - p.global_position
     p.input.force_fire = true
     p.input.force_aim = to.normalized() if to.length() > 1.0 else Vector2.RIGHT
+
+
+## The moving bots dash (Core loop reset 7.3) when an enemy shot is predicted to hit within
+## BOT_DASH_LOOK s, or a charger in its dash is closing in, and a charge is ready. Sideways to
+## the threat, so bot numbers stay close to a human mover. `--idle` never dashes.
+const BOT_DASH_LOOK := 0.25
+
+
+func _bot_dash(p: Player) -> void:
+    if p.dash_charges <= 0:
+        return
+    var pos := p.global_position
+    for sh in get_tree().get_nodes_in_group("enemy_projectiles"):
+        if not is_instance_valid(sh) or not sh is EnemyProjectile:
+            continue
+        var shot := sh as EnemyProjectile
+        var v := shot.direction * shot.speed
+        var rel := pos - shot.global_position
+        if rel.length() > 260.0 or v.length() < 1.0:
+            continue
+        var tc := clampf(rel.dot(v) / v.length_squared(), 0.0, BOT_DASH_LOOK)
+        if tc <= 0.0 and rel.length() > p.radius + shot.radius + 4.0:
+            continue
+        if (shot.global_position + v * tc).distance_to(pos) <= p.radius + shot.radius + 6.0:
+            var side := v.normalized().orthogonal()
+            if side.dot(-pos) < 0.0:
+                side = -side   # toward the room's middle
+            p.input.force_dash = true
+            p.input.force_move = side
+            return
+    for e in current.enemies.get_children():
+        if e is Enemy and (e as Enemy)._mode == Enemy.MODE_DASH and (e as Enemy).global_position.distance_to(pos) < 130.0:
+            var away := (pos - (e as Enemy).global_position).normalized().orthogonal()
+            p.input.force_dash = true
+            p.input.force_move = away if away.dot(-pos) >= 0.0 else -away
+            return
 
 
 func _bot_kite_dir(p: Player) -> Vector2:

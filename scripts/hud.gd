@@ -298,6 +298,7 @@ func _process(delta: float) -> void:
         if _toasts[i]["t"] <= 0.0:
             _toasts.remove_at(i)
     _watch_pickups(delta)
+    _tick_discovery(delta)
     queue_redraw()
 
 
@@ -379,6 +380,111 @@ func _draw() -> void:
     if main.show_help:
         _draw_help(vp)
     _draw_toasts(vp)
+    _draw_edge_arrows(vp)
+    _draw_discovery(vp)
+    _draw_dash_hint(vp)
+
+
+## First room of a run, until the first dash ever: one prompt (section 7.3).
+func _draw_dash_hint(vp: Vector2) -> void:
+    if main.players.is_empty() or main.floor_number != 1 or Settings.flag("dash_learned"):
+        return
+    var p: Player = main.players[0]
+    if p.dashes > 0:
+        return
+    var text := "%s: dash through danger" % p.input.prompt("dash")
+    var w := _body_width(text, 20) + 32.0
+    var box := Rect2(vp.x / 2.0 - w / 2.0, vp.y * 0.72, w, 34.0)
+    draw_rect(box, Color(0, 0, 0, 0.55))
+    _body_in(box, text, 20, UiTheme.BONE)
+
+
+
+# --- Discoveries and edge arrows (Core loop reset 4.5, 4.6) --------------------
+
+const DISCOVER_SECS := 3.0
+var _discoveries: Array[String] = []
+var _discover_t := 0.0
+
+
+## The first time a reaction, fusion or cataclysm happens on this save: "Discovered: X" at the
+## left screen edge for DISCOVER_SECS, one at a time (the rest queue). The codex keeps it.
+func discover(what: String) -> void:
+    if not _discoveries.has(what):
+        _discoveries.append(what)
+
+
+func _tick_discovery(delta: float) -> void:
+    if _discoveries.is_empty():
+        return
+    if _discover_t <= 0.0:
+        _discover_t = DISCOVER_SECS
+        Fx.count_text("discovery")
+    _discover_t -= delta
+    if _discover_t <= 0.0:
+        _discoveries.pop_front()
+
+
+func _draw_discovery(vp: Vector2) -> void:
+    if _discoveries.is_empty() or _discover_t <= 0.0:
+        return
+    var a := clampf(_discover_t / 0.4, 0.0, 1.0) * clampf((DISCOVER_SECS - _discover_t) / 0.15, 0.0, 1.0)
+    var text := "Discovered: %s" % _discoveries[0]
+    var w := _body_width(text, 20) + 28.0
+    var box := Rect2(0.0, vp.y * 0.42, w, 32.0)
+    draw_rect(box, Color(0, 0, 0, 0.55 * a))
+    draw_rect(Rect2(box.position, Vector2(3.0, box.size.y)), Color(0.6, 1.0, 0.8, 0.8 * a))
+    _body_in(Rect2(box.position + Vector2(14, 0), box.size - Vector2(14, 0)), text, 20, Color(0.75, 1.0, 0.85, a), HORIZONTAL_ALIGNMENT_LEFT)
+
+
+## Every hostile enemy off screen within ARROW_REACH of the player gets a small arrow at the
+## screen edge in the hostile signature (black outline, red rim); key threats a larger one
+## with their silhouette, pulsing while they wind up an attack.
+const ARROW_REACH := 700.0
+var arrows_drawn := 0       # last frame's count (the camera check)
+var offscreen_near := 0     # last frame's off-screen enemies in reach
+
+
+func _draw_edge_arrows(vp: Vector2) -> void:
+    arrows_drawn = 0
+    offscreen_near = 0
+    if main.players.is_empty() or main.current == null:
+        return
+    var p: Player = main.players[0]
+    var xf := get_viewport().get_canvas_transform()
+    var screen := Rect2(Vector2.ZERO, vp)
+    var inner := screen.grow(-22.0)
+    var centre := vp / 2.0
+    var r2 := ARROW_REACH * ARROW_REACH
+    for e in EnemyGrid.nodes(get_tree(), &"enemies"):
+        if not is_instance_valid(e) or not e is Enemy or e.emerge > 0.0:
+            continue
+        if e.global_position.distance_squared_to(p.global_position) > r2:
+            continue
+        var sp: Vector2 = xf * e.global_position
+        if screen.grow(-4.0).has_point(sp):
+            continue
+        offscreen_near += 1
+        var dir := (sp - centre).normalized()
+        # Where the ray from the centre leaves the inner rect.
+        var tx := (inner.size.x / 2.0) / maxf(0.001, absf(dir.x))
+        var ty := (inner.size.y / 2.0) / maxf(0.001, absf(dir.y))
+        var at := centre + dir * minf(tx, ty)
+        var key: bool = e.is_elite or e.kind_name == "boss" or e.is_key_threat()
+        var size := 13.0 if key else 8.0
+        if key and e.winding_up():
+            size *= 1.0 + 0.3 * _pulse(10.0)
+        var tip := at + dir * size
+        var side := dir.orthogonal() * size * 0.7
+        var tri := PackedVector2Array([tip, at - dir * size * 0.6 + side, at - dir * size * 0.6 - side])
+        var out := PackedVector2Array([tip + dir * 2.5, at - dir * (size * 0.6 + 2.0) + side * 1.3, at - dir * (size * 0.6 + 2.0) - side * 1.3])
+        draw_colored_polygon(out, Color(0, 0, 0, 0.9))
+        draw_colored_polygon(tri, Color(0.95, 0.18, 0.15, 0.95))
+        if key:
+            var tile = Enemy.KIND_TILES.get(e.kind_name)
+            if tile != null:
+                _icon(tile, Rect2(at - dir * (size + 16.0) - Vector2(10, 10), Vector2(20, 20)), Color(1.0, 0.85, 0.8, 0.95))
+        arrows_drawn += 1
 
 
 # --- Helpers ---------------------------------------------------------------
@@ -697,6 +803,12 @@ func _draw_vitals(p: Player, origin: Vector2) -> void:
         _body_in(Rect2(card.position.x, card.end.y + 2.0, CARD_W, 22.0), "LOW HEALTH" if not crit else "CRITICAL", 18, Color(1.0, 0.3, 0.25).lerp(Color.WHITE, 0.3 * _pulse(6.0)), HORIZONTAL_ALIGNMENT_LEFT)
 
     # Experience toward the next level
+    # The floor's Mending reserve (section 10): a thin green bar under the health bar,
+    # draining as passive healing uses it; it refills on the next floor.
+    if p.mend_max > 0.0:
+        var mr := Rect2(x, origin.y + 57.0, w, 4.0)
+        draw_rect(mr, Color(0.05, 0.08, 0.05, 0.85))
+        draw_rect(Rect2(mr.position, Vector2(mr.size.x * clampf(p.mend_rate(), 0.0, 1.0), mr.size.y)), Color(0.4, 0.9, 0.45, 0.9))
     _bar(Rect2(x, origin.y + 64.0, w, 6.0), p.xp / p.xp_to_next(), Color(0.85, 0.65, 0.2))
 
     if p.last_message != "":
@@ -906,11 +1018,26 @@ func _draw_vent(p: Player, g: Rect2, tagged: bool) -> void:
     var label := "%s VENT" % p.display_name().to_upper() if tagged else "VENT"
     var label_y := g.position.y - 10.0
     _body(Vector2(g.position.x, label_y), label, 16, UiTheme.BONE)
-    var prompt := p.input.prompt("vent")
     var kind := p.input.last_kind
-    var pw := _prompt_width(prompt, kind, 20.0)
     var lw := _body_width(label, 16)
-    Prompts.draw(self, Vector2(g.position.x + lw + 10.0 + pw / 2.0, g.position.y - 16.0), prompt, kind, 20.0)
+    if PlayerInput.vent_auto():
+        _body(Vector2(g.position.x + lw + 10.0, label_y), "AUTO", 13, UiTheme.DIM)
+    else:
+        var prompt := p.input.prompt("vent")
+        var pw := _prompt_width(prompt, kind, 20.0)
+        Prompts.draw(self, Vector2(g.position.x + lw + 10.0 + pw / 2.0, g.position.y - 16.0), prompt, kind, 20.0)
+    # Dash pips beside the gauge: lit while a charge is ready, filling while it recharges.
+    var cap := p.dash_max_charges()
+    for i in cap:
+        var pip := Rect2(g.position.x - 32.0 - 18.0 - float(cap - 1 - i) * 16.0, g.position.y + 1.0, 12.0, 12.0)
+        draw_rect(pip.grow(1.5), Color(0, 0, 0, 0.8))
+        draw_rect(pip, Color(0.12, 0.11, 0.12))
+        if i < p.dash_charges:
+            draw_rect(pip, Color(0.92, 0.92, 0.88))
+        elif i == p.dash_charges and p.dash_recharge > 0.0:
+            var k := 1.0 - p.dash_recharge / maxf(0.01, p.dash_cooldown())
+            draw_rect(Rect2(pip.position + Vector2(0, pip.size.y * (1.0 - k)), Vector2(pip.size.x, pip.size.y * k)), Color(0.6, 0.6, 0.58))
+
     if ready:
         _body(Vector2(g.end.x - 120.0, label_y), "READY", 15, Color(side, 0.6 + 0.4 * _pulse(6.0)), HORIZONTAL_ALIGNMENT_RIGHT, 120.0)
 
@@ -931,8 +1058,10 @@ func _draw_help(vp: Vector2) -> void:
     var inp: PlayerInput = main.players[0].input if not main.players.is_empty() else null
     var pad := inp != null and inp.last_kind == "pad"
     var lines := [
-        "MOVE  %s      INTERACT  %s      VENT  %s      guns aim and fire on their own" % [
-            "left stick" if pad else "WASD", "A" if pad else "E", "LB" if pad else "Space"],
+        "MOVE  %s      DASH  %s      ACTIVE  %s      INTERACT  %s      guns aim and fire on their own" % [
+            "left stick" if pad else "WASD", inp.prompt("dash") if inp != null else "Space",
+            inp.prompt("active") if inp != null else "Q", "A" if pad else "E"],
+
         "CHARACTER  %s      PAUSE  %s      F1 hides this" % [
             "Back" if pad else "C", "Start" if pad else "Esc"],
     ]

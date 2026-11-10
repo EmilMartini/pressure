@@ -18,7 +18,9 @@ const DEFAULTS := {
     "screen_shake": 1.0,
     "hit_stop": true,
     "flashes": true,                  # full-strength screen flashes and the pulsing low-health edge
-    "damage_numbers": true,
+    "damage_numbers": false,          # Core loop reset 4.5: quiet fights (big crits still show)
+    "fight_text": "quiet",            # "quiet", "reactions" or "everything" (Fx.fight_text)
+    "vent_mode": "auto",              # "auto" (fires on its own) or "button" (PlayerInput)
     "own_fx": 0.45,                   # opacity of your own effects (own_fx()), 1 = full (clarity pass: 0.45)
     "post_fx": true,
     "crt": false,                     # CRT curve, scanlines, a little aberration and grain
@@ -29,7 +31,8 @@ const DEFAULTS := {
     "lighting": true,                 # art pass: region light, grade and dressing (ArtPass)
     "river_carry": true,              # rivers carry oil, blood, poisoned water, ash downstream (on: Emil, 2026-11-10)
     "fx_rev": 3,                      # post-fx defaults revision (FX_REV; migrations, see load)
-    "aim_mode": "assisted",           # "assisted", "manual" or "auto" (Player.AIM_MODES)
+    "controls_rev": 1,                # controls defaults revision (CONTROLS_REV)
+    "aim_mode": "auto",               # "auto" (focus targeting), "assisted" or "manual" (Player.AIM_MODES)
     "manual_fire": "hold",            # manual aim: "hold" fire, or "toggle" constant fire
     "controls_hint": false,
     "pause_on_disconnect": true,
@@ -37,6 +40,8 @@ const DEFAULTS := {
     "vibration_paused": false,        # keep rumbling while the game is paused
     "seen_explainer": false,
     "tutorial_done": false,
+    "dash_learned": false,            # the first-room dash prompt is gone after the first dash
+
     "telemetry": "ask",               # anonymous play data: "ask", "on" or "off"
     "telemetry_device_id": "",        # random id, never a name
 }
@@ -49,8 +54,11 @@ const GRAIN_BASE := 0.012
 const BLOOM_ON := 0.35   # was 0.85; clarity pass: the player's glow no longer floods the arena
 ## Bumped when post-fx defaults change in a way old settings files should pick up.
 const FX_REV := 3
+## Bumped when control or fight-text defaults change for older settings files.
+## 1: Core loop reset (2026-11-10): auto aim, quiet fights, no damage numbers.
+const CONTROLS_REV := 1
 ## Numeric keys that are not 0..1, with their range.
-const RANGES := { "pixel_size": [2.0, 4.0], "fx_rev": [0.0, 1000.0] }
+const RANGES := { "pixel_size": [2.0, 4.0], "fx_rev": [0.0, 1000.0], "controls_rev": [0.0, 1000.0] }
 
 var values: Dictionary = {}
 var save_path := SAVE_PATH
@@ -289,4 +297,11 @@ func load_settings() -> void:
             values["own_fx"] = minf(float(values["own_fx"]), float(DEFAULTS["own_fx"]))
         values["fx_rev"] = FX_REV
         save()
+    if int(d.get("controls_rev", 0)) < CONTROLS_REV:
+        values["aim_mode"] = "auto"
+        values["damage_numbers"] = false
+        values["fight_text"] = "quiet"
+        values["controls_rev"] = CONTROLS_REV
+        save()
+
 

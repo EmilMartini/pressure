@@ -178,6 +178,9 @@ var _lunge_t := 0.0
 ## Emerging: a telegraphed spawn. The enemy fades in where it will appear and cannot
 ## move or hurt for this long; shots can already hit it (killing it early is the reward).
 var emerge := 0.0
+## Focus targeting (Focus): damage already on its way here (shots in flight), and until when.
+var _pending_dmg := 0.0
+var _pending_until := 0.0
 ## A boss's entrance (BossShow): it rises through `emerge` (so nothing aims at it or
 ## touches it) with its own animation instead of the spawn marker.
 var intro := false
@@ -563,7 +566,7 @@ func apply_element(kind: int, potency: float, source: Player = null) -> String:
         if body != null and is_instance_valid(self) and hp > 0.0:
             body.on_product(reaction, Fusions.TIER_REACTION, true)
         if source != null and is_instance_valid(source):
-            source.on_reaction(reaction)
+            source.on_reaction(reaction, global_position)
             Items.fire(source, "reaction", { "target": self, "reaction": reaction, "element": kind, "other": existing, "pos": global_position })
         if is_instance_valid(self):
             queue_redraw()
@@ -3072,3 +3075,38 @@ func _draw_boss() -> void:
                 for k in 3:
                     var a := _spiral_angle + float(k) * TAU / 3.0
                     draw_line(Vector2.ZERO, Vector2.RIGHT.rotated(a) * (radius + 14.0), Color(c, 0.7), 3.0)
+
+
+# --- Focus targeting (Core loop reset 7.2) ------------------------------------
+
+## Key threats: the enemies a player must answer first (shooters, chargers, zoners).
+const KEY_THREATS := ["spitter", "charger", "shaman", "bomber", "warden", "lobber", "zoner"]
+
+
+func is_key_threat() -> bool:
+    return kind_name in KEY_THREATS or affix in ["volatile", "barrage"]
+
+
+## Winding up an attack right now (charge telegraph, ring, teleport or gut-blast warning).
+func winding_up() -> bool:
+    return _mode == MODE_TELEGRAPH or _ring_warn > 0.0 or _tele_warn > 0.0 or _gut_warn > 0.0
+
+
+## Shots in flight toward this enemy (Focus skips it once they cover its health).
+func pending_damage() -> float:
+    if _game_now() > _pending_until:
+        _pending_dmg = 0.0
+    return _pending_dmg
+
+
+func add_pending(amount: float, eta: float) -> void:
+    var now := _game_now()
+    if now > _pending_until:
+        _pending_dmg = 0.0
+    _pending_dmg += amount
+    _pending_until = maxf(_pending_until, now + eta)
+
+
+## Game seconds (physics frames), so fast-forwarded bot runs time the same as play.
+static func _game_now() -> float:
+    return float(Engine.get_physics_frames()) / float(Engine.physics_ticks_per_second)

@@ -21,7 +21,7 @@ const STEPS := [
     { "id": "gun", "text": "Take the Water Pistol", "sub": "Stand at the plinth and press the button.", "action": "interact" },
     { "id": "aim", "text": "Your guns aim and fire on their own", "sub": "Stay in range of the dummies. Water makes them Wet.", "action": "move" },
     { "id": "react", "text": "Take the Flare Pistol", "sub": "Water + fire = Steam. Every pair of elements reacts.", "action": "interact" },
-    { "id": "vent", "text": "Vent your pressure", "sub": "Firing heats or chills the gauge under your health. Venting blasts it out as a nova.", "action": "vent" },
+    { "id": "vent", "text": "Dash through danger", "sub": "A dash is a short dodge: nothing touches you while you dash.\nFiring fills the gauge under your health; the vent blasts it out on its own.", "action": "dash" },
     { "id": "gear", "text": "Equip the Rusted Helm", "sub": "Gear fills slots: head, chest, hands, feet, two rings, two trinkets, an active.", "action": "interact" },
     { "id": "active", "text": "Take the Smelling Salts", "sub": "An active item does something when you use it.", "action": "interact" },
     { "id": "door", "text": "The door is open: walk through to the hub", "sub": "Every run is five floors, each ends in a boss.\nDying keeps your unlocks and Embers. The hub is where you spend them.", "action": "move" },
@@ -181,7 +181,12 @@ func _check_step() -> bool:
             for pl in players:
                 if absf(pl.pressure) < Player.VENT_MIN + 10.0:
                     pl.pressure = 60.0
+            # Core loop reset 7.3: this step teaches the dash (the vent fires on its own);
+            # with the vent on a button (Options) it still asks for a vent.
+            if PlayerInput.vent_auto():
+                return p.dashes > 0
             return _vented
+
         "gear":
             if _sub == 0 and p.equipment.values().has("rusted_helm"):
                 _sub = 1
@@ -207,8 +212,14 @@ func _instruction() -> Array:
     var sub := String(s["sub"])
     var action := String(s["action"])
     match String(s["id"]):
+        "vent":
+            if not PlayerInput.vent_auto():
+                text = "Vent your pressure"
+                sub = "Firing heats or chills the gauge under your health. Venting blasts it out as a nova."
+                action = "vent"
         "react":
             if _sub == 1:
+
                 text = "Wet targets meet fire: watch for the reaction"
                 action = ""
         "gear":

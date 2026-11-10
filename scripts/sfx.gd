@@ -41,6 +41,7 @@ const BANK := {
     "shoot_void": ["shot_void_1", "shot_void_2", "shot_void_3"],
     "shoot_holy": ["shot_holy_1", "shot_holy_2", "shot_holy_3", "shot_holy_4"],
     "shoot_gale": ["shot_gale_1", "shot_gale_2", "shot_gale_3", "shot_gale_4"],
+    "dash": ["shot_gale_2", "shot_gale_4"],   # the dash whoosh (Core loop reset 7.3)
     "shoot_stone": ["shot_stone_1", "shot_stone_2", "shot_stone_3", "shot_stone_4"],
     # Reaction layers: one per element, and a weight by size
     "rx_fire": ["rx_fire_1", "rx_fire_2"], "rx_wet": ["rx_wet_1", "rx_wet_2"],

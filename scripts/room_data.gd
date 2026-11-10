@@ -49,7 +49,9 @@ var chest_tier := 1
 
 ## Floor size class, picked at floor generation: 0 small, 1 normal, 2 large (SIZES).
 ## Doors sit at the middle of each wall whatever the size.
-const SIZES := [Vector2(900, 600), Vector2(1120, 720), Vector2(1400, 880)]
+## Core loop reset 4.6: small and normal shrank (900 x 600, 1120 x 720) for the closer camera;
+## large rooms (bosses, the sluice) keep their size and lean on the edge arrows.
+const SIZES := [Vector2(840, 540), Vector2(1000, 600), Vector2(1400, 880)]
 var size_class := 1
 ## Interior geometry (RoomLayouts name) and the seed that shapes it, its puzzle and its
 ## terrain, so a room keeps its layout on every visit.
