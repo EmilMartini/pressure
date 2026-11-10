@@ -69,6 +69,7 @@ func _ready() -> void:
     add_child(v)
     v.add_child(UiTheme.label("OPTIONS", 40))
     v.add_child(UiTheme.label("Up / down pick     left / right change     B / Esc back", 20, UiTheme.DIM))
+    UiTheme.apply_text_rule(v)
     var scroll := ScrollContainer.new()
     scroll.custom_minimum_size = Vector2(680, 440)
     scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
@@ -103,6 +104,7 @@ func _make_row(i: int) -> Button:
     b.custom_minimum_size = Vector2(660, ROW_H)
     b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
     b.add_theme_font_size_override("font_size", 24)
+    b.set_meta("pixel", true)   # a setting's name, not a sentence (text rule, art.gd)
     b.clip_text = true
     b.pressed.connect(func(): _step(i, 1, true))
     var val := Control.new()

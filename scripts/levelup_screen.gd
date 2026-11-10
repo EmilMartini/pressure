@@ -292,6 +292,7 @@ func _fill_cards() -> void:
     _reroll.visible = left > 0
     _reroll.text = "Reroll   %d left   (X / R)" % left
     _link_cards(_options.size())
+    UiTheme.apply_text_rule(self)
 
 
 ## Left / right wrap over the `count` visible cards; down goes to the reroll button when

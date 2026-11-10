@@ -54,6 +54,7 @@ func _ready() -> void:
     _title = UiTheme.label("", 40)
     v.add_child(_title)
     _desc = UiTheme.label("", 20, UiTheme.BONE)
+    UiTheme.to_body(_desc, Art.BODY_SIZE)
     _desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
     _desc.custom_minimum_size = Vector2(760, 0)
     v.add_child(_desc)

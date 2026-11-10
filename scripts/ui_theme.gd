@@ -1,6 +1,8 @@
 class_name UiTheme
 extends RefCounted
-## One dark theme for every menu: big pixel font, bone text, element-coloured focus.
+## One dark theme for every menu: pixel font for titles, buttons and numbers, the clean body
+## font (Art.FONT_BODY, see the text rule in art.gd) for sentences and tooltips, bone text,
+## element-coloured focus. `label` makes pixel-font labels; `body` makes sentence labels.
 
 const BONE := Color(0.90, 0.86, 0.78)
 const DIM := Color(0.55, 0.52, 0.50)
@@ -24,6 +26,13 @@ static func make() -> Theme:
     theme.set_font_size("font_size", "Label", 24)
     theme.set_color("font_color", "Label", BONE)
     theme.set_stylebox("panel", "PanelContainer", _box(PANEL, Color(0.30, 0.26, 0.28), 2, 16))
+    if Art.FONT_BODY != null:
+        theme.set_font("font", "TooltipLabel", Art.FONT_BODY)
+        theme.set_font_size("font_size", "TooltipLabel", Art.BODY_SIZE)
+        theme.set_color("font_color", "TooltipLabel", BONE)
+        theme.set_stylebox("panel", "TooltipPanel", _box(PANEL, Color(0.45, 0.40, 0.40), 2, 6))
+        theme.set_font("normal_font", "RichTextLabel", Art.FONT_BODY)
+        theme.set_font_size("normal_font_size", "RichTextLabel", Art.BODY_SIZE)
     return theme
 
 
@@ -46,6 +55,25 @@ static func button(text: String, on_pressed: Callable) -> Button:
     return b
 
 
+## A sentence label in the body font at `size` (Art.BODY_SIZE by default, never under
+## Art.SMALL_SIZE), word-wrapped, left-aligned.
+static func body(text: String, size: int = Art.BODY_SIZE, color: Color = BONE) -> Label:
+    var l := Label.new()
+    l.text = text
+    to_body(l, size, color)
+    l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+    return l
+
+
+## Switches an existing label to the body font at `size` (and `color` when given).
+static func to_body(l: Label, size: int = Art.BODY_SIZE, color: Color = Color(0, 0, 0, 0)) -> void:
+    if Art.FONT_BODY != null:
+        l.add_theme_font_override("font", Art.FONT_BODY)
+    l.add_theme_font_size_override("font_size", maxi(size, Art.SMALL_SIZE))
+    if color.a > 0.0:
+        l.add_theme_color_override("font_color", color)
+
+
 static func label(text: String, size: int = 24, color: Color = BONE) -> Label:
     var l := Label.new()
     l.text = text
@@ -53,3 +81,23 @@ static func label(text: String, size: int = 24, color: Color = BONE) -> Label:
     l.add_theme_color_override("font_color", color)
     l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
     return l
+
+
+## Applies the text rule (art.gd) to every Label under `root`: sentence text (Art.is_prose)
+## moves to the body font at Art.body_px of its pixel size. Titles, names and numbers keep
+## the pixel font; a label with the meta "pixel" is never changed. Screens call this after
+## filling their text (labels made empty and filled later are switched when first filled).
+static func apply_text_rule(root: Node) -> void:
+    if Art.FONT_BODY == null or root == null:
+        return
+    for n in root.find_children("*", "Label", true, false):
+        var l := n as Label
+        if l.has_meta("pixel") or l.get_theme_font("font") == Art.FONT_BODY or not Art.is_prose(l.text):
+            continue
+        to_body(l, Art.body_px(l.get_theme_font_size("font_size")))
+    for n in root.find_children("*", "Button", true, false):
+        var b := n as Button
+        if b.has_meta("pixel") or b.get_theme_font("font") == Art.FONT_BODY or not Art.is_prose(b.text):
+            continue
+        b.add_theme_font_override("font", Art.FONT_BODY)
+        b.add_theme_font_size_override("font_size", Art.body_px(b.get_theme_font_size("font_size")))

@@ -121,6 +121,7 @@ func set_tab(i: int) -> void:
             _fill_cataclysms()
         6:
             _fill_secrets()
+    UiTheme.apply_text_rule(self)
     Sfx.play("ui_move")
     await get_tree().process_frame
     if is_visible_in_tree():
@@ -327,6 +328,6 @@ func _show_card(it: Dictionary) -> void:
 func _draw_card() -> void:
     if _card_item.is_empty():
         var font: Font = Art.FONT
-        _card_view.draw_string(font, Vector2(10, 40), "Move to an item to see its card.", HORIZONTAL_ALIGNMENT_LEFT, _card_view.size.x - 20.0, 20, UiTheme.DIM)
+        _card_view.draw_string(Art.FONT_BODY, Vector2(10, 40), "Move to an item to see its card.", HORIZONTAL_ALIGNMENT_LEFT, _card_view.size.x - 20.0, Art.BODY_SIZE, UiTheme.DIM)
         return
     ItemCard.draw(_card_view, Rect2(Vector2(10, 6), Vector2(ItemCard.DEFAULT_WIDTH, 0)), _card_item)

@@ -589,6 +589,7 @@ func _open(c: Control, focus: Control) -> void:
     _overlay = c
     _dim.visible = c != _talk_root
     c.visible = true
+    UiTheme.apply_text_rule(c)
     # A button still held from opening (A on the plinth) must be released first.
     for k in ["accept", "cancel", "left", "right"]:
         _pad._was[k] = true
@@ -780,6 +781,7 @@ func _build_talk() -> void:
     _talk_name.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
     col.add_child(_talk_name)
     _talk_text = UiTheme.label("", 28, UiTheme.BONE)
+    UiTheme.to_body(_talk_text, Art.body_px(28))
     _talk_text.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
     _talk_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
     _talk_text.custom_minimum_size = Vector2(1040, 0)

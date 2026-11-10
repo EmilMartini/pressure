@@ -14,7 +14,6 @@ const SHEET: Texture2D = preload("res://assets/kenney/1bit_mono.png")
 const FLOOR: Texture2D = preload("res://assets/kenney/floor_tile.png")
 const WALL: Texture2D = preload("res://assets/kenney/wall_tile.png")
 const FONT: Font = preload("res://assets/fonts/kenney_pixel.ttf")
-const FONT_SMALL: Font = preload("res://assets/fonts/kenney_mini.ttf")
 
 const PARTICLES := {
     "smoke": preload("res://assets/kenney/particles/smoke_04.png"),
@@ -188,13 +187,56 @@ var _icon_cache: Dictionary = {}    # path -> Texture2D
 var _sized_cache: Dictionary = {}   # "texture id:px" -> Texture2D
 var _icon_warned: Dictionary = {}   # full path -> true once warned
 
-## Body font: the same pixel font, which only reads at 20 px and up, so every piece of
-## text in the game is drawn at 20 or larger and kept short.
+## Text rule (Emil, 2026-11-10). Kenney Pixel (FONT) is the game's look: titles, names,
+## numbers, prices and HUD counters. Every sentence (descriptions, menu help, talk boxes,
+## tooltips, card effects) uses FONT_BODY, Godot's built-in Open Sans (ThemeDB.fallback_font,
+## ships with the engine), at BODY_SIZE or more at 1280x720; secondary lines may drop to
+## SMALL_SIZE, never lower. Kenney Mini is retired: its lowercase letters blur together.
+## `text_font` / `text_px` apply the rule to text laid out for the pixel font.
+const BODY_SIZE := 18
+const SMALL_SIZE := 15
 var FONT_BODY: Font
 
 
 func _ready() -> void:
-    FONT_BODY = FONT
+    FONT_BODY = ThemeDB.fallback_font
+
+
+## True for sentence-length text: three or more words with lowercase letters. Names,
+## numbers, button captions and all-caps titles stay in the pixel font.
+static func is_prose(text: String) -> bool:
+    if text.count(" ") < 2 or text == text.to_upper():
+        return false
+    var words := 0
+    for w in text.split(" ", false):
+        if w.length() >= 2 and w != w.to_upper():
+            words += 1
+    return words >= 3
+
+
+## The font for `text`: FONT_BODY for sentences, FONT for everything else.
+func text_font(text: String) -> Font:
+    return FONT_BODY if FONT_BODY != null and is_prose(text) else FONT
+
+
+## The size to draw `text` at when its layout was made for the pixel font at `pixel_px`:
+## unchanged for pixel text; for sentences the body size that fills about the same box
+## (Open Sans is about 1.5x wider than Kenney Pixel at the same px), never under SMALL_SIZE.
+func text_px(text: String, pixel_px: int) -> int:
+    if text_font(text) == FONT:
+        return pixel_px
+    return body_px(pixel_px)
+
+
+## Body-font size for a slot sized for the pixel font at `pixel_px`.
+static func body_px(pixel_px: int) -> int:
+    if pixel_px >= 28:
+        return 22
+    if pixel_px >= 26:
+        return 20
+    if pixel_px >= 22:
+        return BODY_SIZE
+    return 16
 
 
 func tile(coord: Vector2i) -> AtlasTexture:

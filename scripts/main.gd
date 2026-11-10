@@ -1712,6 +1712,8 @@ func _setup_autotest() -> void:
         add_child(GearShot.new(self))   # worn-gear sheets and fight close-ups (gear_shot.gd)
     if CardShot.wanted():
         add_child(CardShot.new(self))   # card readability numbers and sheets (card_shot.gd)
+    if TextCheck.wanted():
+        add_child(TextCheck.new(self))   # menu text sizes, fonts and overflow (text_check.gd)
     if ClarityShot.wanted():
         add_child(ClarityShot.new(self))   # before/after readability shots and numbers (clarity_shot.gd)
     if AliveShot.wanted():

@@ -3,7 +3,10 @@ extends PanelContainer
 ## The Shrine's talent board (see Mastery): eleven slot cards in a grid, each showing both
 ## sides with the active one lit, its rank pips and the next rank's cost, then the
 ## survival row (Last Breath), the Embers in the header and a free refund-all with a
-## confirmation.
+## confirmation. Under the board, the detail panel for the focused entry reads top-down:
+## the name (pixel font) with rank pips, one effect line (body font, numbers lit), the next
+## rank and its Ember cost, then the other side, smaller and dimmer. Purchases, switches
+## and errors show as a short toast in the panel's corner.
 ##
 ## Controls. Pad: d-pad / stick moves between cards (left / right through MenuPad.on_tab,
 ## which calls set_tab), A buys the next rank of the lit side, X switches side, B closes.
@@ -12,7 +15,7 @@ extends PanelContainer
 ## switches side. The hub (and the fallback menu) poll the pad and close on B / Esc.
 
 const COLS := 4
-const CARD_SIZE := Vector2(272, 128)
+const CARD_SIZE := Vector2(272, 112)
 const ROW_H := 38.0
 const ROW_TOP := 26.0
 const ICON := 32.0
@@ -21,6 +24,9 @@ const OWNED := Color(0.6, 1.0, 0.75)
 const LOCKED := Color(0.45, 0.42, 0.45)
 const CARD_BG := Color(0.06, 0.05, 0.07, 0.95)
 const REFUND_SECS := 4.0
+const TOAST_SECS := 2.6
+const DETAIL_H := 122.0
+const NAME_PX := 32
 
 var on_close: Callable
 var tab := 0                       # index into _focusables: slots, survival, refund, back
@@ -33,14 +39,16 @@ var _back: Button
 var _focusables: Array = []
 var _embers_label: Label
 var _spent_label: Label
-var _lines: Array[Label] = []
+var _detail_box: Control
+var _num_re := RegEx.create_from_string("[+-]?\\d+(?:\\.\\d+)?%?")
 var _ember_tex: Texture2D
 var _refund_armed := false
 var _refund_left := 0.0
 var _time := 0.0
 var _x_was := false
 var _bought_at: Dictionary = {}    # card index (-1 survival) -> _time of the last purchase
-var _note := ""                    # one-off message for the third detail line
+var _note := ""                    # the toast's text
+var _note_t := 0.0                 # seconds the toast has left
 
 
 func _init(p_on_close: Callable) -> void:
@@ -70,9 +78,11 @@ func _ready() -> void:
     _embers_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
     header.add_child(_embers_label)
     _spent_label = _text("", 20, UiTheme.DIM)
+    UiTheme.to_body(_spent_label, 16)
     _spent_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
     header.add_child(_spent_label)
-    var hint := _text("A buy   X switch side   B back", 20, UiTheme.DIM)
+    var hint := _text("A buy    X switch side    B back", 20, UiTheme.DIM)
+    UiTheme.to_body(hint, 16)
     hint.size_flags_horizontal = Control.SIZE_EXPAND_FILL
     hint.size_flags_vertical = Control.SIZE_SHRINK_CENTER
     hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
@@ -99,15 +109,11 @@ func _ready() -> void:
     _survival.pressed.connect(_buy_survival)
     v.add_child(_survival)
 
-    var detail := VBoxContainer.new()
-    detail.add_theme_constant_override("separation", 0)
-    v.add_child(detail)
-    for k in 3:
-        var l := _text("", 20, UiTheme.BONE if k == 0 else UiTheme.DIM)
-        l.clip_text = true
-        l.custom_minimum_size = Vector2(1100, 0)
-        detail.add_child(l)
-        _lines.append(l)
+    _detail_box = Control.new()
+    _detail_box.custom_minimum_size = Vector2(0, DETAIL_H)
+    _detail_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    _detail_box.draw.connect(_draw_detail)
+    v.add_child(_detail_box)
 
     var footer := HBoxContainer.new()
     footer.add_theme_constant_override("separation", 16)
@@ -208,10 +214,10 @@ func _buy(i: int) -> void:
     var s := Mastery.active_side(sid)
     if Mastery.buy(sid, s):
         _bought_at[i] = _time
-        _note = "%s rank %d: %s" % [String(Mastery.side(sid, s)["name"]), Mastery.rank(sid, s), Mastery.effect_text(sid, s, Mastery.rank(sid, s))]
+        _toast("%s rank %d: %s" % [String(Mastery.side(sid, s)["name"]), Mastery.rank(sid, s), Mastery.effect_text(sid, s, Mastery.rank(sid, s))])
         Sfx.play("ui_confirm")
     else:
-        _note = _why_not(sid, s)
+        _toast(_why_not(sid, s))
         Sfx.play("error")
     _refresh()
 
@@ -222,7 +228,7 @@ func _toggle(i: int) -> void:
     var sid: String = _ids[i]
     Mastery.toggle(sid)
     var s := Mastery.active_side(sid)
-    _note = "%s is now active." % String(Mastery.side(sid, s)["name"])
+    _toast("%s active" % String(Mastery.side(sid, s)["name"]))
     Sfx.play("ui_move")
     _refresh()
 
@@ -230,11 +236,11 @@ func _toggle(i: int) -> void:
 func _buy_survival() -> void:
     if Mastery.buy_survival():
         _bought_at[-1] = _time
-        _note = "Last Breath rank %d: %d revive%s per run." % [Mastery.survival, Mastery.survival, "" if Mastery.survival == 1 else "s"]
+        _toast("Last Breath rank %d: %d revive%s per run" % [Mastery.survival, Mastery.survival, "" if Mastery.survival == 1 else "s"])
         Sfx.play("ui_confirm")
     else:
         var c := Mastery.survival_next_cost()
-        _note = "Last Breath is maxed." if c < 0 else "Not enough Embers: %d needed, %d held." % [c, Mastery.embers]
+        _toast("Last Breath is maxed" if c < 0 else _short_of(c))
         Sfx.play("error")
     _refresh()
 
@@ -242,7 +248,7 @@ func _buy_survival() -> void:
 func _on_refund() -> void:
     var back := Mastery.spent()
     if back <= 0:
-        _note = "Nothing to refund yet."
+        _toast("Nothing to refund yet")
         Sfx.play("error")
         _refresh()
         return
@@ -250,13 +256,13 @@ func _on_refund() -> void:
         _refund_armed = true
         _refund_left = REFUND_SECS
         _refund.text = "Confirm: refund %d" % back
-        _note = "Press Refund again to get all %d Embers back. Your chosen sides stay." % back
+        _toast("Press again to refund %d Embers" % back, REFUND_SECS)
         Sfx.play("ui_move")
         _refresh()
         return
     var got := Mastery.refund_all()
     _disarm_refund()
-    _note = "Refunded %d Embers. Spend them again any way you like." % got
+    _toast("Refunded %d Embers" % got)
     Sfx.play("ui_back")
     _refresh()
 
@@ -270,11 +276,21 @@ func _disarm_refund() -> void:
 func _why_not(sid: String, s: String) -> String:
     var req := Mastery.requirement_text(sid, s)
     if req != "":
-        return "%s: %s. The Trophy Wall shows how to unlock it." % [String(Mastery.side(sid, s)["name"]), req]
+        return "%s first" % req
     var c := Mastery.next_cost(sid, s)
     if c < 0:
-        return "%s is maxed. Switch side to invest in the other one." % String(Mastery.side(sid, s)["name"])
-    return "Not enough Embers: %d needed, %d held." % [c, Mastery.embers]
+        return "%s is maxed. X switches side." % String(Mastery.side(sid, s)["name"])
+    return _short_of(c)
+
+
+func _short_of(cost: int) -> String:
+    return "Needs %d Embers, you have %d" % [cost, Mastery.embers]
+
+
+## Shows `text` as the toast for `secs`.
+func _toast(text: String, secs: float = TOAST_SECS) -> void:
+    _note = text
+    _note_t = secs
 
 
 # --- Text ------------------------------------------------------------------
@@ -282,7 +298,6 @@ func _why_not(sid: String, s: String) -> String:
 
 func _on_focus(i: int) -> void:
     tab = i
-    _note = ""
     _refresh()
 
 
@@ -290,56 +305,69 @@ func _refresh() -> void:
     if _embers_label == null:
         return
     _embers_label.text = "%d Embers" % Mastery.embers
-    _spent_label.text = "spent %d of %d    ranks %d / %d    earned %d in all" % [
+    _spent_label.text = "Spent %d of %d    Ranks %d / %d    Earned %d" % [
         Mastery.spent(), Mastery.total_cost(), Mastery.ranks_bought(), Mastery.ranks_total(), Mastery.earned]
-    var texts := _detail(tab)
-    for k in _lines.size():
-        _lines[k].text = String(texts[k]) if k < texts.size() else ""
-    if _note != "":
-        _lines[2].text = _note
     for c in _cards:
         c.queue_redraw()
     if _survival != null:
         _survival.queue_redraw()
+    if _detail_box != null:
+        _detail_box.queue_redraw()
 
 
-## Three lines for focus entry `i`: the lit side, the other side, what to press.
-func _detail(i: int) -> Array:
+## The detail panel's content for focus entry `i`: name, rank / max (pips), the effect
+## line, the next rank's gain and its cost (-1: none), a status in place of the next rank
+## (maxed, locked) and the dim secondary line.
+func _detail(i: int) -> Dictionary:
     if i < _ids.size():
         var sid: String = _ids[i]
         var s := Mastery.active_side(sid)
-        var o := Mastery.other_side(s)
-        return [_side_line(sid, s, true), _side_line(sid, o, false),
-            "A / Enter / click the lit row: buy the next rank.    X / Tab / right-click: switch side, free."]
+        var d := Mastery.side(sid, s)
+        var r := Mastery.rank(sid, s)
+        var m := Mastery.max_rank(sid, s)
+        var out := { "name": String(d["name"]).to_upper(), "rank": r, "max": m,
+            "effect": _effect_line(sid, s), "next": "", "cost": -1, "status": "", "other": _other_line(sid, Mastery.other_side(s)) }
+        var req := Mastery.requirement_text(sid, s)
+        if req != "":
+            out["status"] = "Locked. %s to unlock." % req
+        elif r >= m:
+            out["status"] = "Maxed."
+        else:
+            out["next"] = "Rank %d: %s" % [r + 1, Mastery.effect_text(sid, s, r + 1)]
+            out["cost"] = Mastery.next_cost(sid, s)
+        return out
     if i == _ids.size():
         var r := Mastery.survival
         var m := Mastery.survival_max()
-        var now := "no revives yet" if r <= 0 else "%d revive%s per run at %d%% max HP" % [r, "" if r == 1 else "s", roundi(Mastery.REVIVE_FRACTION * 100.0)]
+        var hp := roundi(Mastery.REVIVE_FRACTION * 100.0)
+        var now := "No revives yet." if r <= 0 else "Now %d revive%s per run." % [r, "" if r == 1 else "s"]
         var c := Mastery.survival_next_cost()
-        var next := "Maxed." if c < 0 else "Next rank: one more revive for %d Embers." % c
-        return ["LAST BREATH  rank %d / %d: %s. %s" % [r, m, now, String(Mastery.SURVIVAL["desc"])], next,
-            "The first charge is cheap; the others are a long-term goal. Press A to buy."]
+        return { "name": "LAST BREATH", "rank": r, "max": m,
+            "effect": "When you would fall, stand back up at %d%% HP. %s" % [hp, now],
+            "next": "" if c < 0 else "Rank %d: %d revive%s per run" % [r + 1, r + 1, "" if r == 0 else "s"], "cost": c,
+            "status": "Maxed." if c < 0 else "", "other": "The first rank is cheap. The others are long-term goals." }
     if i == _ids.size() + 1:
-        return ["Refund every rank and the survival track: %d Embers come back. Free, any time." % Mastery.spent(),
-            "Your chosen sides stay as they are.", "Press twice to confirm."]
-    return ["Back to the hub.", "Embers come from rooms cleared, elites, new reactions, bosses and first-kill bounties.", ""]
+        return { "name": "REFUND ALL", "effect": "Get back all %d spent Embers. Free, any time." % Mastery.spent(),
+            "status": "Press twice to confirm.", "other": "Your chosen sides stay as they are." }
+    return { "name": "BACK", "effect": "Return to the hub.",
+        "other": "Embers come from cleared rooms, elites, new reactions, bosses and first kills." }
 
 
-func _side_line(sid: String, s: String, lit: bool) -> String:
-    var d := Mastery.side(sid, s)
+## What the side does: its plain description, then what the owned ranks give now.
+func _effect_line(sid: String, s: String) -> String:
+    var desc := String(Mastery.side(sid, s)["desc"]).strip_edges().trim_suffix(".")
     var r := Mastery.rank(sid, s)
-    var m := Mastery.max_rank(sid, s)
-    var head := "%s %s  rank %d / %d" % ["ACTIVE" if lit else "Other side:", String(d["name"]).to_upper() if lit else String(d["name"]), r, m]
-    var now := Mastery.effect_text(sid, s, r) if r > 0 else String(d["desc"])
-    var tail := ""
-    var req := Mastery.requirement_text(sid, s)
-    if req != "":
-        tail = "   %s." % req
-    elif r < m:
-        tail = "   Next: %s for %d Embers." % [Mastery.effect_text(sid, s, r + 1), Mastery.next_cost(sid, s)]
-    else:
-        tail = "   Maxed."
-    return "%s: %s.%s" % [head, now, tail]
+    if r <= 0:
+        return desc + "."
+    return "%s. Now %s." % [desc, Mastery.effect_text(sid, s, r)]
+
+
+func _other_line(sid: String, o: String) -> String:
+    var d := Mastery.side(sid, o)
+    var r := Mastery.rank(sid, o)
+    var m := Mastery.max_rank(sid, o)
+    var what := Mastery.effect_text(sid, o, r) if r > 0 else String(d["desc"]).strip_edges().trim_suffix(".").to_lower()
+    return "Other side: %s, rank %d of %d: %s. X switches, free." % [String(d["name"]), r, m, what]
 
 
 # --- Input -----------------------------------------------------------------
@@ -349,11 +377,14 @@ func _process(delta: float) -> void:
     if not is_visible_in_tree():
         return
     _time += delta
+    if _note_t > 0.0:
+        _note_t -= delta
+        _detail_box.queue_redraw()
     if _refund_armed:
         _refund_left -= delta
         if _refund_left <= 0.0:
             _disarm_refund()
-            _note = ""
+            _note_t = 0.0
             _refresh()
     var x_down := false
     for d in Input.get_connected_joypads():
@@ -426,7 +457,7 @@ func _on_visibility_changed() -> void:
         _disarm_refund()
         return
     _x_was = true   # an X still held from elsewhere must be released first
-    _note = ""
+    _note_t = 0.0
     _refresh()
     if not _focusables.is_empty():
         (_focusables[clampi(tab, 0, _focusables.size() - 1)] as Control).grab_focus.call_deferred()
@@ -452,9 +483,6 @@ func _draw_card(i: int) -> void:
     _str(b, Vector2(10, 20), String(sl["name"]).to_upper(), 20, UiTheme.BONE if focused else UiTheme.DIM, r.size.x - 20.0)
     for k in ["a", "b"]:
         _draw_row(b, sid, k, k == act, ROW_TOP + (0.0 if k == "a" else ROW_H + 4.0), r.size.x)
-    var rk := Mastery.rank(sid, act)
-    var line := Mastery.effect_text(sid, act, rk) if rk > 0 else "Not learned yet"
-    _str(b, Vector2(10, r.size.y - 6.0), line, 20, OWNED if rk > 0 else UiTheme.DIM, r.size.x - 20.0)
 
 
 func _draw_row(b: Control, sid: String, s: String, lit: bool, y: float, w: float) -> void:
@@ -513,14 +541,14 @@ func _draw_survival() -> void:
     var m := Mastery.survival_max()
     Art.draw_icon(b, Mastery.survival_icon(), Rect2(Vector2(12, (r.size.y - 44.0) / 2.0), Vector2(44, 44)), Color.WHITE if rk > 0 else Color(0.75, 0.7, 0.72))
     _str(b, Vector2(68, 27), "SURVIVAL   LAST BREATH", 22, LIT if rk > 0 else UiTheme.BONE, 360.0)
-    _str(b, Vector2(68, 52), "Each rank: stand back up once per run at %d%% max HP." % roundi(Mastery.REVIVE_FRACTION * 100.0), 20, UiTheme.DIM, 560.0)
+    _str(b, Vector2(68, 54), "Each rank: stand back up once per run at %d%% HP." % roundi(Mastery.REVIVE_FRACTION * 100.0), Art.SMALL_SIZE + 1, UiTheme.DIM, 560.0, Art.FONT_BODY)
     for p in m:
         var pip := Rect2(Vector2(660.0 + p * 30.0, 22.0), Vector2(22, 22))
         if p < rk:
             b.draw_rect(pip, OWNED)
         else:
             b.draw_rect(pip, UiTheme.DIM, false, 2.0)
-        _str(b, Vector2(660.0 + p * 30.0, 60.0), str(int(Mastery.SURVIVAL["costs"][p])), 20, OWNED if p < rk else UiTheme.DIM, 0.0)
+        _str(b, Vector2(660.0 + p * 30.0, 60.0), str(int(Mastery.SURVIVAL["costs"][p])), 20, OWNED if p < rk else Color(Mastery.EMBER_COLOR, 0.7), 0.0)
     var c := Mastery.survival_next_cost()
     var tag := "MAX" if c < 0 else str(c)
     var tw := Art.FONT.get_string_size(tag, HORIZONTAL_ALIGNMENT_LEFT, -1, 24).x
@@ -530,14 +558,85 @@ func _draw_survival() -> void:
     _str(b, Vector2(tx, 40.0), tag, 24, OWNED if c < 0 else (Mastery.EMBER_COLOR if Mastery.embers >= c else Color(Mastery.EMBER_COLOR, 0.45)), 0.0)
 
 
-## Pixel-font text at `at` (baseline), cut with "..." to `max_w` px when that is > 0.
-func _str(ci: CanvasItem, at: Vector2, text: String, px: int, col: Color, max_w: float) -> void:
+## Text at `at` (baseline) in `font` (the pixel font by default), cut with "..." to
+## `max_w` px when that is > 0. Returns the drawn width.
+func _str(ci: CanvasItem, at: Vector2, text: String, px: int, col: Color, max_w: float, font: Font = null) -> float:
+    var f: Font = font if font != null else Art.FONT
     var t := text
-    if max_w > 0.0 and Art.FONT.get_string_size(t, HORIZONTAL_ALIGNMENT_LEFT, -1, px).x > max_w:
-        while t.length() > 1 and Art.FONT.get_string_size(t + "...", HORIZONTAL_ALIGNMENT_LEFT, -1, px).x > max_w:
+    if max_w > 0.0 and f.get_string_size(t, HORIZONTAL_ALIGNMENT_LEFT, -1, px).x > max_w:
+        while t.length() > 1 and f.get_string_size(t + "...", HORIZONTAL_ALIGNMENT_LEFT, -1, px).x > max_w:
             t = t.substr(0, t.length() - 1)
         t = t.strip_edges() + "..."
-    ci.draw_string(Art.FONT, at, t, HORIZONTAL_ALIGNMENT_LEFT, -1, px, col)
+    ci.draw_string(f, at, t, HORIZONTAL_ALIGNMENT_LEFT, -1, px, col)
+    var w := f.get_string_size(t, HORIZONTAL_ALIGNMENT_LEFT, -1, px).x
+    TextCheck.note(self, t, f, px, w, max_w)
+    return w
+
+
+## Body-font text at `at` (baseline) with every number ("+4%", "25", "4.5") in `num_col`.
+## Returns the drawn width.
+func _lit_numbers(ci: CanvasItem, at: Vector2, text: String, px: int, col: Color, num_col: Color) -> float:
+    var f: Font = Art.FONT_BODY
+    var x := at.x
+    var from := 0
+    for m in _num_re.search_all(text):
+        var before := text.substr(from, m.get_start() - from)
+        ci.draw_string(f, Vector2(x, at.y), before, HORIZONTAL_ALIGNMENT_LEFT, -1, px, col)
+        x += f.get_string_size(before, HORIZONTAL_ALIGNMENT_LEFT, -1, px).x
+        ci.draw_string(f, Vector2(x, at.y), m.get_string(), HORIZONTAL_ALIGNMENT_LEFT, -1, px, num_col)
+        x += f.get_string_size(m.get_string(), HORIZONTAL_ALIGNMENT_LEFT, -1, px).x
+        from = m.get_end()
+    var rest := text.substr(from)
+    ci.draw_string(f, Vector2(x, at.y), rest, HORIZONTAL_ALIGNMENT_LEFT, -1, px, col)
+    x += f.get_string_size(rest, HORIZONTAL_ALIGNMENT_LEFT, -1, px).x
+    TextCheck.note(self, text, f, px, x - at.x, _detail_box.size.x - 32.0)
+    return x - at.x
+
+
+## The detail panel: name and pips, effect, next rank and cost, other side, toast.
+func _draw_detail() -> void:
+    var b := _detail_box
+    var w := b.size.x
+    b.draw_rect(Rect2(Vector2.ZERO, b.size), Color(CARD_BG, 0.7))
+    b.draw_rect(Rect2(Vector2.ZERO, b.size), Color(UiTheme.BONE, 0.12), false, 1.0)
+    var d := _detail(tab)
+    var x := 16.0
+    var name_w := _str(b, Vector2(x, 34.0), String(d["name"]), NAME_PX, LIT, w * 0.55)
+    var m := int(d.get("max", 0))
+    var rk := int(d.get("rank", 0))
+    for p in m:
+        var pip := Rect2(Vector2(x + name_w + 16.0 + p * 22.0, 14.0), Vector2(16, 16))
+        if p < rk:
+            b.draw_rect(pip, OWNED)
+        else:
+            b.draw_rect(pip, Color(UiTheme.DIM, 0.9), false, 2.0)
+    _lit_numbers(b, Vector2(x, 64.0), String(d.get("effect", "")), Art.BODY_SIZE, UiTheme.BONE, OWNED)
+    var next := String(d.get("next", ""))
+    var cost := int(d.get("cost", -1))
+    if next != "":
+        var nx := x + _lit_numbers(b, Vector2(x, 90.0), next, Art.BODY_SIZE, Color(UiTheme.BONE, 0.85), Color.WHITE)
+        if cost >= 0:
+            var afford := Mastery.embers >= cost
+            nx += 14.0
+            Art.draw_icon(b, _ember_tex, Rect2(Vector2(nx, 72.0), Vector2(22, 22)), Color(1, 1, 1, 1.0 if afford else 0.5))
+            nx += 26.0
+            nx += _str(b, Vector2(nx, 92.0), str(cost), 28, Mastery.EMBER_COLOR if afford else Color(Mastery.EMBER_COLOR, 0.5), 0.0)
+            if not afford:
+                _str(b, Vector2(nx + 10.0, 90.0), "you have %d" % Mastery.embers, Art.SMALL_SIZE + 1, UiTheme.DIM, 0.0, Art.FONT_BODY)
+    var status := String(d.get("status", ""))
+    if status != "":
+        var sc := OWNED if status == "Maxed." else (LOCKED.lightened(0.3) if status.begins_with("Locked") else UiTheme.DIM)
+        _str(b, Vector2(x, 90.0), status, Art.BODY_SIZE, sc, w - 32.0, Art.FONT_BODY)
+    _str(b, Vector2(x, 113.0), String(d.get("other", "")), Art.SMALL_SIZE, Color(UiTheme.DIM, 0.85), w - 32.0, Art.FONT_BODY)
+    if _note_t > 0.0 and _note != "":
+        var a := clampf(_note_t / 0.4, 0.0, 1.0)
+        var px := Art.BODY_SIZE
+        var tw := Art.FONT_BODY.get_string_size(_note, HORIZONTAL_ALIGNMENT_LEFT, -1, px).x
+        var box := Rect2(Vector2(w - tw - 40.0, 8.0), Vector2(tw + 28.0, 34.0))
+        b.draw_rect(box, Color(0.16, 0.11, 0.08, 0.96 * a))
+        b.draw_rect(box, Color(LIT, 0.8 * a), false, 2.0)
+        b.draw_string(Art.FONT_BODY, box.position + Vector2(14.0, 24.0), _note, HORIZONTAL_ALIGNMENT_LEFT, -1, px, Color(UiTheme.BONE, a))
+        TextCheck.note(self, _note, Art.FONT_BODY, px, tw, w * 0.6)
 
 
 func _text(text: String, px: int, color: Color) -> Label:

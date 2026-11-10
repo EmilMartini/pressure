@@ -863,8 +863,8 @@ static func _text(canvas: CanvasItem, top: Vector2, text: String, size: int, col
     canvas.draw_string(font, base, text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, color)
 
 
-static func _wrap(text: String, size: int, width: float) -> PackedStringArray:
-    var font: Font = Art.FONT
+static func _wrap(text: String, size: int, width: float, with_font: Font = null) -> PackedStringArray:
+    var font: Font = with_font if with_font != null else Art.FONT
     var out := PackedStringArray()
     for para in text.split("\n"):
         var line := ""

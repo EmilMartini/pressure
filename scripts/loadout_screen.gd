@@ -481,12 +481,17 @@ func _key_w(label: String, ks: float) -> float:
     return maxf(ks, ks * 0.5 * float(label.length()) + ks * 0.5)
 
 
+## Width of `t` drawn by _text: sentences in the body font (see the text rule in art.gd).
 func _tw(t: String, fs: int) -> float:
-    return Art.FONT.get_string_size(t, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+    return Art.text_font(t).get_string_size(t, HORIZONTAL_ALIGNMENT_LEFT, -1, Art.text_px(t, fs)).x
 
 
+## `t` with its top edge at `y`: the pixel font at `fs`, or sentences in the body font.
 func _text(t: String, x: float, y: float, fs: int, col: Color) -> void:
-    draw_string(Art.FONT, Vector2(roundf(x), roundf(y + Art.FONT.get_ascent(fs))), t, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, col)
+    var f := Art.text_font(t)
+    var px := Art.text_px(t, fs)
+    draw_string(f, Vector2(roundf(x), roundf(y + f.get_ascent(px))), t, HORIZONTAL_ALIGNMENT_LEFT, -1, px, col)
+    TextCheck.note(self, t, f, px, f.get_string_size(t, HORIZONTAL_ALIGNMENT_LEFT, -1, px).x, size.x - x)
 
 
 func _text_c(t: String, cx: float, y: float, fs: int, col: Color) -> void:

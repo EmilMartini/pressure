@@ -13,6 +13,7 @@ extends PanelContainer
 ##   right stick / Page Up Page Down     scroll the stat panel
 ## Opened from the pause menu, or with C / the pad's Back.
 
+const STAT_BODY := 16   # sentences in the stats list (body font, see art.gd)
 const PANEL_SIZE := Vector2(1240, 684)
 const TOP := 56.0                 # header band (title and the prompt legend)
 const SLOT_SIZE := 48.0
@@ -428,10 +429,14 @@ func _draw_canvas() -> void:
     _draw_card()
 
 
+## Text at baseline `pos` with a shadow: the pixel font, or sentences in the body font
+## (the text rule in art.gd).
 func _text(pos: Vector2, text: String, size: int, color: Color, align := HORIZONTAL_ALIGNMENT_LEFT, width := -1.0) -> void:
-    var font: Font = Art.FONT
-    _canvas.draw_string(font, pos + Vector2(1, 1), text, align, width, size, Color(0, 0, 0, 0.8))
-    _canvas.draw_string(font, pos, text, align, width, size, color)
+    var font := Art.text_font(text)
+    var px := Art.text_px(text, size)
+    _canvas.draw_string(font, pos + Vector2(1, 1), text, align, width, px, Color(0, 0, 0, 0.8))
+    _canvas.draw_string(font, pos, text, align, width, px, color)
+    TextCheck.note(self, text, font, px, font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, px).x, width)
 
 
 func _draw_header() -> void:
@@ -488,7 +493,7 @@ func _draw_doll() -> void:
     _canvas.draw_rect(r, Color(0.05, 0.04, 0.06, 0.8))
     _canvas.draw_rect(r, Color(0.3, 0.26, 0.28), false, 2.0)
     if _groups.is_empty():
-        _text(Vector2(16, TOP + 40.0), "No items yet. Treasure rooms, bosses and shops have them.", 20, UiTheme.DIM, HORIZONTAL_ALIGNMENT_LEFT, DOLL_W - 32.0)
+        _text(Vector2(16, TOP + 40.0), "No items yet: try shops and treasure rooms.", 20, UiTheme.DIM, HORIZONTAL_ALIGNMENT_LEFT, DOLL_W - 32.0)
     var tc: Dictionary = Items.tag_counts(player)
     for g in _groups:
         var tag := String(g[0])
@@ -762,7 +767,7 @@ func _entry_height(e: Dictionary, width: float) -> float:
     if e.has("h"):
         return STAT_HEAD
     if e.has("t"):
-        return float(ItemCard._wrap(String(e["t"]), 20, width - 12.0).size()) * 24.0
+        return float(ItemCard._wrap(String(e["t"]), STAT_BODY, width - 12.0, Art.FONT_BODY).size()) * 24.0
     return STAT_LINE
 
 
@@ -832,8 +837,9 @@ func _draw_stats() -> void:
             v.draw_line(Vector2(x, y + 29.0), Vector2(x + col_w - 16.0, y + 29.0), Color(UiTheme.BONE, 0.3), 1.0)
         elif e.has("t"):
             var ty := y
-            for line in ItemCard._wrap(String(e["t"]), 20, col_w - 12.0):
-                v.draw_string(font, Vector2(x + 8.0, ty + 19.0), line, HORIZONTAL_ALIGNMENT_LEFT, -1, 20, e["c"])
+            for line in ItemCard._wrap(String(e["t"]), STAT_BODY, col_w - 12.0, Art.FONT_BODY):
+                v.draw_string(Art.FONT_BODY, Vector2(x + 8.0, ty + 18.0), line, HORIZONTAL_ALIGNMENT_LEFT, -1, STAT_BODY, e["c"])
+                TextCheck.note(self, line, Art.FONT_BODY, STAT_BODY, Art.FONT_BODY.get_string_size(line, HORIZONTAL_ALIGNMENT_LEFT, -1, STAT_BODY).x, col_w - 12.0)
                 ty += 24.0
         else:
             var nx := x

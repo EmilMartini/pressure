@@ -377,6 +377,7 @@ class HpGraph extends Control:
 
 
 func show_menu() -> void:
+    UiTheme.apply_text_rule.call_deferred(self)
     var over := main.game_over or main.victory
     _title.text = "RUN OVER" if main.game_over else ("DUNGEON CLEARED" if main.victory else "PAUSED")
     _title.add_theme_color_override("font_color", FANFARE if main.victory else UiTheme.BONE)
