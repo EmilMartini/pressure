@@ -136,10 +136,10 @@ func boss_phase(n: int) -> void:
             _set_pitch(1.0)
         2:
             phase_cap = 1.0
-            next(1.5)
+            next(0.6)
         _:
             phase_cap = 1.0
-            next(1.0)
+            next(0.5)
             _set_pitch(1.06)
     _apply_intensity()
     if BossBody.log_enabled:

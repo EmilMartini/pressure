@@ -178,6 +178,11 @@ var _lunge_t := 0.0
 ## Emerging: a telegraphed spawn. The enemy fades in where it will appear and cannot
 ## move or hurt for this long; shots can already hit it (killing it early is the reward).
 var emerge := 0.0
+## A boss's entrance (BossShow): it rises through `emerge` (so nothing aims at it or
+## touches it) with its own animation instead of the spawn marker.
+var intro := false
+var _intro_len := 2.5
+var _intro_a := 1.0
 var _lunge_cd := 0.0
 var slow_factor := 1.0
 var poison_dps := 0.0
@@ -365,35 +370,37 @@ func set_boss(kind: String) -> void:
     match boss_kind:
         "brute_king":
             speed = 95.0
-            radius = 32.0
+            radius = 44.0
         "hive_mother":
             speed = 65.0
-            radius = 32.0
+            radius = 44.0
             _t1 = 2.0
             _t2 = 3.5
         "storm_warden":
             speed = 70.0
-            radius = 30.0
+            radius = 42.0
             _t1 = 2.5
             _t2 = 6.0
         "pyre_lord":
             speed = 80.0
-            radius = 34.0
+            radius = 46.0
             _t1 = 0.5
             _t2 = 5.0
             _t3 = 3.0
         "void_herald":
             speed = 70.0
-            radius = 30.0
+            radius = 42.0
             _reshield_at = [0.66, 0.33]
             _t1 = 2.0
             _t2 = 5.0
         "drowned_choir":
             speed = 55.0
-            radius = 34.0
+            radius = 46.0
             _t1 = 2.5
             _t2 = 4.0
             _t3 = 2.0
+    # Presence (vision gap analysis, slam dunk 1): every boss is at least three times the
+    # player's radius (14). Contact reach stays near the old body (contact_reach()).
     body = BossBody.new(self, boss_kind) if kind_name == "boss" else null
     if _shape != null:
         _shape.radius = radius
@@ -864,6 +871,9 @@ func _die() -> void:
     match kind_name:
         "boss":
             Sfx.play("die_boss")
+            var rm := Room.here
+            if rm != null and is_instance_valid(rm) and rm.show != null and is_instance_valid(rm.show):
+                rm.show.death(global_position, radius)
         _:
             Sfx.die_enemy(self)
     died.emit(self)
@@ -899,6 +909,8 @@ func _draw_hostile(cv: CanvasItem) -> void:
         _draw_herald_hostile(cv)
     elif boss_kind == "drowned_choir":
         _draw_choir_hostile(cv)
+    if kind_name == "boss" and _phase >= 2 and not intro and hp > 0.0:
+        _draw_boss_cracks(cv)
     if body != null and body.has_parts():
         _draw_parts(cv)
     if _mode == MODE_TELEGRAPH and emerge <= 0.0 and hp > 0.0:
@@ -1075,7 +1087,31 @@ func _teleport_to(to: Vector2) -> void:
 # --- Frame -----------------------------------------------------------------
 
 
+## The entrance begins: the boss rises for `secs` as a non-target (BossShow).
+func start_intro(secs: float) -> void:
+    intro = true
+    _intro_len = secs
+    emerge = secs
+    _intro_sprite()
+
+
+## Contact damage reach from the centre: a boss's drawn body is bigger than what hurts.
+func contact_reach() -> float:
+    return radius * 0.8 if kind_name == "boss" else radius
+
+
 func _physics_process(delta: float) -> void:
+    if intro:
+        emerge -= delta
+        _fx_t += delta
+        _intro_sprite()
+        if emerge <= 0.0:
+            emerge = 0.0
+            intro = false
+            _intro_a = 1.0
+            _landed(global_position)
+        queue_redraw()
+        return
     if emerge > 0.0:
         emerge -= delta
         _guard_spawn()
@@ -1185,7 +1221,7 @@ func _physics_process(delta: float) -> void:
     move_and_slide()
 
     if target != null and _contact_cd <= 0.0 and is_instance_valid(target) and _burrow_state != 2:
-        var reach := radius + target.radius + 2.0
+        var reach := contact_reach() + target.radius + 2.0
         if global_position.distance_squared_to(target.global_position) <= reach * reach:
             target.take_damage(contact_damage, self)
             _contact_cd = 0.8
@@ -1732,7 +1768,7 @@ func _hostile_arc(cv: CanvasItem, at: Vector2, r: float, a: float, hw: float, wi
 ## The body parts, their element states and compounds, on the Crisp layer with the hostile
 ## tells: a boss is hostile, and its parts must read through the player's own fusion effects.
 func _draw_parts(cv: CanvasItem) -> void:
-    if body == null or emerge > 0.0 or hp <= 0.0:
+    if body == null or hp <= 0.0 or (emerge > 0.0 and not (intro and _intro_len - emerge >= BossShow.REVEAL)):
         return
     var R := radius
     for i in body.parts.size():
@@ -2569,6 +2605,9 @@ func _update_sprite() -> void:
         c = c.lerp(Color(1, 0.3, 0.2), 0.7)
     if _fuse >= 0.0 and fmod(_fuse, 0.1) < 0.05:
         c = c.lerp(Color(1, 1, 0.6), 0.8)
+    if kind_name == "boss" and _phase >= 2:
+        # The phase shows on the body: a colour shift toward its own glow.
+        c = c.lerp(BossShow.accent(boss_kind), 0.15 if _phase == 2 else 0.35)
     if _flash > 0.0:
         c = c.lerp(Color.WHITE, 0.8)
     _sprite.modulate = c
@@ -2586,6 +2625,10 @@ func _update_sprite() -> void:
         hop = 1.5 + 1.5 * sin(_fx_t * 5.0 + float(get_instance_id() % 7))   # a hover, not a hop
     var s := _sprite_scale * (_spawn_t + 0.35 * sin(_spawn_t * PI))
     _sprite.scale = Vector2(s * (1.0 + 0.4 * _squash), s * (1.0 - 0.4 * _squash))
+    if kind_name == "boss":
+        # Idle breathing: a slow heave, quicker as the phases climb.
+        var br := sin(_fx_t * (2.2 + 0.7 * float(_phase - 1)))
+        _sprite.scale *= Vector2(1.0 - 0.025 * br, 1.0 + 0.045 * br)
     _sprite.position = Vector2(0, -hop)
     _sprite.rotation = (sin(_anim_t) * 0.12 if moving else 0.0)
 
@@ -2607,7 +2650,9 @@ func _nearest_player() -> Player:
 
 
 func _draw() -> void:
-    if emerge > 0.0:
+    if intro and _intro_a < 0.05:
+        return
+    if emerge > 0.0 and not intro:
         # Telegraph: the spawn marker, the body faint until it arrives.
         var k := clampf(1.0 - emerge / EMERGE_SECS, 0.0, 1.0)
         draw_spawn_marker(self, Vector2.ZERO, maxf(radius, 9.0), k, _fx_t)
@@ -2622,6 +2667,14 @@ func _draw() -> void:
         draw_set_transform(Vector2(0, radius * 1.5 + 5.0), 0.0, Vector2(1.0, 0.4))
         draw_circle(Vector2.ZERO, radius * 1.3, Color(0, 0, 0, 0.25))
         draw_circle(Vector2.ZERO, radius * 0.85, Color(0, 0, 0, 0.4))
+        draw_set_transform_matrix(Transform2D.IDENTITY)
+    elif kind_name == "boss":
+        # A wide soft body shadow; during the Brute King's fall it grows as he nears.
+        var sk := _intro_a if intro else 1.0
+        draw_set_transform(Vector2(0, radius * 0.7), 0.0, Vector2(1.0, 0.42))
+        draw_circle(Vector2.ZERO, radius * 1.6 * sk, Color(0, 0, 0, 0.14))
+        draw_circle(Vector2.ZERO, radius * 1.25 * sk, Color(0, 0, 0, 0.2))
+        draw_circle(Vector2.ZERO, radius * 0.9 * sk, Color(0, 0, 0, 0.3))
         draw_set_transform_matrix(Transform2D.IDENTITY)
     else:
         draw_circle(Vector2(0, radius * 0.6), radius * 0.9, Color(0, 0, 0, 0.35))
@@ -2794,7 +2847,7 @@ func _draw_outline() -> void:
     draw_set_transform(_sprite.position, _sprite.rotation, Vector2(sx, _sprite.scale.y))
     var o := -t.get_size() / 2.0
     # Clarity pass: 2 world px all round (8 directions), opaque, so a body reads on any floor.
-    var c := Color(0.02, 0.01, 0.03, 1.0)
+    var c := Color(0.02, 0.01, 0.03, _intro_a if intro else 1.0)
     var k := 2.0 / maxf(0.05, absf(_sprite.scale.y))
     for d in OUTLINE_DIRS:
         draw_texture(t, o + d * k, c)
@@ -2878,6 +2931,74 @@ func _draw_affix() -> void:
             draw_line(pos + Vector2(0, -3.5), pos + Vector2(2, -6), Color(1, 0.9, 0.5), 1.5)
 
 
+## The entrance animation per boss (BossShow.REVEAL is the moment it is there).
+func _intro_sprite() -> void:
+    if _sprite == null:
+        return
+    var el := _intro_len - emerge
+    var rv := BossShow.REVEAL
+    var s := _sprite_scale
+    var pos := Vector2.ZERO
+    var a := 1.0
+    var col := base_color
+    var sx := 1.0
+    var sy := 1.0
+    match boss_kind:
+        "brute_king":
+            # He drops from above and lands at the roar.
+            var f := clampf(el / rv, 0.0, 1.0)
+            pos.y = -440.0 * (1.0 - f * f)
+            a = clampf(el / 0.2, 0.0, 1.0)
+            var land := el - rv
+            if land >= 0.0 and land < 0.35:
+                var q := 1.0 - land / 0.35
+                sx = 1.0 + 0.3 * q
+                sy = 1.0 - 0.3 * q
+        "hive_mother", "drowned_choir":
+            # Out of the ground (the hive) or up out of the water (the choir).
+            var f := clampf((el - 0.2) / (rv - 0.2), 0.0, 1.0)
+            pos.y = (1.0 - f) * radius * 1.1
+            s *= 0.35 + 0.65 * f
+            a = f
+        "storm_warden":
+            # Nothing, then the strike, and he is there.
+            a = 1.0 if el >= rv else 0.0
+        "pyre_lord":
+            # A cold, dark shape that ignites at the roar.
+            a = clampf((el - 0.15) / 0.5, 0.0, 1.0)
+            col = Color(0.14, 0.09, 0.08).lerp(base_color, clampf((el - rv) / 0.45, 0.0, 1.0))
+        "void_herald":
+            # It folds in out of nothing.
+            a = clampf((el - 0.25) / (rv - 0.25), 0.0, 1.0)
+            s *= 1.7 - 0.7 * a
+    if el >= rv:
+        var br := sin(_fx_t * 2.2)
+        sx *= 1.0 - 0.025 * br
+        sy *= 1.0 + 0.045 * br
+    _intro_a = a
+    _sprite.scale = Vector2(s * sx, s * sy)
+    _sprite.position = pos
+    _sprite.rotation = 0.0
+    _sprite.modulate = Color(col, a)
+
+
+## Phase 2 and 3: cracks across the body glowing in its colour (BossShow.accent), more and
+## brighter in phase 3. Drawn on the Crisp layer, over the sprite.
+func _draw_boss_cracks(cv: CanvasItem) -> void:
+    var ac := BossShow.accent(boss_kind)
+    var glow := 0.55 + 0.35 * sin(_fx_t * (6.0 if _phase >= 3 else 3.5))
+    var R := radius
+    var n := 3 if _phase == 2 else 6
+    for k in n:
+        var a0 := float(k) * 2.39996 + 0.4
+        var pts := PackedVector2Array([
+            Vector2.from_angle(a0) * R * 0.12,
+            Vector2.from_angle(a0 + 0.35) * R * 0.5,
+            Vector2.from_angle(a0 - 0.12) * R * 0.92])
+        cv.draw_polyline(pts, Color(0.05, 0.02, 0.02, 0.85), 5.0)
+        cv.draw_polyline(pts, Color(ac, glow), 2.0)
+
+
 func _draw_boss() -> void:
     # Phase two: a red pulse around the body.
     if _phase >= 2:
@@ -2919,10 +3040,16 @@ func _draw_boss() -> void:
             for hz in _hazards:
                 var lava := bool(hz.get("lava", false))
                 draw_circle(to_local(hz["pos"]), float(hz.get("r", 55.0)), Color(1.0, 0.35 if lava else 0.35, 0.1, (0.28 if lava and float(hz.get("warn", 0.0)) <= 0.0 else 0.10) * clampf(float(hz["t"]), 0.0, 1.0)))
-            _draw_pixel_flame(Vector2(0, -radius * 0.5), radius * 1.6, radius * 2.2, 14 if _phase >= 2 else 10)
+            var fk := 1.0
+            if intro:
+                fk = clampf((_intro_len - emerge - BossShow.REVEAL) / 0.5, 0.0, 1.0)
+            if fk > 0.02:
+                _draw_pixel_flame(Vector2(0, -radius * 0.5), radius * 1.6 * fk, radius * 2.2 * fk, 14 if _phase >= 2 else 10)
         "drowned_choir":
             # The great bell: a bronze bell over the body; it cracks in phase 3.
             var top := -radius * 1.55
+            draw_set_transform(Vector2(0, top), 0.0, Vector2.ONE * (radius / 34.0))
+            top = 0.0
             var bell := PackedVector2Array([Vector2(-8, top), Vector2(8, top), Vector2(16, top + 14), Vector2(22, top + 34), Vector2(30, top + 42), Vector2(-30, top + 42), Vector2(-22, top + 34), Vector2(-16, top + 14)])
             var tone := Color(0.62, 0.50, 0.30)
             if _phase >= 3 and _t3 < 0.5:
@@ -2934,6 +3061,7 @@ func _draw_boss() -> void:
             draw_circle(Vector2(0, top + 44), 5.0, Color(0.35, 0.30, 0.2))
             if _phase >= 3:
                 draw_polyline(PackedVector2Array([Vector2(-4, top + 4), Vector2(3, top + 16), Vector2(-5, top + 26), Vector2(4, top + 40)]), Color(0.1, 0.08, 0.05), 2.0)
+            draw_set_transform_matrix(Transform2D.IDENTITY)
         "void_herald":
             var pull_r := 260.0 if _phase == 1 else 320.0
             var c: Color = Element.COLORS[Element.Kind.VOID]

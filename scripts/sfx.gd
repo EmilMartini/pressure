@@ -91,6 +91,11 @@ const BANK := {
     "die_boss": ["death_boss"],
     "boss": ["boss_roar"],
     "boss_phase": ["boss_phase"],
+    # Boss show (BossShow): existing files pitched down and layered under the roar.
+    "boss_roar_low": ["boss_roar"],
+    "boss_rumble": ["door_heavy"],
+    "boss_toll": ["gong"],
+    "boss_sting": ["elite_sting"],
     # Player
     "hurt": ["hurt_1", "hurt_2", "hurt_3"],
     # "You were hit": the hurt punch an octave and a bit down under the normal one, a
@@ -159,14 +164,14 @@ const TRIM := {
 }
 
 ## Base pitch per name; shots and hits get a wider wobble so repeats do not phase.
-const PITCH := { "shoot_oil": 0.95, "shoot_void": 1.0, "hurt_low": 0.58, "sizzle_fire": 1.5, "sizzle_shock": 1.3 }
+const PITCH := { "boss_roar_low": 0.62, "boss_rumble": 0.45, "boss_toll": 0.55, "boss_sting": 0.8, "shoot_oil": 0.95, "shoot_void": 1.0, "hurt_low": 0.58, "sizzle_fire": 1.5, "sizzle_shock": 1.3 }
 const WOBBLE := {
     "shoot_fire": 0.14, "shoot_wet": 0.14, "shoot_shock": 0.1, "shoot_ice": 0.12, "shoot_oil": 0.12,
     "shoot_poison": 0.14, "shoot_acid": 0.12, "shoot_blood": 0.12, "shoot_void": 0.1, "shoot_holy": 0.06,
     "shoot_gale": 0.14, "shoot_stone": 0.12, "hit_flesh": 0.15, "hit_armour": 0.1, "hit_wall": 0.15,
     "hit": 0.15, "death_small": 0.1, "death_med": 0.08, "step_stone": 0.1, "step_moss": 0.1,
     "step_snow": 0.1, "step_ash": 0.1, "step_glass": 0.08, "drip": 0.2,
-    "die_boss": 0.0, "boss": 0.0, "unlock": 0.0, "secret_found": 0.0, "level_up": 0.0, "heartbeat": 0.0,
+    "die_boss": 0.0, "boss": 0.0, "boss_roar_low": 0.0, "boss_rumble": 0.0, "boss_toll": 0.0, "boss_sting": 0.0, "unlock": 0.0, "secret_found": 0.0, "level_up": 0.0, "heartbeat": 0.0,
 }
 
 ## Max simultaneous voices per name; the oldest is stolen past this.

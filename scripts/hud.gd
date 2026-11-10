@@ -554,15 +554,19 @@ func _draw_boss_frame(b: Enemy, r: Rect2, vp: Vector2) -> void:
                 draw_rect(Rect2(px, cr.position.y + 5.0, 8, 8), Element.COLORS[kind])
                 px += 11.0
             _body_in(Rect2(px, cr.position.y, cr.end.x - px, cr.size.y), String(c["label"]), 13, UiTheme.BONE if c["on"] else UiTheme.DIM)
-    # Name card: the first seconds of the fight.
-    if bb.age < 3.5:
-        var a := clampf(minf(bb.age / 0.3, (3.5 - bb.age) / 0.6), 0.0, 1.0)
-        var cy := vp.y * 0.36
-        draw_rect(Rect2(0, cy - 46.0, vp.x, 96.0), Color(0.03, 0.0, 0.02, 0.7 * a))
-        draw_rect(Rect2(0, cy - 46.0, vp.x, 2.0), Color(1.0, 0.15, 0.1, 0.8 * a))
-        draw_rect(Rect2(0, cy + 48.0, vp.x, 2.0), Color(1.0, 0.15, 0.1, 0.8 * a))
-        _centered(int(cy + 6.0), name.to_upper(), 44, Color(1.0, 0.88, 0.8, a), vp, true)
-        _centered(int(cy + 38.0), Regions.display_name(main.region_id), 18, Color(1.0, 0.6, 0.5, a), vp)
+    # Name card: the entrance (BossShow), big, with its epithet and where you are.
+    var show: BossShow = main.current.show if main.current != null else null
+    var a := show.card() if show != null and is_instance_valid(show) else 0.0
+    if a > 0.0:
+        var cy := vp.y * 0.76   # the lower third: the camera holds the boss in the middle
+        var ac := BossShow.accent(b.boss_kind)
+        draw_rect(Rect2(0, cy - 70.0, vp.x, 150.0), Color(0.02, 0.0, 0.02, 0.78 * a))
+        draw_rect(Rect2(0, cy - 70.0, vp.x, 3.0), Color(ac, 0.9 * a))
+        draw_rect(Rect2(0, cy + 80.0, vp.x, 3.0), Color(ac, 0.9 * a))
+        var grow := 1.0 + 0.08 * (1.0 - a)
+        _centered(int(cy + 8.0), name.to_upper(), int(64.0 * grow), Color(1.0, 0.9, 0.82, a), vp, true)
+        _centered(int(cy + 42.0), show.epithet(), 20, Color(ac.lerp(Color.WHITE, 0.4), a), vp)
+        _centered(int(cy + 68.0), Regions.display_name(main.region_id).to_upper(), 14, Color(1.0, 0.6, 0.5, 0.8 * a), vp)
 
 
 # --- Top right: minimap, scrap, kills -------------------------------------

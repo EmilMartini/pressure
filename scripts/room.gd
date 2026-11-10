@@ -34,6 +34,17 @@ var active := false                 # a fight is running
 var wave_time_left := 0.0
 var wave_duration := 0.0
 var boss: Enemy = null
+## The boss fight's show (entrance, phases, death): BossShow, a child of the room.
+var show: BossShow = null
+## The arena is a weapon (design section 6, rule 5): a tool per boss in the four corners,
+## each feeding that boss's own chain. Prop kinds in Prop.SPECS.
+const ARENA_TOOLS := {
+    "pyre_lord": "quench_vat",
+    "brute_king": "war_brazier",
+    "hive_mother": "war_brazier",
+    "storm_warden": "ground_pylon",
+    "void_herald": "holy_lamp",
+}
 var low_hp := 1.0                   # bots: lowest health fraction of player 1 during this fight
 ## Spoils (wave-end payout): elites that drop loot during an arena wave bank it here instead
 ## of leaving a pedestal mid-fight; the wave's end lays everything out as one pick.
@@ -175,6 +186,8 @@ func _ready() -> void:
             RoomData.Type.BOSS:
                 _begin_boss()
             # A challenge waits for someone to touch the sigil.
+    if data.type != RoomData.Type.BOSS:
+        BossShow.add_dread(self)   # the antechamber: a red glow and a rumble at the boss door
     _apply_doors()
 
 
@@ -411,13 +424,15 @@ func _begin_boss() -> void:
     boss_pos = nearest_open(boss_pos, 40.0)
     boss = _spawn_enemy("boss", boss_pos)
     boss.set_boss(String(Regions.get_region(main.region_id)["boss_kind"]))
-    if boss.boss_kind == "pyre_lord":
-        # The arena is a weapon (design section 6): quench vats in the four corners.
+    var tool_kind := String(ARENA_TOOLS.get(boss.boss_kind, ""))
+    if tool_kind != "":
         for off in [Vector2(-280, -170), Vector2(280, -170), Vector2(-280, 170), Vector2(280, 170)]:
-            var vat := Prop.new("quench_vat")
-            vat.room = self
-            vat.position = nearest_open(off, 40.0)
-            add_child(vat)
+            var tool := Prop.new(tool_kind)
+            tool.room = self
+            tool.position = nearest_open(off, 40.0)
+            add_child(tool)
+            if tool_kind == "war_brazier":
+                ArtPass.add_light(tool, Vector2(0, -8), 220.0, Color(1.0, 0.6, 0.3), 0.9, 0.04, 0.6)
     if main.floor_number >= 2 and not Main.old_balance:
         var want := BOSS_DPS_SECS * main.floor_arena_dps() * BossBody.hp_share(boss.boss_kind)
         boss.max_hp = clampf(want, boss.max_hp, boss.max_hp * BOSS_HP_MAX_MULT)
@@ -428,7 +443,6 @@ func _begin_boss() -> void:
     elif not Main.old_balance:
         boss.max_hp *= BossBody.floor1_mult(boss.boss_kind)
         boss.hp = boss.max_hp
-    Telemetry.boss_start(boss)
     var pairs := Elements.available_reactions(main.party_elements())
     var hits := 5 + main.difficulty() / 3
     if not pairs.is_empty():
@@ -438,14 +452,26 @@ func _begin_boss() -> void:
         boss.reshield_weakness = others.pick_random() if not others.is_empty() else first
         boss.reshield_hits = hits
     _add_timer = 5.0
+    # The entrance (BossShow): the fight clock, the music and the adds start when it ends.
+    show = BossShow.new(self, boss)
+    add_child(show)
+    show.enter()
+
+
+## The entrance is over: control returns and the fight begins.
+func on_show_released() -> void:
+    if boss == null or not is_instance_valid(boss):
+        return
+    Telemetry.boss_start(boss)
     main.announce("BOSS: crack the shield with its reaction")
-    Sfx.play("boss")
-    Music.play("boss", 1.0)
+    Music.play("boss", 0.3)
     Music.boss_phase(1)
-    main.shake(10.0)
+    main.shake(6.0)
 
 
 func _tick_boss(delta: float) -> void:
+    if show != null and is_instance_valid(show) and (show.entering or show.dying()):
+        return   # the entrance and the beat after the death hold the fight clock and the adds
     var was := _boss_secs
     _boss_secs += delta
     if main.autotest and OS.get_cmdline_user_args().has("--boss-shot") and boss != null and is_instance_valid(boss):
@@ -482,7 +508,14 @@ func _tick_boss(delta: float) -> void:
         _finish_fight(30)
         _build_pedestals()
         Music.boss_phase(0)
-        Music.play("run", 2.0)
+        if show != null and is_instance_valid(show):
+            var stairs: Array = []
+            for c in find_children("*", "Pedestal", true, false):
+                if (c as Pedestal).kind() == "stairs":
+                    stairs.append(c)
+            show.light_stairs(stairs)   # the run music comes back on the show's own beat
+        else:
+            Music.play("run", 2.0)
 
 
 ## A rally on floors 2+: the boss calls RALLY_GROUPS groups and holds its guard while they
@@ -751,7 +784,11 @@ func _on_enemy_died(e: Enemy) -> void:
                 print("[BOSS-BODY] kind=%s secs=%.1f max_hp=%.0f %s" % [e.boss_kind, _boss_secs, e.max_hp, e.body.summary()])
             if OS.get_cmdline_user_args().has("--boss-only"):
                 main._print_stats("END")
-                main.get_tree().quit()
+                if OS.get_cmdline_user_args().has("--boss-shot"):
+                    # Let the death show finish for its capture (BossShow).
+                    main.get_tree().create_timer(1.4, true, false, true).timeout.connect(main.get_tree().quit)
+                else:
+                    main.get_tree().quit()
         if e.boss_kind != "":
             Progress.add("boss:" + e.boss_kind)   # the Shrine's first-kill bounties
     elif e.is_elite:

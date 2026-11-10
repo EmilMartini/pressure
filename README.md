@@ -677,7 +677,8 @@ per body part). During the fight `[BOSS-PHASE]`, `[STAGGER]` and `[BOSS-CHAIN]` 
 phases, staggers, and each product on a part, plus torn and re-formed armour; `[BOSS-MOVE]`
 logs the Hive Mother's eruptions, the Storm Warden's recharge strikes and the Void Herald's
 theft and shard volleys; `[CHOIR-LEDGES]` and `[CHOIR-FLOOD]` log the Drowned Choir's dry
-ledges and the player's phase 2 seconds on a ledge and on charged water; `[ARENA]` logs quench vat bursts; `[MUSIC]` logs the boss music
+ledges and the player's phase 2 seconds on a ledge and on charged water; `[ARENA]` logs arena tool bursts (quench vats, war braziers, grounding pylons, holy lamps);
+`[BOSS-SHOW]` logs the entrance (start, reveal, control back), each phase change and the death; `[MUSIC]` logs the boss music
 per phase. Real-floor boss probes (the storm build at each boss's depth):
 `--build=storm --start-floor=2 --route=ossuary_gate,rust_ruins --one-floor` (Hive Mother),
 `--start-floor=3 --route=ossuary_gate,rust_ruins,frostvault --one-floor --secs=900` (Storm
@@ -689,7 +690,10 @@ the part that takes most), and `--aim=manual` implies it.
 `--boss-only` sends the bot straight to the floor's boss room and quits when the boss dies.
 `--boss-dps=N` stands in for the arena output a real floor would have measured, which
 sizes bosses from depth 2. `--boss-shot` (real window) saves `autotest/boss_<kind>_<s>.png`
-at 1.5, 6, 12, 18, 24, 30 and 38 s into the fight. `--fusion-probe=4` is the Pyre Lord's
+at 1.5, 6, 12, 18, 24, 30 and 38 s into the fight, plus `boss_<kind>_entrance.png` (the name
+card), `boss_<kind>_phase2.png` / `phase3.png` and `boss_<kind>_death.png` from the boss show
+(`scripts/boss_show.gd`); with `--boss-only` the run then waits 1.4 s after the kill for the
+death capture. `--fusion-probe=4` is the Pyre Lord's
 chain loadout (water, shock, ice, fire). Example:
 `--build=storm --start-floor=4 --route=ossuary_gate,rust_ruins,frostvault,the_forge,the_rift
 --loadout=water_pistol@2,spark_needler@2,rime_chakram@2,flare_pistol@2 --boss-only --boss-dps=2200`. Every run ends with a
@@ -867,6 +871,7 @@ scenes/main.tscn     the only scene; everything is built in code
 scripts/
   main.gd            run orchestrator: floors, current room, scrap, camera, HUD, joins, bot
   boss_body.gd       the boss framework: stagger, phases, name card, body parts (Pyre Lord)
+  boss_show.gd       boss presentation: entrance, phase change, death, the antechamber cue
   regions.gd         the Descent: region graph (depth, theme, resists, weak to, hazards, boss,
                      signature layouts, edges); a run walks one region per depth; the
                      active region's soft resistances (60% / 140%) and Exposed

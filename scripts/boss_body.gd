@@ -44,6 +44,22 @@ const NAMES := {
     "drowned_choir": "The Drowned Choir",
 }
 
+## The line under the name on the entrance card (BossShow). Short and plain: what the
+## people of that place would call it, never a slogan.
+const EPITHETS := {
+    "brute_king": "He wears the bones of the ones who came before you",
+    "hive_mother": "Everything that crawls in the Gardens is hers",
+    "storm_warden": "He keeps the lightning on the high rods",
+    "pyre_lord": "The fire under the Forge never went out",
+    "void_herald": "It speaks for what waits under the Rift",
+    "drowned_choir": "They rang the bell when the water came, and never stopped",
+}
+
+
+static func epithet(boss_kind: String) -> String:
+    return String(EPITHETS.get(boss_kind, ""))
+
+
 ## Share of Room.BOSS_DPS_SECS of arena output a boss is sized to (floors 2+). The Pyre
 ## Lord's chain gates (armour, core) and his phases add fixed time, so he gets less health;
 ## bots: 72k health took 80 to 93 s, the target is 25 to 50 s.
@@ -511,6 +527,9 @@ func phase_for(f: float) -> int:
 func on_phase(n: int) -> void:
     phase_times.append(age)
     Music.boss_phase(n)
+    var rm := Room.here
+    if rm != null and is_instance_valid(rm) and rm.show != null and is_instance_valid(rm.show):
+        rm.show.phase(n)
     if log_enabled:
         print("[BOSS-PHASE] t=%.1f kind=%s phase=%d hp=%.2f" % [age, kind, n, e.hp / e.max_hp])
     match kind:

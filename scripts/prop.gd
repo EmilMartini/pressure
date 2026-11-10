@@ -36,6 +36,14 @@ const SPECS := {
     # The Forge's quench vats (Pyre Lord arena): shoot one and it bursts, soaking what stands
     # near and quenching his fire and lava; it refills after QUENCH_REFILL s.
     "quench_vat": { "tile": Vector2i(5, 14), "tint": Color(0.45, 0.70, 1.00), "scale": 2.4, "size": Vector2(32, 30), "hp": INF, "solid": true, "scrap": [0, 0] },
+    # Arena tools for the other bosses (vision gap analysis, slam dunk 1): shoot one and it
+    # bursts over whatever stands near, feeding that boss's chain, then refills like a vat.
+    # The war brazier spills fire (the Brute King's swallowed barrels, the Hive Mother's
+    # sacs to Smog), the grounding pylon stone (the Storm Warden's charged rods), the holy
+    # lamp light (the Void Herald's wells collapse, and holy on a Rift is an Exorcised Rift).
+    "war_brazier": { "tile": Vector2i(14, 10), "tint": Color(0.95, 0.62, 0.40), "scale": 2.6, "size": Vector2(30, 30), "hp": INF, "solid": true, "scrap": [0, 0] },
+    "ground_pylon": { "tile": Vector2i(3, 12), "tint": Color(0.70, 0.62, 0.48), "scale": 2.4, "size": Vector2(28, 34), "hp": INF, "solid": true, "scrap": [0, 0] },
+    "holy_lamp": { "tile": Vector2i(14, 10), "tint": Color(1.00, 0.95, 0.72), "scale": 2.4, "size": Vector2(28, 28), "hp": INF, "solid": true, "scrap": [0, 0] },
     "stone_pillar": { "tile": Vector2i(3, 12), "tint": Color(0.60, 0.56, 0.50), "scale": 2.6, "size": Vector2(32, 36), "hp": INF, "solid": true, "scrap": [2, 2] },
 }
 
@@ -45,6 +53,12 @@ const BLAST_RADIUS := 150.0
 const C_STEAM := Color(0.90, 0.95, 1.00)
 const QUENCH_R := 140.0
 const QUENCH_REFILL := 9.0
+## Arena tool -> [element it bursts, label, sound].
+const ARENA_TOOL := {
+    "war_brazier": [Element.Kind.FIRE, "Toppled", "react_ignition"],
+    "ground_pylon": [Element.Kind.STONE, "Grounded", "rx_stone"],
+    "holy_lamp": [Element.Kind.HOLY, "Lamp burst", "rx_holy"],
+}
 
 var kind := "crate"
 var hp := 3.0
@@ -163,6 +177,10 @@ func apply_element(element: int, _potency: float = 1.0, dir: Vector2 = Vector2.Z
             used = off_time <= 0.0 and element != Element.Kind.WET
             if used:
                 _quench()
+        "war_brazier", "ground_pylon", "holy_lamp":
+            used = off_time <= 0.0
+            if used:
+                _arena_burst()
     if used:
         _flash = 0.1
         Telemetry.prop(self, element)
@@ -226,6 +244,11 @@ func take_damage(_amount: float) -> void:
         "quench_vat":
             if off_time <= 0.0:
                 _quench()
+            else:
+                _chips(Element.Kind.STONE)
+        "war_brazier", "ground_pylon", "holy_lamp":
+            if off_time <= 0.0:
+                _arena_burst()
             else:
                 _chips(Element.Kind.STONE)
         _:
@@ -556,6 +579,33 @@ func _quench() -> void:
             e.quench(gp, QUENCH_R)
     if BossBody.log_enabled:
         print("[ARENA] quench vat burst at %s" % [gp.round()])
+
+
+## An arena tool bursts (ARENA_TOOL): its element on every enemy near, the boss's part
+## nearest to it first. Nothing lands on the floor, so it never hurts the party.
+func _arena_burst() -> void:
+    var d: Array = ARENA_TOOL[kind]
+    var el: int = d[0]
+    var gp := global_position
+    off_time = QUENCH_REFILL
+    var c: Color = Element.COLORS[el]
+    Elements.reaction_fired.emit(String(d[1]), gp + Vector2(0, -24), c)
+    Elements.nova.emit(gp, QUENCH_R, Color(c, 0.6))
+    Sfx.play_at(String(d[2]), gp, 0.0)
+    _fxc("pixels", [el, gp, 24, 160.0, 12.0])
+    for e in _enemies_within(QUENCH_R + 40.0):
+        if _alive(e):
+            if e.body != null:
+                e.body.focus_at(gp)
+            e.apply_element(el, 1.0)
+    if kind == "holy_lamp":
+        for w in Projectile.wells:
+            if Vector2(w["pos"]).distance_to(gp) <= QUENCH_R + float(w["r"]) and float(w["t"]) > 0.0:
+                w["t"] = 0.0
+                Elements.reaction_fired.emit("Well collapsed", w["pos"], Color(1.0, 0.95, 0.7))
+                Elements.nova.emit(w["pos"], float(w["r"]), Color(1.0, 0.95, 0.7, 0.6))
+    if BossBody.log_enabled:
+        print("[ARENA] %s burst at %s" % [kind, gp.round()])
 
 
 func _rod(el: int) -> bool:
@@ -975,7 +1025,7 @@ func _process(delta: float) -> void:
     _flash = maxf(0.0, _flash - delta)
     _hum = maxf(0.0, _hum - delta)
     off_time = maxf(0.0, off_time - delta)
-    if kind == "quench_vat" and _sprite != null:
+    if (kind == "quench_vat" or ARENA_TOOL.has(kind)) and _sprite != null:
         _sprite.modulate.a = 0.4 if off_time > 0.0 else 1.0   # empty until it refills
     for k in _cd.keys():
         _cd[k] = float(_cd[k]) - delta
@@ -1220,9 +1270,9 @@ func _draw_rim() -> void:
 ## Over the sprite: state overlays.
 func _draw_over() -> void:
     var half := size / 2.0
-    if kind == "quench_vat" and off_time <= 0.0:
-        # Full: a ring of water over it, so it reads as a tool to shoot.
-        var wc: Color = Element.COLORS[Element.Kind.WET]
+    if (kind == "quench_vat" or ARENA_TOOL.has(kind)) and off_time <= 0.0:
+        # Full: a ring of its element over it, so it reads as a tool to shoot.
+        var wc: Color = Element.COLORS[Element.Kind.WET] if kind == "quench_vat" else Element.COLORS[ARENA_TOOL[kind][0]]
         _over.draw_arc(Vector2(0, -2), half.x + 6.0, 0.0, TAU, 24, Color(0.02, 0.05, 0.12, 0.8), 4.0)
         _over.draw_arc(Vector2(0, -2), half.x + 6.0, 0.0, TAU, 24, Color(wc, 0.6 + 0.3 * sin(Time.get_ticks_msec() * 0.003)), 2.0)
     if _timers.has("fuse"):

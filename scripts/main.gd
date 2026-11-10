@@ -49,6 +49,9 @@ var _probe: BalanceProbe = null   # --dps-probe (scripts/balance_probe.gd)
 var _probe_started := false
 var bot_paused := false   # a capture (PayoutShot) drives the player instead of the bot
 var _hitstop_left := 0.0
+## A boss entrance pans the camera (BossShow): the focus point and its weight 0..1.
+var cam_focus := Vector2.ZERO
+var cam_focus_w := 0.0
 var _ticker: Node
 var _flash_rect: ColorRect
 var _flash_life := 0.0
@@ -1019,7 +1022,7 @@ func _process(delta: float) -> void:
     _handle_joins()
     _handle_sheet_buttons()
     _serve_levelups()
-    camera.target = _party_center()
+    camera.target = _party_center().lerp(cam_focus, cam_focus_w) if cam_focus_w > 0.0 else _party_center()
     camera.shake = Vector2(randf_range(-1.0, 1.0), randf_range(-1.0, 1.0)) * _shake
     _shake = move_toward(_shake, 0.0, 28.0 * delta)
     _message_time = maxf(0.0, _message_time - delta)

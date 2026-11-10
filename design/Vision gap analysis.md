@@ -519,7 +519,7 @@ art.
 |---|---|---|---|---|
 | 1 | Choose an art source and solve the licence (private repo or assets kept out of git) | NEEDS EMIL | Very high | Decision, money |
 | 2 | Playtest the current exe: three runs, notes on feel, bosses and look | NEEDS EMIL | Very high | 2 hours |
-| 3 | Boss entrances and deaths | SLAM DUNK | High | 1 session |
+| 3 | Boss entrances and deaths (**DONE 2026-11-10**) | SLAM DUNK | High | 1 session |
 | 4 | Cataclysm moments: the rare chain becomes an event | SLAM DUNK | High | 1 session |
 | 5 | Combat text diet | SLAM DUNK | High (clarity and oomph) | Small |
 | 6 | Hit feel: knockback, squash and stretch, recoil, enemy hit reactions | SLAM DUNK | High | 1 session |
@@ -528,7 +528,7 @@ art.
 | 9 | Boss sprites with animation, a player sprite | NEEDS ARTIST | Very high | Weeks, money |
 | 10 | Regional enemy rosters from Dungeon Crawl monster tiles | SLAM DUNK | Medium-high | 1 to 2 sessions |
 | 11 | Approve the voice sheets, then the first line batch | NEEDS EMIL | Medium-high | 30 minutes for Emil |
-| 12 | Arena tools for the remaining bosses | SLAM DUNK | Medium | 1 session |
+| 12 | Arena tools for the remaining bosses (**DONE 2026-11-10**, with 3) | SLAM DUNK | Medium | 1 session |
 | 13 | Music direction: a composer or a bought pack, a theme per boss | NEEDS EMIL | High | Money, time |
 | 14 | A "this moment" button in telemetry | SLAM DUNK | Medium (process) | Small |
 | 15 | Vertical slice before breadth: pause new regions until 1 to 8 are at "finished" quality | NEEDS EMIL | High | A choice |
@@ -538,7 +538,10 @@ art.
 
 ### 6.1 Slam dunk briefs
 
-**3. Boss entrances and deaths.**
+**3. Boss entrances and deaths.** **DONE 2026-11-10** with item 12 (World and progression GDD,
+"Boss show"): entrances, phase changes, deaths, bosses at three times the player, war braziers,
+grounding pylons and holy lamps. Fight lengths unchanged within noise. Still open: the
+final-code captures and the boss-fight frame rate (windowed runs, blocked while Emil plays).
 Files: `scripts/boss_body.gd`, `scripts/main.gd` (camera, `shake`), `scripts/art_pass.gd` (room
 lights), `scripts/hud.gd` (name card), `scripts/music.gd`.
 Entrance: the player stops for about 1.5 s (invulnerable); the camera pans to the boss; room
@@ -595,7 +598,7 @@ monks in the Chapel, and so on. Each also gets one innate element that matches t
 balance stays the same. Section 14 already plans "elemental variants of existing ones".
 Done: every built region has its own sprite set; bot clears within noise; a gallery capture.
 
-**12. Arena tools for the remaining bosses.**
+**12. Arena tools for the remaining bosses.** **DONE 2026-11-10** (see item 3).
 Files: `scripts/boss_body.gd`, `scripts/room.gd`, `scripts/pedestal.gd`.
 Phase 0b left these: braziers to topple for the Brute King and the Hive Mother (fire on spores),
 pylons for the Storm Warden, bells or holy lamps for the Void Herald. Each tool feeds the boss's

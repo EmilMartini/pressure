@@ -766,6 +766,8 @@ func _physics_process(delta: float) -> void:
         if not alive:
             return
     var mv := input.move_vector()
+    if BossShow.hold > 0.0:
+        mv = Vector2.ZERO   # a boss entrance holds the party still (and invulnerable)
     if mv.length() > 0.2:
         _manual_dir = mv.normalized()
     var want := mv * move_speed() * (Room.WADE if _wading else 1.0)

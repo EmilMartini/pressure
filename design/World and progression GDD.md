@@ -1085,7 +1085,8 @@ depth (recipes in `README.md`):
 
 **Left after phase 0b** (none blocks phase 1):
 - Arena tools for the other bosses: braziers, pylons, bells (section 6, rule 5). Only the
-  Forge's quench vats exist.
+  Forge's quench vats exist. (Done 2026-11-10, "Boss show": war braziers, grounding pylons,
+  holy lamps.)
 - The Brute King's fight spread (idle-bot clears at 12 to 20 s) and his early first plate
   tear.
 - Boss rooms slow over time (render objects climb to about 18k to 24k in 30 to 45 s on old
@@ -2292,6 +2293,79 @@ next runs on this build, which record the `pressure` event):
   still kill in a rush.
 
 Defaults taken: BX to CB in section 16. Weekly usage 45% at the start, 45% at the end.
+
+#### Boss show (2026-11-10): entrances, phases, deaths and arena tools
+
+Slam dunk 1 of `design/Vision gap analysis.md` (section 6.1, items 3 and 12). Code:
+`scripts/boss_show.gd` (new), with hooks in `enemy.gd`, `room.gd`, `boss_body.gd`, `hud.gd`,
+`main.gd`, `player.gd`, `prop.gd`, `music.gd` and `sfx.gd`. No boss numbers changed.
+- **Entrance (2.5 s).** The party is held and can't be hurt; the boss rises as a non-target
+  (`Enemy.intro`, through `emerge`, so nothing aims at it). The camera pans to it, the room goes
+  dark round it, and at 0.9 s the roar lands (the roar plus a pitched-down copy, a low rumble,
+  a heavy shake, a controller boom). A big name card with an epithet (`BossBody.EPITHETS`, for
+  Emil's review) sits in the lower third. Each boss arrives its own way: the Brute King drops
+  from above and lands, the Hive Mother grows out of the ground, the Storm Warden appears in a
+  lightning flash, the Pyre Lord is a cold dark shape that ignites, the Void Herald folds in out
+  of nothing, and the Drowned Choir rises from the water while the bell tolls three times.
+  After the first sight of a kind (`Progress` stat `boss_seen:<kind>`), any press skips. The
+  fight clock, the music, the adds and telemetry start when control returns.
+- **Antechamber.** A room next to an uncleared boss room gets a slow red glow at that door, and
+  a low rumble every 6.5 s.
+- **Presence.** Boss radius 42 to 46, three times the player's 14 (was 30 to 34). Contact
+  damage reach stays at 0.8 of the radius, close to the old body. Idle breathing that quickens
+  by phase, and a wide soft body shadow.
+- **Phase change.** A 0.14 s freeze, a sting, a flash and a shockwave in the boss's colour; the
+  music crossfades to the next track in 0.5 to 0.6 s (was 1 to 1.5 s); cracks glow across the
+  body (3 in phase 2, 6 in phase 3, on the Crisp layer), and the body's colour shifts toward
+  its glow.
+- **Death.** 0.6 s of slow motion, a white flash, shockwaves, the body bursting into its
+  element (bone, spores, sparks, fire and scorch, void shards, water on the floor), the adds
+  and enemy shots gone, the music stopped and the room dim for 1.7 s. Then the spoils, the
+  stairwells light up, and the run music returns at 2.8 s.
+- **Arena tools** (`Room.ARENA_TOOLS`, `Prop._arena_burst`). These work like the quench vats:
+  shoot one and it bursts over enemies within 180 px, the boss part nearest it first, then
+  refills after 9 s. Nothing lands on the floor, so a tool never hurts the party.
+  - War braziers (fire) for the Brute King (Gut Blast on swallowed barrels) and the Hive Mother
+    (Smog on her sacs, then Firedamp).
+  - Grounding pylons (stone) for the Storm Warden (Grounded on charged rods).
+  - Holy lamps for the Void Herald (they collapse wells in reach; holy on a Rift is an Exorcised
+    Rift).
+- Bot lines: `[BOSS-SHOW]` (entrance, reveal, control, phase, death); `[ARENA] <tool> burst`.
+
+**Fight lengths before and after** (real floors, storm build at each boss's depth, Phase 0b
+recipes; seeds 1 and 2, plus 3 for the Brute King; the Pyre Lord is `--boss-only
+--boss-dps=2200` because the bot died in Forge arenas, or ran out the clock, on every real-floor
+try). All runs had 0 script errors and 3/3 phases.
+
+| Boss | Before (s) | After (s) | Tool bursts per fight (after) |
+|---|---|---|---|
+| Brute King (Ossuary, `--fusion-probe=2`) | 35.3, 9.7, 13.8 | 29.4, 17.9, 38.0 (one run stalled in the Shop) | 4, 3 war braziers; one Gut Blast |
+| Hive Mother (depth 2) | 28.8, 31.6 | 31.0, 19.0 | 9, 12 war braziers; Firedamp on the sacs once |
+| Drowned Choir (depth 2) | 22.7, 21.1 | 29.1, 25.4 | (ledges and flood, unchanged) |
+| Storm Warden (depth 3) | 27.6, 28.7 | 22.4, 27.1 | 12, 4 pylons; Grounded tore the rods in both |
+| Pyre Lord (boss-only) | 29.6, 20.0 | 29.6, 21.5 | 8, 6 quench vats |
+| Void Herald (depth 5) | 25.5, 28.5 | 26.2 (second run died in a Rift arena) | 5 holy lamps |
+
+Fight lengths are unchanged within the noise of these few runs. The bigger hitbox and the tools
+did not shorten fights. Fights under 25 s were already there before this change (the Brute
+King and the Hive Mother on some seeds, the Choir). Tuning them is a balance job, out of scope
+here.
+
+**Checks:**
+- The load check is clean.
+- The idle six-gun bot died in the Ossuary Gate (t=75).
+- The fusion probe cleared it (Brute King 38.0 s; boss, fusion and spawn checks PASS).
+- Hub walk PASS.
+- `tools/exe_smoke.sh` ALL PASS.
+- The real `app_userdata` files are unchanged.
+
+**Not done: windowed work.** A windowed capture run took Emil's focus, so windowed runs are
+blocked unless `autotest/WINDOWS_OK` exists.
+- Missing: the capture set from the final code, and the boss-fight frame rate.
+- Some captures from earlier code are in `autotest/` (local, git-ignored); their name card was
+  still over the boss.
+- The commands are in the session handoff (side-session notes,
+  `boss-show-handoff.md`).
 
 #### Phase 5 batch 1, part 3 (2026-11-08): Choir ledges, fps and the Cistern's sluice
 
