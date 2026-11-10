@@ -353,7 +353,7 @@ func _themes_shot() -> void:
         await get_tree().create_timer(2.0).timeout
         await _screenshot("res://autotest/theme_%s.png" % tname)
         print("[THEME SHOT] %s  layout=%s  ambience=%d px" % [tname, current.layout_name, current.ambience.live() if current.ambience != null else 0])
-    get_tree().change_scene_to_file("res://scenes/hub.tscn")
+    get_tree().change_scene_to_file.call_deferred("res://scenes/hub.tscn")
 
 
 ## A cleared arena at `centre` with a plain door on every side (one a secret wall, for the
@@ -1185,7 +1185,7 @@ func _drop_in_well(o: Dictionary, pl: Player, room: Room, id: String) -> void:
 func return_to_hub() -> void:
     get_tree().paused = false
     Engine.time_scale = 1.0
-    get_tree().change_scene_to_file("res://scenes/hub.tscn")
+    get_tree().change_scene_to_file.call_deferred("res://scenes/hub.tscn")
 
 
 func _restart() -> void:
@@ -1548,7 +1548,7 @@ func _autotest_tick(delta: float) -> void:
         if OS.get_cmdline_user_args().has("--hub-descend"):
             set_process(false)
             get_tree().paused = false
-            get_tree().change_scene_to_file("res://scenes/hub.tscn")   # exe smoke test: back to the Hollow
+            get_tree().change_scene_to_file.call_deferred("res://scenes/hub.tscn")   # exe smoke test: back to the Hollow
             return
         get_tree().quit()
 
@@ -1556,7 +1556,7 @@ func _autotest_tick(delta: float) -> void:
 func _probe_back_to_hub() -> void:
     print("[HUB-DESCEND] player-mode run over at t=%.0f; back to the Hollow" % _clock)
     get_tree().paused = false
-    get_tree().change_scene_to_file("res://scenes/hub.tscn")
+    get_tree().change_scene_to_file.call_deferred("res://scenes/hub.tscn")
 
 
 ## `--kite`: a player-like dodge instead of orbiting the nearest enemy. Every enemy and

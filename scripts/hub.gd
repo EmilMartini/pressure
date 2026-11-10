@@ -14,7 +14,8 @@ extends Node2D
 ## `-- --hub-walk --instance=N` is the bot: it walks the rooms and uses every station on
 ## show (`--keep-save` keeps that instance's save, `--hub-shot` saves captures).
 ## `-- --hub-descend --autotest --one-floor --secs=N --instance=N` is the exported-exe smoke
-## test (tools/exe_smoke.sh): the Gate's loadout screen opens and Descend is pressed, the
+## test (tools/exe_smoke.sh): the Gate's loadout screen opens and Descend is clicked with the
+## mouse (`--descend-key`: Enter), the
 ## bot plays N seconds, the run hands back to the Hollow, and the Hollow quits (after
 ## `--descend-runs=K` such runs, default 1).
 
@@ -646,14 +647,51 @@ func _descend_probe() -> void:
         return
     _show_class_select()
     await get_tree().create_timer(1.0).timeout
-    print("[HUB-DESCEND] pressing Descend")
-    _class_select.descend()
+    if OS.get_cmdline_user_args().has("--descend-key"):
+        # The keyboard route: Enter through Input, like a player.
+        print("[HUB-DESCEND] pressing Descend (Enter)")
+        for down in [true, false]:
+            var k := InputEventKey.new()
+            k.physical_keycode = KEY_ENTER
+            k.keycode = KEY_ENTER
+            k.pressed = down
+            Input.parse_input_event(k)
+        return
+    # The mouse route (default): a real left click on the Descend button, through Input and
+    # the GUI, which runs the scene change inside the click's own dispatch.
+    var at := Vector2.ZERO
+    for hit in _class_select._hits:
+        if int(hit[1]) == 4:
+            at = _class_select.get_screen_transform() * (hit[0] as Rect2).get_center()
+    print("[HUB-DESCEND] pressing Descend (mouse click at %s)" % at)
+    # Pushed in the viewport's own coordinates (headless has no pointer over a window): a
+    # move onto the button, then press and release.
+    var mm := InputEventMouseMotion.new()
+    mm.position = at
+    mm.global_position = at
+    get_viewport().push_input(mm, true)
+    await get_tree().process_frame
+    for down in [true, false]:
+        var mb := InputEventMouseButton.new()
+        mb.button_index = MOUSE_BUTTON_LEFT
+        mb.pressed = down
+        mb.position = at
+        mb.global_position = at
+        if is_inside_tree():
+            get_viewport().push_input(mb, true)
+    await get_tree().create_timer(2.0).timeout
+    if is_inside_tree():
+        print("[HUB-DESCEND] FAIL: the click did not Descend")
+        get_tree().quit(1)
 
 
 func _on_class_picked(lo: Dictionary) -> void:
     Progress.loadout = lo
     Progress.save()
-    get_tree().change_scene_to_file("res://scenes/main.tscn")
+    # Deferred: Descend runs inside the click's (or key's) own input dispatch, and swapping
+    # the scene there tore the Hollow out from under the GUI; the release exe crashed
+    # (0xc0000005) on a mouse click. Never change scene synchronously from input.
+    get_tree().change_scene_to_file.call_deferred("res://scenes/main.tscn")
 
 
 func _center() -> CenterContainer:
@@ -995,7 +1033,7 @@ func _build_esc_menu() -> void:
     col.add_child(UiTheme.button("How it works", func(): _open(_explainer_center, _explainer_ok)))
     col.add_child(UiTheme.button("Replay tutorial", func():
         Settings.set_value("tutorial_done", false)
-        get_tree().change_scene_to_file("res://scenes/tutorial.tscn")))
+        get_tree().change_scene_to_file.call_deferred("res://scenes/tutorial.tscn")))
     col.add_child(UiTheme.button("Quit", func(): get_tree().quit()))
 
 

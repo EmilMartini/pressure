@@ -411,10 +411,14 @@ mode (no bot). Each must exit 0 with no crash, reach the Hollow again and print 
 files (instances 9901 to 9903). Run it before every push. The debug editor does not catch
 release-only crashes. On 2026-11-10 a lambda kept in a static var (`Materials.on_force`)
 crashed the exported exe at every teardown after a run (exit 139, 0xc0000005) while every
-editor check passed. The script also fails on any `static var ...: Callable`. Keep Callables
-out of static vars; use a flag and a direct call.
+editor check passed. The same day a mouse click on Descend crashed the exe outright:
+`change_scene_to_file` ran inside the click's own GUI dispatch and pulled the Hollow out from
+under it (Enter only printed a SCRIPT ERROR, and the debug editor never crashed). The script
+also fails on any `static var ...: Callable` and on any `change_scene_to_file(` without
+`.call_deferred`. Keep Callables out of static vars, and never change scene synchronously.
 
-The probe flags: `-- --hub-descend` (the Hollow opens the Gate and presses Descend; the run
+The probe flags: `-- --hub-descend` (the Hollow opens the Gate and clicks Descend with the
+mouse, through the GUI; `--descend-key` presses Enter instead; the run
 hands back to the Hollow after `--secs=N`, and the Hollow quits after `--descend-runs=K` runs,
 default 1). Add `--autotest --one-floor` for the bot, or leave it out for player mode.
 

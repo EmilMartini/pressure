@@ -263,7 +263,7 @@ func _close_class_select() -> void:
 func _on_class_picked(lo: Dictionary) -> void:
     Progress.loadout = lo
     Progress.save()
-    get_tree().change_scene_to_file("res://scenes/main.tscn")
+    get_tree().change_scene_to_file.call_deferred("res://scenes/main.tscn")
 
 
 func _on_wipe() -> void:

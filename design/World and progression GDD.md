@@ -78,13 +78,15 @@ the simulation is identical.
 
 Exe smoke test, **required before every push** (2026-11-10): `tools/exe_smoke.sh`. It exports a
 release exe to a scratch folder (never `export/windows/`) and runs it headless through the
-Hollow, the Gate's loadout screen and Descend, a short run, back to the Hollow, a second
+Hollow, the Gate's loadout screen and Descend (a real mouse click, or Enter), a short run, back to the Hollow, a second
 Descend, back again and quit, three ways: lighting on, lighting off, and player mode (no bot).
 Each must exit 0 with no crash and 0 `SCRIPT ERROR`; it prints `[SMOKE] ALL PASS`. Why: the
 debug editor misses release-only crashes. A lambda kept in a static var (`Materials.on_force`)
 crashed the exported exe at every teardown after a run while every editor check passed. The
-script also fails on any `static var ...: Callable`. Never keep a Callable, lambda or method,
-in a static var; use a flag and a direct call. Exported-exe runs are headless only:
+script also fails on any `static var ...: Callable` and on any synchronous
+`change_scene_to_file`: a mouse click on Descend crashed the exe outright, because the scene
+changed inside the click's own GUI dispatch. Never keep a Callable, lambda or method, in a
+static var; use a flag and a direct call. Always use `change_scene_to_file.call_deferred`. Exported-exe runs are headless only:
 `tools/bot_window.sh` cannot keep an exported exe from taking focus, because its override
 file lives in res://, inside the project. If a windowed exe run is really needed, put an
 `override.cfg` with `[display]` / `window/size/no_focus=true` next to the scratch exe only
