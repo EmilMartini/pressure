@@ -80,6 +80,18 @@ var well_screen: WellScreen
 ## Balance probe `--old-balance`: the late-floor tuning of 2026-11-05 off (uncapped Leech,
 ## formula bosses without the rally, old floor damage), for like-for-like bot comparisons.
 static var old_balance := false
+## Core loop reset 11.1: active curses, id -> "floor" (ends at the stairs) or "run".
+static var curses: Dictionary = {}
+## Loot and shop counters for the floor (13.2 loot count): items free and bought, guns,
+## hearts, cards shown; the scrap high-water mark (the no-hoard target).
+var _loot: Dictionary = {}
+var shop_rerolls := 0          # rerolls in the current shop visit
+var _shop_in := -1             # scrap on entering the shop room (-1: not in a shop)
+var _shop_visits: Array = []   # [left, cheapest, spent, rerolls] per visit this run (bots)
+var _darkness: CanvasLayer = null
+## Leaving from the pause menu pays this share of a death's Embers (Emil, 2026-11-10).
+const QUIT_EMBERS := 0.75
+var _abandoned := false
 var _clock := 0.0
 var _bot_idle := 0.0
 var _bot_obstacle_time := 0.0
@@ -137,6 +149,11 @@ func _ready() -> void:
     _open_gates = autotest and args.has("--open-gates")
     Enemy.spawn_log = autotest   # [SPAWN-MOVED] / [SPAWN-CLOSE] lines (Enemy.EMERGE_SECS)
     old_balance = autotest and args.has("--old-balance")
+    curses = {}
+    FloorGen.force_challenge = ""
+    for a in args:
+        if autotest and a.begins_with("--challenge="):
+            FloorGen.force_challenge = a.substr(12)
     if not autotest and args.has("--hub-descend"):
         # Exe smoke test, player mode (no bot): the run is left alone for --secs, then
         # hands back to the Hollow (Hub._descend_probe).
@@ -420,12 +437,15 @@ func _on_unlocked(unlock_id: String, achievement_name: String) -> void:
     Sfx.play("unlock")
 
 
-func _end_run(won: bool) -> void:
+func _end_run(won: bool, abandoned: bool = false) -> void:
     # Embers first, so telemetry and the history line can carry the payout. The bot pays
-    # into its throwaway Shrine file (see _ready).
-    var award: Dictionary = Mastery.award(floor_number, won, String(Loadout.current()["mark"]))
+    # into its throwaway Shrine file (see _ready). Leaving from the pause menu counts as a
+    # death that pays QUIT_EMBERS of the award (Core loop reset 11.2).
+    _abandoned = abandoned
+    _floor_loot_end()
+    var award: Dictionary = Mastery.award(floor_number, won, String(Loadout.current()["mark"]), QUIT_EMBERS if abandoned else 1.0)
     var gained := int(award.get("total", 0))
-    Telemetry.run_end(self, won, award)
+    Telemetry.run_end(self, won, award, abandoned)
     Progress.keep_well_items(well_items)
     if autotest and not well_items.is_empty():
         print("[WELL] saved for the Wellkeeper: %s" % ", ".join(well_items))
@@ -437,6 +457,8 @@ func _end_run(won: bool) -> void:
         announce("+%d Embers" % gained)
     if autotest:
         print("[EMBERS] +%d (%s)  bank %d" % [gained, Mastery.award_text(award), Mastery.embers])
+    if abandoned:
+        return
     Music.play("ambient", 2.5)
     if not autotest:
         get_tree().create_timer(1.6).timeout.connect(pause_menu.show_menu)
@@ -565,6 +587,20 @@ func start_floor(n: int) -> void:
         get_tree().quit()
         return
     pressure_meter.flush()
+    if floor_number > 0:
+        _floor_loot_end()
+    FloorGen.locked_in = []
+    if not old_balance and not rooms.is_empty():
+        for rp in rooms.keys():
+            var rd: RoomData = rooms[rp]
+            if rd.type == RoomData.Type.SHOP:
+                for o in rd.stock:
+                    if o.get("locked", false) and not o["taken"]:
+                        FloorGen.locked_in.append(o)
+    for c in curses.keys():
+        if String(curses[c]) == "floor":
+            curses.erase(c)
+    _update_curse_look()
     floor_number = n
     region_id = _next_region(n)
     _door_choice = ""
@@ -576,6 +612,7 @@ func start_floor(n: int) -> void:
         _prev_power = floor_arena_dps()
         _prev_power_floor = floor_number - 1
     _arena_dps = []
+    _loot = { "free": 0, "bought": 0, "guns": 0, "hearts": 0, "cards": 0, "levels": 0, "scrap_max": scrap, "earned": 0 }
     if autotest and not players.is_empty():
         print("[FLOOR] %d region=%s at t=%.0f kills=%d scrap=%d hp=%.0f level=%d guns=%d items=%d" % [
             n, region_id, _clock, total_kills, scrap, players[0].hp, players[0].level, players[0].guns.size(), players[0].equipment.size()])
@@ -667,6 +704,8 @@ func enter_room(pos: Vector2i, moved: Vector2i) -> void:
         print("[BOT] enter %s (%s) moved=%s visited=%s doors=%s" % [pos, rooms[pos].type_name(), moved, str(vis), str(rooms[pos].doors)])
     Sfx.stop_all()
     if current != null:
+        if _shop_in >= 0 and current.data.type == RoomData.Type.SHOP:
+            _shop_leave(current)
         # Spoils nobody chose are salvaged (and said so), never lost silently.
         current.salvage_spoils("left")
         if autotest and current.cleared_at >= 0.0 and current.data.type == RoomData.Type.ARENA:
@@ -689,6 +728,9 @@ func enter_room(pos: Vector2i, moved: Vector2i) -> void:
         _arena_snap = [_clock, players[0].hp, players[0].hurt_total, players[0].healed_total, players[0].healed_leech, players[0].healed_regen]
     pressure_meter.room_entered()
     current = Room.new(rooms[pos], self)
+    if rooms[pos].type == RoomData.Type.SHOP and not old_balance:
+        _shop_in = scrap
+        shop_rerolls = 0
     add_child(current)
     _update_spectacle()
     move_child(current, 0)
@@ -770,6 +812,16 @@ func on_room_cleared(_room: Room) -> void:
     floor_rooms_cleared += 1
     _update_spectacle()
     announce("Room cleared")
+    if autotest and floor_number >= 2 and OS.get_cmdline_user_args().has("--quit-probe"):
+        # Core loop reset 11.2: leaving from the pause menu pays 75% of a death's Embers.
+        var death := int(Mastery.preview(floor_number, false, String(Loadout.current()["mark"]))["total"])
+        var before := Mastery.embers
+        abandon_run()
+        var paid := Mastery.embers - before
+        var want := roundi(float(death) * QUIT_EMBERS)
+        print("[QUIT-CHECK] %s floor=%d death_award=%d paid=%d want=%d" % ["PASS" if death > 0 and absi(paid - want) <= 2 else "FAIL", floor_number, death, paid, want])
+        _print_stats("END")
+        get_tree().quit()
 
 
 ## Down the stairs; `to` is the region behind the door taken ("" at the bottom).
@@ -860,9 +912,110 @@ func add_scrap(v: int) -> void:
     var gain := 0.0
     for p in players:
         gain = maxf(gain, p.stat("scrap_gain"))
+    if not old_balance:
+        gain = minf(gain, SCRAP_GAIN_CAP)   # Core loop reset 6.1: scrap gain capped at +50%
     var got := ceili(float(v) * (1.0 + gain))
     scrap += got
     Telemetry.scrap_earned(got)
+    if not _loot.is_empty():
+        _loot["earned"] = int(_loot["earned"]) + got
+        _loot["scrap_max"] = maxi(int(_loot["scrap_max"]), scrap)
+
+
+const SCRAP_GAIN_CAP := 0.5
+
+
+## Loot count (13.2): `what` is "free", "bought", "guns" or "hearts".
+func loot_note(what: String) -> void:
+    if not _loot.is_empty():
+        _loot[what] = int(_loot.get(what, 0)) + 1
+
+
+## Cards put in front of the player (reward rows, shop wares and rerolls, level-up offers).
+func loot_cards(n: int) -> void:
+    if not _loot.is_empty():
+        _loot["cards"] = int(_loot["cards"]) + n
+
+
+func _floor_loot_end() -> void:
+    if _loot.is_empty():
+        return
+    var f := { "floor": floor_number }
+    for k in _loot.keys():
+        f[k] = _loot[k]
+    f["scrap_end"] = scrap
+    Telemetry.event("floor_loot", f)
+    if autotest:
+        print("[LOOT] floor=%d free=%d bought=%d guns=%d hearts=%d cards=%d levels=%d earned=%d scrap_max=%d scrap_end=%d m=%.2f" % [
+            floor_number, int(_loot["free"]), int(_loot["bought"]), int(_loot["guns"]), int(_loot["hearts"]), int(_loot["cards"]),
+            int(_loot["levels"]), int(_loot["earned"]), int(_loot["scrap_max"]), scrap, Items.depth_mult(floor_number)])
+    _loot = {}
+
+
+## Walking out of a shop (6.5): what came in, what was spent, what is left, the cheapest ware
+## still for sale (-1 when none) and the rerolls made.
+func _shop_leave(room: Room) -> void:
+    var cheapest := -1
+    for o in room.data.stock:
+        if o.get("ware", false) and not o["taken"]:
+            cheapest = int(o["price"]) if cheapest < 0 else mini(cheapest, int(o["price"]))
+    var spent := maxi(0, _shop_in - scrap)
+    Telemetry.event("shop_leave", { "floor": floor_number, "scrap_in": _shop_in, "spent": spent, "left": scrap, "cheapest": cheapest, "rerolls": shop_rerolls })
+    _shop_visits.append([scrap, cheapest, spent, shop_rerolls])
+    if autotest:
+        print("[SHOP] floor=%d in=%d spent=%d left=%d cheapest=%d rerolls=%d spent_down=%s m=%.2f" % [
+            floor_number, _shop_in, spent, scrap, cheapest, shop_rerolls, str(cheapest < 0 or scrap < cheapest), Items.depth_mult(floor_number)])
+    _shop_in = -1
+    shop_rerolls = 0
+
+
+## A curse from cursed loot or a deal (11.1): "floor" ends at the stairs, "run" lasts.
+func add_curse(id: String, span: String) -> void:
+    if not Items.CURSES.has(id):
+        return
+    if String(curses.get(id, "")) != "run":
+        curses[id] = span
+    var c: Dictionary = Items.CURSES[id]
+    announce("Cursed: %s. %s" % [c["name"], c["line"]])
+    Sfx.play("error")
+    Telemetry.event("curse", { "floor": floor_number, "id": id, "span": span })
+    if autotest:
+        print("[CURSE] floor=%d %s (%s)" % [floor_number, id, span])
+    if id == "brittle":
+        for p in players:
+            p.mend_max *= 0.5
+            p.mend_left = minf(p.mend_left, p.mend_max)
+    _update_curse_look()
+
+
+## Darkness: the screen closes in to about half the sight.
+func _update_curse_look() -> void:
+    var dark := curses.has("darkness")
+    if dark and _darkness == null:
+        _darkness = CanvasLayer.new()
+        _darkness.layer = 2
+        var grad := Gradient.new()
+        grad.set_color(0, Color(0, 0, 0, 0.0))
+        grad.set_color(1, Color(0, 0, 0, 0.94))
+        grad.set_offset(0, 0.18)
+        grad.set_offset(1, 0.62)
+        var tex := GradientTexture2D.new()
+        tex.gradient = grad
+        tex.fill = GradientTexture2D.FILL_RADIAL
+        tex.fill_from = Vector2(0.5, 0.5)
+        tex.fill_to = Vector2(1.0, 0.5)
+        tex.width = 256
+        tex.height = 256
+        var rect := TextureRect.new()
+        rect.texture = tex
+        rect.stretch_mode = TextureRect.STRETCH_SCALE
+        rect.set_anchors_preset(Control.PRESET_FULL_RECT)
+        rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+        _darkness.add_child(rect)
+        add_child(_darkness)
+    elif not dark and _darkness != null:
+        _darkness.queue_free()
+        _darkness = null
 
 
 func announce(text: String) -> void:
@@ -1006,17 +1159,28 @@ func _handle_sheet_buttons() -> void:
 func _on_leveled_up(p: Player) -> void:
     if _probe != null:
         return   # the dps probe measures a fixed build
+    loot_note("levels")
+    if autotest and not old_balance:
+        _pending_levelups.append(p)
+        return
+    _bot_level_pick(p)
+
+
+## The bot's level-up pick, made when the picker would open for a player.
+func _bot_level_pick(p: Player) -> void:
     if autotest:
         print("[LEVEL] %d floor=%d t=%.0f rooms=%d xp_total=%.0f" % [p.level, floor_number, _clock, rooms_cleared, p.xp_total])
         # Picks one of three like a player would: the rarest card, then what kills or keeps
         # you alive over vent and fusion niche picks.
         var opts: Array = LevelUps.roll(p, 3)
+        loot_cards(opts.size())
         if not opts.is_empty():
             var best := 0
             for i in opts.size():
                 if _bot_pick_score(opts[i]) > _bot_pick_score(opts[best]):
                     best = i
             Telemetry.levelup(opts, best, int(p.level))
+            print("[PICK] %s %s (%s)" % [String(opts[best].get("name", "")), LevelUps.describe(opts[best]), ", ".join(opts.map(func(o): return String(o.get("name", ""))))])
             p.apply_upgrade(opts[best])
         return
     _pending_levelups.append(p)
@@ -1034,6 +1198,10 @@ func _serve_levelups() -> void:
         return
     var p: Player = _pending_levelups.pop_front()
     if is_instance_valid(p) and p.alive:
+        if autotest:
+            _bot_level_pick(p)
+            return
+        loot_cards(3)
         levelup.open(p)
 
 
@@ -1256,8 +1424,21 @@ func _drop_in_well(o: Dictionary, pl: Player, room: Room, id: String) -> void:
         print("[WELL] dropped %s on floor %d (%s) at t=%.0f" % [id, floor_number, region_id, _clock])
 
 
+## Leaving a run that is still going (pause menu: hub, restart or quit) counts as a death
+## and pays QUIT_EMBERS of its Embers. Once only; a run already over pays nothing more.
+func abandon_run() -> void:
+    if game_over or victory or _abandoned or floor_number <= 0:
+        return
+    game_over = true
+    if autotest:
+        print("[QUIT] floor=%d abandoned: paying %.0f%% of the death award" % [floor_number, QUIT_EMBERS * 100.0])
+    pressure_meter.flush(true)
+    _end_run(false, true)
+
+
 ## Leave the run for the hub (pause menu, run-over screen).
 func return_to_hub() -> void:
+    abandon_run()
     get_tree().paused = false
     Engine.time_scale = 1.0
     get_tree().change_scene_to_file.call_deferred("res://scenes/hub.tscn")
@@ -1846,8 +2027,11 @@ func _bot_navigate(p: Player) -> void:
     if _clock - _room_entered_t < 1.2:
         p.input.force_move = room.path_dir(p.global_position, Vector2.ZERO) if p.global_position.length() > 80.0 else Vector2.ZERO
         return
-    # Pedestals worth using.
-    for ped in room.pedestals:
+    # Pedestals worth using, the best first (rarest item, a needed heal, a reroll last).
+    var peds: Array = room.pedestals.duplicate()
+    if not old_balance:
+        peds.sort_custom(func(a, b): return _bot_offer_score(a) > _bot_offer_score(b))
+    for ped: Pedestal in peds:
         if not is_instance_valid(ped) or ped.empty():
             continue
         var o: Dictionary = ped.offer
@@ -1857,7 +2041,7 @@ func _bot_navigate(p: Player) -> void:
                 _bot_tried[o["id"]] = true
                 _bot_idle = 0.0
                 continue
-            var d := ped.global_position - p.global_position
+            var d: Vector2 = ped.global_position - p.global_position
             if d.length() < 30.0:
                 if o["kind"] in ["gun", "item"]:
                     _bot_tried[o["id"]] = true
@@ -1935,8 +2119,10 @@ func _bot_wants(o: Dictionary, p: Player) -> bool:
             return o["price"] <= scrap and p.can_carry(Guns.make(o["id"])) and not _bot_tried.has(o["id"])
         "item":
             # Replacing gear drops the old piece back on the floor; never chase it twice.
-            if o["price"] > scrap or _bot_tried.has(o["id"]):
+            if o["price"] > scrap or _bot_tried.has(o["id"]) or o.get("returned", false):
                 return false
+            if not old_balance:
+                return _bot_wants_item(o, p)
             if not _bot_build().is_empty():
                 # A --build profile keeps its kit: only free slots and free mod slots fill.
                 var slot: String = String(Items.get_item(o["id"]).get("slot", ""))
@@ -1947,19 +2133,82 @@ func _bot_wants(o: Dictionary, p: Player) -> bool:
                 return not p.equipment.has(slot)
             return true
         "carry":
+            if not old_balance:
+                return false   # four gun slots and a fixed kit: the bot never needs more carry
             return o["price"] <= scrap and scrap > 120
         "gunsmith":
-            if o["price"] > scrap or (scrap <= 120 and o["price"] > 0):
+            if o["price"] > scrap or (old_balance and scrap <= 120 and o["price"] > 0):
                 return false
             for g in p.guns:
                 if g.tier < Gun.MAX_TIER:
                     return true
             return false
         "reroll":
+            if not old_balance:
+                # Like a player: a reroll or two when nothing on offer is worth buying and
+                # there is money for the reroll and a ware after it.
+                if current == null or current.data.type != RoomData.Type.SHOP:
+                    return false   # never a trip for a reroll alone
+                if shop_rerolls >= 2 or o["price"] + Items.price_at(Items.Rarity.UNCOMMON, floor_number) > scrap:
+                    return false
+                for w in current.data.stock:
+                    if w.get("ware", false) and _bot_wants(w, p):
+                        return false
+                return true
             return o["price"] <= scrap and scrap > 200 and o.get("amount", 0) < 3
         "repair":
             return o["price"] <= scrap and p.hp < p.max_hp * 0.6
     return false
+
+
+## Core loop reset: what the bot buys or takes. Free reward cards always (one of the row);
+## deals when it can pay; shop items when affordable and an upgrade (a free slot, or rarer
+## than what it wears there; a mod with a free mod slot).
+func _bot_wants_item(o: Dictionary, p: Player) -> bool:
+    var it := Items.get_item(String(o["id"]))
+    var slot := String(it.get("slot", ""))
+    match String(o.get("deal", "")):
+        "hp":
+            return p.max_hp - float(FloorGen.deal_hp(o)) >= 100.0
+        "money":
+            return scrap >= FloorGen.deal_money(scrap, floor_number) and scrap >= int(120.0 * Items.depth_mult(floor_number))
+        "curse":
+            return String(o.get("curse", "")) != "frailty"
+    if String(o.get("curse", "")) == "frailty":
+        return false   # cursed loot: a player weighs the drawback; the bot never takes Frailty
+    if slot == "mod":
+        return p.mod_target() != null
+    if o["price"] == 0:
+        return true
+    var worn := ""
+    if slot in ["ring", "trinket"]:
+        if not (p.equipment.has(slot + "1") and p.equipment.has(slot + "2")):
+            return true
+        var a := int(Items.get_item(String(p.equipment[slot + "1"])).get("rarity", 0))
+        var b := int(Items.get_item(String(p.equipment[slot + "2"])).get("rarity", 0))
+        return int(it.get("rarity", 0)) > mini(a, b)
+    if not p.equipment.has(slot):
+        return true
+    worn = String(p.equipment[slot])
+    return int(it.get("rarity", 0)) > int(Items.get_item(worn).get("rarity", 0)) or o.get("mystery", false)
+
+
+func _bot_offer_score(ped) -> float:
+    if not is_instance_valid(ped):
+        return -99.0
+    var o: Dictionary = ped.offer
+    match String(o["kind"]):
+        "item":
+            return 10.0 + float(Items.get_item(String(o["id"])).get("rarity", 0)) + float(o["price"]) * 0.001
+        "gun":
+            return 9.0
+        "repair":
+            return 20.0
+        "gunsmith":
+            return 8.0
+        "reroll":
+            return -1.0
+    return 0.0
 
 
 ## The stairs door a bot takes out of this region: the next region of its --route while
@@ -2006,18 +2255,25 @@ func _bot_next_dir() -> Vector2i:
             return false)
         if goal != NO_STEP:
             return goal
-    if scrap > 150:
-        goal = _bot_bfs(func(r: RoomData) -> bool:
-            if r.type != RoomData.Type.SHOP:
-                return false
-            for o in r.stock:
-                if o["kind"] != "stairs" and _bot_wants(o, players[0]):
-                    return true
-            return false)
+    var shop_pred := func(r: RoomData) -> bool:
+        if r.type != RoomData.Type.SHOP:
+            return false
+        for o in r.stock:
+            if o["kind"] != "stairs" and _bot_wants(o, players[0]):
+                return true
+        return false
+    # Old balance: the shop as soon as scrap burns a hole. Core loop reset: like a player who
+    # saves up, the shop once the floor's rooms are seen (or with a floor's income in hand).
+    if scrap > (150 if old_balance else int(165.0 * Items.depth_mult(floor_number))):
+        goal = _bot_bfs(shop_pred)
     if goal == NO_STEP:
-        goal = _bot_bfs(func(r: RoomData) -> bool: return not r.visited and r.type != RoomData.Type.BOSS)
+        goal = _bot_bfs(func(r: RoomData) -> bool: return not r.visited and r.type != RoomData.Type.BOSS and r.type != RoomData.Type.DEAL)
+    if goal == NO_STEP and not old_balance:
+        goal = _bot_bfs(shop_pred)
     if goal == NO_STEP:
         goal = _bot_bfs(func(r: RoomData) -> bool: return not r.visited)
+    if goal == NO_STEP and not old_balance:
+        goal = _bot_bfs(shop_pred)
     if goal == NO_STEP:
         # Everything seen (a shop trip can come after the boss): back to the stairs.
         goal = _bot_bfs(func(r: RoomData) -> bool:

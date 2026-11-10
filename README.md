@@ -48,14 +48,41 @@ sits on a plinth and can be picked up again. Shoulders cycle players in co-op.
 
 ## Rooms and loot
 
-**Spoils.** Elites no longer drop pedestals in the middle of a wave: their loot is banked
-("SPOILS +1" over the body) and the wave's end lays out one choice, a free gun and a free
-item plus a card per banked drop, up to four. Take one; the rest are salvaged for scrap
-(30% of their shop price) and the game says so, as it does if you walk out without
-choosing. When a wave ends every scrap piece on the floor flies to you, and pieces left
-lying during a wave reach further the longer they lie. A gun you already carry reads
-"Merge: X tier N" on its plinth. With both rings (or trinkets) worn, a ring pedestal shows
-which one it replaces (the weaker by default) and which one stays; Y / Q swaps them.
+**Loot and money (Core loop reset, session 3).** Arenas pay no items: floor 1's first two
+arenas offer a pick of 1 of 2 guns, every other arena pays scrap only. Free items come as
+cards side by side, take one and the rest vanish: the treasure room (1 of 2, 1 of 3 from
+floor 3, never Common, leaning to behaviour items), the boss (1 of 3, Rare or better: a stat
+item, a behaviour item, an element changer), a won challenge (1 of 3) and half the secret
+rooms (1 of 2). Scrap is a budget per room, not per kill: 25 x m an arena (m = 1 + 0.25 per
+floor below the first), split over its kills by health with 30% as the wave-end burst; 4 x m
+an elite (three a room), 30 x m the boss, 15 x m a challenge; scrap gain is capped at +50%.
+Hearts (12% of max health, outside the Mending reserve) drop at an arena's end (20%), from
+elites (15%), a won challenge and every secret room, and fly to you when the room clears.
+Level-ups come about 1.5 a floor with doubled amounts, at the room's clear; one card in ten
+is a rare pick (an element Echo, a dash charge, a target more for every gun, a second
+element on one gun).
+
+**The shop** (one a floor; money carries over): three items and a gun or gun mod, priced
+25 / 40 / 65 / 100 / 150 by rarity on floor 1, times m deeper; rarity odds per floor
+(`Items.SHOP_ODDS`), luck raising the top three. Rerolls cost (8 + 6 x n) x m, n the rerolls
+already made in this shop. Y / R on a ware locks it: it stays through rerolls and waits in the
+next floor's shop at that floor's price. From floor 2 a mystery ware (60 x m, one rarity over
+the floor's median) may take a slot. Repair heals 40% for 30 x m.
+
+**Risk rooms.** A deal room (from floor 2, 40% a floor, a door off the boss room) offers 1 of
+2 Epic or Legendary items, each priced in max health (15 or 25, never under 40), money (60% of
+your scrap, at least 80 x m) or a curse for the run, and a 25% heal for 40 x m. Challenge
+rooms are an elite fight (two waves of two elites, doors locked) or a timed one (40 kills in
+30 s; failing costs nothing). From floor 2 a treasure card may be cursed loot: one rarity
+higher with a red CURSED chip and its drawback for the floor. Curses: Darkness, Frailty (+25%
+damage taken), Greed (no hearts), Haste (enemies +15% speed), Brittle (Mending reserve
+halved). Items that lower a stat show the chip too. Leaving a run from the pause menu
+(hub, restart or quit) counts as a death and pays 75% of its Embers.
+
+A gun you already carry reads "Merge: X tier N" on its plinth. With both rings (or trinkets)
+worn, a ring pedestal shows which one it replaces (the weaker by default) and which one stays.
+`--old-balance` keeps the old loot: spoils at every wave's end, scrap per kill, the
+Slay-the-Spire chest of gear, gun or boon.
 
 Each special room is dressed to be recognised: a counter and keeper in the shop, a chest
 on a dais with scattered gold in treasure rooms, weapon racks in challenge rooms, bones in
@@ -663,7 +690,15 @@ never does. Session 2 (threats and power curve): every arena prints `[ARENA-P]` 
 damage per second and the floor's P, par E and build factor B that size enemy health), and
 every floor `[THREATS]` (the worst 3 s of damage outside boss rooms, and damage taken by
 source in bars). The stand-still and mover checks run with `--build=human6980 --mastery=full
---start-floor=2` (the build exists from floor 2), `--idle` or `--kite`.
+--start-floor=2` (the build exists from floor 2), `--idle` or `--kite`. Session 3 (loot,
+economy, risk rooms): every shop visit prints `[SHOP]` (scrap in, spent, left, the cheapest
+ware still for sale, rerolls, spent down or not) and every floor `[LOOT]` (items free and
+bought, guns, hearts, cards shown, level-ups, scrap earned and its high-water mark); bot
+level-ups print `[PICK]`; `[CURSE]` and `[CHALLENGE]` lines too. `--quit-probe` leaves the
+run at the first room clear from floor 2 and prints `[QUIT-CHECK]` (75% of the death award);
+`--challenge=timed|elite` gives every floor a challenge room of that kind. The same numbers
+for real runs: `python tools/pressure_report.py runs.jsonl --shops --loot` (the `shop_leave`
+and `floor_loot` events).
 
 `--fusion-probe` starts with four w1 guns of four elements so compounds, fusions and
 cataclysms actually happen; the loadout rotates with `--instance` (wet/fire/shock/gale,

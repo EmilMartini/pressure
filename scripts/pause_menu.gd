@@ -115,12 +115,15 @@ func _ready() -> void:
             _cycle_sheet(step)   # the sheet walks its grid with the d-pad; shoulders switch player
     v.add_child(UiTheme.button("Restart run", func():
         Sfx.play("ui_confirm")
+        main.abandon_run()   # leaving a run pays 75% of a death's Embers (Core loop reset 11.2)
         get_tree().paused = false
         get_tree().reload_current_scene()))
     v.add_child(UiTheme.button("Return to hub", func():
         Sfx.play("ui_back")
         main.return_to_hub()))
-    v.add_child(UiTheme.button("Quit game", func(): get_tree().quit()))
+    v.add_child(UiTheme.button("Quit game", func():
+        main.abandon_run()
+        get_tree().quit()))
     visible = false
 
 

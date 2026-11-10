@@ -1,6 +1,12 @@
 """Per-floor pressure from telemetry (difficulty pass, 2026-11-09).
 
-    python tools/pressure_report.py runs.jsonl [more.jsonl] [--bots]
+    python tools/pressure_report.py runs.jsonl [more.jsonl] [--bots] [--shops] [--loot]
+
+--shops: every shop visit (shop_leave events, Core loop reset 6.5 / 13.2): scrap in, spent,
+left, the cheapest ware still for sale and rerolls, then the targets: share of visits spent
+down (left < cheapest), median leftover against 45 x m and 80 x m, median rerolls.
+--loot: the per-floor floor_loot events (13.2): items free and bought, guns, hearts, cards
+shown, level-ups, scrap earned and the scrap high-water mark against two floors' income.
 
 Human runs by default (`--bots` for bot runs). Uses the per-floor "pressure" event
 (scripts/pressure_meter.gd) when the build records it; older runs are rebuilt roughly from
@@ -99,8 +105,55 @@ def rebuild(f):
             'burst1': round(burst(hits, 1.0), 2), 'burst3': round(burst(hits, 3.0), 2), 'died': bool(death),
             'end_hp': end[0].get('hp_pct') if end else None, 'src': 'rebuilt', 'maxhp': maxhp}
 
+def m_of(floor):
+    return 1.0 + 0.25 * (max(1, int(floor)) - 1)
+
+def median(v):
+    v = sorted(v)
+    if not v:
+        return None
+    n = len(v)
+    return v[n // 2] if n % 2 else (v[n // 2 - 1] + v[n // 2]) / 2.0
+
+def shops(runs):
+    visits = []
+    for r in runs:
+        for e in r.get('events', []):
+            if e.get('e') == 'shop_leave':
+                visits.append(e)
+    for e in visits:
+        print('  SHOP floor=%s in=%s spent=%s left=%s cheapest=%s rerolls=%s' % (e['floor'], e['scrap_in'], e['spent'], e['left'], e['cheapest'], e['rerolls']))
+    if not visits:
+        print('  no shop_leave events')
+        return
+    down = sum(1 for e in visits if int(e['cheapest']) < 0 or int(e['left']) < int(e['cheapest']))
+    left_m = [float(e['left']) / m_of(e['floor']) for e in visits]
+    print('  visits=%d spent_down=%.0f%% (target 70%%) median_left=%.0f x m (targets 45 x m in 13.2, 80 x m in 6.5) median_rerolls=%s (target <= 3)' % (
+        len(visits), 100.0 * down / len(visits), median(left_m), median([int(e['rerolls']) for e in visits])))
+
+def loot(runs):
+    rows = []
+    for r in runs:
+        for e in r.get('events', []):
+            if e.get('e') == 'floor_loot':
+                rows.append(e)
+    for e in rows:
+        print('  LOOT floor=%s free=%s bought=%s guns=%s hearts=%s cards=%s levels=%s earned=%s scrap_max=%s (2 floors = %.0f)' % (
+            e['floor'], e['free'], e['bought'], e['guns'], e['hearts'], e['cards'], e['levels'], e['earned'], e['scrap_max'], 330 * m_of(e['floor'])))
+    if not rows:
+        print('  no floor_loot events')
+        return
+    print('  targets per floor: free 2 to 4, bought 1 to 3, cards <= 15, levels about 1.5; scrap never over 330 x m')
+
 def main():
     bots = '--bots' in sys.argv
+    if '--shops' in sys.argv or '--loot' in sys.argv:
+        runs = [r for path in sys.argv[1:] if not path.startswith('--') for r in load(path) if bool(r.get('bot')) == bots]
+        if '--shops' in sys.argv:
+            shops(runs)
+        if '--loot' in sys.argv:
+            loot(runs)
+        return
     for path in [a for a in sys.argv[1:] if not a.startswith('--')]:
         for r in load(path):
             if bool(r.get('bot')) != bots:

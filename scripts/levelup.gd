@@ -40,8 +40,24 @@ const STAT_LABELS := {
     "vent_charge": "vent charge speed", "vent_radius": "vent radius", "vent_power": "vent power",
     "dot_power": "burn, poison, bleed", "fusion_power": "fusion damage",
     "cataclysm_power": "cataclysm damage", "compound_life": "compound lifetime",
-    "field_life": "field lifetime",
+    "field_life": "field lifetime", "dash_charges": "dash charge",
 }
+
+## Core loop reset 5.1 (decision 13): fewer, bigger level-ups. Amounts are doubled (counts in
+## NO_DOUBLE stay: a second pierce or projectile would be a rare pick's job), and one card in
+## RARE_PICK_ODDS is a rare pick that changes play, on the Epic frame: an element Echo (the
+## boons that already behave like triggers, only offered here now), a dash charge, a target
+## more for every gun (a second beam) or a second element on one gun.
+const NO_DOUBLE := ["pierce", "proj_count", "chain_jumps", "carry"]
+const RARE_PICK_ODDS := 0.1
+const RARE_PICKS: Array = [
+    { "id": "rp_dash", "name": "Second Wind", "cat": "DEFENCE", "key": "dash_charges", "amount": 1, "weight": 3,
+        "icon": "gui/spells/translocation/blink.png", "affects": "One more dash before the cooldown" },
+    { "id": "rp_focus", "name": "Split Focus", "cat": "OFFENCE", "key": "proj_count", "amount": 1, "weight": 3,
+        "icon": "gui/spells/conjuration/dazzling_spray.png", "affects": "Every gun takes one more target: a second beam, another shot" },
+    { "id": "rp_coat", "name": "Coating", "cat": "ELEMENT", "key": "coat", "amount": 0, "weight": 3,
+        "icon": "gui/spells/transmutation/irradiate.png", "affects": "" },
+]
 
 ## Category word shown on the card (neutral text, no colour coding).
 const CATS := ["OFFENCE", "DEFENCE", "REACTIONS", "FUSIONS", "ELEMENT", "VENT", "TRADE-OFF"]
@@ -227,7 +243,16 @@ static func roll(player, count: int) -> Array:
     var used: Dictionary = {}
     var picked: Array = []
     var pool_all: Array = options().filter(func(o): return eligible(o, player))
+    var reset := not Main.old_balance
+    if reset:
+        pool_all = pool_all.filter(func(o): return not String(o["base"]).begins_with("echo_"))
     while picked.size() < count:
+        if reset and randf() < RARE_PICK_ODDS:
+            var rp := rare_pick(player, used)
+            if not rp.is_empty():
+                used[rp["base"]] = true
+                picked.append(rp)
+                continue
         var rarity := roll_rarity(level, luck)
         var chosen: Dictionary = {}
         for r in range(rarity, -1, -1):
@@ -242,8 +267,60 @@ static func roll(player, count: int) -> Array:
                 break
             chosen = _weighted(rest)
         used[chosen["base"]] = true
-        picked.append(chosen.duplicate(true))
+        picked.append(bigger(chosen) if reset else chosen.duplicate(true))
     return picked
+
+
+## An option at twice its amounts (counts in NO_DOUBLE stay), its cost doubled with it.
+static func bigger(opt: Dictionary) -> Dictionary:
+    var o: Dictionary = opt.duplicate(true)
+    if not String(o.get("key", "")) in NO_DOUBLE and (o.get("amount") is float or o.get("amount") is int):
+        o["amount"] = float(o["amount"]) * 2.0
+    for part in ["also", "cost"]:
+        var d: Dictionary = o.get(part, {})
+        for k in d.keys():
+            if not String(k) in NO_DOUBLE:
+                d[k] = float(d[k]) * 2.0
+    return o
+
+
+## One rare pick for `player` not in `used`: an eligible element Echo (at its Epic chance) or
+## a behaviour boon. {} when none fits.
+static func rare_pick(player, used: Dictionary) -> Dictionary:
+    var pool: Array = []
+    for o in options():
+        if String(o["base"]).begins_with("echo_") and int(o["rarity"]) == EPIC and eligible(o, player) and not used.has(o["base"]):
+            pool.append(o.duplicate(true))
+    for base in RARE_PICKS:
+        if used.has(base["id"]):
+            continue
+        var o: Dictionary = base.duplicate(true)
+        o["base"] = base["id"]
+        o["rarity"] = EPIC
+        if o["id"] == "rp_coat":
+            if player == null or not is_instance_valid(player) or player.guns.is_empty():
+                continue
+            # The gun with the fewest extra elements gets its element's partner.
+            var best = null
+            for g in player.guns:
+                if best == null or g.extra_elements().size() < best.extra_elements().size():
+                    best = g
+            var el_key := String(Items.ELEMENT_KEYS.get(int(best.data.element), ""))
+            if not ELEMENT_BOONS.has(el_key):
+                continue
+            var partner := String(ELEMENT_BOONS[el_key][0])
+            if best.extra_elements().has(Items.ELEMENTS.get(partner, -1)):
+                continue
+            o["coat_el"] = partner
+            o["coat_gun"] = player.guns.find(best)
+            o["name"] = "%s Coating" % partner.capitalize()
+            o["affects"] = "%s also applies %s with every hit" % [best.data.display_name, partner.capitalize()]
+        elif o["id"] == "rp_dash" and player != null and is_instance_valid(player) and player.dash_max_charges() >= Player.DASH_MAX_CHARGES:
+            continue
+        pool.append(o)
+    if pool.is_empty():
+        return {}
+    return _weighted(pool)
 
 
 static func _weighted(pool: Array) -> Dictionary:
@@ -260,6 +337,8 @@ static func _weighted(pool: Array) -> Dictionary:
 
 ## Every stat change an option makes: {key: amount}, the main one first.
 static func changes(opt: Dictionary) -> Dictionary:
+    if opt.has("coat_el"):
+        return {}
     var out := { String(opt.get("key", "")): opt.get("amount", 0) }
     var also: Dictionary = opt.get("also", {})
     for k in also.keys():
@@ -278,6 +357,8 @@ static func echo_trigger(opt: Dictionary) -> Dictionary:
 
 ## The headline: the effect in a few words, e.g. "+16% damage" or "+25 max health".
 static func describe(opt: Dictionary) -> String:
+    if opt.has("coat_el"):
+        return "+%s on one gun" % String(opt["coat_el"]).capitalize()
     if opt.has("echo"):
         return "Spreads %s" % String(opt["echo"]).capitalize()
     return amount_text(String(opt.get("key", "")), opt.get("amount", 0))
@@ -293,7 +374,7 @@ static func amount_text(key: String, amount) -> String:
     if key in PERCENT_KEYS or key.begins_with("dmg_"):
         return "%s%s%% %s" % [sign, _num(absf(v) * 100.0), stat]
     match key:
-        "proj_count", "chain_jumps", "pierce":
+        "proj_count", "chain_jumps", "pierce", "dash_charges":
             return "%s%d %s" % [sign, absi(int(v)), stat]
     return "%s%s %s" % [sign, _num(absf(v)), stat]
 
@@ -315,7 +396,7 @@ static func value_text(key: String, v: float, player = null) -> String:
 ## "now -> after" for the main stat of `opt` on `player`, e.g. "+20% -> +36%" or
 ## "137 -> 162". Empty when there is no player.
 static func before_after(opt: Dictionary, player) -> String:
-    if player == null or not is_instance_valid(player):
+    if player == null or not is_instance_valid(player) or opt.has("coat_el"):
         return ""
     var key := String(opt.get("key", ""))
     var add := float(opt.get("amount", 0.0))

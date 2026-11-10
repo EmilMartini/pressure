@@ -110,6 +110,35 @@ const BOSS_SECS_P := 35.0
 var _key_t := KEY_FIRST
 var _syn0 := 0.0                    # Enemy.synergy_dealt when the arena wave began
 
+## Core loop reset 6.1: scrap is a budget per room, not per kill. An arena pays ARENA_SCRAP x m:
+## KILL_SHARE of it over its kills in proportion to each one's share of the room's spawned
+## health (elites and bosses pay their own), the rest as the wave-end burst. Elites pay
+## ELITE_SCRAP x m each, at most ELITE_PAID a room; the boss BOSS_SCRAP x m; a won challenge
+## CHALLENGE_SCRAP x m. m = Items.depth_mult(floor).
+const ARENA_SCRAP := 25.0
+const KILL_SHARE := 0.7
+const ELITE_SCRAP := 4.0
+const ELITE_PAID := 3
+const BOSS_SCRAP := 30.0
+const CHALLENGE_SCRAP := 15.0
+## Hearts (5.1): ARENA_HEART chance at an arena wave's end, ELITE_HEART per elite killed; a
+## won challenge and a secret room always leave one.
+const ARENA_HEART := 0.2
+const ELITE_HEART := 0.15
+## Floor 1's first FLOOR1_GUN_PICKS arenas pay a pick of 1 of 2 guns (the build needs guns);
+## every other arena pays scrap only.
+const FLOOR1_GUN_PICKS := 2
+## Timed challenge (11.1): kill TIMED_KILLS in TIMED_SECS; failing costs and pays nothing.
+const TIMED_KILLS := 40
+const TIMED_SECS := 30.0
+var _budget := 0.0
+var _budget_paid := 0.0
+var _pay_frac := 0.0
+var _spawned_hp := 0.0
+var _elites_paid := 0
+var _timed_kills := 0
+var _challenge_wave := 0
+
 
 ## Par damage per second a decent build has on a floor (section 9); past floor 5 +40% a floor.
 static func par_dps(floor_number: int) -> float:
@@ -219,6 +248,7 @@ func _ready() -> void:
     add_child(ambience)
     Crisp.attach(self, _draw_crisp)
 
+    var first_visit := not data.visited
     data.visited = true
     data.discovered = true
     for d in data.doors.keys():
@@ -227,6 +257,17 @@ func _ready() -> void:
     if data.loose_scrap > 0:
         _drop_scrap(Vector2(0, 80), data.loose_scrap, 8)
         data.loose_scrap = 0
+    for i in data.hearts:
+        drop_heart(Vector2(-60.0 + 40.0 * float(i), 70.0), true)
+    data.hearts = 0
+    if first_visit:
+        # Loot count (13.2): every reward card and ware is a card shown, once.
+        var n := 0
+        for o in data.stock:
+            if not o["taken"] and (o.has("group") or o.get("ware", false)):
+                n += 1
+        if n > 0:
+            main.loot_cards(n)
     if data.is_safe():
         data.cleared = true
     if data.type == RoomData.Type.START and main.floor_number == 1 and data.stock.is_empty():
@@ -279,6 +320,11 @@ func _begin_arena() -> void:
     _elite_timer = wave_duration * 0.45 if diff >= 2 else INF
     _elite_timer2 = wave_duration * 0.78 if main.floor_number >= 2 else INF
     _dealt0 = Enemy.dealt_total
+    _budget = 0.0 if Main.old_balance else ARENA_SCRAP * Items.depth_mult(main.floor_number)
+    _budget_paid = 0.0
+    _pay_frac = 0.0
+    _spawned_hp = 0.0
+    _elites_paid = 0
     main.announce("Survive %d seconds" % int(wave_duration))
     Sfx.play("wave_start")
 
@@ -319,8 +365,14 @@ func _tick_arena(delta: float) -> void:
         var dealt := (Enemy.dealt_total - _dealt0) - 0.5 * (Enemy.synergy_dealt - _syn0)
         main.note_arena_dps(dealt / maxf(1.0, wave_duration))
         Telemetry.wave_end(self, _floor_pedestals(), _floor_scrap())
-        _finish_fight(6)
-        _arena_reward()
+        if Main.old_balance:
+            _finish_fight(6)
+            _arena_reward()
+        else:
+            if randf() < ARENA_HEART:
+                drop_heart(Vector2.ZERO)
+            _finish_fight(maxi(0, int(roundf(_budget - _budget_paid))))
+            _arena_gun_pick()
 
 
 ## Key threats (section 8): refilled on their own timer up to the floor's budget, elites
@@ -397,6 +449,91 @@ func _arena_reward() -> void:
         main.announce("Spoils: choose 1 of %d" % cards.size())
 
 
+## Core loop reset 5.1: arenas pay no items. Floor 1's first FLOOR1_GUN_PICKS arenas offer a
+## pick of 1 of 2 guns; the other card vanishes.
+func _arena_gun_pick() -> void:
+    if main.floor_number != 1 or main.floor_arenas_done() > FLOOR1_GUN_PICKS:
+        return
+    var a := Drops.roll_gun(main.players, _maxed_gun_ids())
+    var b := Drops.roll_gun(main.players, _maxed_gun_ids() + [a])
+    var cards: Array = []
+    for id in [a, b]:
+        if id != "":
+            var o := FloorGen.offer("gun", id, 0)
+            o["group"] = "gunpick"
+            data.stock.append(o)
+            cards.append(o)
+    if cards.is_empty():
+        return
+    main.loot_cards(cards.size())
+    _build_pedestals()
+    main.announce("Choose 1 of %d guns" % cards.size())
+
+
+## Pick-1-of-N reward cards (boss, challenge): `wants` per card ("" any, "stat",
+## "behaviour", "element"), rarity from the `table`, at least `min_rarity`.
+func _reward_cards(group: String, pool: String, table: String, wants: Array, min_rarity: int, y: float) -> void:
+    var luck := main.party_luck()
+    var ids: Array = []
+    for i in wants.size():
+        var rar := mini(maxi(min_rarity, Items.roll_rarity(table, main.floor_number, luck)), Items.max_rarity_unlocked())
+        var id := Drops.roll_item_at(rar, ids + FloorGen._mod_ids(), pool, main.players, String(wants[i]))
+        ids.append(id)
+        var o := Items.offer(id, 0, Vector2((float(i) - float(wants.size() - 1) / 2.0) * 210.0, y))
+        o["group"] = group
+        data.stock.append(o)
+    main.loot_cards(wants.size())
+
+
+## Take one card of a pick-1-of-N row: the rest vanish.
+func _take_group(o: Dictionary) -> void:
+    var g := String(o.get("group", ""))
+    if g == "":
+        return
+    for other in data.stock:
+        if other != o and String(other.get("group", "")) == g:
+            other["taken"] = true
+
+
+## A heart where `pos` is (room space); none under the Greed curse.
+func drop_heart(pos: Vector2, fly: bool = false) -> void:
+    if Main.old_balance or Main.curses.has("greed"):
+        return
+    var h := Heart.new(main)
+    h.position = pos
+    h.vacuum = fly
+    pickups.add_child(h)
+    main.loot_note("hearts")
+
+
+## Scrap for a kill (Core loop reset 6.1): elites their own pay, the arena crowd a share of the
+## room's budget by spawned health; nothing else pays per kill.
+func _pay_kill(e: Enemy) -> void:
+    var m := Items.depth_mult(main.floor_number)
+    if e.is_elite and e.kind_name != "boss":
+        if _elites_paid < ELITE_PAID:
+            _elites_paid += 1
+            _drop_scrap(e.global_position, int(roundf(ELITE_SCRAP * m)), 4)
+        if randf() < ELITE_HEART:
+            drop_heart(e.global_position)
+        return
+    if data.type != RoomData.Type.ARENA or not active or _budget <= 0.0 or e.kind_name == "boss":
+        return
+    # The room's total spawned health, extrapolated over the wave from what has come so far.
+    var elapsed := maxf(8.0, wave_duration - wave_time_left)
+    var expected := maxf(1.0, _spawned_hp * maxf(1.0, wave_duration / elapsed))
+    var pool := _budget * KILL_SHARE
+    var pay := minf(pool * e.max_hp / expected, pool - _budget_paid)
+    if pay <= 0.0:
+        return
+    _budget_paid += pay
+    _pay_frac += pay
+    var whole := int(_pay_frac)
+    if whole > 0:
+        _pay_frac -= float(whole)
+        _drop_scrap(e.global_position, whole, mini(whole, 3))
+
+
 ## Scrap a piece of loot is worth when salvaged.
 func _salvage_value(o: Dictionary) -> int:
     match String(o.get("kind", "")):
@@ -467,6 +604,15 @@ func _maxed_gun_ids() -> Array:
 func begin_challenge() -> void:
     data.started = true
     active = true
+    _challenge_wave = 1
+    _timed_kills = 0
+    if not Main.old_balance and data.challenge_kind == "timed":
+        _elites_alive = 0
+        _add_time_left = TIMED_SECS
+        _spawn_timer = 0.0
+        main.announce("Challenge: kill %d in %d seconds" % [TIMED_KILLS, int(TIMED_SECS)])
+        _apply_doors()
+        return
     _elites_alive = 2
     for i in 2:
         _spawn_elite(1)
@@ -477,6 +623,9 @@ func begin_challenge() -> void:
 
 
 func _tick_challenge(delta: float) -> void:
+    if not Main.old_balance:
+        _tick_challenge_reset(delta)
+        return
     _add_time_left -= delta
     _add_timer -= delta
     if _add_time_left > 0.0 and _add_timer <= 0.0:
@@ -490,6 +639,52 @@ func _tick_challenge(delta: float) -> void:
             data.stock.append(Items.offer(id, 0))
         _finish_fight(20)
         _build_pedestals()
+
+
+## Core loop reset 11.1: an elite challenge is two waves of two elites (adds for 25 s each);
+## a timed one is TIMED_KILLS kills in TIMED_SECS against a full crowd. Winning pays a pick of
+## 1 of 3 (Rare or better), CHALLENGE_SCRAP x m and a heart; running out of time pays nothing.
+func _tick_challenge_reset(delta: float) -> void:
+    _add_time_left -= delta
+    if data.challenge_kind == "timed":
+        _spawn_timer -= delta
+        if _spawn_timer <= 0.0:
+            _spawn_timer = 0.3
+            if enemies.get_child_count() < mini(crowd_target(main.difficulty()), SCREEN_CAP):
+                _spawn_group()
+        if _timed_kills >= TIMED_KILLS:
+            _challenge_won()
+        elif _add_time_left <= 0.0:
+            main.announce("Time's up: %d of %d" % [_timed_kills, TIMED_KILLS])
+            Telemetry.event("challenge", { "floor": main.floor_number, "kind": "timed", "won": false, "kills": _timed_kills })
+            if main.autotest:
+                print("[CHALLENGE] floor=%d kind=timed won=false kills=%d" % [main.floor_number, _timed_kills])
+            _finish_fight(0)
+        return
+    _add_timer -= delta
+    if _add_time_left > 0.0 and _add_timer <= 0.0:
+        _add_timer = 1.6
+        _spawn_group()
+    if _elites_alive <= 0:
+        if _challenge_wave < 2:
+            _challenge_wave += 1
+            _elites_alive = 2
+            for i in 2:
+                _spawn_elite(1)
+            _add_time_left = 25.0
+            main.announce("Second wave")
+        else:
+            _challenge_won()
+
+
+func _challenge_won() -> void:
+    _reward_cards("challenge", "challenge", "boss", ["", "", ""], Items.Rarity.RARE, 90.0)
+    drop_heart(Vector2(0, -60))
+    Telemetry.event("challenge", { "floor": main.floor_number, "kind": data.challenge_kind, "won": true, "kills": _timed_kills })
+    if main.autotest:
+        print("[CHALLENGE] floor=%d kind=%s won=true kills=%d" % [main.floor_number, data.challenge_kind, _timed_kills])
+    _finish_fight(int(roundf(CHALLENGE_SCRAP * Items.depth_mult(main.floor_number))))
+    _build_pedestals()
 
 
 func _begin_boss() -> void:
@@ -599,7 +794,7 @@ func _tick_boss(delta: float) -> void:
             data.stock.append(FloorGen.offer("stairs", "", 0))
         for id in ways:
             data.stock.append(FloorGen.offer("stairs", String(id), 0))
-        _finish_fight(30)
+        _finish_fight(30 if Main.old_balance else int(roundf(BOSS_SCRAP * Items.depth_mult(main.floor_number))))
         _build_pedestals()
         Music.boss_phase(0)
         if show != null and is_instance_valid(show):
@@ -638,7 +833,7 @@ func _finish_fight(bonus_scrap: int) -> void:
     _drop_scrap(Vector2.ZERO, bonus_scrap, 6)
     # Everything left on the floor flies to the party: no walking the room for scrap.
     for c in pickups.get_children():
-        if c is Scrap:
+        if c is Scrap or c is Heart:
             c.vacuum = true
     main.on_room_cleared(self)
     Sfx.play("cleared")
@@ -784,6 +979,8 @@ func _spawn_enemy(type: String, pos: Vector2) -> Enemy:
         e.hp = e.max_hp
         e.damage_mult *= Shortcuts.DRAINED_DMG
     e.contact_damage *= e.damage_mult
+    if type != "elite" and type != "boss":
+        _spawned_hp += e.max_hp
     e.position = pos
     e.died.connect(_on_enemy_died)
     enemies.add_child(e)
@@ -906,7 +1103,12 @@ func _on_enemy_died(e: Enemy) -> void:
         Progress.add("elites")
     if e.last_hit_by != null and is_instance_valid(e.last_hit_by):
         e.last_hit_by.gain_xp(2.0 + 2.0 * float(e.scrap_value))
-    _drop_scrap(e.global_position, e.scrap_value, mini(e.scrap_value, 5))
+    if Main.old_balance:
+        _drop_scrap(e.global_position, e.scrap_value, mini(e.scrap_value, 5))
+    else:
+        _pay_kill(e)
+    if data.type == RoomData.Type.CHALLENGE and active:
+        _timed_kills += 1
     if materials != null:
         if e.kind_name in BLOODY_KINDS:
             materials.stamp(Element.Kind.BLOOD, e.global_position, e.radius * 0.8, 90)
@@ -921,10 +1123,15 @@ func _on_enemy_died(e: Enemy) -> void:
     var drop_pos := nearest_open(Vector2(clampf(e.global_position.x, inner.position.x, inner.end.x), clampf(e.global_position.y, inner.position.y, inner.end.y)), 26.0)
     if e.is_elite and e.kind_name != "boss":
         main.drop_page(self, nearest_open(drop_pos + Vector2(48, 0), 26.0))
-    if e.kind_name == "boss":
+    if e.kind_name == "boss" and not Main.old_balance:
+        # Core loop reset 5.1: pick 1 of 3, Rare or better: one stat-heavy, one behaviour, one
+        # element changer when the pool has one. The rest vanish.
+        _reward_cards("boss", "boss", "boss", ["stat", "behaviour", "element"], Items.Rarity.RARE, -150.0)
+        _build_pedestals()
+    elif e.kind_name == "boss":
         data.stock.append(Items.offer(Drops.roll_item(main.difficulty() + 4, Items.Rarity.RARE, [], main.party_luck(), "boss", main.players), 0, Vector2(0, 150)))
         _build_pedestals()
-    elif e.is_elite and randf() < 0.55:
+    elif e.is_elite and Main.old_balance and randf() < 0.55:
         var loot := Items.offer(Drops.roll_item(main.difficulty(), Items.Rarity.COMMON, [], main.party_luck(), "", main.players), 0)
         if data.type == RoomData.Type.ARENA and active:
             # Banked for the wave's end (one choice there), not a pedestal mid-fight.
@@ -1445,7 +1652,7 @@ func _build_pedestals() -> void:
             p.queue_free()
     pedestals.clear()
     # Taken offers keep their plinth (bare) so the row stays put; stairs and sigils never do.
-    var offers: Array = data.stock.filter(func(o): return not o["taken"] or o["kind"] in ["gun", "item", "boon", "gunsmith", "carry", "repair"])
+    var offers: Array = data.stock.filter(func(o): return not o["taken"] or (o["kind"] in ["gun", "item", "boon", "gunsmith", "carry", "repair"] and not o.has("group")))
     for o in offers:
         if o["kind"] == "item" and not o["taken"]:
             Items.mark_seen(o["id"])   # Isaac: an item on show leaves the run's pool
@@ -1523,6 +1730,14 @@ func _handle_interact() -> void:
         if pl.alive and pl.input.take_pressed("swap"):
             # Ring / trinket pedestal with both of the pair worn: replace the other one.
             var near_ped := _nearest_pedestal(pl)
+            if near_ped != null and not Main.old_balance and near_ped.offer.get("ware", false):
+                # Core loop reset 6.3: lock a ware; it stays through rerolls and waits in the
+                # next floor's shop at that floor's price.
+                near_ped.offer["locked"] = not bool(near_ped.offer.get("locked", false))
+                Sfx.play("ui_move")
+                Telemetry.event("lock", { "floor": main.floor_number, "id": String(near_ped.offer["id"]), "locked": near_ped.offer["locked"] })
+                near_ped.queue_redraw()
+                continue
             if near_ped != null and near_ped.kind() == "item":
                 var slot := String(near_ped.item().get("slot", ""))
                 if pl.jewel_key(slot) != "":
@@ -1604,6 +1819,8 @@ func activate(ped: Pedestal, pl: Player) -> void:
             pl.add_gun(o["id"])
             Sfx.play("buy")
             o["taken"] = true
+            _take_group(o)
+            main.loot_note("guns")
             if o.get("spoils", false):
                 salvage_spoils("picked")
             if o.get("choice", false):
@@ -1638,11 +1855,37 @@ func activate(ped: Pedestal, pl: Player) -> void:
                     # More than one gun could take it: let the player choose.
                     main.gun_pick.pick(pl, candidates, o["id"], func(g): if g != null: _fit_mod(pl, g, o))
                 return
+            var deal := String(o.get("deal", ""))
+            if deal == "money":
+                var cost := FloorGen.deal_money(main.scrap, main.floor_number)
+                if main.scrap < cost:
+                    pl.say("Need %d scrap" % cost)
+                    Sfx.play("error")
+                    return
+                main.scrap -= cost
+                Telemetry.event("deal", { "floor": main.floor_number, "id": String(o["id"]), "kind": deal, "cost": cost })
+            elif deal == "hp":
+                var hp_cost := FloorGen.deal_hp(o)
+                if pl.max_hp - float(hp_cost) < FloorGen.DEAL_HP_FLOOR:
+                    pl.say("Too frail: max health would fall under %d" % int(FloorGen.DEAL_HP_FLOOR))
+                    Sfx.play("error")
+                    return
+                pl.max_hp_base -= hp_cost
+                pl.recalc_stats()
+                pl.hp = minf(pl.hp, pl.max_hp)
+                Telemetry.event("deal", { "floor": main.floor_number, "id": String(o["id"]), "kind": deal, "cost": hp_cost })
+            elif deal == "curse":
+                Telemetry.event("deal", { "floor": main.floor_number, "id": String(o["id"]), "kind": deal, "curse": String(o.get("curse", "")) })
             main.scrap -= o["price"]
+            if o.has("curse"):
+                main.add_curse(String(o["curse"]), String(o.get("curse_span", "floor")))
+            if not o.get("returned", false):
+                main.loot_note("free" if int(o["price"]) == 0 else "bought")
             var replaced := pl.equip(o["id"], pl.jewel_key(String(item["slot"])))
             Progress.add("items_picked")
             Sfx.play("buy")
             o["taken"] = true
+            _take_group(o)
             if o.get("spoils", false):
                 salvage_spoils("picked")
             if o["price"] == 0 and data.type in [RoomData.Type.TREASURE, RoomData.Type.CHALLENGE] and not o.get("secret", false):
@@ -1650,10 +1893,14 @@ func activate(ped: Pedestal, pl: Player) -> void:
                     if other["kind"] in ["gun", "item", "boon"] and not other.get("secret", false):
                         other["taken"] = true
             if replaced != "":
-                # The old piece takes the plinth the new one came from.
+                # The old piece takes the plinth the new one came from (no price, curse or
+                # deal of the card it replaced).
                 o["id"] = replaced
                 o["price"] = 0
                 o["taken"] = false
+                o["returned"] = true
+                for k in ["ware", "gunware", "locked", "mystery", "curse", "curse_span", "deal"]:
+                    o.erase(k)
         "boon":
             match o["id"]:
                 "vitality":
@@ -1704,7 +1951,7 @@ func activate(ped: Pedestal, pl: Player) -> void:
                 Sfx.play("error")
                 return
             main.scrap -= o["price"]
-            pl.heal(o["amount"], "repair")
+            pl.heal(float(o["amount"]) * (pl.max_hp / 100.0 if o.get("pct", false) else 1.0), "repair")
             pl.say("Repaired")
             Sfx.play("buy")
             o["taken"] = true
@@ -1716,10 +1963,17 @@ func activate(ped: Pedestal, pl: Player) -> void:
             main.scrap -= o["price"]
             o["amount"] += 1   # uses so far
             o["price"] = FloorGen.reroll_price(main.floor_number, o["amount"])
+            var fresh := 0
             for i in data.stock.size():
                 var w: Dictionary = data.stock[i]
-                if w.get("ware", false) and not w["taken"]:
-                    data.stock[i] = FloorGen.roll_ware(main.floor_number, main.party_luck(), data.stock, main.players)
+                if w.get("ware", false) and not w["taken"] and not w.get("locked", false):
+                    if Main.old_balance:
+                        data.stock[i] = FloorGen.roll_ware(main.floor_number, main.party_luck(), data.stock, main.players)
+                    else:
+                        data.stock[i] = FloorGen.reroll_ware(w, main.floor_number, main.party_luck(), data.stock, main.players)
+                    fresh += 1
+            main.loot_cards(fresh)
+            main.shop_rerolls += 1
             pl.say("Rerolled")
             Sfx.play("buy")
         "stairs":

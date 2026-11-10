@@ -30,6 +30,8 @@ var player: Player
 var cooldown := 0.0
 var tier := 1
 var mods: Array = []   # item ids of the gun mods fitted to this gun
+## Second elements from the Coating rare pick (LevelUps.rare_pick), applied with every hit.
+var boon_elements: Array = []
 
 var _sprite: Sprite2D
 var _aim := Vector2.RIGHT
@@ -156,6 +158,7 @@ func extra_elements() -> Array:
             out.append(Items.ELEMENTS[ex])
     if data.extra_element != Element.Kind.NONE:
         out.append(data.extra_element)
+    out.append_array(boon_elements)
     return out
 
 

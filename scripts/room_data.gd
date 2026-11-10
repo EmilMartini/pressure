@@ -3,7 +3,7 @@ extends RefCounted
 ## Persistent state of one room on the floor map. The Room node is rebuilt from this
 ## every time the party enters, so anything that must survive leaving lives here.
 
-enum Type { START, ARENA, SHOP, TREASURE, CHALLENGE, HIDDEN, BOSS }
+enum Type { START, ARENA, SHOP, TREASURE, CHALLENGE, HIDDEN, BOSS, DEAL }
 
 const TYPE_NAMES := {
     Type.START: "Entrance",
@@ -13,6 +13,7 @@ const TYPE_NAMES := {
     Type.CHALLENGE: "Challenge",
     Type.HIDDEN: "Hidden Cache",
     Type.BOSS: "Boss",
+    Type.DEAL: "Deal",
 }
 
 const TYPE_COLORS := {
@@ -23,6 +24,7 @@ const TYPE_COLORS := {
     Type.CHALLENGE: Color(0.8, 0.4, 1.0),
     Type.HIDDEN: Color(0.4, 0.95, 0.95),
     Type.BOSS: Color(1.0, 0.3, 0.3),
+    Type.DEAL: Color(0.75, 0.1, 0.2),
 }
 
 var pos: Vector2i
@@ -43,6 +45,12 @@ var stock: Array = []
 
 ## Scrap pieces lying in the room (hidden caches), collected on entry.
 var loose_scrap := 0
+## Hearts lying in the room (Core loop reset 5.1: a secret room always holds one).
+var hearts := 0
+
+## Challenge rooms (Core loop reset 11.1): "elite" (two waves of elites behind locked
+## doors) or "timed" (kill TIMED_KILLS in TIMED_SECS; failing costs nothing).
+var challenge_kind := "elite"
 
 ## Treasure rooms: how big the chest is (1 small, 2 medium, 3+ large).
 var chest_tier := 1
@@ -79,4 +87,4 @@ func color() -> Color:
 
 
 func is_safe() -> bool:
-    return type in [Type.START, Type.SHOP, Type.TREASURE, Type.HIDDEN]
+    return type in [Type.START, Type.SHOP, Type.TREASURE, Type.HIDDEN, Type.DEAL]

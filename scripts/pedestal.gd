@@ -55,6 +55,9 @@ func _ready() -> void:
     match kind():
         "gun":
             _sprite = Art.icon_sprite(Art.gun_icon(offer["id"]), ICON_SCALE)
+        "item" when offer.get("mystery", false):
+            _sprite = Art.icon_sprite(Art.icon(String(KIND_ICONS["reroll"])), ICON_SCALE)
+            _sprite.modulate = Color(0.6, 0.5, 0.8)
         "item":
             _sprite = Art.icon_sprite(Items.icon(item()), ICON_SCALE)
             _sprite.modulate = Items.icon_tint(item())
@@ -86,6 +89,8 @@ func item() -> Dictionary:
 func title() -> String:
     match kind():
         "item":
+            if offer.get("mystery", false):
+                return "Mystery ware"
             return item().get("name", "?")
         "boon":
             return "%s  (+%d)" % [FloorGen.BOONS[offer["id"]]["name"], offer["amount"]]
@@ -103,6 +108,8 @@ func title() -> String:
         "carry":
             return "Carry capacity +%d" % offer["amount"]
         "repair":
+            if offer.get("pct", false):
+                return "Heal %d%% health" % offer["amount"]
             return "Repair +%d HP" % offer["amount"]
         "sluice":
             return "Turn the sluice wheel"   # placeholder
@@ -133,7 +140,34 @@ func price_text() -> String:
         return "Give: Torn Bestiary Page" if offer.get("page", false) and not offer.get("freed", false) else ""
     if offer.get("spoils", false):
         return "SPOILS: take 1"
-    return "FREE" if offer["price"] == 0 else "%d scrap" % offer["price"]
+    match String(offer.get("deal", "")):
+        "hp":
+            return "Costs %d max health" % FloorGen.deal_hp(offer)
+        "money":
+            var held := Room.here.main.scrap if Room.here != null and Room.here.main != null else 0
+            var fl := Room.here.main.floor_number if Room.here != null and Room.here.main != null else 1
+            return "Costs %d scrap" % FloorGen.deal_money(held, fl)
+        "curse":
+            return "Costs a curse for the run"
+    var txt := "FREE" if offer["price"] == 0 else "%d scrap" % offer["price"]
+    if offer.get("locked", false):
+        txt += "   LOCKED"
+    elif offer.has("group") and offer["price"] == 0:
+        txt = "FREE: take 1"
+    return txt
+
+
+## The red chip (Core loop reset 11.1): cursed loot and deals name their curse; trade-off
+## items (a stat they lower) show the chip too. "" when none.
+func curse_line() -> String:
+    if kind() != "item" or offer.get("mystery", false):
+        return ""
+    if offer.has("curse") and Items.CURSES.has(String(offer["curse"])):
+        var c: Dictionary = Items.CURSES[String(offer["curse"])]
+        return "%s: %s%s" % [c["name"], c["line"], " (this floor)" if String(offer.get("curse_span", "")) == "floor" else ""]
+    if not Main.old_balance and Items.is_tradeoff(item()):
+        return "Trade-off"
+    return ""
 
 
 ## The carried gun a gun offer would merge into for the nearest player, or null.
@@ -423,6 +457,17 @@ func _draw_labels(cv: CanvasItem) -> void:
         if bs.x > 0.0:
             ItemCard.draw_element_badge(cv, Vector2(x0 + tw + 8.0, y - 15.0), el, 16)
         y += 22.0
+    var cl := curse_line()
+    if cl != "":
+        # The red Cursed chip and its drawback.
+        var red := Color(1.0, 0.25, 0.25)
+        cv.draw_rect(Rect2(-40, y - 16, 80, 20), Color(0.35, 0.02, 0.04, 0.95))
+        cv.draw_rect(Rect2(-40, y - 16, 80, 20), red, false, 1.5)
+        cv.draw_string(body, Vector2(-40, y), "CURSED", HORIZONTAL_ALIGNMENT_CENTER, 80, 16, red)
+        y += 22.0
+        cv.draw_string(body, Vector2(-160, y + 1), cl, HORIZONTAL_ALIGNMENT_CENTER, 320, 16, Color(0, 0, 0, 0.8))
+        cv.draw_string(body, Vector2(-160, y), cl, HORIZONTAL_ALIGNMENT_CENTER, 320, 16, Color(1.0, 0.55, 0.5))
+        y += 20.0
     if kind() == "stairs" and String(offer["id"]) != "":
         y = _draw_region_profile(cv, y)
     var pt := price_text()
@@ -450,6 +495,8 @@ func _draw_labels(cv: CanvasItem) -> void:
             cv.draw_multiline_string(body, Vector2(-162, y + 16), desc, HORIZONTAL_ALIGNMENT_CENTER, 324, 20, 2, Color(0.92, 0.9, 0.85))
             y += box_h + 4.0
         var verb := "begin" if kind() == "sigil" else ("descend" if kind() == "stairs" else ("equip" if kind() == "item" else "take"))
+        if offer.get("ware", false) and not Main.old_balance:
+            verb += ("     Y / R: unlock" if offer.get("locked", false) else "     Y / R: lock")
         if kind() == "archivist":
             verb = "give the page" if offer.get("page", false) and not offer.get("freed", false) else "talk"
         elif kind() == "well":
@@ -492,7 +539,7 @@ func _draw_region_profile(cv: CanvasItem, y: float) -> float:
 ## The item or gun card, beside the plinth on whichever side keeps it on screen, compared
 ## against what the nearest player wears in that slot.
 func _draw_card(cv: CanvasItem) -> void:
-    if not highlighted or empty() or not (kind() in ["item", "gun"]):
+    if not highlighted or empty() or not (kind() in ["item", "gun"]) or offer.get("mystery", false):
         return
     var p := _nearest_player()
     var price := int(offer.get("price", 0))

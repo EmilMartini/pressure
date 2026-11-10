@@ -18,7 +18,7 @@ static func generate(region_id: String, luck: float = 0.0, players: Array = []) 
     var target := 7 + floor_number * 2
     if not Main.old_balance:
         # Core loop reset 5.0: four arenas a floor, plus the start and the special rooms.
-        target = 1 + ARENAS + (4 if Progress.has("room:challenge") else 3)
+        target = 1 + ARENAS + (4 if Progress.has("room:challenge") or force_challenge != "" else 3)
     var start := Vector2i(GRID / 2, GRID / 2)
     var rooms: Dictionary = {}
     for attempt in 60:
@@ -45,12 +45,14 @@ static func generate(region_id: String, luck: float = 0.0, players: Array = []) 
     fallback.sort_custom(func(a, b): return _dist(a, start) > _dist(b, start))
     var candidates: Array = leaves + fallback
     var specials := [RoomData.Type.BOSS, RoomData.Type.TREASURE, RoomData.Type.SHOP]
-    if Progress.has("room:challenge"):
+    if Progress.has("room:challenge") or force_challenge != "":
         specials.append(RoomData.Type.CHALLENGE)
     for i in mini(specials.size(), candidates.size()):
         rooms[candidates[i]].type = specials[i]
 
     _place_hidden_room(rooms, start)
+    if not Main.old_balance and floor_number >= DEAL_FROM_FLOOR and randf() < DEAL_CHANCE:
+        _place_deal_room(rooms)
     _shape_rooms(rooms, start, Regions.get_region(region_id).get("layouts", []))
     _stock_rooms(rooms, floor_number, luck, players)
 
@@ -174,6 +176,9 @@ static func unlocked_obstacles() -> Array:
 
 
 static func _stock_rooms(rooms: Dictionary, floor_number: int, luck: float = 0.0, players: Array = []) -> void:
+    if not Main.old_balance:
+        _stock_rooms_reset(rooms, floor_number, luck, players)
+        return
     for p in rooms.keys():
         var r: RoomData = rooms[p]
         match r.type:
@@ -208,7 +213,248 @@ static func _stock_rooms(rooms: Dictionary, floor_number: int, luck: float = 0.0
                 r.stock.append(offer("sigil", "", 0))
 
 
-## One shop ware: a gun (unlocked, not already on offer) or a piece of gear from the shop pool.
+# --- Core loop reset: loot, economy and risk rooms (sections 5.1, 6, 11.1) ------------------
+
+## Shop: SHOP_ITEMS item wares and one gun or gun mod; from floor 2 a MYSTERY_CHANCE that a
+## mystery ware takes an item ware's place (MYSTERY_PRICE x m, one rarity over the median).
+const SHOP_ITEMS := 3
+const MYSTERY_CHANCE := 0.3
+const MYSTERY_PRICE := 60
+const SHOP_GUN_SHARE := 0.55   # the fourth ware: a gun, else a gun mod
+## Services, x m: repair heals REPAIR_PCT of max health.
+const REPAIR_PRICE := 30
+const REPAIR_PCT := 40
+const CARRY_PRICE := 40
+const GUNSMITH_PRICE := 45
+## Treasure: pick 1 of 2 on floors 1 and 2, 1 of 3 from TREASURE_THREE_FROM; BEHAVIOUR_SHARE of
+## the cards lean to behaviour items; from CURSED_FROM a CURSED_CHANCE that one card is cursed
+## loot (one rarity higher, a floor curse).
+const TREASURE_THREE_FROM := 3
+const BEHAVIOUR_SHARE := 0.6
+const CURSED_FROM := 2
+const CURSED_CHANCE := 0.25
+## Secret room: half the time pick 1 of 2 (Rare or better), else a scrap pile of SECRET_PILE x m.
+const SECRET_PILE := 25
+## Deal room: from DEAL_FROM_FLOOR, DEAL_CHANCE a floor, a door off the boss room. Two Epic or
+## Legendary cards priced in max health (DEAL_HP), money (DEAL_MONEY_SHARE of scrap held, at
+## least DEAL_MONEY_MIN x m) or a run curse; and a DEAL_HEAL_PCT heal for DEAL_HEAL_PRICE x m.
+const DEAL_FROM_FLOOR := 2
+const DEAL_CHANCE := 0.4
+const DEAL_HP := [15, 25]   # Epic, Legendary
+const DEAL_HP_FLOOR := 40.0
+const DEAL_MONEY_SHARE := 0.6
+const DEAL_MONEY_MIN := 80
+const DEAL_HEAL_PCT := 25
+const DEAL_HEAL_PRICE := 40
+
+
+static func _m(floor_number: int) -> float:
+    return Items.depth_mult(floor_number)
+
+
+static func _stock_rooms_reset(rooms: Dictionary, floor_number: int, luck: float, players: Array) -> void:
+    for p in rooms.keys():
+        var r: RoomData = rooms[p]
+        match r.type:
+            RoomData.Type.SHOP:
+                stock_shop(r, floor_number, luck, players, locked_in)
+                locked_in = []
+            RoomData.Type.TREASURE:
+                var n := 3 if floor_number >= TREASURE_THREE_FROM else 2
+                var cards: Array = []
+                var ids: Array = []
+                for i in n:
+                    var rar := Items.roll_rarity("treasure", floor_number, luck)
+                    var id := Drops.roll_item_at(rar, ids + _mod_ids(), "treasure", players, "behaviour", BEHAVIOUR_SHARE)
+                    ids.append(id)
+                    cards.append(Items.offer(id, 0))
+                if floor_number >= CURSED_FROM and randf() < CURSED_CHANCE:
+                    var c: Dictionary = cards[randi() % cards.size()]
+                    var up := mini(int(Items.get_item(String(c["id"]))["rarity"]) + 1, Items.max_rarity_unlocked())
+                    c["id"] = Drops.roll_item_at(up, ids + _mod_ids(), "treasure", players)
+                    c["curse"] = String(Items.CURSES.keys().pick_random())
+                    c["curse_span"] = "floor"
+                for c in cards:
+                    c["group"] = "treasure"
+                    r.stock.append(c)
+                r.chest_tier = n
+            RoomData.Type.HIDDEN:
+                r.hearts = 1
+                if randf() < 0.5:
+                    var ids: Array = []
+                    for i in 2:
+                        var rar := mini(maxi(Items.Rarity.RARE, Items.roll_rarity("boss", floor_number, luck)), Items.max_rarity_unlocked())
+                        var id := Drops.roll_item_at(rar, ids + _mod_ids(), "hidden", players)
+                        ids.append(id)
+                        var o := Items.offer(id, 0)
+                        o["group"] = "secret"
+                        r.stock.append(o)
+                else:
+                    r.loose_scrap = int(roundf(SECRET_PILE * _m(floor_number)))
+            RoomData.Type.CHALLENGE:
+                r.challenge_kind = force_challenge if force_challenge != "" else ("elite" if randf() < 0.5 else "timed")
+                r.stock.append(offer("sigil", "", 0))
+            RoomData.Type.DEAL:
+                stock_deal(r, floor_number, luck, players)
+
+
+## Bot probe `--challenge=timed|elite`: every floor has a challenge room of that kind.
+static var force_challenge := ""
+
+
+## Wares locked in the last floor's shop (Main sets it before generate; the shop takes them).
+static var locked_in: Array = []
+
+
+## Gun mod ids (kept out of item wares and reward cards: the fourth shop ware sells them).
+static var _mods_cache: Array = []
+
+
+static func _mod_ids() -> Array:
+    if _mods_cache.is_empty():
+        for id in Items.catalog.keys():
+            if String(Items.catalog[id].get("slot", "")) == "mod":
+                _mods_cache.append(id)
+    return _mods_cache
+
+
+## Fill a shop: wares locked in the last floor's shop first (`carried`, repriced for this
+## floor), then item wares, the gun or mod ware, and the services.
+static func stock_shop(r: RoomData, floor_number: int, luck: float, players: Array, carried: Array = []) -> void:
+    for w in carried:
+        var o: Dictionary = (w as Dictionary).duplicate()
+        o["price"] = ware_price(o, floor_number)
+        o["taken"] = false
+        r.stock.append(o)
+    var have_gunware := false
+    var items := 0
+    for o in r.stock:
+        if o.get("gunware", false):
+            have_gunware = true
+        elif o.get("ware", false):
+            items += 1
+    while items < SHOP_ITEMS:
+        r.stock.append(roll_item_ware(floor_number, luck, r.stock, players, floor_number >= 2 and randf() < MYSTERY_CHANCE))
+        items += 1
+    if not have_gunware:
+        r.stock.append(roll_gun_ware(floor_number, luck, r.stock, players))
+    r.stock.append(offer("reroll", "", reroll_price(floor_number, 0)))
+    r.stock.append(offer("carry", "", int(roundf(CARRY_PRICE * _m(floor_number))), 2))
+    var rep := offer("repair", "", int(roundf(REPAIR_PRICE * _m(floor_number))), REPAIR_PCT)
+    rep["pct"] = true
+    r.stock.append(rep)
+    var free_smith := floor_number <= int(Mastery.bonus("free_gunsmith"))
+    r.stock.append(offer("gunsmith", "", 0 if free_smith else int(roundf(GUNSMITH_PRICE * _m(floor_number)))))
+
+
+## Price of a ware on `floor_number`: items by rarity, guns by weight, the mystery ware flat.
+static func ware_price(o: Dictionary, floor_number: int) -> int:
+    if o.get("mystery", false):
+        return int(roundf(MYSTERY_PRICE * _m(floor_number)))
+    if String(o["kind"]) == "gun":
+        return gun_price(Guns.make(String(o["id"])), floor_number)
+    return Items.price_at(int(Items.get_item(String(o["id"])).get("rarity", 0)), floor_number)
+
+
+static func _on_offer(stock: Array) -> Array:
+    var on_offer: Array = []
+    for o in stock:
+        if not o["taken"] and o["kind"] in ["gun", "item"]:
+            on_offer.append(o["id"])
+    return on_offer
+
+
+static func roll_item_ware(floor_number: int, luck: float, stock: Array, players: Array, mystery: bool = false) -> Dictionary:
+    var rar := Items.roll_rarity("shop", floor_number, luck)
+    if mystery:
+        rar = mini(Items.median_rarity(floor_number) + 1, Items.max_rarity_unlocked())
+    var id := Drops.roll_item_at(rar, _on_offer(stock) + _mod_ids(), "shop", players)
+    var o := Items.offer(id, 0)
+    o["ware"] = true
+    if mystery:
+        o["mystery"] = true
+    o["price"] = ware_price(o, floor_number)
+    return o
+
+
+static func roll_gun_ware(floor_number: int, luck: float, stock: Array, players: Array) -> Dictionary:
+    var o: Dictionary = {}
+    var on_offer := _on_offer(stock)
+    var gun_id := Drops.roll_gun(players, on_offer) if randf() < SHOP_GUN_SHARE else ""
+    if gun_id != "":
+        o = offer("gun", gun_id, 0)
+    else:
+        var rar := Items.roll_rarity("shop", floor_number, luck)
+        var mods: Array = _mod_ids().filter(func(id): return int(Items.get_item(String(id)).get("rarity", 0)) <= rar and not on_offer.has(id))
+        if mods.is_empty():
+            mods = _mod_ids()
+        o = Items.offer(String(mods.pick_random()), 0)
+    o["ware"] = true
+    o["gunware"] = true
+    o["price"] = ware_price(o, floor_number)
+    return o
+
+
+## A fresh ware in place of `old` (a reroll): same kind of slot, new roll.
+static func reroll_ware(old: Dictionary, floor_number: int, luck: float, stock: Array, players: Array) -> Dictionary:
+    if old.get("gunware", false):
+        return roll_gun_ware(floor_number, luck, stock, players)
+    return roll_item_ware(floor_number, luck, stock, players, floor_number >= 2 and randf() < MYSTERY_CHANCE)
+
+
+## Deal room stock: two Epic or Legendary cards, each with its own price kind, and the heal.
+static func stock_deal(r: RoomData, floor_number: int, luck: float, players: Array) -> void:
+    var kinds := ["hp", "money", "curse"]
+    kinds.shuffle()
+    var ids: Array = []
+    for i in 2:
+        var rar := Items.roll_rarity("deal", floor_number, luck)
+        var id := Drops.roll_item_at(rar, ids + _mod_ids(), "", players)
+        ids.append(id)
+        var o := Items.offer(id, 0)
+        o["group"] = "deal"
+        o["deal"] = String(kinds[i])
+        if o["deal"] == "curse":
+            o["curse"] = String(Items.CURSES.keys().pick_random())
+            o["curse_span"] = "run"
+        r.stock.append(o)
+    var heal := offer("repair", "", int(roundf(DEAL_HEAL_PRICE * _m(floor_number))), DEAL_HEAL_PCT)
+    heal["pct"] = true
+    r.stock.append(heal)
+
+
+## Max health a deal card costs (Epic or Legendary).
+static func deal_hp(o: Dictionary) -> int:
+    return DEAL_HP[1] if int(Items.get_item(String(o["id"])).get("rarity", 0)) >= Items.Rarity.LEGENDARY else DEAL_HP[0]
+
+
+## Scrap a money deal costs with `scrap` in hand.
+static func deal_money(scrap: int, floor_number: int) -> int:
+    return maxi(int(roundf(DEAL_MONEY_MIN * _m(floor_number))), int(roundf(float(scrap) * DEAL_MONEY_SHARE)))
+
+
+## The deal room: a free grid cell beside the boss room, one door to it.
+static func _place_deal_room(rooms: Dictionary) -> void:
+    var boss := Vector2i(-99, -99)
+    for p in rooms.keys():
+        if (rooms[p] as RoomData).type == RoomData.Type.BOSS:
+            boss = p
+    if not rooms.has(boss):
+        return
+    var dirs := DIRS.duplicate()
+    dirs.shuffle()
+    for d in dirs:
+        var c: Vector2i = boss + d
+        if not _in_grid(c) or rooms.has(c):
+            continue
+        var deal := _new_room(c, RoomData.Type.DEAL)
+        rooms[c] = deal
+        rooms[boss].doors[d] = { "to": c, "obstacle": "" }
+        deal.doors[-d] = { "to": boss, "obstacle": "" }
+        return
+
+
+## One shop ware (old balance): a gun or a piece of gear from the shop pool.
 static func roll_ware(floor_number: int, luck: float, stock: Array, players: Array = []) -> Dictionary:
     var on_offer: Array = []
     for o in stock:
@@ -225,13 +471,17 @@ static func roll_ware(floor_number: int, luck: float, stock: Array, players: Arr
     return o
 
 
-## Reroll cost: Brotato's shape, a floor-based start that climbs with every use.
+## Reroll cost. Core loop reset 6.3: (8 + 6 x n) x m, n the rerolls already made this visit.
 static func reroll_price(floor_number: int, uses: int) -> int:
+    if not Main.old_balance:
+        return int(roundf(float(8 + 6 * uses) * _m(floor_number)))
     return 10 + floor_number * 6 + uses * (6 + floor_number * 3)
 
 
-## Brotato's shape: base + difficulty + 8% of base per difficulty step.
+## Gun price. Core loop reset 6.2: (20 + 10 x weight) x m.
 static func gun_price(data: GunData, floor_number: int) -> int:
+    if not Main.old_balance:
+        return int(roundf(float(20 + 10 * data.weight) * _m(floor_number)))
     var base := 16 + data.weight * 9
     var diff := floor_number * 4
     return base + 2 * diff + int(float(base) * 0.10 * float(diff))

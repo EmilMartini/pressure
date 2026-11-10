@@ -1188,6 +1188,137 @@ Goal: every room's reward and every shop visit is a decision; money is tight at 
   human build; quitting on floor 2 pays the death award; `[SMOKE] ALL PASS`; CI green.
 - Out of scope: the catalog and the card.
 
+### Session 3 done (2026-11-10, build `2026.11.10-economy`)
+
+**Built**
+- **Loot (5.1).** Arenas pay no items and elites bank nothing (spoils and salvage only run under
+  `--old-balance`). Floor 1's first two arenas offer 1 of 2 guns. Reward cards stand side by
+  side, and taking one makes the rest vanish (`offer["group"]`, `Room._take_group`): treasure
+  (1 of 2, 1 of 3 from floor 3, never Common, 60% of the cards drawn from behaviour items),
+  boss (1 of 3, Rare or better: a stat item, a behaviour item, and an element changer when the
+  pool has one), a won challenge (1 of 3, Rare or better), and half the secret rooms (1 of 2;
+  the other half a 25 x m pile). Gun mods are kept out of reward cards and item wares; the
+  shop's fourth ware sells them. Hearts (`scripts/heart.gd`) heal 12% of max health outside
+  the Mending reserve. They drop at an arena's end (20%), from elites (15%), from a won
+  challenge and in every secret room, and they fly to you at the clear. The chooser is the old
+  pedestal row with a "FREE: take 1" label, for session 4 to restyle.
+- **Level-ups (5.1).** `Player.XP_BASE_RESET` 360 with exponent 2.0: a level costs 360 x (2n - 1).
+  Amounts are doubled (`LevelUps.bigger`); counts stay as they are (pierce, projectile, chain,
+  carry). One card in ten is a rare pick on the Epic frame (`LevelUps.rare_pick`): an element
+  Echo (Echoes are only offered here now), Second Wind (+1 dash charge), Split Focus (+1 target
+  for every gun), or a Coating (a second element on the gun with the fewest). Bots now pick at
+  the room's clear like players, and print `[PICK]`.
+- **Economy (6).** Scrap comes from room budgets, not kills: an arena pays 25 x m, 70% over its
+  kills in proportion to their health and the rest as the wave-end burst. Elites pay 4 x m each
+  (three paid a room), the boss 30 x m, a challenge 15 x m. Scrap gain is capped at +50%.
+  Shop prices and gun prices (6.2), the reroll (8 + 6n) x m (per shop, so it resets on the
+  next floor), and the rarity tables per floor with luck capped at +60% (`Items.SHOP_ODDS`,
+  `rarity_weights`) are all in. The Shrine's rarity unlocks still cap the top. Y / R on a ware
+  locks it: it survives rerolls and is carried into the next floor's shop at that floor's
+  price (`FloorGen.locked_in`). From floor 2, a mystery ware (60 x m, one rarity over the
+  floor's median) takes an item slot 30% of the time. Repair heals 40% for 30 x m; carry costs
+  40 x m and the gunsmith 45 x m.
+- **Risk rooms (11.1).** The deal room (`RoomData.Type.DEAL`) appears from floor 2, on 40% of
+  floors, as a door off the boss room. It offers 1 of 2 Epic or Legendary items, priced in max
+  health (15 or 25, never under 40), money (60% of scrap held, at least 80 x m) or a run curse,
+  plus a 25% heal for 40 x m. Challenge rooms come in two kinds: elite (two waves of two
+  elites, doors locked) and timed (40 kills in 30 s; failing costs nothing). From floor 2, 25%
+  of treasure rooms hold cursed loot: one card a rarity higher with a floor curse. Curses:
+  Darkness (the screen closes in), Frailty, Greed, Haste, Brittle (`Main.curses`). The red
+  CURSED chip and the drawback line show on cursed cards, deal cards and trade-off items
+  (any lowered stat).
+- **Quitting (11.2).** "Return to hub", "Restart run" and "Quit game" in the pause menu call
+  `Main.abandon_run`, which pays 75% of the death award (`Mastery.award(..., share)`). Telemetry
+  records `abandoned`, `embers` and `embers_death`.
+- **Metrics.** `shop_leave` and `floor_loot` telemetry events; bot lines `[SHOP]`, `[LOOT]`,
+  `[CURSE]`, `[CHALLENGE]`, `[QUIT-CHECK]`; `tools/pressure_report.py --shops --loot`. New bot
+  flags: `--quit-probe` and `--challenge=timed|elite`. The bot shops like a saver: it visits
+  once the floor's rooms are seen (or with 165 x m in hand), buys the rarest upgrade it can
+  afford first, rerolls at most twice when nothing is worth buying, and skips Frailty cards.
+
+**Deviations from the spec, and why**
+- **Income per floor is about 1.7x the spec's 165 x m:** 355 to 440 on floor 2 (m 1.25)
+  against 206. The table leaves out sources that still pay: challenge elites (4 x m each),
+  alcoves, puzzle caches. On top of that, the full Shrine adds +22% scrap gain. Spending still
+  meets its targets, so these were kept. To trim it, scale the alcove and puzzle caches by m
+  and drop their base amounts.
+- **The XP curve is linear in cost** (exponent 2.0, not 2.25), because kill XP per floor grows
+  about linearly: about 3,400 on floor 2 and 5,200 on floor 3 for the human build, 600 to
+  1,000 on floor 1 for a starter. A fresh run then levels about 1 time on floor 1 and 1.6 to
+  1.8 times a floor after, about 8.5 a run. The human build starts floor 2 at level 4 and
+  gets 1 to 2 a floor.
+- **Cards shown go over 15 on full floors** (median 16 on floor 2, 17 to 22 on completed
+  floor 3s). Each reroll adds 3 cards. The spec's own rows already sum past 15 with every
+  optional room: shop 4, treasure 3, boss 3, level-ups 4.5, challenge 3, secret 2, deal 2.
+  Without rerolls and optional rooms a floor shows 11 to 14.
+- **Not built:** the bot never locks wares. The Fortune resonance's fifth ware (session 4).
+  The crowd factor cap (6.1) is moot: session 2 removed the crowd's growth with guns.
+
+**Measured** (headless, `--fixed-fps 60`, `--build=human6980 --mastery=full --start-floor=2`,
+route Ossuary Gate, Rust Ruins, Frostvault, the Forge; 8 kite runs, logs `autotest/s3/`)
+
+Economy (31 shop visits):
+
+| Target (6.5, 13.2) | Bots | Run 6980a749 (before) | Pass |
+|---|---|---|---|
+| Spent down at 70% of visits (left < cheapest ware still for sale) | 77% (24 of 31) | 1 of 3 | yes |
+| Median leftover under 45 x m (13.2) and 80 x m (6.5) | 33 x m (41 scrap) | 288, 1,671, 749 | yes |
+| Rerolls: median at most 3 a visit | median 1, never more than 2 | 11 in one visit, 24 in the run | yes |
+| No hoard: scrap in hand under 330 x m | highest 420 on floor 3 (cap 495), 409 on floor 2 (cap 412) | 2,508 at the floor-2 shop | yes |
+| Scrap reaching floor 3 (session 2 bots: about 2,000) | 41 to 236 | | |
+
+Loot per floor (8 runs; floor 3 and 4 rows include deaths, which count 0):
+
+| Measure | Target (5.2) | Floor 2 | Floor 3, completed | Pass |
+|---|---|---|---|---|
+| Free items | 2 to 4 | 2 to 4 | 3 to 4 (1 when the boss killed the bot) | yes |
+| Bought items | 1 to 3 | 3 every time | 2 to 3 | yes |
+| Guns gained | 0 to 1 after floor 1 | 0 to 1 | 0 to 1 | yes |
+| Cards shown | at most 15 | 12 to 21, median 16 | 17 to 22 | no (deviation above) |
+| Level-ups | about 1.5 | 1 (from level 4) | 1 to 2 | about (curve fits 1.6 to 1.8 for a fresh run) |
+| Floor-1 starter (2 runs) | guns 2, free 2, bought 1 to 3 | guns 2, free 2, bought 3, cards 17 | | yes |
+
+Pressure re-check against session 2 (same command):
+
+| Check | Session 2 | Session 3 | Pass |
+|---|---|---|---|
+| Stand-still: 4 idle runs die by the end of floor 3 | 4 of 4 on floor 2, lt50 0.55 to 0.72 | 4 of 4 on floor 2 (130 to 203 s), lt50 0.59 to 0.71 | yes |
+| Idle at least 2x the mover's damage a minute (floor 2) | 0.92 to 1.23 against 0.12 to 0.20 | 1.04 to 1.45 against 0.16 to 0.25 | yes |
+| Mover: 3 of 4 reach floor 4 | 3 of 4 | **2 of 8**, both arriving at 2 and 4 HP | **no** |
+| Mover floor 2 lt50 / damage a minute | 0.00 / 0.12 to 0.20 | 0.00 / 0.16 to 0.25 | |
+| Mover floor 3 damage a minute | 0.28 to 0.42 | 0.54 to 1.00 | |
+| Floor time (run length 25 to 35 min) | | floor 2 264 to 319 s, floor 3 about 330 s | on track for 5 floors in 25 to 30 min |
+
+Why the mover check fell: the spec's loot cut lands on the bots. Session 2's movers gained
+7 level-ups on floors 2 and 3 at the old amounts, plus spoils and Vitality boons. They were
+level 8 to 10 with 177 max health on floor 3. Now they gain 2 or 3 doubled picks and reach
+floor 3 at level 5 to 7 with 142. Floor-3 damage now comes from the melee crowd (grunts,
+brutes, runners), which takes longer to clear at lower power, not from elites. Bots also take
+the rare Echo picks over defence. While items still replace each other in slots, a bought
+item adds little: bots bought 3 a floor, but each only replaced a lower rarity. Session 4's
+stacking makes every item add.
+
+| Other checks | Result |
+|---|---|
+| Quit on floor 2 (`--quit-probe`) | `[QUIT-CHECK] PASS`: death award 50, paid 39 (75% = 38; parts round separately) |
+| Challenge rooms (`--challenge=`) | timed won 2 of 2 (40 kills), elite won 2 of 2 (43 and 47 kills) |
+| Deal rooms | 3 entered in 8 runs; a run curse (Darkness) taken; cursed treasure taken twice |
+| Old rule: idle six-gun bot, first region | died on floor 1 at 31 s |
+| Load check, fusion probe, idle bots, hub walk | 0 `SCRIPT ERROR`; `[FUSION-CHECK] PASS`; `[HUB-WALK] PASS`, `[HUB-FRESH] PASS` |
+| `tools/exe_smoke.sh` | `[SMOKE] ALL PASS` |
+
+**What's left, and for Emil**
+- **The mover check fails (2 of 8 reach floor 4).** Re-measure after session 4's stacking
+  before retuning threats. If it still fails, the two levers are level-ups at 2 a floor
+  (`XP_BASE_RESET` about 270) or a lighter floor-3 crowd (`Room.FLOOR_HP[2]`).
+- **Emil's runs:** `python tools/pressure_report.py runs.jsonl --shops --loot`. Watch whether
+  shops feel tight but fair, whether 1 of 2 or 1 of 3 cards feel like decisions, and whether a
+  level-up every 2 to 3 rooms feels big enough.
+- **Income:** if money still feels loose, trim the alcove and puzzle scrap first (deviation
+  above).
+- **Session 4:** restyle the reward row and the CURSED chip into the item card, and remap
+  `--build=human6980`'s picks to the doubled amounts.
+
 ### Session 4: Items, cards and synergies
 
 Goal: every item reads in one glance, simply adds to your build, and the rare synergy is a

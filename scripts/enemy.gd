@@ -1383,6 +1383,8 @@ func _speed_mult() -> float:
         m *= 1.35
     if haste_aura_time > 0.0:
         m *= 1.15
+    if Main.curses.has("haste"):
+        m *= 1.15   # Haste curse (Core loop reset 11.1)
     if boss_kind == "pyre_lord" and _phase >= 2:
         m *= 1.25
     if boss_kind == "storm_warden" and _phase >= 3:

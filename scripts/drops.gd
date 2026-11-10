@@ -122,6 +122,46 @@ static func roll_item(difficulty: int, min_rarity: int = Items.Rarity.COMMON, ex
     return picked
 
 
+## Core loop reset 5.1: an item of a set `rarity` (the caller rolled it from Items'
+## tables), build-biased like roll_item. `want`: "" any, "behaviour", "element" or "stat"
+## (neither); with `want_share` < 1 the filter only applies that often. Falls back down a
+## rarity, then to any pool, then to seen items, never empty.
+static func roll_item_at(rarity: int, exclude: Array = [], pool: String = "", players: Array = [], want: String = "", want_share: float = 1.0) -> String:
+    var profile := party_profile(players)
+    if want != "" and randf() >= want_share:
+        want = ""
+    var picked := ""
+    for w in ([want, ""] if want != "" else [""]):
+        for pass_pool in [pool, ""]:
+            for allow_seen in [false, true]:
+                if picked != "":
+                    break
+                var source: Array = Items.catalog.keys() if pass_pool == "" else Items.pool_items(pass_pool)
+                var step := rarity
+                while step >= 0 and picked == "":
+                    var ids := _item_candidates(source, step, exclude, allow_seen)
+                    if w != "":
+                        ids = ids.filter(func(id): return _wants(Items.get_item(String(id)), w))
+                    if not ids.is_empty():
+                        picked = _pick_item(ids, profile)
+                    step -= 1
+    if picked == "":
+        picked = "bone_ring"
+    Items.mark_seen(picked)
+    return picked
+
+
+static func _wants(it: Dictionary, want: String) -> bool:
+    match want:
+        "behaviour":
+            return Items.is_behaviour(it)
+        "element":
+            return Items.is_element_changer(it)
+        "stat":
+            return not Items.is_behaviour(it) and not Items.is_element_changer(it)
+    return true
+
+
 ## A gun id from the unlocked guns minus `exclude`, tilted toward the build and toward
 ## guns the party could combine. "" when nothing is left.
 static func roll_gun(players: Array, exclude: Array = []) -> String:

@@ -699,8 +699,20 @@ func _rebuild_totals() -> void:
 ## Pay a finished run. Reads what the run did from Progress (rooms, elites, bosses and
 ## first-ever reactions are counted there per run). `class_id` is player 1's class, for
 ## the bounties. Returns { total, parts, counts, bounties } and keeps it in `last_award`.
-func award(floor_number: int, won: bool, class_id: String) -> Dictionary:
+## `share` < 1 pays that part of the award: leaving a run from the pause menu pays 75% of a
+## death's (Main.QUIT_EMBERS, Core loop reset 11.2). Each part is scaled; "death_total" keeps
+## what a death would have paid.
+func award(floor_number: int, won: bool, class_id: String, share: float = 1.0) -> Dictionary:
     var a := preview(floor_number, won, class_id)
+    if share < 1.0:
+        a["death_total"] = int(a["total"])
+        var scaled := 0
+        var ps: Dictionary = a["parts"]
+        for k in ps.keys():
+            ps[k] = roundi(float(ps[k]) * share)
+            scaled += int(ps[k])
+        a["total"] = scaled
+        a["share"] = share
     for b in a["bounties"]:
         bounties["%s|%s" % [class_id, String(b)]] = true
     var parts: Dictionary = a["parts"]

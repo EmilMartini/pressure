@@ -38,6 +38,7 @@ const ROOM_ICONS := {
     RoomData.Type.TREASURE: Vector2i(9, 11),
     RoomData.Type.CHALLENGE: Vector2i(28, 12),
     RoomData.Type.HIDDEN: Vector2i(37, 13),
+    RoomData.Type.DEAL: Vector2i(38, 11),
 }
 
 var main: Main
@@ -592,7 +593,9 @@ func _draw_top(vp: Vector2) -> void:
             RoomData.Type.CHALLENGE:
                 hint = "Doors stay open. Touch the sigil to begin." if not room.data.cleared else "Cleared"
             RoomData.Type.SHOP:
-                hint = "Scrap buys guns, carry capacity and repairs"
+                hint = "Y / R locks a ware for the next shop. Scrap carries over" if not Main.old_balance else "Scrap buys guns, carry capacity and repairs"
+            RoomData.Type.DEAL:
+                hint = "Take one. Each has its price"
             RoomData.Type.TREASURE:
                 hint = "Take one"
             RoomData.Type.START:

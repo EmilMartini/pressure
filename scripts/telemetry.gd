@@ -19,7 +19,7 @@ extends Node
 ## VERSION: bump it by hand with each phase or shared build (date plus phase tag).
 ## COMMIT: stays "dev" in the repository; the export steps (`.github/workflows/deploy.yml`,
 ## `tools/export_exe.sh`) stamp the short commit hash into it before exporting.
-const VERSION := "2026.11.10-threats"
+const VERSION := "2026.11.10-economy"
 const COMMIT := "dev"
 const BUILD := VERSION + "+" + COMMIT
 ## Where finished runs are POSTed (a Cloudflare Worker or Apps Script URL). Empty = local only.
@@ -286,12 +286,12 @@ func _floor_end(main: Node) -> void:
 
 
 ## `award` is the Shrine's payout for the run (Mastery.award): total and breakdown.
-func run_end(main: Node, won: bool, award: Dictionary = {}) -> void:
+func run_end(main: Node, won: bool, award: Dictionary = {}, abandoned: bool = false) -> void:
     if _run.is_empty():
         return
     if not won:
         _death(main)
-    _finish_run(won, false, award)
+    _finish_run(won, abandoned, award)
 
 
 func _death(main: Node) -> void:
@@ -351,7 +351,7 @@ func _finish_run(won: bool, abandoned: bool, award: Dictionary = {}) -> void:
         "kills": _run_kills, "kills_by_kind": _kills_by_kind_run.duplicate(), "level": level,
         "scrap_total_earned": _scrap_earned, "scrap_spent": _scrap_spent,
         "unlocks": Progress.run_unlocks.duplicate(),
-        "embers": int(award.get("total", 0)), "embers_parts": (award.get("parts", {}) as Dictionary).duplicate(),
+        "embers": int(award.get("total", 0)), "embers_death": int(award.get("death_total", award.get("total", 0))), "embers_parts": (award.get("parts", {}) as Dictionary).duplicate(),
         "embers_counts": (award.get("counts", {}) as Dictionary).duplicate(), "bounties": (award.get("bounties", []) as Array).duplicate(),
         "discoveries": Progress.run_discoveries.duplicate(),
         "fusions": _fusions_run.duplicate(), "cataclysms": _cataclysms_run.duplicate(),

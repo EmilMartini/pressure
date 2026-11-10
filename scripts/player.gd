@@ -547,7 +547,9 @@ func stat(key: String) -> float:
 ## few levels, not a dozen.
 func xp_to_next() -> float:
     var n := float(level - 1)
-    return XP_BASE * (pow(n + 1.0, XP_EXP) - pow(n, XP_EXP))
+    if Main.old_balance:
+        return XP_BASE * (pow(n + 1.0, XP_EXP) - pow(n, XP_EXP))
+    return XP_BASE_RESET * (pow(n + 1.0, XP_EXP_RESET) - pow(n, XP_EXP_RESET))
 
 
 ## Total XP to reach level `lv` from level 1 is XP_BASE * (lv - 1) ^ XP_EXP. Fitted to the
@@ -558,6 +560,12 @@ func xp_to_next() -> float:
 ## first wave and then one every 60 to 130 s on floor 5.
 const XP_BASE := 55.0
 const XP_EXP := 2.25
+## Core loop reset 5.1 (decision 13): fewer, bigger level-ups, about 1.5 a floor and 7 or 8 a
+## run (a level every 2 to 3 arenas). Fitted to the kill XP of the 4-arena floors (kite bots:
+## about 3,400 on floor 2 and 5,200 on floor 3, close to linear in the floor), so the cost of a
+## level grows linearly: 360 x (2n - 1) for level n + 1.
+const XP_BASE_RESET := 360.0
+const XP_EXP_RESET := 2.0
 
 
 func gain_xp(amount: float) -> void:
@@ -581,6 +589,10 @@ func apply_upgrade(opt: Dictionary) -> void:
         bonus_stats[key] = float(bonus_stats.get(key, 0.0)) + float(ch[key])
     if opt.has("echo"):
         boon_triggers.append(LevelUps.echo_trigger(opt))
+    if opt.has("coat_el"):
+        var gi := int(opt.get("coat_gun", 0))
+        if gi >= 0 and gi < guns.size() and Items.ELEMENTS.has(String(opt["coat_el"])):
+            guns[gi].boon_elements.append(Items.ELEMENTS[String(opt["coat_el"])])
     recalc_stats()
     say(opt.get("name", "Upgrade"))
 
@@ -623,6 +635,8 @@ func refill_mending() -> void:
         if String(v) == "bandage_roll":
             bandages += 1
     mend_max = max_hp * (MEND_RESERVE + MEND_PER_BANDAGE * float(bandages))
+    if Main.curses.has("brittle"):
+        mend_max *= 0.5   # Brittle curse (Core loop reset 11.1)
     mend_left = mend_max
     mend_used = 0.0
 
@@ -705,6 +719,8 @@ func take_damage(amount: float, attacker: Node2D = null, from: Vector2 = Vector2
         invuln = 0.25
         return
     amount = maxf(1.0, amount - stat("armor"))
+    if Main.curses.has("frailty"):
+        amount *= 1.25   # Frailty curse (Core loop reset 11.1)
     hurt_total += minf(amount, maxf(0.0, hp))
     hp -= amount
     Telemetry.player_hurt(self, amount, attacker, source)

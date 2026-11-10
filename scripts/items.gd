@@ -106,6 +106,29 @@ const RARITY_ODDS := {
     Rarity.EPIC: [2, 0.012, 0.10],
     Rarity.LEGENDARY: [2, 0.004, 0.04],
 }
+## Core loop reset 6.2 and 6.4: shop prices per rarity on floor 1, times the depth multiplier
+## m = 1 + 0.25 x (floor - 1); explicit rarity odds per floor (percent, Common to Legendary)
+## for shop wares; treasure never Common, with its own Legendary share; luck multiplies the
+## Rare, Epic and Legendary weights by 1 + luck (luck capped at LUCK_CAP).
+const PRICE_BASE := [25, 40, 65, 100, 150]
+const SHOP_ODDS := [
+    [60, 30, 9, 1, 0],
+    [45, 35, 15, 4, 1],
+    [30, 38, 22, 8, 2],
+    [20, 35, 28, 13, 4],
+    [12, 30, 33, 18, 7],
+]
+const TREASURE_LEGENDARY := [4, 6, 9, 12, 15]
+const LUCK_CAP := 0.6
+## Curses (section 11.1): cursed loot and deal prices. A floor curse ends at the stairs; a run
+## curse lasts the run. Main.curses holds the active ones.
+const CURSES := {
+    "darkness": { "name": "Darkness", "line": "Your sight shrinks by half" },
+    "frailty": { "name": "Frailty", "line": "You take 25% more damage" },
+    "greed": { "name": "Greed", "line": "No hearts drop" },
+    "haste": { "name": "Haste", "line": "Enemies move 15% faster" },
+    "brittle": { "name": "Brittle", "line": "Your Mending reserve is halved" },
+}
 const SLOTS := ["head", "chest", "hands", "feet", "ring", "trinket", "mod", "active"]
 ## Slot -> icon (path under Art.ICON_ROOT): the fallback for an item without its own icon
 ## and, dimmed, the placeholder of an empty gear slot.
@@ -560,6 +583,86 @@ func _apply_icons() -> void:
         else:
             it["icon"] = fam["base"]
             it["icon_tint"] = float(fam["tint"])
+
+
+## Depth multiplier for prices and scrap (Core loop reset 6.1): 1.0, 1.25, 1.5, 1.75, 2.0.
+static func depth_mult(floor_number: int) -> float:
+    return 1.0 + 0.25 * float(maxi(1, floor_number) - 1)
+
+
+## Shop price of a ware of `rarity` on `floor_number` (section 6.2): 25 / 40 / 65 / 100 / 150
+## on floor 1, x m deeper.
+func price_at(rarity: int, floor_number: int) -> int:
+    return int(roundf(float(PRICE_BASE[clampi(rarity, 0, PRICE_BASE.size() - 1)]) * depth_mult(floor_number)))
+
+
+## Rarity weights for a roll (section 6.4). `table`: "shop", "treasure" (never Common,
+## Legendary from TREASURE_LEGENDARY), "boss" (never under Rare), "deal" (Epic or Legendary).
+func rarity_weights(table: String, floor_number: int, luck: float = 0.0) -> Array:
+    var f := clampi(floor_number, 1, SHOP_ODDS.size()) - 1
+    var w: Array = (SHOP_ODDS[f] as Array).duplicate()
+    match table:
+        "treasure":
+            var leg := float(TREASURE_LEGENDARY[f])
+            w = [0.0, float(w[0] + w[1]) - (leg - float(w[4])), float(w[2]), float(w[3]), leg]
+        "boss":
+            w = [0.0, 0.0, float(w[0] + w[1] + w[2]), float(w[3]), float(w[4])]
+        "deal":
+            w = [0.0, 0.0, 0.0, float(w[3]), maxf(1.0, float(w[4]))]
+    var l := 1.0 + clampf(luck, 0.0, LUCK_CAP)
+    for r in [Rarity.RARE, Rarity.EPIC, Rarity.LEGENDARY]:
+        w[r] = float(w[r]) * l
+    return w
+
+
+## One rarity from `rarity_weights`, capped by the Shrine's rarity unlocks.
+func roll_rarity(table: String, floor_number: int, luck: float = 0.0) -> int:
+    var w := rarity_weights(table, floor_number, luck)
+    var total := 0.0
+    for v in w:
+        total += float(v)
+    var at := randf() * total
+    var r := 0
+    for i in w.size():
+        at -= float(w[i])
+        if at < 0.0:
+            r = i
+            break
+    return mini(r, max_rarity_unlocked())
+
+
+## The floor's median shop rarity (the mystery ware rolls one above it).
+func median_rarity(floor_number: int) -> int:
+    var f := clampi(floor_number, 1, SHOP_ODDS.size()) - 1
+    var acc := 0
+    for i in (SHOP_ODDS[f] as Array).size():
+        acc += int(SHOP_ODDS[f][i])
+        if acc >= 50:
+            return i
+    return Rarity.COMMON
+
+
+## Behaviour items change how you shoot or play (triggers, mechanics, actives); element
+## changers carry an element. Treasure leans to behaviour, bosses offer one of each.
+func is_behaviour(it: Dictionary) -> bool:
+    if not (it.get("triggers", []) as Array).is_empty() or String(it.get("slot", "")) == "active":
+        return true
+    for k in (it.get("mods", {}) as Dictionary).keys():
+        if k in MECHANIC_KEYS:
+            return true
+    return false
+
+
+func is_element_changer(it: Dictionary) -> bool:
+    return it.has("element") or (it.get("mods", {}) as Dictionary).has("extra_element")
+
+
+## Strong with a clear drawback: any stat it lowers. These show the red Cursed chip too.
+func is_tradeoff(it: Dictionary) -> bool:
+    for v in (it.get("mods", {}) as Dictionary).values():
+        if (v is float or v is int) and float(v) < 0.0:
+            return true
+    return false
 
 
 func max_rarity_unlocked() -> int:
