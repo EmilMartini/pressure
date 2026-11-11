@@ -40,6 +40,9 @@ const WALL_METHODS := {
 }
 const BLAST_MIN := 90.0   # novas this big count as an explosion
 const DASH_HITS := 2
+## Secrets pass: a blast only breaks the wall when its centre is this close (an auto-vent fired
+## from mid-room opened 7 of 8 walls by accident in bot runs; now you have to be up against it).
+const BLAST_REACH := 80.0
 
 var opened_by := ""
 var _dash_hits := 0
@@ -240,6 +243,9 @@ func _dist_to(p: Vector2) -> float:
 
 func _on_nova(pos: Vector2, radius: float, color: Color) -> void:
     if _done or radius < BLAST_MIN or _dist_to(pos) > radius * 0.9:
+        return
+    if _bold and _dist_to(pos) > BLAST_REACH:
+        _flash(Color(color, 1.0))   # close, but not close enough: the crack lights up
         return
     _last_nova = pos
     if method == "blast" or method == "rubble":
