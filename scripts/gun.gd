@@ -14,6 +14,8 @@ extends Node2D
 ##   charge  winds up for charge_time (aim tracked), then a rail through the whole line
 ##   mine    tosses a Mine a short way toward the target
 ##   turret  deploys a Turret that fires this gun's shots on its own
+##   summon  keeps Summon bodies up (drones, familiars, orbits, swarms, the golem); the
+##           weapon itself never fires, its bodies pick their own targets (Summon)
 ## Every hit goes through Strike (one hit path, attributed to this gun in Telemetry).
 ## Auto-fire (Player._fire) only ever passes an enemy direction; RT passes the aim.
 
@@ -48,6 +50,10 @@ var _beams: Array = []    # beam: one Beam per ray
 var _spray: Spray = null
 var _mines: Array = []
 var _turrets: Array = []
+var bodies: Array = []    # summon: live Summon bodies (Summon.maintain)
+var summon_room := 0      # summon: the room the bodies live in
+var summon_t := 0.0       # summon: seconds until the next body may be made
+var grown := 0            # summon: bodies grown this room (Hive Queen's wasps)
 var _target_k := 0        # homing: rotates which enemy each volley's first seeker takes
 var melee_n := 0          # melee: swings so far (finishers, spins)
 var swing_tilt := 0.0     # melee: 1 at a swing, the held weapon tilts back and returns
@@ -87,6 +93,10 @@ func _exit_tree() -> void:
         if is_instance_valid(t):
             t.queue_free()
     _turrets.clear()
+    for b in bodies:
+        if is_instance_valid(b):
+            b.queue_free()
+    bodies.clear()
 
 
 func _process(delta: float) -> void:
@@ -112,6 +122,8 @@ func _process(delta: float) -> void:
                 if bd != Vector2.ZERO:
                     _aim = bd
             _shoot(_aim)
+    if data.mechanic == "summon":
+        Summon.maintain(self, delta)
     var face := _aim
     var pose: Array = []
     if data.family == "melee":
@@ -260,6 +272,8 @@ func fire_rate() -> float:
     var fam := 0.0
     if data.family == "thrown":
         fam = player.stat("throw_rate")
+    if data.family == "summon":
+        fam = player.stat("summon_rate")
     if data.family == "melee":
         # Swing speed (2.2): its own stat plus half the shot speed.
         fam = player.stat("swing_speed") + 0.5 * (player.stat("proj_speed") + player.stat("shot_speed") + _gm("g_speed"))
@@ -314,6 +328,8 @@ func strike(el: int = -1) -> Strike:
             fam_dmg = player.stat("gun_dmg")
         "thrown":
             fam_dmg = player.stat("thrown_dmg")
+        "summon":
+            fam_dmg = player.stat("summon_dmg")
     s.damage = data.damage * tier_mult() * maxf(0.1, 1.0 + player.stat("dmg") + player.stat("dmg_" + ek) + _gm("g_dmg") + fam_dmg)
     s.potency = s.damage * data.reaction_mult * (1.0 + potency_bonus(player.stat("potency") + player.stat("potency_" + ek)))
     s.crit = randf() < player.stat("crit")
@@ -382,6 +398,9 @@ func fire(dir: Vector2) -> void:
             return
         "mine":
             _fire_mine(dir)
+        "summon":
+            cooldown = 0.5   # the bodies fight on their own (Summon)
+            return
         "turret":
             if player.alive and player._aim_firing:
                 _shoot(dir)   # aimed: the gun fires too (doors, props), the turret keeps to enemies
@@ -834,9 +853,11 @@ func _fire_mine(dir: Vector2) -> void:
 ## Deploys a turret when fewer than the cap are up. Returns false when none was placed.
 func _fire_turret(dir: Vector2) -> bool:
     _turrets = _turrets.filter(func(x): return is_instance_valid(x) and not x.is_queued_for_deletion())
-    if _turrets.size() >= TURRET_CAP + maxi(0, shot_count() - data.projectile_count):
+    if _turrets.size() >= TURRET_CAP + maxi(0, shot_count() - data.projectile_count) + int(player.stat("summon_cap")):
         return false
-    var t := Turret.new(self, data.linger * (1.0 + 0.1 * float(tier - 1)))
+    if not Summon.make_room(player):
+        return false   # 16 summon bodies already out (Arsenal expansion 2.5)
+    var t := Turret.new(self, data.linger * (1.0 + 0.1 * float(tier - 1)) * (1.0 + player.stat("state_duration") + player.stat("turret_life")))
     Strike.world_parent(self).add_child(t)
     t.global_position = player.global_position + dir * 22.0
     _turrets.append(t)

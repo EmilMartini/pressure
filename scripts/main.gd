@@ -1654,6 +1654,7 @@ const FUSION_LOADOUTS := [
 const FAMILY_PROBE := {
     "melee": ["tin_sabre", "frost_hatchet", "thorn_whip", "bone_club"],
     "thrown": ["steel_knives", "clay_grenade", "shock_bola", "frost_javelin"],
+    "summon": ["scout_drone", "ember_imp", "orbit_stones", "wasp_nest"],
 }
 
 

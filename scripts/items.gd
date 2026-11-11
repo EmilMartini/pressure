@@ -502,14 +502,15 @@ const VIAL_CHANCE_CAP := 0.60
 
 ## Tags and resonances (3.1, section 12; Emil's decision: sets became these). Owning 3 items
 ## with a tag forms its resonance; 5 doubles it and adds a visual tier.
-const TAGS := ["vent", "guard", "gunslinger", "seeker", "alchemy", "swift", "fortune", "blade", "thrown"]
+const TAGS := ["vent", "guard", "gunslinger", "seeker", "alchemy", "swift", "fortune", "blade", "thrown", "swarm"]
 const TAG_NAMES := { "vent": "Vent", "guard": "Guard", "gunslinger": "Gunslinger", "seeker": "Seeker",
-    "alchemy": "Alchemy", "swift": "Swift", "fortune": "Fortune", "blade": "Blade", "thrown": "Thrown" }
+    "alchemy": "Alchemy", "swift": "Swift", "fortune": "Fortune", "blade": "Blade", "thrown": "Thrown", "swarm": "Swarm" }
 const TAG_COLORS := {
     "vent": Color(1.00, 0.55, 0.25), "guard": Color(0.65, 0.72, 0.85), "gunslinger": Color(0.95, 0.80, 0.50),
     "seeker": Color(0.55, 0.85, 1.00), "alchemy": Color(0.50, 0.95, 0.55), "swift": Color(0.60, 1.00, 0.92),
     "fortune": Color(1.00, 0.85, 0.30), "blade": Color(0.82, 0.84, 0.92),
     "thrown": Color(0.80, 0.70, 0.55),
+    "swarm": Color(0.70, 0.85, 0.55),
 }
 const RESONANCE_AT := [3, 5]
 ## Tag -> [mods at 3, line at 3]. At 5 every number doubles. An element tag gives +25%
@@ -526,6 +527,8 @@ const RESONANCES := {
     "blade": [{ "reach": 0.15, "swing_speed": 0.15 }, "Reach and swing speed +15%"],
     # Arsenal expansion 5.3: at 5 it doubles and thrown objects split in two on their last hit.
     "thrown": [{ "thrown_bounce": 1 }, "+1 bounce or return hit"],
+    # Arsenal expansion 5.3: at 5 it doubles and summons carry your highest-tier weapon's element.
+    "swarm": [{ "summon_cap": 1 }, "+1 to every summon cap"],
 }
 
 ## Synergies (section 12): two specific items (or an item and a tag's resonance), built on
@@ -614,6 +617,8 @@ func resonance_mods(tag: String, tier: int) -> Dictionary:
         out["blade_wave"] = 1.0
     if tag == "thrown" and tier >= 2:
         out["thrown_split"] = 1.0
+    if tag == "swarm" and tier >= 2:
+        out["swarm_tether"] = 1.0
     return out
 
 
@@ -1258,6 +1263,12 @@ func _do(t: Dictionary, player: Player, ctx: Dictionary) -> void:
             player.ward_t = maxf(player.ward_t, float(t.get("secs", 3.0)))
         "recall":
             Thrown.recall_all(player, float(t.get("mult", 2.0)))
+        "rally":
+            Summon.rally(player, float(t.get("mult", 1.5)))
+        "brood":
+            Summon.brood(player, String(ctx.get("gun", "")), pos, int(t.get("count", 1)), float(t.get("secs", 4.0)))
+        "swarm_call":
+            Summon.brood(player, "", player.global_position, int(t.get("count", 6)), float(t.get("secs", 8.0)))
 
 
 ## The element a vent makes for this player: what they last vented, else hot fire / cold ice.
@@ -1544,6 +1555,51 @@ func _build_catalog() -> void:
     _add("fuse_cutter", "Fuse Cutter", "trinket", C, "Grenade fuses burn 40% faster", { "fuse_cut": 0.40 }, [], TWO)
     _add("hunters_oath", "Hunter's Oath", "head", R, "Thrown +30% damage, guns -20% damage", { "thrown_dmg": 0.30, "gun_dmg": -0.20 }, [], TWO)
     _add("throwing_gloves", "Throwing Gloves", "hands", C, "+12% thrown damage", { "thrown_dmg": 0.12 }, [], TW)
+
+    # ======================= ARSENAL EXPANSION BATCH 3 (5.1, 5.2): Swarm items. All start
+    # locked and open through the summon unlocks in progress.gd and the Summoner Trial.
+    # "family": "summon" on a trigger: only hits and kills by a summon weapon (its bodies
+    # and turrets) fire it. Summon stats: summon_dmg, summon_rate, summon_cap, summon_reach,
+    # summon_speed, summon_size, drone_rate, swarm_respawn, turret_life, shared_mind, tether.
+    var SW := { "tags": ["swarm"], "locked": true }
+    var SWO := { "tags": ["swarm"], "locked": true, "stack": "once" }
+    # Swarm passives (12, behaviour).
+    _add("pack_leader", "Pack Leader", "head", R, "+1 to every summon cap", { "summon_cap": 1 }, [], SW)
+    _add("shared_mind", "Shared Mind", "head", R, "Summons attack your first weapon's target", { "shared_mind": 1 }, [], SWO)
+    _add("brood", "Brood", "trinket", R, "Summon kills hatch a wasp for 4 s", {}, [{ "on": "kill", "family": "summon", "do": "brood", "count": 1, "secs": 4.0 }], SWO)
+    _add("overclock", "Overclock", "trinket", U, "Drones attack 25% faster", { "drone_rate": 0.25 }, [], SW)
+    _add("tether", "Tether", "ring", R, "Summons apply your first weapon's element", { "tether": 1 }, [], SWO)
+    _add("long_leash", "Long Leash", "hands", C, "Summons look 25% further for foes", { "summon_reach": 0.25 }, [], SW)
+    _add("swift_wings", "Swift Wings", "feet", C, "Summons move 30% faster", { "summon_speed": 0.30 }, [], SW)
+    _add("big_brood", "Big Brood", "chest", U, "Summons 25% bigger; orbits circle wider", { "summon_size": 0.25 }, [], SW)
+    _add("feeding_frenzy", "Feeding Frenzy", "trinket", U, "Summon kills: summons +15% damage for 3 s", {}, [{ "on": "kill", "family": "summon", "do": "buff", "key": "summon_dmg", "amount": 0.15, "secs": 3.0 }], SWO)
+    _add("quick_hatch", "Quick Hatch", "chest", U, "Swarm fliers return 40% sooner", { "swarm_respawn": 0.40 }, [], SW)
+    _add("spark_collars", "Spark Collars", "ring", U, "15% of summon hits arc lightning", {}, [{ "on": "hit", "family": "summon", "chance": 0.15, "do": "chain", "potency": 4 }], { "tags": ["swarm", "shock"], "locked": true })
+    _add("turret_oil", "Turret Oil", "trinket", C, "Turrets last 50% longer", { "turret_life": 0.50 }, [], SW)
+    # Summon mods (6): they fit any weapon (a summon weapon's +1 shot is +1 body).
+    _add("spare_rotor", "Spare Rotor", "mod", C, "This weapon: +20% fire rate, -10% damage", { "g_fire_rate": 0.20, "g_dmg": -0.10 }, [], SW)
+    _add("brood_chamber", "Brood Chamber", "mod", R, "This weapon: +1 body or shot, -15% damage", { "g_count": 1, "g_dmg": -0.15 }, [], SW)
+    _add("homing_chip", "Homing Chip", "mod", U, "This weapon: +30% speed, +10% range", { "g_speed": 0.30, "g_range": 0.10 }, [], SW)
+    _add("venom_gland", "Venom Gland", "mod", U, "This weapon: hits also poison, -10% damage", { "extra_element": "poison", "g_dmg": -0.10 }, [], SW)
+    _add("iron_shell", "Iron Shell", "mod", U, "This weapon: +25% damage, -15% fire rate", { "g_dmg": 0.25, "g_fire_rate": -0.15 }, [], SW)
+    _add("swarm_beacon", "Swarm Beacon", "mod", R, "This weapon: +1 pierce, +15% range", { "g_pierce": 1, "g_range": 0.15 }, [], SW)
+    # Summon actives (2).
+    _add("rally", "Rally", "active", U, "Use: every summon dashes to the nearest foe and strikes", {}, [],
+        { "tags": ["swarm"], "locked": true, "active": { "charges": 3, "do": [{ "do": "rally", "mult": 1.5 }] } })
+    _add("call_the_swarm", "Call the Swarm", "active", R, "Use: six wasps fight beside you for 8 s", {}, [],
+        { "tags": ["swarm"], "locked": true, "active": { "charges": 2, "do": [{ "do": "swarm_call", "count": 6, "secs": 8.0 }] } })
+    # Element items: a state item and a reaction item each for Poison, Acid, Blood and Void.
+    _add("venom_sac", "Venom Sac", "trinket", C, "20% of summon hits poison the foe", {}, [{ "on": "hit", "family": "summon", "chance": 0.20, "do": "apply", "element": "poison", "potency": 4 }], { "tags": ["swarm", "poison"], "locked": true, "element": "poison" })
+    _add("tar_pit_censer", "Tar Pit Censer", "trinket", U, "Tar Pit poisons foes nearby", {}, [{ "on": "reaction:Tar Pit", "do": "spread", "element": "poison", "radius": 120, "potency": 4 }], { "tags": ["swarm", "poison"], "locked": true, "element": "poison" })
+    _add("acid_spit", "Acid Spit", "ring", C, "20% of summon hits corrode the foe", {}, [{ "on": "hit", "family": "summon", "chance": 0.20, "do": "apply", "element": "acid", "potency": 4 }], { "tags": ["swarm", "acid"], "locked": true, "element": "acid" })
+    _add("electrolyte", "Electrolyte", "ring", R, "Electrolysis arcs to 2 more foes", {}, [{ "on": "reaction:Electrolysis", "do": "chain", "count": 2, "radius": 220, "potency": 5 }], { "tags": ["swarm", "acid"], "locked": true, "element": "acid" })
+    _add("blood_tick", "Blood Tick", "trinket", C, "20% of summon hits bleed the foe", {}, [{ "on": "hit", "family": "summon", "chance": 0.20, "do": "apply", "element": "blood", "potency": 4 }], { "tags": ["swarm", "blood"], "locked": true, "element": "blood" })
+    _add("thin_blood_charm", "Thin Blood Charm", "chest", U, "Thin Blood bleeds foes nearby", {}, [{ "on": "reaction:Thin Blood", "do": "spread", "element": "blood", "radius": 110, "potency": 4 }], { "tags": ["swarm", "blood"], "locked": true, "element": "blood" })
+    _add("void_collar", "Void Collar", "hands", U, "20% of summon hits mark the foe", {}, [{ "on": "hit", "family": "summon", "chance": 0.20, "do": "mark", "secs": 3.0 }], { "tags": ["swarm", "void"], "locked": true, "element": "void" })
+    _add("whirlpool_bell", "Whirlpool Bell", "trinket", U, "Whirlpool slows foes nearby", {}, [{ "on": "reaction:Whirlpool", "do": "slow", "radius": 150 }], { "tags": ["swarm", "void"], "locked": true, "element": "void" })
+    # Stat and trade-off (2).
+    _add("kennel_keys", "Kennel Keys", "trinket", C, "+12% summon damage", { "summon_dmg": 0.12 }, [], SW)
+    _add("hive_oath", "Hive Oath", "head", R, "Summons +30% damage, guns -20% damage", { "summon_dmg": 0.30, "gun_dmg": -0.20 }, [], SWO)
 
     _add("slipstream_boots", "Slipstream Boots", "feet", R, "Dashing leaves a 2 s trail of your vent element", {}, [{ "on": "dash", "do": "trail", "element": "vent", "secs": 2.0, "secs_per": 1.0 }], { "tags": ["swift", "vent"] })
     _add("shoulder_charge", "Shoulder Charge", "chest", R, "Dashing through enemies hits them for gun damage", { "dash_hit": 1.0 }, [], { "tags": ["swift", "guard"] })

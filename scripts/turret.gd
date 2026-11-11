@@ -24,6 +24,7 @@ func _init(p_gun: Gun, p_life: float) -> void:
 func _ready() -> void:
     modulate.a = Settings.own_fx()   # "Your effects" (friend or foe, see Hostile)
     add_to_group("gun_fx")
+    add_to_group("summon_bodies")   # turrets join the 16-body summon cap (Summon)
     var fx := Strike.fx_of(self)
     if fx != null:
         fx.ring(global_position, 16.0, gun.data.color(), 0.25)
@@ -43,10 +44,22 @@ func _physics_process(delta: float) -> void:
         return
     _cd -= delta
     if _cd <= 0.0:
-        var tgt := Strike.nearest(get_tree(), global_position, gun.effective_range(), {})
-        if tgt != null:
+        # The enemy closest to the turret itself (Focus.pick_from, decision 21).
+        var n := 1 + gun.data.chain_jumps
+        var got := Focus.pick_from(get_tree(), global_position, gun.effective_range(), n)
+        if not got.is_empty():
+            var tgt: Enemy = got[0]
             _aim = (tgt.global_position - global_position).normalized()
-            gun.shoot_from(global_position + _aim * 10.0, _aim)
+            if gun.data.chain_jumps > 0:
+                # Tesla Post: arcs to the closest foes in reach.
+                var s := gun.strike()
+                for e in got:
+                    s.hit(e, 1.0)
+                    gun._arc_fx(global_position + Vector2(0, -10), e.global_position, s.color, s.element)
+                gun.player.add_pressure(gun.data.pressure_per_shot)
+                Summon.sound(gun.data.element, global_position)
+            else:
+                gun.shoot_from(global_position + _aim * 10.0, _aim)
             _cd = 1.0 / maxf(0.1, gun.fire_rate())
         else:
             _cd = 0.15

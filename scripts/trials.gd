@@ -19,8 +19,10 @@ const DEFS := {
         "rewards": ["gun:singularity", "item:return_grip"] },
     "one_element": { "name": "One Element", "rule": "Every weapon you find shares your first weapon's element.",
         "rewards": ["gun:glint_beam", "gun:harpoon", "item:pin_cushion"] },
+    "summoner": { "name": "Summoner", "rule": "Summons only: no weapon of yours may fire. You start with a Scout Drone.",
+        "rewards": ["gun:hive_queen", "item:call_the_swarm", "item:hive_oath"] },
 }
-const ORDER := ["blades_only", "no_guns", "one_element"]
+const ORDER := ["blades_only", "no_guns", "one_element", "summoner"]
 
 static var _element := -1   # one_element: the run's element, fixed at the start
 
@@ -61,6 +63,8 @@ static func allows(id: String) -> bool:
             return Guns.family_of(id) == "melee"
         "no_guns":
             return Guns.family_of(id) != "gun"
+        "summoner":
+            return Guns.family_of(id) == "summon"
         "one_element":
             if _element < 0:
                 return true
@@ -89,6 +93,12 @@ static func start(player: Player) -> void:
             if player.guns.is_empty():
                 player.add_gun("steel_knives", false)
                 player.add_gun("tin_sabre", false)
+        "summoner":
+            for g in player.guns.duplicate():
+                if g.data.family != "summon":
+                    player.drop_gun(g)
+            if player.guns.is_empty():
+                player.add_gun("scout_drone", false)
         "one_element":
             if player.guns.is_empty():
                 player.add_gun("water_pistol", false)

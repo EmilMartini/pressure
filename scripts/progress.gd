@@ -9,7 +9,7 @@ signal unlocked(unlock_id: String, achievement_name: String)
 const SAVE_PATH := "user://save.json"
 
 ## Always available, run one included.
-const BASE_UNLOCKS := ["gun:water_pistol", "gun:arc_rifle", "gun:flare_pistol", "gun:slick_wand", "gun:tin_sabre", "gun:steel_knives", "obstacle:pool", "mark:vagrant"]
+const BASE_UNLOCKS := ["gun:water_pistol", "gun:arc_rifle", "gun:flare_pistol", "gun:slick_wand", "gun:tin_sabre", "gun:steel_knives", "gun:scout_drone", "obstacle:pool", "mark:vagrant"]
 
 ## stat: the Progress stat that counts toward it. goal: the number to reach.
 ## Phase 3: the counter guns below moved to lessons (scripts/lessons.gd): oil_slinger,
@@ -257,6 +257,46 @@ const ACHIEVEMENTS := [
         "stat": "kills_thrown", "goal": 1800, "rewards": ["gun:crossing_axes", "item:magnet_glove", "item:firebrand_sash", "item:catch_spark"] },
     { "id": "thrown_mastery_8", "name": "Throws VIII", "desc": "Kill 2600 enemies with thrown weapons",
         "stat": "kills_thrown", "goal": 2600, "rewards": ["gun:drowned_anchor", "item:second_throw", "item:knife_storm", "item:twin_throw"] },
+    # Arsenal expansion batch 3 (6.2): summons. Play goals open the Commons and Uncommons,
+    # each with one Swarm item; summon mastery (kills by summon weapons, their bodies and
+    # turrets) opens the Rares and Epics in family order. Scout Drone is in BASE_UNLOCKS;
+    # Hive Queen comes from the Summoner Trial (Trials.DEFS).
+    { "id": "summon_play_1", "name": "Imp Keeper", "desc": "Kill 250 enemies",
+        "stat": "kills", "goal": 250, "rewards": ["gun:ember_imp", "item:kennel_keys"] },
+    { "id": "summon_play_2", "name": "Rock Garden", "desc": "Clear 20 rooms",
+        "stat": "rooms", "goal": 20, "rewards": ["gun:orbit_stones", "item:swift_wings"] },
+    { "id": "summon_play_3", "name": "Beekeeper", "desc": "Set off 600 reactions",
+        "stat": "reactions", "goal": 600, "rewards": ["gun:wasp_nest", "item:venom_sac"] },
+    { "id": "summon_play_4", "name": "Sentry Duty", "desc": "Kill 12 elites",
+        "stat": "elites", "goal": 12, "rewards": ["gun:frost_sentry", "item:spare_rotor"] },
+    { "id": "summon_play_5", "name": "Cloud Seeder", "desc": "Vent 35 times",
+        "stat": "vents", "goal": 35, "rewards": ["gun:rain_drone", "item:acid_spit"] },
+    { "id": "summon_play_6", "name": "Tar Baby", "desc": "Start 7 runs",
+        "stat": "runs_started", "goal": 7, "rewards": ["gun:tar_crawler", "item:blood_tick"] },
+    { "id": "summon_play_7", "name": "Kite Flyer", "desc": "Clear 10 floors",
+        "stat": "floors", "goal": 10, "rewards": ["gun:storm_kite", "item:long_leash"] },
+    { "id": "summon_play_8", "name": "Ooze", "desc": "Kill 1200 enemies",
+        "stat": "kills", "goal": 1200, "rewards": ["gun:acid_slime", "item:homing_chip"] },
+    { "id": "summon_play_9", "name": "Will o' Wisp", "desc": "Discover 11 different reactions",
+        "stat": "reactions_discovered", "goal": 11, "rewards": ["gun:holy_wisps", "item:quick_hatch"] },
+    { "id": "summon_play_10", "name": "Leechcraft", "desc": "Beat 4 bosses",
+        "stat": "bosses", "goal": 4, "rewards": ["gun:leech_jar", "item:void_collar"] },
+    { "id": "summon_mastery_1", "name": "Swarm I", "desc": "Kill 60 enemies with summon weapons",
+        "stat": "kills_summon", "goal": 60, "rewards": ["gun:watchers_eye", "item:pack_leader", "item:iron_shell"] },
+    { "id": "summon_mastery_2", "name": "Swarm II", "desc": "Kill 150 enemies with summon weapons",
+        "stat": "kills_summon", "goal": 150, "rewards": ["gun:tesla_post", "item:spark_collars", "item:rally"] },
+    { "id": "summon_mastery_3", "name": "Swarm III", "desc": "Kill 300 enemies with summon weapons",
+        "stat": "kills_summon", "goal": 300, "rewards": ["gun:blood_hound", "item:thin_blood_charm", "item:venom_gland"] },
+    { "id": "summon_mastery_4", "name": "Swarm IV", "desc": "Kill 500 enemies with summon weapons",
+        "stat": "kills_summon", "goal": 500, "rewards": ["gun:frost_blades", "item:big_brood", "item:tar_pit_censer"] },
+    { "id": "summon_mastery_5", "name": "Swarm V", "desc": "Kill 800 enemies with summon weapons",
+        "stat": "kills_summon", "goal": 800, "rewards": ["gun:mortar_drone", "item:overclock", "item:whirlpool_bell"] },
+    { "id": "summon_mastery_6", "name": "Swarm VI", "desc": "Kill 1200 enemies with summon weapons",
+        "stat": "kills_summon", "goal": 1200, "rewards": ["gun:clay_golem", "item:turret_oil", "item:electrolyte"] },
+    { "id": "summon_mastery_7", "name": "Swarm VII", "desc": "Kill 1800 enemies with summon weapons",
+        "stat": "kills_summon", "goal": 1800, "rewards": ["gun:thunderhead", "item:shared_mind", "item:feeding_frenzy", "item:swarm_beacon"] },
+    { "id": "summon_mastery_8", "name": "Swarm VIII", "desc": "Kill 2600 enemies with summon weapons",
+        "stat": "kills_summon", "goal": 2600, "rewards": ["gun:sun_and_moon", "item:brood", "item:tether", "item:brood_chamber"] },
 ]
 
 var save_path := SAVE_PATH

@@ -998,8 +998,11 @@ func _die() -> void:
         Elements.nova.emit(global_position, radius * 2.5, Color(Element.COLORS[Element.Kind.ICE], 0.6))
     if last_hit_by != null and is_instance_valid(last_hit_by):
         var ctx := { "target": self, "pos": global_position, "elite": is_elite, "gun": Telemetry.shot_gun() }
-        if Guns.family_of(String(ctx["gun"])) == "thrown":
+        var fam := Guns.family_of(String(ctx["gun"]))
+        if fam == "thrown":
             Progress.add("kills_thrown")   # thrown mastery (Arsenal expansion 6.2)
+        elif fam == "summon":
+            Progress.add("kills_summon")   # summon mastery (Arsenal expansion 6.2)
         Items.fire(last_hit_by, "kill", ctx)
         if is_elite:
             Items.fire(last_hit_by, "elite_kill", ctx)

@@ -199,6 +199,70 @@ static func icon(id: String) -> Texture2D:
             _poly(img, [Vector2(30, 2), Vector2(24, 4), Vector2(28, 8)], edge)
             _stroke(img, Vector2(25, 8), Vector2(22, 7), 1.0, METAL)
             _stroke(img, Vector2(5, 22), Vector2(10, 27), 1.0, Color(0.6, 0.5, 0.35))
+        # --- Summons (batch 3): round bodies with an element core and a darker rim ------
+        "drone":
+            _stroke(img, Vector2(5, 9), Vector2(13, 9), 1.5, METAL)
+            _stroke(img, Vector2(19, 9), Vector2(27, 9), 1.5, METAL)
+            _stroke(img, Vector2(10, 11), Vector2(13, 14), 1.5, METAL_DARK)
+            _stroke(img, Vector2(22, 11), Vector2(19, 14), 1.5, METAL_DARK)
+            _disc(img, Vector2(16, 18), 9.0, edge.darkened(0.55))
+            _disc(img, Vector2(16, 18), 5.5, edge)
+            if d.behaviour == "rain":
+                for x in [11, 16, 21]:
+                    _stroke(img, Vector2(x, 27), Vector2(x - 1, 30), 1.0, second)
+            elif d.behaviour == "lob":
+                _disc(img, Vector2(16, 28), 2.5, METAL_DARK)
+            elif d.id == "watchers_eye":
+                _disc(img, Vector2(17, 18), 2.5, Color(0.05, 0.02, 0.08))
+            else:
+                _disc(img, Vector2(14, 16), 1.5, Color(1, 1, 1, 0.9))
+        "familiar":
+            _poly(img, [Vector2(7, 9), Vector2(11, 3), Vector2(13, 11)], edge.darkened(0.4))
+            _poly(img, [Vector2(25, 9), Vector2(21, 3), Vector2(19, 11)], second.darkened(0.4))
+            _disc(img, Vector2(16, 18), 10.0, edge.darkened(0.5))
+            _disc(img, Vector2(16, 19), 7.0, edge)
+            if second != edge:
+                _poly(img, [Vector2(16, 9), Vector2(26, 18), Vector2(16, 28)], second)
+            _disc(img, Vector2(12, 16), 1.6, OUTLINE)
+            _disc(img, Vector2(20, 16), 1.6, OUTLINE)
+        "orbit":
+            for k in 8:
+                var a0 := TAU * float(k) / 8.0
+                _stroke(img, Vector2(16, 16) + Vector2.RIGHT.rotated(a0) * 10.0, Vector2(16, 16) + Vector2.RIGHT.rotated(a0 + 0.4) * 10.0, 1.0, Color(METAL, 0.6))
+            _disc(img, Vector2(16, 16), 3.0, METAL_DARK)
+            var n := clampi(d.summon_bodies(), 1, 3)
+            for k in n:
+                var at := Vector2(16, 16) + Vector2.RIGHT.rotated(-PI * 0.25 + TAU * float(k) / float(n)) * 10.0
+                _disc(img, at, 4.5, edge.darkened(0.5))
+                _disc(img, at, 3.0, edge if k % 2 == 0 else second)
+        "swarm":
+            _poly(img, [Vector2(5, 22), Vector2(9, 15), Vector2(17, 15), Vector2(21, 22), Vector2(17, 29), Vector2(9, 29)], Color(0.62, 0.5, 0.32))
+            _disc(img, Vector2(13, 22), 2.5, OUTLINE)
+            for at in [Vector2(22, 8), Vector2(27, 14), Vector2(17, 6), Vector2(26, 23)]:
+                _disc(img, at, 2.2, edge)
+                _stroke(img, at + Vector2(-2, -2), at + Vector2(0, -1), 1.0, Color(1, 1, 1, 0.7))
+            if second != edge:
+                _disc(img, Vector2(22, 8), 2.2, second)
+        "golem":
+            _poly(img, [Vector2(7, 18), Vector2(25, 18), Vector2(25, 29), Vector2(7, 29)], Color(0.50, 0.40, 0.31))
+            _poly(img, [Vector2(10, 9), Vector2(22, 9), Vector2(22, 19), Vector2(10, 19)], Color(0.60, 0.50, 0.40))
+            _disc(img, Vector2(16, 6), 4.0, Color(0.55, 0.45, 0.36))
+            _disc(img, Vector2(16, 6), 2.0, edge)
+            _stroke(img, Vector2(4, 16), Vector2(8, 24), 3.0, Color(0.5, 0.4, 0.31))
+            _stroke(img, Vector2(28, 16), Vector2(24, 24), 3.0, Color(0.5, 0.4, 0.31))
+        "turret":
+            _stroke(img, Vector2(16, 20), Vector2(8, 29), 1.5, METAL_DARK)
+            _stroke(img, Vector2(16, 20), Vector2(24, 29), 1.5, METAL_DARK)
+            _stroke(img, Vector2(16, 20), Vector2(16, 29), 1.5, METAL_DARK)
+            if d.chain_jumps > 0:
+                _stroke(img, Vector2(16, 20), Vector2(16, 6), 3.0, METAL)
+                _disc(img, Vector2(16, 6), 4.0, edge)
+                _stroke(img, Vector2(20, 5), Vector2(26, 2), 1.0, edge)
+                _stroke(img, Vector2(12, 5), Vector2(6, 2), 1.0, edge)
+            else:
+                _disc(img, Vector2(16, 16), 7.0, METAL_DARK)
+                _disc(img, Vector2(16, 16), 4.5, edge)
+                _stroke(img, Vector2(18, 14), Vector2(28, 6), 3.0, METAL)
         _:   # sweep: a blade, a guard, a grip
             _stroke(img, Vector2(4, 28), Vector2(9, 23), 3.0, GRIP)
             _stroke(img, Vector2(6, 19), Vector2(13, 26), 2.5, second if second != edge else METAL_DARK)

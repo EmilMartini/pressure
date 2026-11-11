@@ -47,6 +47,12 @@ const ARCHETYPES := {
     "harpoon": ["shot", "a barbed shot that reels its foe in"],
     "sniper": ["shot", "slow shots; long hits always crit"],
     "hymn": ["shot", "hits harder as your health falls"],
+    # Arsenal expansion batch 3: summon styles (Summon). Turrets keep "turret".
+    "drone": ["summon", "a drone hovers by you and shoots its own target"],
+    "familiar": ["summon", "a familiar runs at foes and bites"],
+    "orbit": ["summon", "bodies circle you and hit what they touch"],
+    "swarm": ["summon", "fliers strike once, then come back"],
+    "golem": ["summon", "a slow golem walks with you and slams packs"],
 }
 
 ## Arsenal expansion 2.1: every weapon belongs to one of five families. The family comes
@@ -57,7 +63,8 @@ const FAMILY_OF := {
     "boomerang": "thrown", "mortar": "thrown", "thrower": "thrown",
     "knife": "thrown", "disc": "thrown", "star": "thrown", "grenade": "thrown", "javelin": "thrown",
     "bola": "thrown", "anchor": "thrown",
-    "turret": "summon",
+    "turret": "summon", "drone": "summon", "familiar": "summon", "orbit": "summon", "swarm": "summon",
+    "golem": "summon",
     "nova": "ground", "mine": "ground",
 }
 const FAMILY_NAMES := { "gun": "Gun", "melee": "Melee", "thrown": "Thrown", "summon": "Summon", "ground": "Ground" }
@@ -133,6 +140,33 @@ const CHAIN_FALLOFF := 0.75
 const SPIN_FLOOR := 0.4
 
 
+## Summons: bodies this weapon keeps up, before items (Summon.cap_of adds those).
+func summon_bodies() -> int:
+    return cap if cap > 0 else int(Summon.STYLE_CAP.get(style, 1))
+
+
+## Share of the per-body rate that lands on one target: swarm fliers spend most of their time
+## flying back and respawning; orbits pass a still target now and then.
+func summon_share() -> float:
+    match style:
+        "swarm":
+            if behaviour == "latch":
+                return 1.0   # leeches stay on until the foe dies
+            return 1.0 / (1.0 + fire_rate * (Summon.SWARM_RESPAWN + 0.3))
+        "orbit":
+            # A body passes a still foe on its ring once a lap.
+            return minf(1.0, projectile_speed / (TAU * maxf(20.0, aura_radius)) / maxf(0.1, fire_rate))
+    return 1.0
+
+
+func _bodies_word(noun: String) -> String:
+    var n := summon_bodies()
+    if n <= 1:
+        return "A " + noun
+    var words := ["", "One", "Two", "Three", "Four", "Five", "Six"]
+    return "%s %ss" % [words[n] if n < words.size() else str(n), noun]
+
+
 func family_name() -> String:
     return String(FAMILY_NAMES.get(family, "Gun"))
 
@@ -164,6 +198,8 @@ func dps_at(dmg: float, rate: float) -> float:
             return dmg * rate * shots
         "turret":
             return dmg * rate * float(projectile_count)
+        "summon":
+            return dmg * rate * float(summon_bodies()) * summon_share()
     if magazine > 0 and rate > 0.0:
         # Revolver: the magazine at the trigger rate, then the reload.
         var mag := float(magazine)
@@ -238,7 +274,19 @@ func how() -> String:
         "mine":
             return "Tosses mines that burst when an enemy steps near (%.0f s)" % linger
         "turret":
+            if chain_jumps > 0:
+                return "Deploys a post that arcs to %d foes for %.0f s" % [chain_jumps + 1, linger]
             return "Deploys a turret that fires on its own for %.0f s" % linger
+        "drone":
+            return "%s hover%s by you, %s" % [_bodies_word("drone"), "" if summon_bodies() > 1 else "s", "lobbing bombs" if behaviour == "lob" else ("raining on packs" if behaviour == "rain" else "zapping the closest foe")]
+        "familiar":
+            return "%s run%s at foes and bite%s" % [_bodies_word("familiar"), "" if summon_bodies() > 1 else "s", "" if summon_bodies() > 1 else "s"]
+        "orbit":
+            return "%s circle you %.0f px out, hitting what they touch" % [_bodies_word("orbiter"), aura_radius]
+        "swarm":
+            return "%s strike once, back after %.0f s" % [_bodies_word("flier"), Summon.SWARM_RESPAWN]
+        "golem":
+            return "A golem walks with you and slams packs (%.0f px)" % aura_radius
         "knife":
             return "%d knives stick for %.1f s, then fly back" % [projectile_count, Thrown.STICK]
         "disc":

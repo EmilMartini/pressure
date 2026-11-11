@@ -57,8 +57,9 @@ func update(p: Player, delta: float) -> void:
         cands.append(e)
     var claims := {}   # enemy instance id -> guns with it as their first target
     for g in p.guns:
-        if g.data.family == "melee":
-            g.targets = []   # melee takes no Focus slot: it swings at what is in reach (2.1)
+        if g.data.family == "melee" or g.data.mechanic == "summon":
+            # Melee swings at what is in reach; summon bodies pick from themselves (2.1).
+            g.targets = []
             continue
         var rng := g.effective_range()
         var r2 := rng * rng
@@ -122,6 +123,33 @@ func update(p: Player, delta: float) -> void:
         g.targets = picked
     _probe(p)
     _probe_focus(p, cands)
+
+
+## Summon targeting (Arsenal expansion 2.1, 2.5): up to `n` live enemies within `reach` of
+## `origin` (the body itself), closest to it first, skipping `skip`. With an `anchor`, only
+## enemies within `leash` of it count (a body never chases past its player's leash). Every
+## enemy weighs the same (decision 21). Summons take no Focus slot and no part in the
+## 2-per-enemy spread.
+static func pick_from(tree: SceneTree, origin: Vector2, reach: float, n: int, skip: Dictionary = {}, anchor := Vector2.INF, leash := INF) -> Array:
+    var r2 := reach * reach
+    var l2 := leash * leash
+    var scored: Array = []
+    for e in EnemyGrid.nodes(tree, &"enemies"):
+        if not is_instance_valid(e) or e.is_queued_for_deletion() or not e is Enemy or e.emerge > 0.0 or e.hp <= 0.0 or skip.has(e):
+            continue
+        var d2: float = e.global_position.distance_squared_to(origin)
+        if d2 > r2:
+            continue
+        if anchor != Vector2.INF and e.global_position.distance_squared_to(anchor) > l2:
+            continue
+        scored.append([d2, e])
+    scored.sort_custom(func(a, b): return a[0] < b[0])
+    var out: Array = []
+    for pair in scored:
+        if out.size() >= n:
+            break
+        out.append(pair[1])
+    return out
 
 
 func _drop_dead(p: Player) -> void:
