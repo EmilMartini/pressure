@@ -1565,8 +1565,10 @@ to carry over: weapons and their checks come first.
 - **The drought rule (3.3):** `Progress` stat `legendary_drought` counts runs that reached
   floor 2 without an offer (counted on reaching floor 2, reset to 0 by any offer). After 4,
   the next run's first treasure room from floor 2 holds a legendary weapon (if one is
-  unlocked and `rarity:legendary` is). Not exercised by a bot: no bot save has a legendary
-  unlocked yet.
+  unlocked and `rarity:legendary` is). Checked with `--veteran --drought=N` (sets the
+  count on the bot save): at 4, starting on floor 2, the treasure room held Stormcrown and
+  its drop moment fired; at 4 from floor 1, Prism Disc on reaching floor 2; at 3, nothing
+  forced. `[DROUGHT] floor=N treasure weapon=id legendary=true` when it fires.
 - **The drop moment** (beam, sound, hit-stop, gold card) already keyed on rarity 4, so it
   fires for legendary weapon pedestals unchanged. `--drop-probe` now also places one random
   legendary weapon pedestal: `[DROP-MOMENT] legendary=6` in each of three runs.

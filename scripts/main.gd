@@ -231,6 +231,12 @@ func _ready() -> void:
                 if String(k) != "":
                     Progress.unlocks["kit:" + String(k)] = true
             print("[VETERAN] pool: %d guns" % Guns.ids().size())
+        for a in args:
+            if a.begins_with("--drought="):
+                # Batch 5: the legendary drought rule on a bot save (Legendary.drought_due).
+                Progress.stats["legendary_drought"] = int(a.substr(10))
+                Progress.unlocks["rarity:legendary"] = true
+                print("[DROUGHT] set to %d" % int(a.substr(10)))
         # The bot plays the Unmarked with a bare Kit unless told otherwise. `--class=<old
         # class>` is that class's Kit and Mark (`-- --autotest --class=pyromancer`);
         # `--kit=<gun>`, `--mark=<id>`, `--relic=<item>` and `--vow=<id>` set one slot.

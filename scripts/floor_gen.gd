@@ -364,6 +364,8 @@ static func _stock_rooms_reset(rooms: Dictionary, floor_number: int, luck: float
                         var wid := Drops.roll_gun(players, [], want, Items.Rarity.LEGENDARY if due else Items.Rarity.UNCOMMON)
                         if due and wid == "":
                             wid = Drops.roll_gun(players, [], Items.roll_rarity("treasure", floor_number, luck, true), Items.Rarity.UNCOMMON)
+                        if due and OS.get_cmdline_user_args().has("--autotest"):
+                            print("[DROUGHT] floor=%d treasure weapon=%s legendary=%s" % [floor_number, wid, str(wid != "" and Legendary.is_legend(wid))])
                         if wid != "":
                             cards[at] = weapon_offer(wid, floor_number)
                 for c in cards:
