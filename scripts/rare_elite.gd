@@ -17,8 +17,11 @@ extends RefCounted
 
 const FLOOR_CHANCE := 0.55
 const SPAWN_AT := 4.0          # s into the arena (a pending rare comes at once when the rest is dead)
-const HP_SECS := 8.0           # health: this many seconds of the build's measured damage
-const HP_ELITE := 1.8          # at least this many times an elite's base health
+const HP_SECS := 8.0           # health: this many seconds of the build's measured damage (P)
+const HP_ELITE := 2.5          # at least this many times an elite's base health
+## P reads low against a single body (the crowd spreads it), so the rare is also sized by how
+## fast this run kills its plain elites: KILL_SECS of that damage (an elite dies in 2 to 3 s).
+const KILL_SECS := 7.0
 const SIZE := 1.25
 const NAME_SECS := 2.6
 const SLAM_EVERY := 4.2
@@ -47,6 +50,7 @@ const NAMES := {
 }
 
 static var _dry := 0           # floors in a row without a rare
+static var _elite_dps := 0.0   # damage a second this run puts into its plain elites (smoothed)
 static var spawned_run := 0
 static var killed_run := 0
 ## Bot probe --rare-every: every floor has one.
@@ -59,6 +63,7 @@ static func plan_floor(floor_number: int, arenas: int, first_gun_picks: int) -> 
         _dry = 0
         spawned_run = 0
         killed_run = 0
+        _elite_dps = 0.0
     if Main.old_balance:
         return -1
     var has := force or _dry >= 1 or randf() < FLOOR_CHANCE
@@ -70,6 +75,22 @@ static func plan_floor(floor_number: int, arenas: int, first_gun_picks: int) -> 
     var lo := first_gun_picks + 1 if floor_number == 1 else 1
     var hi := maxi(lo, mini(arenas - 2, lo + 2))
     return randi_range(lo, hi)
+
+
+## A plain elite died: how fast this run kills one (Room._on_enemy_died; t0 is Main._clock at
+## spawn, game time, so hit-stops and slow motion do not count).
+static func note_elite(e: Enemy, now: float) -> void:
+    if not e.has_meta("t0"):
+        return
+    var secs := now - float(e.get_meta("t0")) - Enemy.EMERGE_SECS
+    if secs < 0.4:
+        return
+    var dps := e.max_hp / secs
+    _elite_dps = dps if _elite_dps <= 0.0 else lerpf(_elite_dps, dps, 0.35)
+
+
+static func elite_dps() -> float:
+    return _elite_dps
 
 
 ## One name entry for the region, [name, tint, pattern].
@@ -87,9 +108,9 @@ static func apply(e: Enemy, region_id: String, power: float, diff: int, floor_nu
         affix = SpawnTable.elite_affix(maxi(diff, 10), floor_number)
         if affix != "" and not (pat == "nova" and affix == "barrage"):
             break
-    e.rare = { "name": String(p[0]), "pat": pat, "t": 2.0, "warn": 0.0, "name_t": NAME_SECS, "from": Vector2.ZERO, "to": Vector2.ZERO, "t0": Time.get_ticks_msec() }
+    e.rare = { "name": String(p[0]), "pat": pat, "t": 2.0, "warn": 0.0, "name_t": NAME_SECS, "from": Vector2.ZERO, "to": Vector2.ZERO, "t0": 0.0 }
     e.base_color = p[1]
-    e.max_hp = maxf(e.max_hp * HP_ELITE, power * HP_SECS)
+    e.max_hp = maxf(maxf(e.max_hp * HP_ELITE, power * HP_SECS), _elite_dps * KILL_SECS)
     e.hp = e.max_hp
     e.radius *= SIZE
     e._sprite_scale *= SIZE

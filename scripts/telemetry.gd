@@ -25,7 +25,7 @@ extends Node
 ## VERSION: bump it by hand with each phase or shared build (date plus phase tag).
 ## COMMIT: stays "dev" in the repository; the export steps (`.github/workflows/deploy.yml`,
 ## `tools/export_exe.sh`) stamp the short commit hash into it before exporting.
-const VERSION := "2026.11.11-talents"
+const VERSION := "2026.11.11-rare1"
 const COMMIT := "dev"
 const BUILD := VERSION + "+" + COMMIT
 ## Where finished runs are POSTed (a Cloudflare Worker or Apps Script URL). Empty = local only.
@@ -1298,6 +1298,9 @@ func enemy_label(e: Node) -> String:
     var boss_kind := String(e.get("boss_kind"))
     if kind == "boss" and boss_kind != "":
         return "boss:" + boss_kind
+    var rare = e.get("rare")
+    if rare is Dictionary and not (rare as Dictionary).is_empty():
+        return "rare"   # a rare elite (RareElite): its slam, nova and affix hits
     return kind
 
 

@@ -1283,13 +1283,14 @@ func _spawn_rare() -> void:
     var e := _spawn_enemy("elite", _spawn_point())
     e.emerge = Enemy.EMERGE_SECS
     RareElite.apply(e, main.region_id, main.measured_power(), main.difficulty(), main.floor_number)
+    e.rare["t0"] = main._clock
     var pairs := Elements.available_reactions(main.party_elements())
     if not pairs.is_empty():
         e.set_shield(pairs.pick_random(), 2 + main.difficulty() / 4)
     Telemetry.elite_spawned(e)
     Telemetry.event("rare_spawned", { "floor": main.floor_number, "region": main.region_id, "arena": main.floor_arenas_done() + 1, "name": String(e.rare["name"]), "pat": String(e.rare["pat"]), "affix": e.affix, "hp": roundf(e.max_hp), "power": roundf(main.measured_power()) })
     if main.autotest:
-        print("[RARE] spawned floor=%d region=%s arena=%d name=%s pat=%s affix=%s hp=%.0f P=%.0f" % [main.floor_number, main.region_id, main.floor_arenas_done() + 1, String(e.rare["name"]), String(e.rare["pat"]), e.affix, e.max_hp, main.measured_power()])
+        print("[RARE] spawned floor=%d region=%s arena=%d name=%s pat=%s affix=%s hp=%.0f P=%.0f elite_dps=%.0f" % [main.floor_number, main.region_id, main.floor_arenas_done() + 1, String(e.rare["name"]), String(e.rare["pat"]), e.affix, e.max_hp, main.measured_power(), RareElite.elite_dps()])
 
 
 ## The rare elite's reward row: 1 of 2, Rare or better (a step up REWARD_UP of the time), one
@@ -1338,6 +1339,7 @@ func _spawn_elite(count: int) -> void:
     for i in count:
         var e := _spawn_enemy("elite", _spawn_point())
         e.emerge = Enemy.EMERGE_SECS
+        e.set_meta("t0", main._clock)
         if Main.old_balance:
             var out := main.floor_arena_dps()
             if main.floor_number >= 2 and out > 0.0:
@@ -1464,10 +1466,12 @@ func _on_enemy_died(e: Enemy) -> void:
             materials.ignite(e.global_position, e.radius * 1.5)
     if e.is_elite and data.type == RoomData.Type.CHALLENGE:
         _elites_alive -= 1
+    if e.is_elite and e.kind_name == "elite" and e.rare.is_empty():
+        RareElite.note_elite(e, main._clock)
     if not e.rare.is_empty():
         _rare_killed = true
         RareElite.killed_run += 1
-        var secs := float(Time.get_ticks_msec() - int(e.rare["t0"])) / 1000.0
+        var secs := main._clock - float(e.rare["t0"]) - Enemy.EMERGE_SECS
         Telemetry.event("rare_killed", { "floor": main.floor_number, "name": String(e.rare["name"]), "secs": snappedf(secs, 0.1) })
         if main.autotest:
             print("[RARE] killed floor=%d name=%s secs=%.1f" % [main.floor_number, String(e.rare["name"]), secs])
