@@ -1081,7 +1081,8 @@ passes, and the Trials board opens three Trials.
 | Fusion probe, idle bot | `[FUSION-CHECK] PASS` (also in every bot run); the standard idle bot dies on floor 1 at 35 s | yes |
 | Hub walk | `[HUB-WALK] PASS`, `[HUB-FRESH] PASS`. With a kept save, the trials station passes: 3 Trials, 3 open with `--trials-open` and 0 open below 5 runs | yes |
 | Trial starts (`--trial=no_guns`, `--trial=one_element`) | `[TRIAL] no_guns start weapons=steel_knives,tin_sabre`; `[TRIAL] one_element start weapons=water_pistol` | yes |
-| Load check (`--editor --quit`) | 0 `SCRIPT ERROR` | yes |
+| Load check (`--editor --quit`) | 0 `SCRIPT ERROR`, before and after the rebase | yes |
+| Smoke (`tools/exe_smoke.sh`, run on instances 891 to 893) | `[SMOKE] ALL PASS` after the rebase | yes |
 | Smoke | `[SMOKE] ALL PASS` | yes |
 | Emil's files | `save.json` and `mastery.json` were last written at 13:45, before this session, and the last `runs.jsonl` lines are his own (`bot:false`, the hitfeel build). Every bot used `--instance` | yes |
 
@@ -1461,9 +1462,9 @@ the end of floor 3, and the screen check passes.
 | Check | Result | Pass |
 |---|---|---|
 | Weapon bands (`--gun-probe`, 8 s) | Single (band x60% x premium): Ember Halo 15.6 (15.0), Snap Trap 15.8 (15.0), Frost Totem 14.0 (15.0), Tide Ring 14.6 (15.0), Slick Field 11.7 (15.8), Wind Chime 15.0 (15.8), Spark Mine 20.6 (21.4), Thirst 16.4 (15.8), Rift Snare 21.0 (22.4), Pyre Totem 22.4 (22.4), Hoarfrost 17.4 (22.4), Corrosion Halo 23.4 (22.4), Lightning Rods 19.0 (22.4), Geyser Field 28.3 at 14 damage, now 15 (31.2), Ash Garden 23.2 (24.2), Collapse Mine 32.0 (31.2). Packs against 110% of the best gun of the weight (w2 96, w3 133, w4 224): Slick Field 93.6, Tide Ring 73, Hoarfrost 131.5, Rift Snare 94.5, Ash Garden 132, Geyser 178, Collapse Mine 185; the rest lower. Trails and glyphs read 0 (the probe stands still and nothing dies) | yes; fields sit under on single by design (their pack carries them) |
-| Family probe (`--family-probe=ground --kite --mastery=full`) | Before the rebase: 3 of 3 reach floor 3 (at 815, 944 and 940 s). After: see below | yes (needs 2 of 4) |
-| Ground stand-still (`--idle --family-probe=ground --build=human6980 --mastery=full --start-floor=2`) | 2 of 2 die on floor 2, at 38 and 39 s; 4.25 and 4.08 bars a minute; under 50% health 0.58 and 0.64 | yes |
-| Pressure, still against moving (floor 2) | Ground idle 4.08 to 4.25 against ground kite 0.07 | yes (at least 2x) |
+| Family probe (`--family-probe=ground --kite --mastery=full`) | Before the rebase on the enemy roster, moments and secrets: 3 of 3 reach floor 3 (at 815, 944 and 940 s). After it: 2 of 2 reach floor 3 (at 766 and 822 s; stopped there) | yes (needs 2 of 4) |
+| Ground stand-still (`--idle --family-probe=ground --build=human6980 --mastery=full --start-floor=2`) | Before the rebase: 2 of 2 die on floor 2, at 38 and 39 s (4.25 and 4.08 bars a minute). After it: 2 of 2 die on floor 2, at 34 and 46 s (4.84 and 4.21 bars a minute; under 50% health 0.65 and 0.69) | yes |
+| Pressure, still against moving (floor 2) | Ground idle 4.08 to 4.84 against ground kite 0.03 to 0.10 | yes (at least 2x) |
 | Frame time (`--ground-perf`, real time, headless, a shared CPU) | 40 dummies: a strong AoE gun build (Mist Sprayer, Arc Rifle, Flare Pistol, Frost Caster) adds 13.2 ms a frame; the ground build at its caps 16.4 ms; the cap filled to 33 units 17.7 ms. With hits switched off, 40 effects cost nothing measurable: it is all hit cost (reactions, item triggers, hit feel) | **near miss**: about 3 ms over a gun build, 4.5 ms with the cap full (the spec allows 2) |
 | Frame time in play (`--perf`, kite, real time) | Floor 1: ground 1% low 53 fps, p99 16.4 ms against a gun loadout's 44 fps, 18.2 ms. Floor 3: 45 against 40 fps, p99 18.8 against 20.8 ms. Natural play peaked at 26 ground units | yes |
 | Cards (`--card-shot`) | `[CARDS] PASS 550`, at most 23 words, at most 298 px tall | yes |
