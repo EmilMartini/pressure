@@ -128,6 +128,7 @@ static func half_arc(g: Gun, style: String = "") -> float:
 ## One swing, alive for `dur` seconds while the weapon travels its path (A9).
 class Swing:
     var style := ""
+    var reach := 0.0         # the player's reach (+4): no tip goes past it from the player
     var el := 0
     var full := false        # a full spin: pivots on the player, not the hover spot
     var finisher := false
@@ -227,7 +228,6 @@ static func _start(g: Gun, e: Enemy, dir: Vector2, style: String, el: int, full:
         s.potency *= 1.0 + (crit_mult - 1.0) * 0.5
     sw.s = s
     var r := reach(g)
-    var off := g.global_position.distance_to(p.global_position)
     var piv := p.global_position if full else g.global_position
     var aim := e.global_position if e != null else p.global_position + dir * r * 0.8
     var er := float(e.radius) if e != null else 10.0
@@ -237,20 +237,22 @@ static func _start(g: Gun, e: Enemy, dir: Vector2, style: String, el: int, full:
     sw.extra = int(p.stat("bounce"))
     sw.wave = p.stat("blade_wave") > 0.0
     var size := maxf(0.6, 1.0 + 0.5 * p.stat("shot_size"))
+    # Reach is the player's: the blade's tip never goes past `r` (+4) from the player's
+    # centre, whichever hover spot it swings from (2026-11-11, Emil: weapons swung way out).
+    sw.reach = r + 4.0
+    var lim := maxf(16.0, _span(p.global_position, piv, sw.dir, sw.reach))
     match style:
         "slam":
-            # The head lands on the target (no farther than it could have triggered).
-            sw.radius = clampf(dist, 12.0, trigger_reach(g) + off)
+            # The head lands on the target, at most the reach away from the player.
+            sw.radius = clampf(dist, 12.0, lim)
             var scale := r / maxf(1.0, d.max_range)
             sw.slam_rad = d.aura_radius * scale * maxf(0.4, 1.0 + p.stat("shot_size"))
-        "thrust":
-            # A stab out along the line to the target and through it, to the full reach.
-            sw.radius = clampf(maxf(r, dist + er * 0.5 + 6.0), 16.0, r + off)
         "jab":
             # A short punch into the target, not through the pack behind it.
-            sw.radius = clampf(dist + er * 0.5 + 8.0, 16.0, r + off)
+            sw.radius = clampf(dist + er * 0.5 + 8.0, 16.0, lim)
         _:
-            sw.radius = r if full else clampf(maxf(r, dist + er * 0.5 + 4.0), 16.0, r + off)
+            # Thrust, sweep, cleave, lash, spin: out to the full reach.
+            sw.radius = lim
     sw.far = sw.radius
     if style != "slam":
         sw.far += (BOUNCE_REACH if sw.extra > 0 else 0.0) + (WAVE_REACH if sw.wave else 0.0)
@@ -267,6 +269,15 @@ static func _start(g: Gun, e: Enemy, dir: Vector2, style: String, el: int, full:
         sw.dur = maxf(sw.dur, 0.3)
     g.swings.append(sw)
     Sfx.play_at("shoot_" + String(Items.ELEMENT_KEYS.get(s.element, "stone")), g.global_position, -10.0)
+
+
+## How far the blade can go from `piv` along `dir` before its tip leaves the circle of
+## radius `rr` around the player at `c` (the hover spot sits inside that circle).
+static func _span(c: Vector2, piv: Vector2, dir: Vector2, rr: float) -> float:
+    var o := piv - c
+    var b := o.dot(dir)
+    var disc := b * b - o.length_squared() + rr * rr
+    return -b + sqrt(disc) if disc > 0.0 else 0.0
 
 
 ## Where the swing turns: the hover spot, or the player for a full spin.
@@ -297,9 +308,9 @@ static func blade(g: Gun, sw: Swing, f: float) -> Array:
                     ext = 1.0
                 else:
                     ext = 1.0 - (f - 0.6) / 0.4
-                var tip := piv + sw.dir * ext * sw.far
+                var tip := piv + sw.dir * ext * sw.radius
                 var length := 16.0 if sw.style == "jab" else 28.0
-                return [piv + sw.dir * maxf(0.0, ext * sw.far - length), tip, f < 0.6]
+                return [piv + sw.dir * maxf(0.0, ext * sw.radius - length), tip, f < 0.6]
             "slam":
                 var k := 0.0
                 if f < 0.55:
@@ -318,7 +329,11 @@ static func blade(g: Gun, sw: Swing, f: float) -> Array:
     elif f > 0.88:
         ext = lerpf(1.0, 0.4, (f - 0.88) / 0.12)
     var u := Vector2.from_angle(sw.dir.angle() + _sweep_ang(sw, f))
-    return [piv + u * 8.0, piv + u * sw.far * ext, f >= 0.08 and f <= 0.92]
+    var length := sw.radius * ext
+    if not sw.full:
+        # Swung from a hover spot, the arc is trimmed to the player's reach circle.
+        length = minf(length, maxf(12.0, _span(g.player.global_position, piv, u, sw.reach)))
+    return [piv + u * 8.0, piv + u * length, f >= 0.08 and f <= 0.92]
 
 
 ## Moves every live swing on; called from Gun._process for melee weapons.
@@ -370,6 +385,9 @@ static func _contacts(g: Gun, sw: Swing, f0: float, f1: float) -> void:
             continue
         var a: Vector2 = bk[0]
         var b: Vector2 = bk[1]
+        if sw.far > sw.radius and b.distance_to(a) > 0.5:
+            # Bounce points and the Blade wave reach past the drawn blade, unseen.
+            b += (b - a).normalized() * (sw.far - sw.radius)
         for e in near:
             if sw.n >= MAX_HITS:
                 return

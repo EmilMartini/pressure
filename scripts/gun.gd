@@ -200,11 +200,16 @@ func _draw_swings() -> void:
             var bl: Array = Melee.blade(self, sw, f)
             draw_line(piv, to_local(bl[1]), Color(col, a), 3.0)
         elif sw.style != "slam" or sw.full:
-            var a0: float = sw.dir.angle() + Melee._sweep_ang(sw, maxf(0.08, f - 0.35))
-            var a1: float = sw.dir.angle() + Melee._sweep_ang(sw, f)
-            if absf(a1 - a0) > 0.02:
-                var w := clampf(sw.far * 0.18, 4.0, 14.0)
-                draw_arc(piv, sw.far - w * 0.5, a0, a1, 12, Color(col, a * (1.0 - f * 0.5)), w)
+            var f0 := maxf(0.08, f - 0.35)
+            if f - f0 > 0.01:
+                # The trail follows the blade's tip, which the player's reach trims.
+                var w := clampf(sw.radius * 0.18, 4.0, 14.0)
+                var pts := PackedVector2Array()
+                for k in 12:
+                    var bk: Array = Melee.blade(self, sw, lerpf(f0, f, float(k) / 11.0))
+                    var tip: Vector2 = bk[1]
+                    pts.append(to_local(tip - (tip - (bk[0] as Vector2)).normalized() * w * 0.5))
+                draw_polyline(pts, Color(col, a * (1.0 - f * 0.5)), w)
         if sw.second:
             var ps: Array = Melee.pose_of(self, sw)
             var u: Vector2 = ps[1]

@@ -22,7 +22,7 @@ No game code changed in that session.
 | A6 | **Mostly unlocked over time.** A fresh save starts with a core set, and the rest unlock through lessons, challenges and milestones, Isaac-style. |
 | A7 | **Code-drawn art now, the art pack later.** Each family gets a consistent code-drawn look now. When Emil picks an art pack, its weapon sprites replace them. |
 | A8 | **All four weapons are visible, hovering around the character**, each at its own spot (Brotato-like). Guns point and fire from their spot; melee weapons physically lunge or sweep out to the enemy and back. |
-| A9 | **A melee hit lands only where the blade actually passes.** Thrusts stab out in a line to the target and back; swings sweep a real arc; enemies are hit only if the weapon passes through them, with a little hit-stop and knockback on contact. |
+| A9 | **A melee hit lands only where the blade actually passes.** Thrusts stab out in a line to the target and back; swings sweep a real arc; enemies are hit only if the weapon passes through them, with a little hit-stop and knockback on contact. **2026-11-11 (Emil: weapons swung way out):** reach is the player's. No blade tip goes past the reach (+4 px) from the player's centre, from any hover spot; sweeps are trimmed to that circle; bounce points and the Blade wave reach past it unseen. Before the fix tips went 9 to 33 px past it; `--gun-probe` now prints `tip=` against `reach=` per melee weapon. |
 
 ## Rules that still apply
 

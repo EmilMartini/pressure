@@ -37,6 +37,8 @@ var _spots: Array = []
 var _banked := 0.0   # damage taken before a top-up
 var _shots := false
 var _origin := Vector2.ZERO   # where the player is pinned (lower for shots, clear of toasts)
+var _tip := 0.0      # melee: farthest a blade tip got from the player this gun
+var _reach := 0.0    # melee: the player's reach the swings were given
 
 
 func _init(p_main: Main) -> void:
@@ -83,6 +85,11 @@ func _physics_process(_delta: float) -> void:
         p.velocity = Vector2.ZERO
         p.hp = p.max_hp
         p.pressure = 0.0
+        for g in p.guns:
+            for sw in g.swings:
+                var bl: Array = Melee.blade(g, sw, minf(1.0, sw.t / sw.dur))
+                _tip = maxf(_tip, (bl[1] as Vector2).distance_to(p.global_position))
+                _reach = maxf(_reach, sw.reach)
 
 
 func _run() -> void:
@@ -108,6 +115,8 @@ func _run() -> void:
     print("[GUN-PROBE] id archetype mechanic element weight single pack budget family style rarity  (dps, %.0f s per scenario)" % _secs)
     for id in _ids:
         var data := Guns.make(String(id))
+        _tip = 0.0
+        _reach = 0.0
         var single := await _measure(String(id), [SINGLE_AT])
         var pack_spots: Array = [PACK_AT]
         for k in 7:
@@ -116,6 +125,9 @@ func _run() -> void:
         print("[GUN-PROBE] %s %s %s %s w%d single=%.1f pack=%.1f budget=%.1f %s %s %s" % [
             id, data.archetype, data.mechanic, Element.NAMES[data.element], data.weight, single, pack, data.dps(),
             data.family, data.style, Items.RARITY_NAMES[data.rarity]])
+        if _reach > 0.0:
+            # The blade's tip never goes past the player's reach (+4), from any hover spot.
+            print("[GUN-PROBE] %s tip=%.1f reach=%.1f %s" % [id, _tip, _reach, "OK" if _tip <= _reach + 0.5 else "PAST REACH"])
     get_tree().quit()
 
 
