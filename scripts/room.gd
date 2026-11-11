@@ -417,7 +417,7 @@ func _tick_room(delta: float) -> void:
             _key_t = KEY_REFILL_ROOM
             var budget := SpawnTable.key_budget(main.floor_number, main.floor_arenas_done()) + KEY_ALIVE_PLUS
             if _keys_alive() < budget and alive < SCREEN_CAP:
-                var kind := SpawnTable.key_kind(main.floor_number, main.floor_arenas_done())
+                var kind := SpawnTable.key_kind(main.floor_number, main.floor_arenas_done(), main.region_id)
                 if kind == "":
                     _keys_left = 0
                 else:
