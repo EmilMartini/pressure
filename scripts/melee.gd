@@ -382,7 +382,7 @@ static func _contacts(g: Gun, sw: Swing, f0: float, f1: float) -> void:
         return
     var steps := clampi(int(ceil((b1[1] as Vector2).distance_to(b0[1]) / 10.0)), 1, 12)
     var near := Strike.enemies_in(g.get_tree(), piv, sw.far + 48.0)
-    var parry := g.data.id == "parry_blade"
+    var parry := g.data.id == "parry_blade" or g.data.legend == "mirror"
     for k in range(1, steps + 1):
         var bk: Array = blade(g, sw, lerpf(f0, f1, float(k) / float(steps)))
         if not bk[2]:
@@ -495,6 +495,8 @@ static func _parry(g: Gun, a: Vector2, b: Vector2) -> void:
         if not is_instance_valid(sh) or sh.is_queued_for_deletion():
             continue
         if Geometry2D.get_closest_point_to_segment(sh.global_position, a, b).distance_to(sh.global_position) <= 12.0:
+            if g.data.legend == "mirror":
+                Legendary.mirror(g, sh)
             sh.queue_free()
             cut += 1
     if cut > 0:
@@ -511,6 +513,11 @@ static func _finish(g: Gun, sw: Swing) -> void:
         "magma_maul":
             if sw.any:
                 Cloud.spawn(Strike.world_parent(g), piv + sw.dir * sw.radius, Element.Kind.FIRE, 50.0, 3.0, maxf(3.0, sw.s.potency * 0.3), p)
+        "the_long_coil":
+            # The Long Coil leaves venom along the lash.
+            if sw.any:
+                Cloud.spawn(Strike.world_parent(g), piv + sw.dir * sw.radius * 0.6, Element.Kind.POISON, 45.0, 3.0, maxf(3.0, sw.s.potency * 0.4), p)
+                Legendary.note("coil")
         "venom_pike":
             if sw.any:
                 Cloud.spawn(Strike.world_parent(g), piv + sw.dir * sw.radius * 0.55, Element.Kind.POISON, 40.0, 2.0, maxf(3.0, sw.s.potency * 0.3), p)

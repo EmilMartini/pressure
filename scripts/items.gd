@@ -1032,6 +1032,7 @@ func pool_items(pool: String) -> Array:
 
 ## Start of a run: every item is back in its pool.
 func new_run() -> void:
+    Legendary.new_run()
     seen_run.clear()
     held.clear()
     syn_hits.clear()
@@ -1059,6 +1060,7 @@ func offer(id: String, price_scrap: int, pos = null) -> Dictionary:
 func fire(player: Player, event: String, ctx: Dictionary) -> void:
     if player == null or not is_instance_valid(player) or _depth > 2:
         return
+    Legendary.on_event(player, event, ctx)
     if event == "vent":
         _last_vent[player.get_instance_id()] = int(ctx.get("element", Element.Kind.FIRE))
     elif event == "room_clear":

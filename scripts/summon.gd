@@ -115,7 +115,7 @@ static func cap_of(g: Gun) -> int:
     var p := g.player
     base += maxi(0, g.shot_count() - g.data.projectile_count)
     base += int(p.stat("summon_cap"))
-    return maxi(1, base + g.grown)
+    return maxi(1, Legendary.orrery_cap(g, base) + g.grown)
 
 
 ## Called by Gun._process: prunes dead and stranded bodies, makes missing ones a beat apart.
@@ -149,6 +149,8 @@ static func maintain(g: Gun, delta: float) -> void:
 
 static func spawn(g: Gun, at: Vector2, life := -1.0) -> Summon:
     var s := Summon.new(g, g.data.style, g.bodies.size())
+    if g.data.legend == "orrery":
+        s.element = Legendary.orrery_element(g, s.idx)
     s.temp_life = life
     Strike.world_parent(g).add_child(s)
     s.global_position = at + Vector2.RIGHT.rotated(randf() * TAU) * 10.0

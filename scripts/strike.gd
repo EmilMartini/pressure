@@ -73,6 +73,9 @@ static func deal(enemy: Enemy, dmg: float, pot: float, el: int, extra_els: Array
             raw *= 1.0 + src.stat("vs_shocked")
         if enemy.has_state(Element.Kind.OIL):
             raw *= 1.0 + src.stat("vs_oiled")
+    if src != null and raw > 0.0:
+        raw *= Legendary.horizon_mult(src, enemy)
+        raw = Legendary.glass_bank(enemy, raw, src, gid)
     if raw > 0.0:
         raw = enemy.resisted(el, raw)   # the region's soft resistance (Regions)
     Telemetry.begin_shot(gid, el)

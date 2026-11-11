@@ -1526,6 +1526,82 @@ and the full section 8 table passes.
 **Budget guide:** batches 1 and 5 are the largest. If a batch runs long, the items are the part
 to carry over: weapons and their checks come first.
 
+#### Batch 5 part 1 done (2026-11-11, VERSION 2026.11.11-arsenal5): the 18 legendaries
+
+**Built:**
+- `legendary.gd` (`Legendary`, static): the 18 rules of section 3.5. A legendary is an
+  ordinary weapon of its family plus `GunData.legend`, the key of its rule. The card line is
+  the rule (`GunData.how()` returns `Legendary.LINES`), at most 10 words. Hooks, and nothing
+  else: `Items.fire` (hit, kill, vent, dash, reaction, room enter and clear), `Gun._process`
+  (timed rules), `Gun.strike` and `Gun.extra_elements`, `Gun.fire` (Echo Engine),
+  `Strike.deal` (Event Horizon's +30%, Glass of Ages' bank), `Player.take_damage` (Phoenix
+  Lantern before Last Breath), `Melee._parry` and `_finish`, `Thrown._stick` and the disc
+  bounce, `Summon.cap_of` and `spawn`.
+- **The 18 weapons** (151 in all), every one locked until its feat:
+
+| Weapon | Family, base | Rule as built | Feat (hint) |
+|---|---|---|---|
+| Heart of the Forge | Gun, Fire+Stone burst | A vent makes every weapon molten for 5 s: +20% damage and a Fire coat | Vent 150 times |
+| The Conductor | Gun, Shock chain | Each second, one arc through up to 8 foes you hit that second (0.6 a foe) | 3,000 reactions |
+| Echo Engine | Gun, Gale pistol | Every other trigger of another weapon fires again from it at the closest foe, at 50% | 12 fusions discovered |
+| Glass of Ages | Gun, Ice+Void charge rail | A hit stops the foe 1.5 s (elites and bosses 0.5 s); every hit on it is banked and lands at once; 1.5 s before it can be stopped again | Deep Freeze 200 times |
+| Tidebreaker | Melee, Wet+Ice sweep | Every 4th swing, a freezing ring wave 420 px out at 50% | 3,000 melee kills |
+| Mirrorblade | Melee, Holy sweep | Cuts shots like the Parry Blade; each cut shot hits its owner (or the closest foe) at 80% | Cut 300 shots |
+| The Long Coil | Melee, Poison+Acid lash, 300 px reach | A poison cloud where the lash lands | Contamination 150 times |
+| Red Harvest | Melee, Blood sweep | +2% damage a kill (any weapon), up to +100%, reset each room | 15,000 kills |
+| Mother of Knives | Thrown, Blood knives | Knives stay stuck 20 s; each dash recalls every knife (1.5x on the way back) | 1,200 thrown kills |
+| Skyfall | Thrown, Stone+Fire lob | Every 6 s, a meteor on the densest pack within 600 px: a 0.7 s shadow ring, then 2.5x in 90 px with Fire | 2,500 thrown kills |
+| Prism Disc | Thrown, disc (starts Fire) | Takes the next of the 12 elements at every bounce | 20 reactions discovered |
+| The Second Sun | Summon, Holy+Fire orbiter | A reaction by you fires a Holy beam from the sun at that foe (one every 0.5 s) | 6,000 reactions |
+| The Hollow Choir | Summon, Void familiar | A kill raises a shade (a familiar) for 8 s, one every 0.5 s, up to 6 | 1,200 summon kills |
+| Phoenix Lantern | Summon, Fire familiar | Once a floor, at 0 health you stand at 30% (1.5 s untouchable); before Last Breath | 25 bosses |
+| Orrery | Summon, orbiters | One mote per element you carry (primary, extra, alt), each its own element | Win 3 runs |
+| Stormcrown | Ground, small Shock ring | While you move (40 px/s), a bolt on the closest foe within 320 px every 0.45 s | 1,500 rooms |
+| The Bell | Ground, Holy totem (1) | Its tolls carry every element of your other weapons | 30 secrets |
+| Event Horizon | Ground, Void ring 180 px | Foes inside drift to you (55 px/s, bosses 40%) and take +30% from you | 2,600 summon kills |
+
+- **Rarity rules:** a legendary is offered at most once a run (`Legendary.offered_run`,
+  filtered in `Drops.roll_gun`; a skipped one comes back next run), never twice when carried.
+- **The drought rule (3.3):** `Progress` stat `legendary_drought` counts runs that reached
+  floor 2 without an offer (counted on reaching floor 2, reset to 0 by any offer). After 4,
+  the next run's first treasure room from floor 2 holds a legendary weapon (if one is
+  unlocked and `rarity:legendary` is). Not exercised by a bot: no bot save has a legendary
+  unlocked yet.
+- **The drop moment** (beam, sound, hit-stop, gold card) already keyed on rarity 4, so it
+  fires for legendary weapon pedestals unchanged. `--drop-probe` now also places one random
+  legendary weapon pedestal: `[DROP-MOMENT] legendary=6` in each of three runs.
+- **Icons:** the five whose style has no code-drawn shape (four guns, the lob) use unused
+  artefact tiles (`Art.GUN_ICONS`); the rest draw by family as before.
+- `[LEGENDARY] fired={...}` at the end of every bot run: how often each rule fired.
+
+**Checks** (headless, at most 4 instances, 0 `SCRIPT ERROR` in every run):
+| Check | Result | Pass |
+|---|---|---|
+| Every rule fires | Six kite runs (`--loadout=<4 legendaries> --kite --mastery=full`, 300 s) and one stand-still run: all 18 fire (e.g. stormcrown 177, horizon 2,572, harvest 185, glass 111, choir 95, coil 108, prism 70, phoenix 1) | yes |
+| Bands (`--gun-probe`, rule mostly off: dummies don't die, move or shoot) | Single: Forge 56.7, Conductor 36.8 (pack 155), Echo 36.8, Glass 49.5 (pack 183), Tidebreaker 74.7 (pack 235), Long Coil 63.9 (pack 153), Red Harvest 46.3, Mirrorblade 46.5, Knives 44.0, Skyfall 42.5 (pack 99), Prism 25 to 32 (pack 87 to 357: it is all reactions, noisy; set between), Second Sun 22.8, Choir 21.3, Phoenix 26.7, Orrery 10.7 alone (one mote; about 5 with a full build), Stormcrown 0 standing (pack 24), Bell 16, Event Horizon 18.2 (pack 146). Against the Epics of the weight (Thunder Halberd 56 / 147, Eclipse Scythe 41 / 161, Hive Queen 35 / 61, Geyser Field 30 / 183, Crossing Axes 95 / 275) every pack is under 1.6x | yes, by eye; no `--legendary-probe` yet |
+| Melee reach | Tidebreaker 114 / 114, Long Coil 304 / 304, Red Harvest 104 / 104, Mirrorblade 109 / 109: all OK | yes |
+| Frame time (`--perf`, kite, headless) | p99 6.4 to 8.8 ms, 1% low 60 to 79 fps | yes |
+| Load check | 0 `SCRIPT ERROR` | yes |
+| Cards (`--card-shot`) | FAILS on every item card: "font 16" against the probe's 18 px minimum. That is the body-text change (e918d6e, `Art.BODY_SIZE` 16), not this batch | no (not ours) |
+
+**Not built (carry over):**
+- `--legendary-probe` (each rule measured under its ceiling with kills, shots and reactions)
+  and `--loot-sim` (the legendary share per run with the drought rule).
+- The celebration extras of 3.6: the black-and-gold treasure plinth, the minimap star, the
+  journal "First found" line, the floor-end card, the Build page listing it first.
+- Shades as their own look (they are Void familiars that fade after 8 s); Orrery motes
+  re-made when your elements change mid-room (they change next room).
+- Items 270 to 300, synergies 20 to 50, the remaining Trials and `--unlock-sim` (part 2).
+
+**Worth watching:**
+- Event Horizon pulls the room onto you; with melee that is the point, but watch it with a
+  gun build in a spitter room. Bosses drift at 40%.
+- Glass of Ages banks damage from every weapon while a foe is stopped, so big builds see
+  single huge numbers; a bank lands even if the Glass leaves the loadout.
+- Second Sun and The Conductor scale with build width (reactions, foes hit); probes alone
+  understate them.
+- Feats are guesses at "late but reachable"; `--unlock-sim` should set them.
+
 ---
 
 ## 10. Defaults Emil may want to change

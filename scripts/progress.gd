@@ -337,6 +337,25 @@ const ACHIEVEMENTS := [
         "stat": "kills_ground", "goal": 1800, "rewards": ["gun:geyser_field", "item:aftershock", "item:soil_sense", "item:cool_stones", "item:root_sap"] },
     { "id": "ground_mastery_8", "name": "Ground VIII", "desc": "Kill 2600 enemies with ground weapons",
         "stat": "kills_ground", "goal": 2600, "rewards": ["gun:collapse_mine", "item:hair_trigger", "item:spring_all"] },
+    # Arsenal expansion batch 5: one feat per legendary (section 6). The desc is the hint.
+    { "id": "legend_forge", "name": "Forgeheart", "desc": "Vent 150 times", "stat": "vents", "goal": 150, "rewards": ["gun:heart_of_the_forge"] },
+    { "id": "legend_conductor", "name": "Conductor", "desc": "Set off 3000 reactions", "stat": "reactions", "goal": 3000, "rewards": ["gun:the_conductor"] },
+    { "id": "legend_echo", "name": "Echoes", "desc": "Discover 12 fusions", "stat": "fusions_discovered", "goal": 12, "rewards": ["gun:echo_engine"] },
+    { "id": "legend_tide", "name": "Tidebreaker", "desc": "Kill 3000 enemies with melee weapons", "stat": "kills_melee", "goal": 3000, "rewards": ["gun:tidebreaker"] },
+    { "id": "legend_coil", "name": "The Long Coil", "desc": "Set off Contamination 150 times", "stat": "reaction:Contamination", "goal": 150, "rewards": ["gun:the_long_coil"] },
+    { "id": "legend_harvest", "name": "Red Harvest", "desc": "Kill 15000 enemies", "stat": "kills", "goal": 15000, "rewards": ["gun:red_harvest"] },
+    { "id": "legend_skyfall", "name": "Skyfall", "desc": "Kill 2500 enemies with thrown weapons", "stat": "kills_thrown", "goal": 2500, "rewards": ["gun:skyfall"] },
+    { "id": "legend_sun", "name": "Second Sun", "desc": "Set off 6000 reactions", "stat": "reactions", "goal": 6000, "rewards": ["gun:second_sun"] },
+    { "id": "legend_phoenix", "name": "Phoenix", "desc": "Beat 25 bosses", "stat": "bosses", "goal": 25, "rewards": ["gun:phoenix_lantern"] },
+    { "id": "legend_storm", "name": "Stormcrown", "desc": "Clear 1500 rooms", "stat": "rooms", "goal": 1500, "rewards": ["gun:stormcrown"] },
+    { "id": "legend_bell", "name": "The Bell", "desc": "Find 30 secrets", "stat": "secrets_found", "goal": 30, "rewards": ["gun:the_bell"] },
+    { "id": "legend_horizon", "name": "Event Horizon", "desc": "Kill 2600 enemies with summons", "stat": "kills_summon", "goal": 2600, "rewards": ["gun:event_horizon"] },
+    { "id": "legend_glass", "name": "Glass of Ages", "desc": "Set off Deep Freeze 200 times", "stat": "reaction:Deep Freeze", "goal": 200, "rewards": ["gun:glass_of_ages"] },
+    { "id": "legend_mirror", "name": "Mirrorblade", "desc": "Cut 300 enemy shots out of the air", "stat": "shots_cut", "goal": 300, "rewards": ["gun:mirrorblade"] },
+    { "id": "legend_knives", "name": "Mother of Knives", "desc": "Kill 1200 enemies with thrown weapons", "stat": "kills_thrown", "goal": 1200, "rewards": ["gun:mother_of_knives"] },
+    { "id": "legend_prism", "name": "Prism", "desc": "Discover 20 reactions", "stat": "reactions_discovered", "goal": 20, "rewards": ["gun:prism_disc"] },
+    { "id": "legend_choir", "name": "The Hollow Choir", "desc": "Kill 1200 enemies with summons", "stat": "kills_summon", "goal": 1200, "rewards": ["gun:hollow_choir"] },
+    { "id": "legend_orrery", "name": "Orrery", "desc": "Win 3 runs", "stat": "runs_won", "goal": 3, "rewards": ["gun:orrery"] },
 ]
 
 var save_path := SAVE_PATH

@@ -60,6 +60,7 @@ var _target_k := 0        # homing: rotates which enemy each volley's first seek
 var melee_n := 0          # melee: swings so far (finishers, spins)
 var swing_tilt := 0.0     # melee: 1 at a swing, the held weapon tilts back and returns
 var _ready_t := 0.0       # melee: the ready pose re-aims every READY_EVERY s
+var legend_t := 0.0       # legendary: the timed rule's clock (Legendary.tick)
 var swings: Array = []    # melee: live Melee.Swing, each travelling its path (A9)
 var _trail_on := false    # melee: drew a trail last frame (one more redraw clears it)
 var _mag := 0             # revolver: shots fired from the current magazine
@@ -112,6 +113,8 @@ func _exit_tree() -> void:
 
 func _process(delta: float) -> void:
     cooldown = maxf(0.0, cooldown - delta)
+    if data.legend != "":
+        Legendary.tick(self, delta)
     _recoil = move_toward(_recoil, 0.0, 45.0 * delta)
     _since_fire += delta
     if data.spin_up > 0.0:
@@ -296,6 +299,7 @@ func extra_elements() -> Array:
     if data.extra_element != Element.Kind.NONE:
         out.append(data.extra_element)
     out.append_array(boon_elements)
+    Legendary.extra_elements(self, out)
     # Overheat (after a vent) and Second Nature (the first gun): your vent element rides along.
     if player != null and is_instance_valid(player):
         if player.stat("vent_shots") > 0.0 or (player.stat("second_nature") > 0.0 and not player.guns.is_empty() and player.guns[0] == self):
@@ -403,6 +407,7 @@ func strike(el: int = -1) -> Strike:
     if data.archetype == "hymn" and player.max_hp > 0.0:
         # Blood Hymn: up to triple damage as your health falls.
         s.damage *= 1.0 + 2.0 * (1.0 - clampf(player.hp / player.max_hp, 0.0, 1.0))
+    s.damage *= Legendary.strike_mult(self)
     s.extras = extra_elements()
     s.color = Element.COLORS[s.element]
     s.shooter = player
@@ -434,6 +439,7 @@ func _next_element() -> int:
 func fire(dir: Vector2) -> void:
     _aim = dir
     _since_fire = 0.0
+    Legendary.on_fire(self)
     _emp_now = false
     if empower_left > 0.0 and data.mechanic not in ["summon", "ground", "charge"]:
         # The empowered volley (ProcFx): this attack leaves bigger, with a bright ring.

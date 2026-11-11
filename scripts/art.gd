@@ -148,6 +148,12 @@ const GUN_ICONS := {
     "railgun": "item/weapon/artefact/urand_sniper.png",
     "napalm_lobber": "item/weapon/artefact/urand_hellfire.png",
     "duality_burst": "item/weapon/artefact/urand_elemental.png",
+    # Arsenal batch 5: legendaries whose style has no code-drawn shape (guns, the lob).
+    "heart_of_the_forge": "item/weapon/artefact/spwpn_scepter_of_asmodeus.png",
+    "the_conductor": "item/weapon/artefact/spwpn_staff_of_olgreb.png",
+    "echo_engine": "item/weapon/artefact/urand_punk.png",
+    "glass_of_ages": "item/weapon/artefact/urand_chilly_death_new.png",
+    "skyfall": "item/weapon/artefact/urand_eos.png",
 }
 ## Guns whose tile stands upright (a flask, an orb) instead of lying diagonally like a
 ## held weapon; the orbiting sprite does not rotate these toward the aim.

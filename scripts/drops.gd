@@ -202,7 +202,7 @@ static func roll_gun(players: Array, exclude: Array = [], rarity: int = -1, min_
     var ids: Array = Guns.ids().filter(func(id): return not exclude.has(id) and Trials.allows(String(id)))
     var profile := party_profile(players)
     var carried0: Dictionary = profile["carried"]
-    ids = ids.filter(func(id): return not (Guns.rarity_of(String(id)) >= Items.Rarity.LEGENDARY and carried0.has(id)))
+    ids = ids.filter(func(id): return not (Guns.rarity_of(String(id)) >= Items.Rarity.LEGENDARY and (carried0.has(id) or Legendary.offered_run.has(id))))
     if new_family:
         var fams: Dictionary = profile["families"]
         var fresh: Array = ids.filter(func(id): return not fams.has(Guns.family_of(String(id))))
@@ -252,7 +252,10 @@ static func roll_gun(players: Array, exclude: Array = [], rarity: int = -1, min_
     var off_w: Array = []
     for id in off:
         off_w.append(1.0)
-    return _split_pick(on, on_w, off, off_w, GUN_OFF_BUILD)
+    var pick := String(_split_pick(on, on_w, off, off_w, GUN_OFF_BUILD))
+    if pick != "" and Legendary.is_legend(pick):
+        Legendary.mark_offered(pick)
+    return pick
 
 
 # --- Internals ---------------------------------------------------------------

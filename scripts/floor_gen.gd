@@ -355,11 +355,15 @@ static func _stock_rooms_reset(rooms: Dictionary, floor_number: int, luck: float
                     c["id"] = Drops.roll_item_at(up, ids + _mod_ids(), "treasure", players)
                     c["curse"] = String(Items.CURSES.keys().pick_random())
                     c["curse_span"] = "floor"
-                if randf() < Guns.TREASURE_WEAPON:
+                var due := Legendary.drought_due(floor_number)   # Arsenal 3.3: the drought rule
+                if due or randf() < Guns.TREASURE_WEAPON:
                     var plain: Array = cards.filter(func(c): return not c.has("curse"))
                     if not plain.is_empty():
                         var at := cards.find(plain.pick_random())
-                        var wid := Drops.roll_gun(players, [], Items.roll_rarity("treasure", floor_number, luck, true), Items.Rarity.UNCOMMON)
+                        var want := Items.Rarity.LEGENDARY if due else Items.roll_rarity("treasure", floor_number, luck, true)
+                        var wid := Drops.roll_gun(players, [], want, Items.Rarity.LEGENDARY if due else Items.Rarity.UNCOMMON)
+                        if due and wid == "":
+                            wid = Drops.roll_gun(players, [], Items.roll_rarity("treasure", floor_number, luck, true), Items.Rarity.UNCOMMON)
                         if wid != "":
                             cards[at] = weapon_offer(wid, floor_number)
                 for c in cards:

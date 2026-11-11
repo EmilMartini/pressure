@@ -855,7 +855,9 @@ func take_damage(amount: float, attacker: Node2D = null, from: Vector2 = Vector2
     if thorns > 0.0 and attacker != null and is_instance_valid(attacker) and attacker is Enemy:
         attacker.take_damage(thorns, Color.WHITE, true, self)
     Items.fire(self, "hurt", { "pos": global_position, "target": attacker })
-    if hp <= 0.0 and revives_left > 0:
+    if hp <= 0.0 and Legendary.phoenix(self):
+        pass   # Phoenix Lantern (Arsenal 3.5): whichever comes first, it or Last Breath
+    elif hp <= 0.0 and revives_left > 0:
         _last_breath()
     elif hp <= 0.0:
         hp = 0.0

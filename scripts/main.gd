@@ -963,6 +963,8 @@ func next_floor(to: String = "") -> void:
     assert(boss_done, "left a floor with its boss room not cleared")
     _door_choice = to
     Progress.add("floors")
+    if floor_number == 1:
+        Legendary.reached_floor2()
     if floor_number >= FLOORS or Regions.next_options(region_id).is_empty():
         victory = true
         announce("You cleared the dungeon!")
@@ -2149,6 +2151,14 @@ func _autotest_tick(delta: float) -> void:
             var ped := Pedestal.new(Items.offer(String(ids.pick_random()), 0))
             ped.position = Room.here.to_local(players[0].global_position) + Vector2(-70.0 if r == Items.Rarity.LEGENDARY else 70.0, -60.0)
             Room.here.add_child(ped)
+        # Batch 5: a legendary weapon offer too (Guns.make gives the pedestal rarity 4).
+        var legs: Array = Guns.all_ids().filter(func(g): return Guns.rarity_of(String(g)) >= Items.Rarity.LEGENDARY)
+        if not legs.is_empty():
+            var gid := String(legs.pick_random())
+            var gped := Pedestal.new({ "kind": "gun", "id": gid, "price": 0, "amount": 1, "taken": false })
+            gped.position = Room.here.to_local(players[0].global_position) + Vector2(0.0, -120.0)
+            Room.here.add_child(gped)
+            print("[DROP-PROBE] legendary weapon %s" % gid)
         print("[DROP-PROBE] t=%.0f offers placed" % _clock)
     if _focus_probe_t > 0.0:
         _focus_probe_t -= delta
@@ -2889,6 +2899,7 @@ func _print_fusion_summary() -> void:
     print("[CATA-MOMENT] cataclysms=%d moments=%d punches=%d" % [int(d["cataclysms"]), FusionFx.moments, punches])
     print(ProcFx.report())
     print(ProcFx.drop_report())
+    print("[LEGENDARY] fired=%s" % str(Legendary.fired))
     print("[DMG-TEXT] mode=%s shown=%d dropped=%d fight_texts=%d fight_secs=%.0f kinds=%s" % [
         Fx.dmg_mode(), Fx.dmg_shown, Fx.dmg_dropped, Fx.fight_texts, Fx.fight_secs, str(Fx.fight_text_kinds)])
     # Brotato's rule: nothing finishes emerging within Enemy.SPAWN_ASSERT of a player.

@@ -276,6 +276,9 @@ static func on_body(p: Projectile, body: Node) -> void:
             var nxt: Node2D = p._next_target() if left > 0 else null
             if nxt != null:
                 p.t_jumps += 1
+                if p.gun_id == "prism_disc":
+                    p.element = Legendary.prism_next(p.element)
+                    p.color = Element.COLORS[p.element]
                 p.velocity = (nxt.global_position - p.global_position).normalized() * p.velocity.length()
                 p.lifetime = maxf(p.lifetime, 0.6)
                 var grow := _stat(p, "disc_grow") + (0.12 if p.gun_id == "halo_disc" else 0.0)
@@ -415,6 +418,8 @@ static func _stick(p: Projectile, on: Enemy) -> void:
     if on != null and is_instance_valid(on):
         p.t_offset = (p.global_position - on.global_position).limit_length(on.radius * 0.6)
     p.t_timer = STICK * (1.0 + _stat(p, "stuck_time") + _stat(p, "state_duration"))
+    if p.gun_id == "mother_of_knives":
+        p.t_timer = Legendary.KNIFE_STAY   # waits for a dash (Legendary "knives")
     p.t_tick = randf() * STUCK_TICK
     p.velocity = p.velocity.normalized() * 0.001
     p._trail.clear()

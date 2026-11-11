@@ -101,6 +101,7 @@ const MELEE_STYLES := ["sweep", "cleave", "thrust", "slam", "lash", "jab", "spin
 @export var style: String = ""
 @export var cap: int = 0
 @export var unique: String = ""
+@export var legend: String = ""             # Arsenal 3.5: a legendary rule key (Legendary.LINES)
 @export var element: Element.Kind = Element.Kind.NONE
 @export var weight: int = 1
 @export var damage: float = 5.0             # per projectile, beam or spray tick, arc, ring, sweep, rail, mine, pool tick, orb pulse
@@ -246,6 +247,8 @@ func dps_at(dmg: float, rate: float) -> float:
 
 ## One plain-words line on how the gun fires, for the gun cards and the Journal.
 func how() -> String:
+    if legend != "":
+        return Legendary.line(legend)
     var el := String(Element.NAMES.get(element, ""))
     match archetype:
         "pistol":
