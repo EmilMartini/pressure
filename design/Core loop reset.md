@@ -1956,6 +1956,76 @@ the Forge, the Rift; logs `autotest/rare/`, `sum.py` summarises):
 
 ---
 
+### Procs and drop moments (2026-11-11, build `2026.11.11-procs`)
+
+Emil picked two WoW-style feel features on 2026-11-11: procs that light up, and a legendary
+drop moment. Neither adds any text to the fight.
+
+**Procs that light up** (`scripts/proc_fx.gd`, `ProcFx`). All proc sources go through one helper:
+- Item triggers (`Items.fire`): a rule counts as a proc when it has a chance (under 60% after
+  stacking), fires every 3rd or later event, comes from a perfect dodge or an elite kill, or is
+  an empowering buff. Plain every-hit and every-kill rules are passive and stay dark, and so
+  do room enter and room clear.
+- Synergy rules (`Items.note_syn`), the Thrown split and Ground zone reactions at resonance 5,
+  and a weapon's own every-Nth swing (jab finishers, full spins).
+- What you see and hear: the weapon that made the hit flashes in the ring (a bright tint, a
+  30% pop, a small glow and ring). A proc not tied to a hit lights every weapon. A short ring
+  and glow open on the player in the item's colour, and a synthesized "shing" plays (three
+  pitches). All of it is dimmed by the own-effects alpha while a boss is in view.
+- Empowered next attack (Hot Streak or Clearcasting): a damage or crit buff proc (Close Shave,
+  Marksman's Monocle, Riposte, Catch Spark, Overheat and the like) charges every weapon. The
+  weapon glows and pulses until its next attack. That volley leaves at 1.6x projectile size
+  (a melee swing 1.3x wider) with a bright muzzle ring, and the proc gets a heavier sound, a
+  thump under a rising shimmer. Summon, ground and charge weapons only glow.
+- Rate limits: the same item or rule shows at most once every 2 s, any proc at most once a
+  second (empowering procs skip that one), and the sound plays at most once every 1.5 s.
+- Cost: one `ProcFx` node per player. It draws only while lit; otherwise it costs nothing.
+
+**Drop moment** (`Pedestal._tick_moment`, `ProcFx.drop_moment`). The first time an epic or
+legendary item or weapon offer is on screen (0.35 s after it comes into view, once per offer):
+- A beam of the rarity colour bursts open (520 px for a legendary, 300 px for an epic). It
+  narrows to the standing beam over 1.3 s, with a flare at the base and one floor ring.
+- A synthesized sound plays. A legendary gets a swelling major chord over a sub boom and a
+  music dip. An epic gets a short two-note shimmer.
+- A legendary gets a 0.12 s hit-stop, a 3.5% zoom punch and a light rumble. An epic gets a
+  0.05 s hit-stop. Neither stops the game if a hit-stop is already running or a cataclysm
+  moment played in the last second. Offers revealed together share one sound and one stop.
+- Weapon offers on pedestals now use the weapon's own rarity for the glow, beam and colour
+  (3.1); before, they used the tier's colour.
+- Card frame (`ItemCard.draw_rare_frame`, on every card: pedestal, HUD pickup, sheet and
+  journal). Epic gets a soft outer glow and corner gems. Legendary gets a wider glow, a second
+  bright border, a light running along the top band and larger gems.
+
+**Sounds** are generated in code at start (`Sfx._synth_bank`, sine partials and a noise
+transient as `AudioStreamWAV`): no files, no downloads, no generative AI.
+
+**Checks** (headless, 0 SCRIPT ERROR in every run):
+
+| Run | Raw procs/min | Lights/min | Sounds/min |
+|---|---|---|---|
+| Storm build, floor 3, 13 proc items (`--proc-gear`), gaps 1.2/0.3/0.45 s | 451 | 55 | 40 |
+| Same, gaps 2.0/0.7/1.1 s | 394 | 33 | 23 |
+| Same after rebasing on the boss patterns, gaps 2.0/0.7/1.1 s, 120 s | 670 | 48 | 30 |
+| Same, final gaps 2.0/1.0/1.5 s | 402 | 30 | 22 |
+| Melee family + proc gear (gaps 2.0/0.7/1.1) | 82 | 24 | 22 |
+| Thrown family + proc gear (final gaps) | 194 | 24 | 18 |
+| Ground family + proc gear (gaps 2.0/0.7/1.1) | 85 | 24 | 20 |
+
+- The first gaps gave about one light a second with 13 proc items, too busy for "almost no
+  noise". With the final gaps it is one light about every 2 s and one sound about every 3 s.
+- Frame time A/B (same seed, `--perf`, storm build at floor 3): with proc FX, median 2.05 ms,
+  p99 8.6 ms; with `--no-proc-fx`, 2.11 and 8.8 ms. With the final gaps, three runs at once:
+  2.34 and 11.1 ms against 2.43 and 11.4 ms. No measurable cost. Headless on a shared CPU, so
+  an idle-PC check is still owed.
+- `--drop-probe` (a legendary and an epic offer beside the player at 8, 40 and 75 s): 3 drop
+  moments, 3 hit-stops, 0 skipped. A natural shop epic in another run also played its moment.
+- A jab weapon (`--loadout=spark_knuckles@2`) lights the weapon on finishers (4 a minute).
+- Not checked (needs a window): how it looks and sounds. Emil should judge the shing, the chord
+  and the beam size.
+
+Bot tools: `--proc-gear[=ids]`, `--drop-probe`, `--no-proc-fx`. Bots print `[PROC]` (raw, shown,
+sounded, empowered, empowered shots, per minute) and `[DROP-MOMENT]` at the end of a run.
+
 ## 15. Defaults Emil may want to change
 
 **Settled by Emil (2026-11-10, before session 1):**

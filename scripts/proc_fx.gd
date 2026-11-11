@@ -20,8 +20,8 @@ extends Node2D
 ## so an idle one costs nothing.
 
 const ITEM_GAP := 2.0      # s between two shows of the same item / rule
-const ANY_GAP := 0.7       # s between any two shows
-const SOUND_GAP := 1.1     # s between two proc sounds
+const ANY_GAP := 1.0       # s between any two shows
+const SOUND_GAP := 1.5     # s between two proc sounds
 const LIFE := 0.28         # s a ring and glow last
 const EMPOWER_SCALE := 1.6 # an empowered volley's projectile size
 ## Buff keys that make the next attack stronger (the empowered-shot look).
