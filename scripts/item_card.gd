@@ -70,6 +70,11 @@ const SLOT_TITLES := {
 
 ## key -> [label, format, plural label]. Formats: pct (fraction), int, dec, x.
 const STATS := {
+    "summon_dmg": ["summon damage", "pct"], "summon_rate": ["summon attack rate", "pct"],
+    "summon_cap": ["to every summon cap", "int"], "summon_reach": ["summon reach", "pct"],
+    "summon_speed": ["summon speed", "pct"], "summon_size": ["summon size", "pct"],
+    "drone_rate": ["drone attack rate", "pct"], "swarm_respawn": ["faster swarm return", "pct"],
+    "turret_life": ["turret time", "pct"],
     "dmg": ["damage", "pct"], "potency": ["reaction potency", "pct"], "fire_rate": ["fire rate", "pct"],
     "proj_speed": ["projectile speed", "pct"], "range": ["range", "pct"], "pierce": ["pierce", "int"],
     "proj_count": ["projectile per shot", "int", "projectiles per shot"], "max_hp": ["max HP", "int"],
@@ -366,6 +371,16 @@ static func action_text(t: Dictionary, active: bool) -> String:
             return "spread %s%s" % [el, where if where != "" else " around you"]
         "xp":
             return "+%d XP" % roundi(float(t.get("amount", 5.0)))
+        "recall":
+            return "every knife flies back"
+        "rally":
+            return "every summon dashes to a foe and strikes"
+        "brood":
+            return "hatch a wasp for %.0f s" % float(t.get("secs", 4.0))
+        "swarm_call":
+            return "%d wasps fight beside you for %.0f s" % [int(t.get("count", 6)), float(t.get("secs", 8.0))]
+        "mark":
+            return "mark the foe"
     return String(t.get("do", "?"))
 
 
