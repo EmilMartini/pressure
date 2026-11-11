@@ -1801,10 +1801,14 @@ that are neither cards nor healing, so decisions 14 (healing scarce) and 17 (pic
   with two branches and the dust motes it already breathed out. The rooms' hairline decoy
   cracks stay hairline, so a bold crack is a real tell, but you have to look at the walls.
   Shots on it still thunk hollow.
-- **Opening:** no bombs exist, so it opens to what every kit has. **Any explosion** (a vent, a
-  barrel, a bomber, a reaction burst of 90 px or more) or **two dashes into it** (the first
-  widens the crack with a thud and a puff of grit, the second breaks it). The element-specific
-  methods (roots, mud, rusted...) are gone outside the old balance: one rule, easy to learn.
+- **Opening:** no bombs exist, so it opens to what every kit has. **An explosion right against
+  it** (a vent, a barrel, a bomber, a reaction burst of 90 px or more, centred within 80 px of
+  the wall, `SecretWall.BLAST_REACH`) or **two dashes into it** (the first widens the crack with
+  a thud and a puff of grit, the second breaks it). A blast that is close but not close enough
+  lights the crack up. The element-specific methods (roots, mud, rusted...) are gone outside
+  the old balance: one rule, easy to learn. The first version let any blast that reached the
+  wall count, and the auto-vent opened 7 of 8 secret rooms by accident in mid-fight; Isaac's
+  secret room is found on purpose, so the blast has to be at the wall.
 - **Inside:** always a pick of 1 of 2 (`SECRET_CARDS`), Rare or better on the boss rarity
   table; 35% of the time one card is a Rare-or-better weapon (`SECRET_WEAPON`). Plus one heart.
   Scavenger's Eye still adds a card a copy. The old 50% scrap pile is gone (scrap already piles
@@ -1831,7 +1835,36 @@ that are neither cards nor healing, so decisions 14 (healing scarce) and 17 (pic
 `chests`. Found rate = `hidden_room_found` / `secret_floor` with `secret` true. The bot flag
 `--secret-seek` makes the bot walk to every cracked wall it sees and dash into it.
 
-**Measured:** see the section's handoff note below.
+**Measured** (headless, `--fixed-fps 60`, `--kite`, `--build=storm` or `mid` from floor 2, route
+picked by the bot; logs `autotest/secrets/`):
+
+| Runs | Floors with a secret | Found | How |
+|---|---|---|---|
+| Seek bot (`--secret-seek`), 3 runs, all won | 12 of 12 | 12 | 5 blast, 7 dash |
+| Mover, no seeking, any blast at the wall (first version), 2 runs | 8 of 8 | 7 | all blast, mid-fight |
+| Mover, no seeking, blast within 80 px, 2 runs | 8 of 8 | 4 | all blast; 0 of 4 on floors 2 and 3, 4 of 4 on floors 4 and 5 |
+| Fresh bot from floor 1, 4 runs (died on floor 1, the known no-gun bot gap) | 3 of 4 floor 1s | 2 (seek) | dash |
+
+Every secret room touched 2 or 3 rooms (2 or 3 cracked walls). Spark cells 0 to 3 a floor,
+chests 0 to 2 a floor. 0 `SCRIPT ERROR` in all 12 logs.
+
+**Watch, and the knobs**
+- **Late floors find secrets by accident.** Big builds throw so many reaction bursts against the
+  walls that floors 4 and 5 opened on their own in the no-seek runs. That's Isaac's bomb-build
+  feel; if it spoils the secret, lower `SecretWall.BLAST_REACH` (80) or count only vents.
+- **Floor-1 chance** is `SECRET_FLOOR1_CHANCE` (60%); the rewards are `SECRET_CARDS` and
+  `SECRET_WEAPON`; the pickups are `ROOM_CELL` and `ROOM_CHEST`.
+- Not checked on screen: the bold crack was not screenshotted (no game window in this session).
+  Look at it in the first room with a cracked wall: it should read as "this wall is different"
+  once you look, not from across the room.
+
+**What to try (Emil)**
+1. On each floor, look along the walls of the rooms you clear for a bold, branching crack with
+   dust drifting out. Dash into it twice, or vent right next to it.
+2. Inside: pick 1 of 2 Rare-or-better cards (sometimes a weapon) and a heart. The room appears on
+   the map only after you open it.
+3. Now and then a cleared room leaves a small chest in the middle (walk into it) or a gold spark
+   cell that refills your active item.
 
 ---
 
