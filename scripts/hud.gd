@@ -824,6 +824,11 @@ func _draw_minimap(vp: Vector2) -> float:
         draw_rect(cell, col, false, 1.5)
         if ROOM_ICONS.has(r.type):
             _icon(ROOM_ICONS[r.type], cell.grow(-2.0), Color(1, 1, 1, col.a))
+        if r.visited and _holds_legendary(r):
+            # Arsenal 3.6: a seen room with a legendary weapon still on offer gets a small gold star.
+            var sc := cell.position + Vector2(cell.size.x, 0.0)
+            draw_colored_polygon(PackedVector2Array([sc + Vector2(0, -4), sc + Vector2(1.3, -1.3), sc + Vector2(4, 0),
+                sc + Vector2(1.3, 1.3), sc + Vector2(0, 4), sc + Vector2(-1.3, 1.3), sc + Vector2(-4, 0), sc + Vector2(-1.3, -1.3)]), Color(1.0, 0.82, 0.3))
         for d in r.doors.keys():
             if r.doors[d]["obstacle"] != "":
                 continue
@@ -832,6 +837,13 @@ func _draw_minimap(vp: Vector2) -> float:
         if pos == main.current_pos:
             draw_rect(cell.grow(3.0), Color(1, 1, 1, 0.6 + 0.4 * absf(sin(_time * 4.0))), false, 2.0)
     return origin.y + size + 6.0
+
+
+func _holds_legendary(r: RoomData) -> bool:
+    for o in r.stock:
+        if String(o.get("kind", "")) == "gun" and not bool(o.get("taken", false)) and Guns.rarity_of(String(o.get("id", ""))) >= Items.Rarity.LEGENDARY:
+            return true
+    return false
 
 
 func _draw_scrap(vp: Vector2, top: float) -> void:

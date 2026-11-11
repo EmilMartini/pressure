@@ -222,6 +222,9 @@ func _draw() -> void:
         if empower_left > 0.0:
             var e := 0.55 + 0.45 * sin(Time.get_ticks_msec() * 0.014)
             draw_texture_rect(glow, Rect2(Vector2(-20, -20), Vector2(40, 40)), false, Color(empower_col, (0.25 + 0.2 * e) * a))
+    if data.rarity >= Items.Rarity.LEGENDARY:
+        # Arsenal 3.6: a legendary wears one thin gold accent at the figure, quiet (own-effects alpha).
+        draw_arc(Vector2.ZERO, 14.0, 0.0, TAU, 20, Color(0.95, 0.8, 0.35, 0.45 * Settings.own_fx()), 1.0)
     if not swings.is_empty():
         _draw_swings()
     # Charge: a glow gathering at the muzzle. Repeater: a ring that fills as it spins up.

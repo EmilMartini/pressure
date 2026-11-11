@@ -1546,7 +1546,7 @@ to carry over: weapons and their checks come first.
 | Echo Engine | Gun, Gale pistol | Every other trigger of another weapon fires again from it at the closest foe, at 50% | 12 fusions discovered |
 | Glass of Ages | Gun, Ice+Void charge rail | A hit stops the foe 1.5 s (elites and bosses 0.5 s); every hit on it is banked and lands at once; 1.5 s before it can be stopped again | Deep Freeze 200 times |
 | Tidebreaker | Melee, Wet+Ice sweep | Every 4th swing, a freezing ring wave 420 px out at 50% | 3,000 melee kills |
-| Mirrorblade | Melee, Holy sweep | Cuts shots like the Parry Blade; each cut shot hits its owner (or the closest foe) at 80% | Cut 300 shots |
+| Mirrorblade | Melee, Holy sweep | Each swing sends back every enemy shot within 110 px, and the blade cuts shots like the Parry Blade's; each one hits its owner (or the closest foe) at 80%. (Cutting only on the blade's line fired about once a run) | Cut 300 shots |
 | The Long Coil | Melee, Poison+Acid lash, 300 px reach | A poison cloud where the lash lands | Contamination 150 times |
 | Red Harvest | Melee, Blood sweep | +2% damage a kill (any weapon), up to +100%, reset each room | 15,000 kills |
 | Mother of Knives | Thrown, Blood knives | Knives stay stuck 20 s; each dash recalls every knife (1.5x on the way back) | 1,200 thrown kills |
@@ -1575,6 +1575,9 @@ to carry over: weapons and their checks come first.
 - **Icons:** the five whose style has no code-drawn shape (four guns, the lob) use unused
   artefact tiles (`Art.GUN_ICONS`); the rest draw by family as before.
 - `[LEGENDARY] fired={...}` at the end of every bot run: how often each rule fired.
+  `[LEGENDARY-PROBE]` (part 2) says FAIL when a carried legendary never fired; a weapon
+  picked up in the last treasure room of a run has had no fight to fire in, so read the
+  quiet list before believing it.
 
 **Checks** (headless, at most 4 instances, 0 `SCRIPT ERROR` in every run):
 | Check | Result | Pass |
@@ -1589,8 +1592,11 @@ to carry over: weapons and their checks come first.
 **Not built (carry over):**
 - `--legendary-probe` (each rule measured under its ceiling with kills, shots and reactions)
   and `--loot-sim` (the legendary share per run with the drought rule).
-- The celebration extras of 3.6: the black-and-gold treasure plinth, the minimap star, the
-  journal "First found" line, the floor-end card, the Build page listing it first.
+- The celebration extras of 3.6: the black-and-gold treasure plinth, the journal "First
+  found" line, the floor-end card, the Build page listing it first. (Built later the same
+  night: the minimap's small gold star on a seen room that still offers a legendary weapon,
+  and a thin gold ring at own-effects alpha around a carried legendary at the figure.
+  Neither has been seen in a window yet.)
 - Shades as their own look (they are Void familiars that fade after 8 s); Orrery motes
   re-made when your elements change mid-room (they change next room).
 - Items 270 to 300, synergies 20 to 50, the remaining Trials and `--unlock-sim` (part 2).

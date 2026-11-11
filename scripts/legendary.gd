@@ -60,6 +60,7 @@ const GLASS_SECS := 1.5            # a foe stays stopped this long (elites and b
 const GLASS_ELITE := 0.5
 const GLASS_COOL := 1.5            # then can't be stopped again for this long
 const MIRROR_MULT := 0.8           # of the Mirrorblade's strike, per shot sent back
+const MIRROR_R := 110.0            # each swing sends back the shots this close to you
 const KNIFE_STAY := 20.0           # s a Mother of Knives knife waits for a dash
 const KNIFE_CALL := 1.5            # recalled knives hit this hard on the way
 const CHOIR_GAP := 0.5
@@ -290,6 +291,16 @@ static func tick(gun: Gun, delta: float) -> void:
     match gun.data.legend:
         "glass":
             _glass_release()
+        "mirror":
+            # Each swing also sends back every enemy shot within MIRROR_R of you (the blade's
+            # own path cuts them too, Melee._parry): crossing the line alone was rare.
+            if gun.melee_n > 0 and gun.legend_t != float(gun.melee_n):
+                gun.legend_t = float(gun.melee_n)
+                var r2 := MIRROR_R * MIRROR_R
+                for sh in gun.get_tree().get_nodes_in_group("enemy_projectiles"):
+                    if is_instance_valid(sh) and not sh.is_queued_for_deletion() and sh.global_position.distance_squared_to(p.global_position) <= r2:
+                        mirror(gun, sh)
+                        sh.queue_free()
         "horizon":
             _horizon[p.get_instance_id()] = true
             gun.legend_t += delta
