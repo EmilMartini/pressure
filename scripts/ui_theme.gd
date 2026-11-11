@@ -69,7 +69,8 @@ static func body(text: String, size: int = Art.BODY_SIZE, color: Color = BONE) -
 static func to_body(l: Label, size: int = Art.BODY_SIZE, color: Color = Color(0, 0, 0, 0)) -> void:
     if Art.FONT_BODY != null:
         l.add_theme_font_override("font", Art.FONT_BODY)
-    l.add_theme_font_size_override("font_size", maxi(size, Art.SMALL_SIZE))
+    # Literal sizes were written for the first, larger text pass: scale them (Art.bpx).
+    l.add_theme_font_size_override("font_size", size if size == Art.BODY_SIZE else Art.bpx(size))
     if color.a > 0.0:
         l.add_theme_color_override("font_color", color)
 

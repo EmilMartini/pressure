@@ -193,8 +193,12 @@ var _icon_warned: Dictionary = {}   # full path -> true once warned
 ## ships with the engine), at BODY_SIZE or more at 1280x720; secondary lines may drop to
 ## SMALL_SIZE, never lower. Kenney Mini is retired: its lowercase letters blur together.
 ## `text_font` / `text_px` apply the rule to text laid out for the pixel font.
-const BODY_SIZE := 18
-const SMALL_SIZE := 15
+## 2026-11-11 (Emil: "the new font is also a little bit large"): every body size is about
+## 11% smaller than the first text pass (18 and 15 then); BODY_SCALE shrinks sizes that
+## were written as literals for that pass.
+const BODY_SIZE := 16
+const SMALL_SIZE := 13
+const BODY_SCALE := 0.89
 var FONT_BODY: Font
 
 
@@ -231,12 +235,17 @@ func text_px(text: String, pixel_px: int) -> int:
 ## Body-font size for a slot sized for the pixel font at `pixel_px`.
 static func body_px(pixel_px: int) -> int:
     if pixel_px >= 28:
-        return 22
+        return 19
     if pixel_px >= 26:
-        return 20
+        return 18
     if pixel_px >= 22:
         return BODY_SIZE
-    return 16
+    return 14
+
+
+## A body size written for the first text pass, at today's scale (never under SMALL_SIZE).
+static func bpx(px: int) -> int:
+    return maxi(roundi(float(px) * BODY_SCALE), SMALL_SIZE)
 
 
 func tile(coord: Vector2i) -> AtlasTexture:

@@ -558,11 +558,12 @@ func _body_font() -> Font:
     return Art.FONT_BODY if Art.FONT_BODY != null else _font
 
 
-## Draws text with a drop shadow. Pixel-font text is never smaller than 22 px and body
-## text never smaller than 15 px, so everything stays readable.
+## Draws text with a drop shadow. Pixel-font text is never smaller than 22 px. Body sizes
+## here were written for the first text pass and are scaled by Art.bpx, never under 18 px
+## (fight text has to read at a glance).
 func _text(pos: Vector2, text: String, size: int, color: Color, align := HORIZONTAL_ALIGNMENT_LEFT, width := -1.0, shadow := true, pixel := false) -> void:
     var font := _font if pixel else _body_font()
-    size = maxi(size, 22 if pixel else 20)
+    size = maxi(size, 22) if pixel else _bsz(size)
     if shadow:
         var off := Vector2(2, 2) if pixel else Vector2(1, 1)
         draw_string(font, pos + off, text, align, width, size, Color(0, 0, 0, 0.75 * color.a))
@@ -582,13 +583,18 @@ func _title(pos: Vector2, text: String, size: int, color: Color, align := HORIZO
 ## Body text vertically centred in a rect, aligned horizontally inside it.
 func _body_in(rect: Rect2, text: String, size: int, color: Color, align := HORIZONTAL_ALIGNMENT_CENTER, shadow := true) -> void:
     var font := _body_font()
-    var s := maxi(size, 20)
+    var s := _bsz(size)
     var base := rect.position.y + (rect.size.y + font.get_ascent(s) - font.get_descent(s)) / 2.0
-    _body(Vector2(rect.position.x, base), text, s, color, align, rect.size.x, shadow)
+    _body(Vector2(rect.position.x, base), text, size, color, align, rect.size.x, shadow)
 
 
 func _body_width(text: String, size: int) -> float:
-    return _body_font().get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, maxi(size, 20)).x
+    return _body_font().get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, _bsz(size)).x
+
+
+## A HUD body size at today's scale (Art.bpx), never under 18 px.
+func _bsz(size: int) -> int:
+    return maxi(Art.bpx(size), 18)
 
 
 func _centered(y: float, text: String, size: int, color: Color, vp: Vector2, pixel := false) -> void:
