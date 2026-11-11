@@ -546,7 +546,7 @@ func _tick_keys(delta: float) -> void:
             keys += 1
     if keys >= budget or alive >= SCREEN_CAP:
         return
-    var kind := SpawnTable.key_kind(main.floor_number, arena_i)
+    var kind := SpawnTable.key_kind(main.floor_number, arena_i, main.region_id)
     if kind == "":
         return
     var e := _spawn_enemy(kind, _spawn_point())
@@ -1140,7 +1140,7 @@ func _spawn_group(out: Array = []) -> float:
         if not alive.is_empty():
             anchor = alive.pick_random()
     var group_i := 0
-    var group: Array = SpawnTable.group(diff, main.floor_number, main.players.size())
+    var group: Array = SpawnTable.group(diff, main.floor_number, main.players.size(), main.region_id, main.floor_arenas_done())
     for type in group:
         if room_left <= 0:
             break

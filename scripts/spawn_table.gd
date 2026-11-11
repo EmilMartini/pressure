@@ -28,7 +28,55 @@ const KEY := {
     "spitter": [1, 0, 1.0],
     "lobber": [1, 2, 1.1],
     "charger": [1, 2, 0.9],
+    # Roster key threats (Bestiary.KEY): only through a region's ROSTERS row, never here.
+    "burrower": [99, 0, 0.0],
+    "sentry": [99, 0, 0.0],
+    "mirror": [99, 0, 0.0],
+    "ricochet": [99, 0, 0.0],
+    "nest": [99, 0, 0.0],
+    "bell": [99, 0, 0.0],
+    "sniper": [99, 0, 0.0],
 }
+
+## Region rosters (Core loop reset, "Enemy roster", 2026-11-11): each region fields its own
+## 7 or 8 kinds, new ones beside a few classics, so a region reads by what you fight.
+## "crowd": kind -> [first arena on the floor (0-based), base weight, weight per difficulty];
+## "key": kind -> [first arena, weight], on the floor's key budget (key_budget) as before.
+## A region missing here (or --old-balance) uses KINDS and KEY.
+const ROSTERS := {
+    "ossuary_gate": {
+        "crowd": { "grunt": [0, 10.0, -0.30], "runner": [0, 6.0, -0.10], "swarmer": [0, 3.0, 0.05], "ghost": [1, 2.5, 0.10] },
+        "key": { "spitter": [0, 1.0], "burrower": [1, 1.0], "bell": [2, 0.8] } },
+    "drowned_cistern": {
+        "crowd": { "grunt": [0, 8.0, -0.20], "swarmer": [0, 3.0, 0.05], "hopper": [0, 4.0, 0.10], "bloater": [0, 2.0, 0.10] },
+        "key": { "lobber": [0, 1.0], "nest": [1, 0.7], "ricochet": [1, 0.9] } },
+    "rotting_gardens": {
+        "crowd": { "runner": [0, 7.0, -0.10], "swarmer": [0, 3.5, 0.05], "bloater": [0, 3.0, 0.10], "hopper": [0, 3.0, 0.08], "splitter": [1, 1.2, 0.10] },
+        "key": { "spitter": [0, 1.0], "nest": [0, 0.8], "burrower": [1, 0.9] } },
+    "rust_ruins": {
+        "crowd": { "grunt": [0, 9.0, -0.20], "tarcrawler": [0, 3.0, 0.10], "bomber": [0, 1.5, 0.12], "brute": [1, 1.0, 0.12] },
+        "key": { "ricochet": [0, 1.0], "sentry": [0, 0.9], "burrower": [1, 0.9] } },
+    "frostvault": {
+        "crowd": { "runner": [0, 7.0, -0.10], "ghost": [0, 3.0, 0.10], "splitter": [0, 1.5, 0.12], "warden": [1, 0.5, 0.06] },
+        "key": { "sniper": [0, 1.0], "mirror": [0, 0.9], "bell": [1, 0.9], "lobber": [0, 0.6] } },
+    "the_forge": {
+        "crowd": { "grunt": [0, 8.0, -0.20], "tarcrawler": [0, 3.5, 0.10], "bomber": [0, 2.0, 0.12], "brute": [0, 1.2, 0.12] },
+        "key": { "sentry": [0, 1.0], "ricochet": [0, 1.0], "charger": [0, 0.7], "lobber": [1, 0.6] } },
+    "chapel_of_ash": {
+        "crowd": { "runner": [0, 7.0, -0.10], "wisp": [0, 2.5, 0.12], "orbiter": [0, 2.0, 0.06], "shaman": [0, 0.6, 0.05] },
+        "key": { "bell": [0, 1.0], "sniper": [0, 0.9], "sentry": [0, 0.8], "spitter": [0, 0.6] } },
+    "the_rift": {
+        "crowd": { "swarmer": [0, 4.0, 0.05], "wisp": [0, 2.5, 0.12], "ghost": [0, 3.0, 0.10], "orbiter": [0, 2.0, 0.06], "brute": [0, 1.0, 0.12] },
+        "key": { "mirror": [0, 1.0], "nest": [0, 0.8], "sniper": [0, 0.9] } },
+}
+## At most this many of a kind in one spawn group.
+const GROUP_CAP := { "shaman": 1, "orbiter": 2, "bloater": 3, "tarcrawler": 3 }
+
+
+static func roster(region: String) -> Dictionary:
+    if region == "" or Main.old_balance or not ROSTERS.has(region):
+        return {}
+    return ROSTERS[region]
 ## Key threats alive at once (elites count against it): floor 1 one, then two from its
 ## third arena; floors 2 and 3 two to three; floors 4 and 5 three to four.
 static func key_budget(floor_number: int, arena_i: int) -> int:
@@ -45,8 +93,15 @@ static func key_budget(floor_number: int, arena_i: int) -> int:
 
 
 ## One key threat kind for an arena, or "" when none is open yet.
-static func key_kind(floor_number: int, arena_i: int) -> String:
+static func key_kind(floor_number: int, arena_i: int, region: String = "") -> String:
     var weights := {}
+    var r := roster(region)
+    if not r.is_empty():
+        var keys: Dictionary = r["key"]
+        for kind in keys.keys():
+            if arena_i >= int(keys[kind][0]):
+                weights[kind] = float(keys[kind][1])
+        return "" if weights.is_empty() else _pick(weights)
     for kind in KEY.keys():
         var row: Array = KEY[kind]
         if floor_number < int(row[0]) or (floor_number == int(row[0]) and arena_i < int(row[1])):
@@ -65,17 +120,27 @@ const BOSSES := ["brute_king", "hive_mother", "storm_warden", "pyre_lord", "void
 
 
 ## Kind names for one spawn group: 3..9 enemies, more with difficulty and players.
-static func group(diff: int, floor_number: int, players: int) -> Array:
+static func group(diff: int, floor_number: int, players: int, region: String = "", arena_i: int = 99) -> Array:
     var count := clampi(3 + diff / 4 + maxi(0, players - 1) + (1 if floor_number >= 4 else 0), 3, 9)
     var weights := {}
-    for kind in KINDS.keys():
-        var row: Array = KINDS[kind]
-        if floor_number < int(row[0]):
-            continue
-        var w := maxf(0.5, float(row[1]) + float(row[2]) * float(diff))
-        if floor_number >= 4 and HARD.has(kind):
-            w *= 1.3
-        weights[kind] = w
+    var r := roster(region)
+    if not r.is_empty():
+        var crowd: Dictionary = r["crowd"]
+        for kind in crowd.keys():
+            var row: Array = crowd[kind]
+            if arena_i < int(row[0]):
+                continue
+            weights[kind] = maxf(0.5, float(row[1]) + float(row[2]) * float(diff))
+    else:
+        for kind in KINDS.keys():
+            var row: Array = KINDS[kind]
+            if floor_number < int(row[0]):
+                continue
+            var w := maxf(0.5, float(row[1]) + float(row[2]) * float(diff))
+            if floor_number >= 4 and HARD.has(kind):
+                w *= 1.3
+            weights[kind] = w
+    var capped := {}
     var out: Array = []
     var shamans := 0
     var wardens := 0
@@ -84,6 +149,10 @@ static func group(diff: int, floor_number: int, players: int) -> Array:
     while out.size() < count and guard < 50:
         guard += 1
         var kind := _pick(weights)
+        if GROUP_CAP.has(kind):
+            if int(capped.get(kind, 0)) >= int(GROUP_CAP[kind]):
+                continue
+            capped[kind] = int(capped.get(kind, 0)) + 1
         if kind == "shaman":
             if shamans >= 1:
                 continue
@@ -99,8 +168,11 @@ static func group(diff: int, floor_number: int, players: int) -> Array:
                 out.append("swarmer")
             continue
         out.append(kind)
+    var filler := "grunt"
+    if not r.is_empty() and not (r["crowd"] as Dictionary).has("grunt"):
+        filler = "runner" if (r["crowd"] as Dictionary).has("runner") else "swarmer"
     while out.size() < 3:
-        out.append("grunt")
+        out.append(filler)
     return out
 
 
