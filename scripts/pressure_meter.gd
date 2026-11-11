@@ -261,6 +261,11 @@ func flush(died: bool = false) -> void:
         for k in top.slice(0, 8):
             by_txt += "%s:%.2f " % [k, float(dmg_by[k])]
         print("[THREATS] floor=%d burst3_nonboss=%.2f power=%s hurt_by(bars)=%s" % [s["floor"], s["burst3_nb"], main.power_text(), by_txt.strip_edges()])
+        var all_txt := ""
+        for k in top:
+            all_txt += "%s:%.3f " % [k, float(dmg_by[k])]
+        print("[ROSTER-DMG] floor=%d region=%s hurt_by(bars)=%s" % [s["floor"], s["region"], all_txt.strip_edges()])
+        Bestiary.print_tally(int(s["floor"]))
         var h: Dictionary = s["hands"]
         if not h.is_empty():
             print("[HANDS] floor=%d dashes=%d perfect=%d vents=%d mend_max=%.2f mend_used=%.2f mend_left=%.2f texts=%d texts_pm=%.2f focus_multi=%d focus_distinct=%d" % [

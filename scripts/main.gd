@@ -2228,7 +2228,17 @@ func _bot_dash(p: Player) -> void:
                 danger = Vector2(sh["at"])
         if en._fuse > 0.0 and en._fuse < BOT_DASH_LOOK and en.global_position.distance_to(pos) <= Enemy.BOMB_RADIUS + p.radius:
             danger = en.global_position
+        var toward := false
+        if danger == Vector2.INF and Bestiary.has(en.kind_name):
+            var bt := Bestiary.bot_threats(en, pos)
+            if bool(bt["dash"]):
+                danger = Vector2(bt["from"])
+                toward = true   # a bell's ring: dash through it, toward the bell
         if danger != Vector2.INF:
+            if toward:
+                p.input.force_dash = true
+                p.input.force_move = (danger - pos).normalized()
+                return
             var out := (pos - danger).normalized() if pos.distance_to(danger) > 1.0 else Vector2.RIGHT
             p.input.force_dash = true
             p.input.force_move = out
@@ -2263,6 +2273,8 @@ func _bot_kite_dir(p: Player) -> Vector2:
             rings.append([Vector2(z["at"]), Enemy.SOW_R])
         if en._fuse > 0.0:
             rings.append([en.global_position, Enemy.BOMB_RADIUS])
+        if Bestiary.has(en.kind_name):
+            rings.append_array(Bestiary.bot_threats(en, pos)["rings"])
         for rg in rings:
             var dr: Vector2 = pos - Vector2(rg[0])
             if dr.length() < float(rg[1]) + 40.0:
@@ -2270,6 +2282,11 @@ func _bot_kite_dir(p: Player) -> Vector2:
                 crowd += 1
         if en._tether_state > 0 and l > 0.5:
             push += d / l * 3.0
+            crowd += 1
+    for rg in Bestiary.pools(get_tree()):
+        var dp: Vector2 = pos - Vector2(rg[0])
+        if dp.length() < float(rg[1]) + 40.0:
+            push += (dp.normalized() if dp.length() > 1.0 else Vector2.RIGHT) * 4.0
             crowd += 1
     for sh in get_tree().get_nodes_in_group("enemy_projectiles"):
         if not is_instance_valid(sh) or not sh is Node2D:
