@@ -1605,7 +1605,8 @@ to carry over: weapons and their checks come first.
 #### Batch 5 part 2 done (2026-11-11, VERSION 2026.11.11-arsenal5): items, synergies, Trials, pacing
 
 **Built:**
-- **30 items** (`items.gd`, the batch 5 block), all locked, three per new milestone
+- **32 items** (`items.gd`, the batch 5 block; the catalog is now 300: 230 passives, 45
+  mods, 25 actives, from `--card-shot`'s cards.csv), all locked, three per new milestone
   (`b5_mile_1` to `_10` in `progress.gd`: 10 runs, 300 summon kills, 300 ground kills,
   1,000 reactions, 600 melee kills, 600 thrown kills, 60 vents, 60 elites, 400 rooms,
   12 bosses). Only existing trigger verbs, so no new item code:
@@ -1617,7 +1618,9 @@ to carry over: weapons and their checks come first.
     mend 1, inside the Mending budget), Catcher's Mitt;
   - 8 trade-offs: Glass Edge, Thrower's Oath, Lone Wolf, Heavy Hands, Sharp Mind, Ground
     Pact, Hollow Crown, Iron Lung;
-  - 6 actives: Thunder Bell, Frost Horn, War Cry, Miasma Flask, Iron Skin, Shard Bomb.
+  - 6 actives: Thunder Bell, Frost Horn, War Cry, Miasma Flask, Iron Skin, Shard Bomb;
+  - and Full Circle (thrown kills power guns) and Legend Lamp (+20% luck, -10% damage), on
+    an 11th milestone (150 pieces of gear).
 - **30 synergies** (to 50, `Items.SYNERGIES`): 10 weapon pairs, 12 weapon plus item, 8 item
   pairs. A `"gun:<id>"` half is a carried weapon (`Player.synergy_counts`), so a weapon
   pickup forms one with today's banner, and a weapon card says "Forms SYNERGY: name". All
@@ -1641,7 +1644,8 @@ to carry over: weapons and their checks come first.
 | Synergies form | `--loadout=frost_totem,wind_chime,parry_blade --proc-gear=cross_training,slingers_rhythm,ward_vent`: `[SYNERGY] formed blizzard`, `relay_race`, `parry_wall` (a weapon pair, an item pair, a weapon plus item) | yes |
 | Trials | `--trial=heavy_hand`, `pyre`, `thrown_only`, `commons` start with the right weapons | yes (not won end to end) |
 | Cards | `[CARDS]` 598 cards, at most 23 words, at most 294 px; every FAIL is the pre-existing "font 16" | yes for this batch |
-| Unlock pacing (`tools/unlock_sim.py`, default 30-minute run) | Runs 1 to 10: 21.7 a run (spec about 4); 11 to 40: 2.2 (about 2); 41 to 120: 0.29 (about 1); 121 to 240: 0.03 (about 0.5); last unlock run 172 | **no**: see below |
+| Unlock pacing (`tools/unlock_sim.py`, default 30-minute run) | Runs 1 to 10: 21.7 a run (spec about 4); 11 to 40: 2.2 (about 2); 41 to 120: 0.29 (about 1); 121 to 240: 0.03 (about 0.5); last unlock run 215 (Prism Disc, 75,000 reactions) | **no**: see below |
+| Stand-still with legendaries (`--idle --start-floor=2 --build=human6980 --mastery=full`) | Event Horizon, Stormcrown, The Bell, Tidebreaker: dies at 122 s (1.49 bars a minute). Second Sun, Choir, Orrery, Phoenix: dies at 47 s (3.77; the firebird saved it once). Glass, Conductor, Skyfall, Red Harvest: dies at 216 s in the boss room (1.16). Kiting with legendaries: 0.01 to 0.13 | yes (still at least 9x moving); the gun legendaries let a still player last longest, watch them |
 
 **Pacing, what the sim says:** the early bands are front-loaded by the earlier batches' goals
 (family play goals and masteries of 60 to 600 kills fall in the first runs when every
@@ -1657,8 +1661,6 @@ telemetry has them) before moving goals. The legendaries now sit at runs 50 to 1
 - The behaviour versions of the spec's synergies (Conductor's Net's knives as rods,
   Blizzard's snowstorm, Big and Little's shared slam): built as stats.
 - Five new cursed pedestals (curses are code, not data); 3.6's celebration extras.
-- Two items short: the catalog now holds 298 (228 passives, 45 mods, 25 actives, from
-  `--card-shot`'s cards.csv) against the spec's 300; weapons are 151.
 - Pacing of runs 1 to 10 and 41 to 120 (above).
 
 ---

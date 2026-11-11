@@ -348,6 +348,7 @@ const ACHIEVEMENTS := [
     { "id": "b5_mile_8", "name": "Trophy Hunter", "desc": "Kill 60 elites", "stat": "elites", "goal": 60, "rewards": ["item:aegis_trophy", "item:lone_wolf", "item:war_cry"] },
     { "id": "b5_mile_9", "name": "Cold Fire", "desc": "Clear 400 rooms", "stat": "rooms", "goal": 400, "rewards": ["item:cinder_heart", "item:cold_blood", "item:frost_horn"] },
     { "id": "b5_mile_10", "name": "Crowned", "desc": "Beat 12 bosses", "stat": "bosses", "goal": 12, "rewards": ["item:hollow_crown", "item:iron_lung", "item:miasma_flask"] },
+    { "id": "b5_mile_11", "name": "Gilded", "desc": "Equip 150 pieces of gear", "stat": "items_picked", "goal": 150, "rewards": ["item:full_circle", "item:legend_lamp"] },
     # Arsenal expansion batch 5: one feat per legendary (section 6). The desc is the hint.
     { "id": "legend_forge", "name": "Forgeheart", "desc": "Vent 600 times", "stat": "vents", "goal": 600, "rewards": ["gun:heart_of_the_forge"] },
     { "id": "legend_conductor", "name": "Conductor", "desc": "Set off 20000 reactions", "stat": "reactions", "goal": 20000, "rewards": ["gun:the_conductor"] },
@@ -364,7 +365,7 @@ const ACHIEVEMENTS := [
     { "id": "legend_glass", "name": "Glass of Ages", "desc": "Set off Deep Freeze 1250 times", "stat": "reaction:Deep Freeze", "goal": 1250, "rewards": ["gun:glass_of_ages"] },
     { "id": "legend_mirror", "name": "Mirrorblade", "desc": "Cut 300 enemy shots out of the air", "stat": "shots_cut", "goal": 300, "rewards": ["gun:mirrorblade"] },
     { "id": "legend_knives", "name": "Mother of Knives", "desc": "Kill 4500 enemies with thrown weapons", "stat": "kills_thrown", "goal": 4500, "rewards": ["gun:mother_of_knives"] },
-    { "id": "legend_prism", "name": "Prism", "desc": "Set off 60000 reactions", "stat": "reactions", "goal": 60000, "rewards": ["gun:prism_disc"] },
+    { "id": "legend_prism", "name": "Prism", "desc": "Set off 75000 reactions", "stat": "reactions", "goal": 75000, "rewards": ["gun:prism_disc"] },
     { "id": "legend_choir", "name": "The Hollow Choir", "desc": "Kill 6500 enemies with summons", "stat": "kills_summon", "goal": 6500, "rewards": ["gun:hollow_choir"] },
     { "id": "legend_orrery", "name": "Orrery", "desc": "Win 8 runs", "stat": "runs_won", "goal": 8, "rewards": ["gun:orrery"] },
 ]

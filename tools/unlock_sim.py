@@ -66,7 +66,9 @@ def main():
             m = re.search(r"\[RUN-STATS\] secs=(\d+) (\{.*\})", line)
             secs, data = float(m.group(1)), json.loads(m.group(2))
             scale = 1800.0 / max(60.0, secs)
-            run_stats = {k: float(v) * scale for k, v in data.items() if not k.startswith("boss:")}
+            run_stats = dict(DEFAULT_RUN)   # what the bot's run lacks keeps the default
+            run_stats.update({k: float(v) * scale for k, v in data.items()
+                              if not k.startswith(("boss:", "boss_seen:", "fusion:")) and k != "runs_started"})
     goals = achievements()
     have = {}
     done = set()

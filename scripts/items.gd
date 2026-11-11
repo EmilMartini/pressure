@@ -1751,6 +1751,9 @@ func _build_catalog() -> void:
         { "tags": ["poison"], "locked": true, "active": { "charges": 3, "do": [{ "do": "cloud", "element": "poison", "radius": 120, "secs": 4.0 }] } })
     _add("iron_skin", "Iron Skin", "active", U, "Use: shield yourself", {}, [],
         { "tags": ["guard"], "locked": true, "active": { "charges": 2, "do": [{ "do": "shield", "amount": 2.0 }] } })
+    # The last two (to 300): a kill relay back to the start of the chain, and a gold sink.
+    _add("full_circle", "Full Circle", "ring", R, "Thrown kills: guns +25% damage for 3 s", {}, [{ "on": "kill", "family": "thrown", "do": "buff", "key": "gun_dmg", "amount": 0.25, "secs": 3.0 }], { "tags": ["thrown", "gunslinger"], "locked": true })
+    _add("legend_lamp", "Legend Lamp", "trinket", E, "+20% luck, -10% damage", { "luck": 0.20, "dmg": -0.10 }, [], { "tags": ["fortune"], "locked": true, "stack": "once" })
     _add("shard_bomb", "Shard Bomb", "active", C, "Use: 8 shards of your element burst out", {}, [],
         { "tags": ["gunslinger"], "locked": true, "active": { "charges": 3, "do": [{ "do": "shoot", "element": "gun", "count": 8, "potency": 6 }] } })
 
