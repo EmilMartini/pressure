@@ -751,8 +751,19 @@ func _pay_deal(pl: Player, o: Dictionary) -> bool:
     return true
 
 
-## Take one card of a pick-1-of-N row: the rest vanish.
+## A free card in a treasure or challenge room that is the room's own reward: taking it
+## clears the rest. A gun the player dropped here (add_floor_gun) or a piece handed back
+## onto a plinth is theirs, never the reward, so picking it up again changes nothing.
+func _consumes_choice(o: Dictionary) -> bool:
+    if o.get("dropped", false) or o.get("returned", false) or o.get("secret", false):
+        return false
+    return int(o["price"]) == 0 and data.type in [RoomData.Type.TREASURE, RoomData.Type.CHALLENGE]
+
+
+## Take one card of a pick-1-of-N row: the rest vanish. A dropped gun has no group.
 func _take_group(o: Dictionary) -> void:
+    if o.get("dropped", false):
+        return
     var g := String(o.get("group", ""))
     if g == "":
         return
@@ -2085,6 +2096,7 @@ func add_floor_gun(id: String, pos: Vector2) -> void:
     var p := nearest_open(Vector2(clampf(pos.x, inner.position.x, inner.end.x), clampf(pos.y, inner.position.y, inner.end.y)), 26.0)
     var o := FloorGen.offer("gun", id, 0)
     o["pos"] = p
+    o["dropped"] = true   # the player's own gun: picking it back up is no reward pick
     data.stock.append(o)
     _build_pedestals()
 
@@ -2167,7 +2179,7 @@ func _fit_mod(pl: Player, gun: Gun, o: Dictionary) -> void:
     Progress.add("items_picked")
     Sfx.play("buy")
     o["taken"] = true
-    if o["price"] == 0 and data.type in [RoomData.Type.TREASURE, RoomData.Type.CHALLENGE] and not o.get("secret", false):
+    if _consumes_choice(o):
         for other in data.stock:
             if other["kind"] in ["gun", "item", "boon"] and not other.get("secret", false):
                 other["taken"] = true
@@ -2216,7 +2228,8 @@ func activate(ped: Pedestal, pl: Player) -> void:
             Sfx.play("buy")
             o["taken"] = true
             _take_group(o)
-            main.loot_note("guns")
+            if not o.get("dropped", false):
+                main.loot_note("guns")
             if o.get("spoils", false):
                 salvage_spoils("picked")
             if o.get("choice", false):
@@ -2229,7 +2242,7 @@ func activate(ped: Pedestal, pl: Player) -> void:
                     for other in data.stock:
                         if other.get("choice", false):
                             other["taken"] = true
-            elif o["price"] == 0 and data.type in [RoomData.Type.TREASURE, RoomData.Type.CHALLENGE] and not o.get("secret", false):
+            elif _consumes_choice(o):
                 for other in data.stock:
                     if other["kind"] in ["gun", "item", "boon"] and not other.get("secret", false):
                         other["taken"] = true
@@ -2265,7 +2278,7 @@ func activate(ped: Pedestal, pl: Player) -> void:
             _take_group(o)
             if o.get("spoils", false):
                 salvage_spoils("picked")
-            if o["price"] == 0 and data.type in [RoomData.Type.TREASURE, RoomData.Type.CHALLENGE] and not o.get("secret", false):
+            if _consumes_choice(o):
                 for other in data.stock:
                     if other["kind"] in ["gun", "item", "boon"] and not other.get("secret", false):
                         other["taken"] = true
