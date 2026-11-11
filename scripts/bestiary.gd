@@ -12,17 +12,17 @@ extends RefCounted
 ## Per kind: [hp base, hp per difficulty, speed, radius, contact damage base, scrap].
 const STATS := {
     "hopper": [30.0, 5.5, 75.0, 11.0, 6.0, 1],
-    "burrower": [48.0, 8.5, 70.0, 13.0, 8.0, 2],
-    "sentry": [55.0, 9.5, 0.0, 14.0, 6.0, 2],
-    "mirror": [52.0, 9.5, 110.0, 12.0, 8.0, 2],
+    "burrower": [60.0, 10.5, 70.0, 13.0, 8.0, 2],
+    "sentry": [80.0, 14.0, 0.0, 14.0, 6.0, 2],
+    "mirror": [62.0, 11.0, 110.0, 12.0, 8.0, 2],
     "bloater": [36.0, 6.5, 62.0, 13.0, 6.0, 1],
     "orbiter": [16.0, 3.0, 220.0, 8.0, 4.0, 1],
-    "ricochet": [62.0, 11.0, 95.0, 13.0, 10.0, 3],
-    "nest": [80.0, 14.0, 0.0, 18.0, 8.0, 3],
+    "ricochet": [70.0, 12.5, 95.0, 13.0, 10.0, 3],
+    "nest": [100.0, 17.0, 0.0, 18.0, 8.0, 3],
     "ghost": [24.0, 4.8, 95.0, 11.0, 7.0, 1],
     "tarcrawler": [42.0, 7.5, 55.0, 12.0, 7.0, 1],
-    "bell": [60.0, 10.0, 45.0, 15.0, 6.0, 3],
-    "sniper": [34.0, 6.5, 85.0, 11.0, 5.0, 2],
+    "bell": [80.0, 14.0, 45.0, 15.0, 6.0, 3],
+    "sniper": [48.0, 9.0, 85.0, 11.0, 5.0, 2],
 }
 
 ## Key threats among them (Core loop reset 8: on the key budget, 1.15x drawn, edge arrows).
@@ -272,7 +272,7 @@ const EXPOSED_SECS := 1.4
 const BURROW_EVERY := 3.0
 
 const BEAM_LEN := 300.0
-const BEAM_WARM := 1.0
+const BEAM_WARM := 0.8
 const BEAM_ON := 2.6
 const BEAM_OFF := 1.6
 const BEAM_TURN := 0.45       # rad/s while it burns
@@ -283,7 +283,7 @@ const MIRROR_TELL := 0.35
 const MIRROR_LEN := 220.0
 const MIRROR_SPEED := 700.0
 const MIRROR_DMG := 11.0
-const MIRROR_SHARD_EVERY := 2.8
+const MIRROR_SHARD_EVERY := 2.2
 const MIRROR_SHARD_DMG := 5.0
 
 const POOL_R := 62.0
@@ -324,7 +324,7 @@ const BELL_BAND := 16.0
 const BELL_DMG := 8.0
 const BELL_DAZE := 0.8        # seconds at TAR_SLOW speed after a hit
 
-const SNIPE_AIM := 1.3
+const SNIPE_AIM := 1.0
 const SNIPE_LOCK := 0.4
 const SNIPE_COOL := 1.6
 const SNIPE_SPEED := 950.0
@@ -373,21 +373,21 @@ static func setup(e: Enemy) -> void:
     bx["born"] = -1.0
     match e.kind_name:
         "hopper":
-            bx["cd"] = randf_range(0.6, 1.4)
+            bx["cd"] = randf_range(0.3, 0.8)
         "burrower":
-            bx["cd"] = randf_range(1.5, 2.5)
+            bx["cd"] = randf_range(0.5, 1.0)
             bx["st"] = 0
         "sentry":
-            bx["st"] = 2
-            bx["t"] = randf_range(0.6, 1.4)
+            bx["st"] = 0   # warming from the moment it lands
+            bx["t"] = BEAM_WARM
             bx["ang"] = randf() * TAU
         "mirror":
             bx["seen"] = -1
-            bx["shard"] = randf_range(1.5, 2.5)
+            bx["shard"] = randf_range(0.6, 1.2)
         "ricochet":
             bx["st"] = 0
         "nest":
-            bx["t"] = 1.2
+            bx["t"] = 0.6
             bx["kids"] = []
             bx["pend"] = []
         "ghost":
@@ -397,12 +397,12 @@ static func setup(e: Enemy) -> void:
             bx["t"] = 0.0
             bx["trail"] = []
         "bell":
-            bx["t"] = randf_range(1.5, 2.5)
+            bx["t"] = randf_range(0.4, 0.9)
             bx["wind"] = -1.0
             bx["wave"] = -1.0
         "sniper":
             bx["st"] = 0
-            bx["t"] = randf_range(0.8, 1.6)
+            bx["t"] = randf_range(0.2, 0.5)
         "orbiter":
             bx["ang"] = randf() * TAU
 
@@ -612,7 +612,7 @@ static func think(e: Enemy, delta: float, target: Player, dir: Vector2, dist: fl
         "bell":
             if float(e.bx.get("wind", -1.0)) >= 0.0:
                 return Vector2.ZERO
-            return e._keep_range(delta, dir, dist, 150.0, 260.0) * e.speed * mult
+            return e._keep_range(delta, dir, dist, 110.0, 190.0) * e.speed * mult
         "sniper":
             return _think_sniper(e, delta, target, dir, dist, mult)
     return dir * e.speed * mult
@@ -727,8 +727,8 @@ static func _think_mirror(e: Enemy, delta: float, target: Player, dir: Vector2, 
     if float(bx["shard"]) <= 0.0 and dist < 520.0:
         bx["shard"] = MIRROR_SHARD_EVERY
         var el := int(bx.get("carry", Element.Kind.NONE))
-        for a in [-0.18, 0.18]:
-            e._shoot(dir.rotated(a), 230.0, MIRROR_SHARD_DMG, el, 3.0, 6.0)
+        for a in [-0.2, 0.0, 0.2]:
+            e._shoot(dir.rotated(a), 240.0, MIRROR_SHARD_DMG, el, 3.0, 6.0)
         e._squash = 0.6
     return e._keep_range(delta, dir, dist, 200.0, 280.0) * e.speed * mult
 

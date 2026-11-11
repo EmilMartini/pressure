@@ -55,10 +55,10 @@ const ROSTERS := {
         "key": { "spitter": [0, 1.0], "nest": [0, 0.8], "burrower": [1, 0.9] } },
     "rust_ruins": {
         "crowd": { "grunt": [0, 9.0, -0.20], "tarcrawler": [0, 3.0, 0.10], "bomber": [0, 1.5, 0.12], "brute": [1, 1.0, 0.12] },
-        "key": { "ricochet": [0, 1.0], "sentry": [0, 0.9], "burrower": [1, 0.9] } },
+        "key": { "ricochet": [0, 1.0], "sentry": [0, 0.9], "burrower": [1, 0.9], "spitter": [0, 0.7] } },
     "frostvault": {
-        "crowd": { "runner": [0, 7.0, -0.10], "ghost": [0, 3.0, 0.10], "splitter": [0, 1.5, 0.12], "brute": [1, 0.6, 0.06], "warden": [1, 0.5, 0.06] },
-        "key": { "sniper": [0, 1.0], "mirror": [0, 0.9], "bell": [1, 0.9] } },
+        "crowd": { "runner": [0, 7.0, -0.10], "ghost": [0, 3.0, 0.10], "splitter": [0, 1.5, 0.12], "brute": [1, 0.6, 0.06] },
+        "key": { "sniper": [0, 1.0], "mirror": [0, 0.8], "bell": [1, 0.9], "lobber": [0, 0.8] } },
     "the_forge": {
         "crowd": { "grunt": [0, 8.0, -0.20], "tarcrawler": [0, 3.5, 0.10], "bomber": [0, 2.0, 0.12], "brute": [0, 1.2, 0.12] },
         "key": { "sentry": [0, 1.0], "ricochet": [0, 1.0], "charger": [0, 0.7], "lobber": [1, 0.6] } },
