@@ -1,44 +1,29 @@
 extends Node
 ## Autoload "Mastery": the Shrine. Runs pay Embers for how well they were played, and
-## Embers buy ranks on a board of eleven talent slots plus a short survival track.
+## Embers buy nodes on a talent tree plus a short survival track (Last Breath).
 ##
-## Why it looks like this (reports/Roguelite meta progression analysis.md, R4 to R7):
-## the old 212-node tree sold +21% damage, +12% fire rate, +32 max HP and +6 armour, and
-## a bot probe with it bought reached floor 2 in every run at 120-147 HP while two of
-## three naked runs died on floor 1. Hades keeps its combat talents to a cheap core of
-## swappable A/B pairs, Dead Cells caps permanent power at four flask charges, and Risk
-## of Rain 2 sells no stats at all. So:
-##   R4  Eleven slots, each an exclusive pair: side A or side B is active, switching is
-##       free (in the Shrine, between runs), each side has its own 2 to 3 ranks, and a
-##       full refund costs nothing. Most pairs are sidegrades or agency, not damage.
-##   R5  A capped survival track (Last Breath, 3 ranks): cheap first rank, dear later.
-##   R6  The twelve element-damage branches are gone. Two slots are element sidegrades
-##       (ice or acid, holy or void) that only open once a gun of that element is
-##       unlocked.
-##   R7  Embers pay for rooms cleared, elites, first-ever reactions, boss kills and
-##       first-kill bounties per boss kind and class; depth is a small part.
+## The tree (design/Talent tree.md, Emil 2026-11-11, modern WoW talents): five branches, one
+## per playstyle, five nodes each. Rows 1 and 3 are passives (3 ranks of a small stat), rows
+## 2, 4 and 5 are choice nodes: bought once, then one of two options is picked, and the pick
+## changes how a fight plays ("Burning foes spread fire when they die" or "Fire burns twice
+## as long"). Picks swap for free in the Hollow, never during a run. A node opens when the
+## node above it in its branch is full. Refund all is free.
 ##
-## Power budget (GDD target pacing: meta stat power at most +10% damage and +20 max HP).
-## Every side carries `eq`: its damage-equivalent fraction and HP-equivalent at max rank,
-## converted with factors measured from the mastery-free bot telemetry (runs.jsonl,
-## build 2026.11.05, 2,018 damage_dealt and 500 damage_taken events):
-##   REACTION_SHARE 0.49  reactions dealt 98,055 of 201,824 damage, so +x potency ~ +0.49x
-##   VENT_SHARE     0.126 player-sourced damage (vents) was 25,396 of 201,824
-##   HIGH_HP_SHARE  0.44  median share of wave samples at >= 80% HP (20 runs with 5+ waves)
-##   DAMAGE_PER_FLOOR 150 floor-1 deaths took 100-222 damage in 9-31 hits (about 6.5 each)
-##   DURATION_TO_DMG 0.15 assumed, not measured: longer states only matter when a second
-##                        element lands in the extra time
-## Economy and agency sides (scrap, luck, rerolls, choices, carry, map reveals) count as
-## zero stat power; they change options, not numbers. `max_power()` sums the larger side
-## of every slot, so it is an upper bound: dmg +9.7%, HP +15 (see the table in GDD.md).
-## The old tree at completion, by the same factors: +21% dmg +12% fire rate +7 pp crit
-## (+40% before projectiles, pierce and the 12 element branches) and +32 HP + 6 armour
-## (6 armour alone turned the measured ~6.5 average hit into ~1.5-2.7).
+## Why: the A/B board before this (eleven slots of +4% range or +5% shot speed, the report's
+## R4) was fair but felt like nothing to buy (2026-11-10, "no growth or reward"). The
+## report's other findings stay: permanent stat power stays small (passives come to about
+## +7% damage-equivalent and +17 HP-equivalent, inside the GDD budget of +10% and +20), and
+## survival stays a cheap capped track. The choices' damage is measured by the bot probe
+## (`--mastery=full --mastery-side=a|b|mix`), not estimated here.
+##
+## Effects use the Items vocabulary: `mods` are player stats (or the meta keys below) summed
+## into `bonus()`, which Player.stat reads; `triggers` are Items trigger dicts that Player
+## adds to its boon_triggers at spawn, so Items.fire runs them on kill, dash, vent and so on.
 
 signal changed
 
 const SAVE_PATH := "user://mastery.json"
-const SAVE_VERSION := 2
+const SAVE_VERSION := 3
 
 ## Old saves had mastery points (1 per floor reached, 1 per 150 kills, 3 per win). One
 ## point was about one floor of play; a floor now pays about 8 Embers (5 rooms, an
@@ -47,7 +32,25 @@ const SAVE_VERSION := 2
 ## to A/B pairs.
 const LEGACY_EMBERS_PER_POINT := 8
 
-## Measured conversion factors for the power budget (see the header).
+## Version 2 (the A/B board): the cost ladder of every side, "slot:side" -> Embers per rank,
+## so a version 2 save refunds exactly what it spent (Talent tree.md, Migration).
+const LEGACY_V2_COSTS := {
+    "sights:a": [3, 8, 16], "sights:b": [3, 8, 16],
+    "catalyst:a": [4, 10, 20], "catalyst:b": [4, 10, 20],
+    "nerve:a": [4, 10, 20], "nerve:b": [4, 10, 20],
+    "vent:a": [4, 10, 20], "vent:b": [4, 10, 20],
+    "footwork:a": [3, 8, 16], "footwork:b": [6, 16],
+    "salvage:a": [3, 8, 16], "salvage:b": [10, 25, 45],
+    "fortune:a": [4, 10, 20], "fortune:b": [35, 75],
+    "pack:a": [8, 20], "pack:b": [10, 25],
+    "scout:a": [3, 6, 12], "scout:b": [6, 15],
+    "bite:a": [8, 20], "bite:b": [8, 20],
+    "twilight:a": [8, 20], "twilight:b": [8, 20],
+}
+
+## Measured conversion factors for the power estimate (telemetry, build 2026.11.05):
+## reactions dealt 49% of all damage; 44% of wave samples were at >= 80% HP; a floor of
+## play took about 150 damage; longer element states convert at an assumed 0.15.
 const REACTION_SHARE := 0.49
 const VENT_SHARE := 0.126
 const HIGH_HP_SHARE := 0.44
@@ -58,29 +61,14 @@ const DURATION_TO_DMG := 0.15
 # Scale: one cleared room = 1 Ember, the way a Hades chamber pays 10 Darkness, so Hades
 # prices divide by 10 (Death Defiance 30/500/1,000 Darkness -> Last Breath 3/50/100).
 #   rooms       1 per room cleared: the basic unit of play quality.
-#   elites      2 each: a Hades skull chamber pays double a normal one.
-#   discoveries 3 per reaction fired for the first time ever on this save: discovery is
-#               what the early game should teach, and it front-loads income (65
-#               reactions, 195 Embers in all, most of it in the first runs).
-#   bosses      3 per boss kill: Hades bosses drop 50-250 Darkness when no bounty is due.
-#   bounties    12 the first time a boss kind dies to a class (5 kinds x 13 classes),
-#               Hades' first-kill-per-weapon reward: rotating classes pays.
-#   floors      2 per floor reached beyond the first: depth matters, but a floor of play
-#               (about 5 rooms and an elite) is worth more than the stairs.
-#   win         10 for clearing the dungeon.
-# Worked example, two floor-1 deaths on a save that already knows the base reactions:
-#   bad:  1 room, no elites, nothing new           = 1 Ember
-#   good: 5 rooms, 2 elites, 2 new reactions       = 5 + 4 + 6 = 15 Embers
-# The old formula paid both runs 1 point.
-#   fusions     4 per fusion (tier 3) set off for the first time ever, 6 per cataclysm
-#   cataclysms  (tier 4). There are 220 and 176 of them (1,936 Embers, twice the whole
-#               Shrine), so together they pay at most FUSION_PAY_CAP a run: about one more
-#               good floor. A fusion build earns its Shrine a little faster, never a lot.
-#
-# Phase 3 retune (World and progression GDD, section 13 proposal): with the values above two
-# bot wins bought the whole Shrine (elites alone paid 336 to 362 of a win). Now rooms 1,
-# elites 1 for at most ELITE_PAY_CAP a run, first discoveries 2, the fusion ladder at most
-# FUSION_PAY_CAP a run, bosses 3, bounties 5, each floor past the first 3, a win 20.
+#   elites      1 each, at most ELITE_PAY_CAP a run.
+#   discoveries 2 per reaction fired for the first time ever on this save.
+#   fusions     2 per fusion (tier 3) and 3 per cataclysm (tier 4) set off for the first
+#   cataclysms  time ever, together at most FUSION_PAY_CAP a run.
+#   bosses      3 per boss kill.
+#   bounties    5 the first time a boss kind dies to a class.
+#   floors      3 per floor reached beyond the first.
+#   win         20 for clearing the dungeon.
 const PAY := { "rooms": 1, "elites": 1, "discoveries": 2, "fusions": 2, "cataclysms": 3, "bosses": 3, "bounties": 5, "floors": 3, "win": 20 }
 const ELITE_PAY_CAP := 10
 const PAY_ORDER := ["rooms", "elites", "discoveries", "fusions", "cataclysms", "bosses", "bounties", "floors", "win"]
@@ -96,11 +84,8 @@ const EMBER_ICON := "gui/spells/fire/inner_flame.png"
 
 # --- Survival (R5) -----------------------------------------------------------
 # Last Breath: each rank is one revive per run. Costs are Hades' Death Defiance
-# 30/500/1,000 Darkness at 1 Ember = 10 Darkness; Dead Cells' flasks (5/50/150/300 cells)
-# have the same shape: the first charge almost free, the last ones a long-term goal.
-# A revive restores 25% of max HP (Death Defiance gives 50%): Pressure's stairs already
-# heal to 60% / 40% each floor, and 25 HP is about four of the measured 6.5 HP hits.
-# Two seconds of invulnerability keep the revive from being eaten on the spot.
+# 30/500/1,000 Darkness at 1 Ember = 10 Darkness. A revive restores 25% of max HP, with two
+# seconds of invulnerability so it is not eaten on the spot.
 const SURVIVAL := {
     "id": "last_breath", "name": "Last Breath",
     "desc": "When you would fall, stand back up once.",
@@ -110,153 +95,182 @@ const SURVIVAL := {
 const REVIVE_FRACTION := 0.25
 const REVIVE_INVULN := 2.0
 
-# --- Talent slots (R4, R6) -----------------------------------------------------
-# A side is { id, name, desc, icon, costs, per_rank | ranks, cond?, requires?, eq }.
-#   per_rank: mods added once per rank (Items stat vocabulary, or a meta key below).
-#   ranks:    a list of mods, one per rank, summed up to the current rank.
-#   cond:     an Items player condition; the mods only hold while it does.
-#   requires: an element key; the side can only be bought once a gun of it is unlocked.
-#   eq:       [damage-equivalent fraction, HP-equivalent] at max rank (budget only).
-# Meta keys (read by the systems they change, never by Player.stat users):
+# --- The tree -------------------------------------------------------------------
+# Row costs (Embers per rank). Rows 1 and 3 are passives, rows 2, 4 and 5 choice nodes.
+const ROW_COSTS := [[3, 6, 10], [12], [8, 14, 22], [24], [40]]
+
+# A branch is { id, name, color, nodes: [5 nodes, top to bottom] }.
+# A passive node: { id, name, desc, icon, per_rank: mods, eq: [dmg, hp] at full rank }.
+# A choice node: { id, a: option, b: option }; an option is { id, name, desc, icon,
+#   mods?: mods, triggers?: [Items trigger dicts] }.
+# Meta keys in mods (read by the systems they change, never by Player.stat users):
 #   levelup_rerolls  rerolls of the level-up offer per run (LevelUpScreen)
 #   levelup_extra    1: a fourth level-up card every other level-up, 2: every level-up
 #   free_gunsmith    the gunsmith of floors 1..N costs nothing (FloorGen)
 #   reveal_rooms     1 shop, 2 + treasure, 3 + boss shown on the map at floor start (Main)
 #   reveal_secrets   1 hidden rooms, 2 + puzzle and alcove rooms shown on the map (Main)
-# Cost ladders: power sides [4, 10, 20], comfort sides [3, 8, 16], two-rank sides
-# [6, 16] or dearer, agency at the top (Hades' Fated rerolls are 59% of its Mirror;
-# here rerolls and the extra choice are 190 of 775 Embers, about a quarter, so the
-# board completes in dozens of runs, not hundreds).
-const SLOTS := [
-    { "id": "sights", "name": "Sights",
-        # Reach versus travel time; neither adds damage (old tree: +13% range).
-        "a": { "id": "long_barrel", "name": "Long Barrel", "desc": "Shots carry further.",
-            "icon": "gui/spells/divination/forescry.png", "per_rank": { "range": 0.04 },
-            "costs": [3, 8, 16], "eq": [0.0, 0.0] },
-        "b": { "id": "hot_load", "name": "Hot Load", "desc": "Shots fly faster and land sooner.",
-            "icon": "gui/spells/conjuration/magic_dart.png", "per_rank": { "proj_speed": 0.05 },
-            "costs": [3, 8, 16], "eq": [0.0, 0.0] } },
-    { "id": "catalyst", "name": "Catalyst",
-        # Potency vs duration. 4.5% potency x 0.49 = 2.2%; 12% duration x 0.15 = 1.8%.
-        "a": { "id": "catalyst", "name": "Catalyst", "desc": "Reactions hit harder.",
-            "icon": "gui/spells/transmutation/irradiate.png", "per_rank": { "potency": 0.015 },
-            "costs": [4, 10, 20], "eq": [0.022, 0.0] },
-        "b": { "id": "lingering", "name": "Lingering Touch", "desc": "Elements cling to enemies for longer.",
-            "icon": "gui/spells/enchantment/extension.png", "per_rank": { "state_duration": 0.04 },
-            "costs": [4, 10, 20], "eq": [0.018, 0.0] } },
-    { "id": "nerve", "name": "Nerve",
-        # Hades' Thick Skin vs High Confidence. +12 HP; 4.5% x 0.44 time at >= 80% = 2.0%.
-        "a": { "id": "thick_skin", "name": "Thick Skin", "desc": "A little more blood to lose.",
-            "icon": "gui/spells/earth/stoneskin_new.png", "per_rank": { "max_hp": 4 },
-            "costs": [4, 10, 20], "eq": [0.0, 12.0] },
-        "b": { "id": "high_confidence", "name": "High Confidence", "desc": "Hit harder while you are healthy.",
-            "icon": "gui/spells/enchantment/berserker_rage_new.png", "per_rank": { "dmg": 0.015 },
-            "cond": "high_hp", "costs": [4, 10, 20], "eq": [0.02, 0.0] } },
-    { "id": "vent", "name": "Vent",
-        # Capacity vs power. +12 capacity is +12% vent strength only with a full gauge;
-        # +12% power always. Both x 0.126 vent share = 1.5%.
-        "a": { "id": "tank", "name": "Reinforced Tank", "desc": "A bigger tank: vents can charge further.",
-            "icon": "gui/invocations/gozag_potion_petition.png", "per_rank": { "pressure_limit": 4 },
-            "costs": [4, 10, 20], "eq": [0.015, 0.0] },
-        "b": { "id": "hard_vent", "name": "Hard Vent", "desc": "Vents hit harder and reach further.",
-            "icon": "gui/spells/fire/fire_storm_new.png", "per_rank": { "vent_power": 0.04 },
-            "costs": [4, 10, 20], "eq": [0.015, 0.0] } },
-    { "id": "footwork", "name": "Footwork",
-        # Speed vs dodge. 2% dodge x 150 damage per floor = 3 HP-equivalent.
-        "a": { "id": "light_feet", "name": "Light Feet", "desc": "Move faster.",
-            "icon": "gui/spells/air/swiftness_new.png", "per_rank": { "speed": 0.02 },
-            "costs": [3, 8, 16], "eq": [0.0, 0.0] },
-        "b": { "id": "sidestep", "name": "Sidestep", "desc": "Sometimes a hit just misses.",
-            "icon": "gui/skills/dodging.png", "per_rank": { "dodge": 0.01 },
-            "costs": [6, 16], "eq": [0.0, 3.0] } },
-    { "id": "salvage", "name": "Salvage",
-        # Scrap vs rerolling the level-up offer: economy vs agency (old tree: +17% scrap).
-        "a": { "id": "salvager", "name": "Salvager", "desc": "Strip more scrap from every wreck.",
-            "icon": "gui/invocations/gozag_call_merchant.png", "per_rank": { "scrap_gain": 0.04 },
-            "costs": [3, 8, 16], "eq": [0.0, 0.0] },
-        "b": { "id": "second_thoughts", "name": "Second Thoughts", "desc": "Reroll a level-up offer.",
-            "icon": "gui/spells/enchantment/selective_amnesia.png", "per_rank": { "levelup_rerolls": 1 },
-            "costs": [10, 25, 45], "eq": [0.0, 0.0] } },
-    { "id": "fortune", "name": "Fortune",
-        # Luck vs a fourth level-up card: better odds or more options.
-        "a": { "id": "lucky_coin", "name": "Lucky Coin", "desc": "Rarer gear and level-ups turn up.",
-            "icon": "gui/invocations/gozag_bribe_branch.png", "per_rank": { "luck": 0.04 },
-            "costs": [4, 10, 20], "eq": [0.0, 0.0] },
-        "b": { "id": "wider_choice", "name": "Wider Choice", "desc": "Level-ups offer a fourth card.",
-            "icon": "gui/spells/divination/identify.png", "per_rank": { "levelup_extra": 1 },
-            "costs": [35, 75], "eq": [0.0, 0.0] } },
-    { "id": "pack", "name": "Pack",
-        # Carry vs a gun tier banked at the shop (a gunsmith visit is 65 / 85 scrap).
-        "a": { "id": "deep_pockets", "name": "Deep Pockets", "desc": "Carry heavier guns.",
-            "icon": "gui/spells/translocation/apportation_new.png", "per_rank": { "carry": 1 },
-            "costs": [8, 20], "eq": [0.0, 0.0] },
-        "b": { "id": "heirloom", "name": "Heirloom", "desc": "The gunsmith raises a gun for free.",
-            "icon": "gui/invocations/kiku_bless_weapon.png", "per_rank": { "free_gunsmith": 1 },
-            "costs": [10, 25], "eq": [0.0, 0.0] } },
-    { "id": "scout", "name": "Scout",
-        # Knowing the floor vs knowing its secrets: pure information.
-        "a": { "id": "cartographer", "name": "Cartographer", "desc": "Key rooms show on the map.",
-            "icon": "gui/spells/divination/magic_mapping.png", "per_rank": { "reveal_rooms": 1 },
-            "costs": [3, 6, 12], "eq": [0.0, 0.0] },
-        "b": { "id": "dowser", "name": "Dowser", "desc": "Hidden places show on the map.",
-            "icon": "gui/spells/divination/detect_secret_doors.png", "per_rank": { "reveal_secrets": 1 },
-            "costs": [6, 15], "eq": [0.0, 0.0] } },
-    { "id": "bite", "name": "Bite",
-        # R6: element sidegrades for the first two elements the challenges hand out.
-        # 3% of that element's damage + 2% potency x 0.49 = 4% of its share. Shares of
-        # the arsenal sum to 1, so both element slots together add at most 4%.
-        "a": { "id": "rime", "name": "Rime", "desc": "Ice guns fire faster and freeze harder.",
-            "icon": "gui/spells/ice/throw_icicle_new.png", "requires": "ice",
-            "ranks": [{ "fire_rate_ice": 0.03 }, { "potency_ice": 0.02 }],
-            "costs": [8, 20], "eq": [0.04, 0.0] },
-        "b": { "id": "etch", "name": "Etch", "desc": "Acid guns bite deeper.",
-            "icon": "gui/spells/poison/poisonous_cloud_new.png", "requires": "acid",
-            "ranks": [{ "dmg_acid": 0.03 }, { "potency_acid": 0.02 }],
-            "costs": [8, 20], "eq": [0.04, 0.0] } },
-    { "id": "twilight", "name": "Twilight",
-        # R6: the same shape for the last two elements, holy and void (shares as above).
-        "a": { "id": "halo", "name": "Halo", "desc": "Holy guns burn brighter.",
-            "icon": "gui/invocations/tso_bless_weapon.png", "requires": "holy",
-            "ranks": [{ "dmg_holy": 0.03 }, { "potency_holy": 0.02 }],
-            "costs": [8, 20], "eq": [0.04, 0.0] },
-        "b": { "id": "hollow", "name": "Hollow", "desc": "Void guns fire faster and pull harder.",
-            "icon": "gui/spells/enchantment/darkness.png", "requires": "void",
-            "ranks": [{ "fire_rate_void": 0.03 }, { "potency_void": 0.02 }],
-            "costs": [8, 20], "eq": [0.04, 0.0] } },
+# New player stats: burn_time (fire from your reactions burns longer, Elements).
+const BRANCHES := [
+    { "id": "pyre", "name": "Pyre", "color": Color(1.0, 0.5, 0.25), "nodes": [
+        { "id": "kindling", "name": "Kindling", "desc": "Reactions hit harder.",
+            "icon": "gui/spells/transmutation/irradiate.png", "per_rank": { "potency": 0.02 }, "eq": [0.029, 0.0] },
+        { "id": "pyre_c1",
+            "a": { "id": "wildfire", "name": "Wildfire", "desc": "Burning foes spread fire to foes near them when they die.",
+                "icon": "gui/spells/fire/fire_storm_new.png",
+                "triggers": [{ "on": "kill", "if": "target_burning", "do": "spread", "element": "fire", "radius": 120.0, "potency": 5.0 }] },
+            "b": { "id": "slow_burn", "name": "Slow Burn", "desc": "Fire burns twice as long.",
+                "icon": "gui/spells/fire/flame_tongue_new.png", "mods": { "burn_time": 1.0 } } },
+        { "id": "lingering", "name": "Lingering Touch", "desc": "Elements cling to foes for longer.",
+            "icon": "gui/spells/enchantment/extension.png", "per_rank": { "state_duration": 0.05 }, "eq": [0.023, 0.0] },
+        { "id": "pyre_c2",
+            "a": { "id": "flashpoint", "name": "Flashpoint", "desc": "Every 4th reaction sets off a fire blast.",
+                "icon": "gui/spells/fire/fireball_new.png",
+                "triggers": [{ "on": "reaction", "every": 4, "do": "nova", "element": "fire", "radius": 110.0, "potency": 6.0, "at": "target" }] },
+            "b": { "id": "feeding_flame", "name": "Feeding Flame", "desc": "Reactions heal you a little.",
+                "icon": "gui/spells/fire/conjure_flame_new.png", "mods": { "lifesteal": 1 } } },
+        { "id": "pyre_c3",
+            "a": { "id": "pyre_heart", "name": "Pyre Heart", "desc": "Elite kills erupt in a huge fire blast.",
+                "icon": "gui/spells/fire/ring_of_flames_new.png",
+                "triggers": [{ "on": "elite_kill", "do": "nova", "element": "fire", "radius": 220.0, "potency": 14.0 }] },
+            "b": { "id": "ash_wake", "name": "Ash Wake", "desc": "Burning foes leave a fire cloud when they die.",
+                "icon": "gui/spells/fire/delayed_fireball.png",
+                "triggers": [{ "on": "kill", "if": "target_burning", "do": "cloud", "element": "fire", "radius": 70.0, "secs": 3.0, "potency": 8.0 }] } },
+    ] },
+    { "id": "rime", "name": "Rime", "color": Color(0.55, 0.85, 1.0), "nodes": [
+        { "id": "thick_skin", "name": "Thick Skin", "desc": "A little more blood to lose.",
+            "icon": "gui/spells/earth/stoneskin_new.png", "per_rank": { "max_hp": 4 }, "eq": [0.0, 12.0] },
+        { "id": "rime_c1",
+            "a": { "id": "shatter", "name": "Shatter", "desc": "Frozen foes take 30% more damage.",
+                "icon": "gui/spells/ice/throw_icicle_new.png", "mods": { "vs_frozen": 0.3 } },
+            "b": { "id": "frostbite", "name": "Frostbite", "desc": "Hits on wet foes may freeze them.",
+                "icon": "gui/spells/ice/freeze_new.png",
+                "triggers": [{ "on": "hit", "if": "target_wet", "chance": 0.25, "do": "apply", "element": "ice", "potency": 5.0 }] } },
+        { "id": "cold_blood", "name": "Cold Blood", "desc": "Sometimes a hit just misses.",
+            "icon": "gui/skills/dodging.png", "per_rank": { "dodge": 0.01 }, "eq": [0.0, 4.5] },
+        { "id": "rime_c2",
+            "a": { "id": "cold_snap", "name": "Cold Snap", "desc": "When you are hit, foes near you freeze.",
+                "icon": "gui/spells/ice/freezing_aura.png",
+                "triggers": [{ "on": "hurt", "do": "nova", "element": "ice", "radius": 150.0, "potency": 6.0 }] },
+            "b": { "id": "bramble", "name": "Bramble", "desc": "Foes that hit you take 10 damage.",
+                "icon": "gui/spells/ice/ozocubus_armor_new.png", "mods": { "thorns": 10 } } },
+        { "id": "rime_c3",
+            "a": { "id": "winters_grip", "name": "Winter's Grip", "desc": "Entering a room slows every foe near you.",
+                "icon": "gui/spells/ice/ice_storm_new.png",
+                "triggers": [{ "on": "room_enter", "do": "slow", "radius": 420.0 }] },
+            "b": { "id": "shatterburst", "name": "Shatterburst", "desc": "Frozen foes burst into ice when they die.",
+                "icon": "gui/spells/ice/freezing_cloud_new.png",
+                "triggers": [{ "on": "kill", "if": "target_frozen", "do": "nova", "element": "ice", "radius": 120.0, "potency": 6.0 }] } },
+    ] },
+    { "id": "stride", "name": "Stride", "color": Color(0.6, 1.0, 0.7), "nodes": [
+        { "id": "light_feet", "name": "Light Feet", "desc": "Move faster.",
+            "icon": "gui/spells/air/swiftness_new.png", "per_rank": { "speed": 0.02 }, "eq": [0.0, 0.0] },
+        { "id": "stride_c1",
+            "a": { "id": "frost_trail", "name": "Frost Trail", "desc": "Your dash leaves a trail of ice.",
+                "icon": "gui/spells/ice/throw_frost_new.png",
+                "triggers": [{ "on": "dash", "do": "trail", "element": "ice", "secs": 2.5 }] },
+            "b": { "id": "second_wind", "name": "Second Wind", "desc": "A kill gives back a dash.",
+                "icon": "gui/spells/translocation/blink.png",
+                "triggers": [{ "on": "kill", "do": "dash_refill" }] } },
+        { "id": "quick_recovery", "name": "Quick Recovery", "desc": "Your dash comes back sooner.",
+            "icon": "gui/spells/translocation/phase_shift_new.png", "per_rank": { "dash_cooldown": 0.06 }, "eq": [0.0, 0.0] },
+        { "id": "stride_c2",
+            "a": { "id": "shoulder_charge", "name": "Shoulder Charge", "desc": "Your dash hits every foe it passes through.",
+                "icon": "gui/spells/translocation/dispersal_new.png", "mods": { "dash_hit": 1.0 } },
+            "b": { "id": "close_shave", "name": "Close Shave", "desc": "Dash through a hit: 30% more damage for 3 s.",
+                "icon": "gui/spells/air/deflect_missiles_new.png",
+                "triggers": [{ "on": "perfect_dodge", "do": "buff", "key": "dmg", "amount": 0.3, "secs": 3.0 }] } },
+        { "id": "stride_c3",
+            "a": { "id": "twin_dash", "name": "Twin Dash", "desc": "One more dash charge.",
+                "icon": "gui/spells/translocation/controlled_blink_new.png", "mods": { "dash_charges": 1 } },
+            "b": { "id": "dash_volley", "name": "Dash Volley", "desc": "Each dash fires 4 shots of your gun's element.",
+                "icon": "gui/spells/conjuration/magic_dart.png",
+                "triggers": [{ "on": "dash", "do": "shoot", "element": "gun", "count": 4, "potency": 5.0 }] } },
+    ] },
+    { "id": "vent", "name": "Vent", "color": Color(1.0, 0.8, 0.4), "nodes": [
+        { "id": "tank", "name": "Reinforced Tank", "desc": "A bigger tank: vents can charge further.",
+            "icon": "gui/invocations/gozag_potion_petition.png", "per_rank": { "pressure_limit": 4 }, "eq": [0.015, 0.0] },
+        { "id": "vent_c1",
+            "a": { "id": "hard_vent", "name": "Hard Vent", "desc": "Vents hit 20% harder.",
+                "icon": "gui/spells/fire/bolt_of_magma_new.png", "mods": { "vent_power": 0.2 } },
+            "b": { "id": "quick_vent", "name": "Quick Vent", "desc": "The vent fills 20% faster.",
+                "icon": "gui/spells/air/airstrike_new.png", "mods": { "vent_charge": 0.2 } } },
+        { "id": "wide_valve", "name": "Wide Valve", "desc": "Vents reach further.",
+            "icon": "gui/spells/air/cloud_cone.png", "per_rank": { "vent_radius": 0.05 }, "eq": [0.01, 0.0] },
+        { "id": "vent_c2",
+            "a": { "id": "scald_cloud", "name": "Scald Cloud", "desc": "Vents leave a cloud of their element.",
+                "icon": "gui/spells/poison/poisonous_cloud_new.png",
+                "triggers": [{ "on": "vent", "do": "cloud", "element": "last", "radius": 90.0, "secs": 4.0, "potency": 8.0 }] },
+            "b": { "id": "venting_mend", "name": "Venting Mend", "desc": "Vents heal you 6 HP.",
+                "icon": "gui/spells/air/insulation.png",
+                "triggers": [{ "on": "vent", "do": "heal", "amount": 6.0 }] } },
+        { "id": "vent_c3",
+            "a": { "id": "overpressure", "name": "Overpressure", "desc": "Vents fire 6 shots of their element.",
+                "icon": "gui/spells/fire/fire_storm_old.png",
+                "triggers": [{ "on": "vent", "do": "shoot", "element": "last", "count": 6, "potency": 6.0 }] },
+            "b": { "id": "storm_vent", "name": "Storm Vent", "desc": "Vents arc lightning to 4 foes.",
+                "icon": "gui/spells/air/chain_lightning_new.png",
+                "triggers": [{ "on": "vent", "do": "chain", "count": 4, "radius": 320.0, "potency": 6.0 }] } },
+    ] },
+    { "id": "fortune", "name": "Fortune", "color": Color(1.0, 0.9, 0.45), "nodes": [
+        { "id": "salvager", "name": "Salvager", "desc": "Strip more scrap from every wreck.",
+            "icon": "gui/invocations/gozag_call_merchant.png", "per_rank": { "scrap_gain": 0.04 }, "eq": [0.0, 0.0] },
+        { "id": "fortune_c1",
+            "a": { "id": "cartographer", "name": "Cartographer", "desc": "Shop, treasure and boss show on the map.",
+                "icon": "gui/spells/divination/magic_mapping.png", "mods": { "reveal_rooms": 3 } },
+            "b": { "id": "dowser", "name": "Dowser", "desc": "Hidden and puzzle rooms show on the map.",
+                "icon": "gui/spells/divination/detect_secret_doors.png", "mods": { "reveal_secrets": 2 } } },
+        { "id": "lucky_coin", "name": "Lucky Coin", "desc": "Rarer gear and level-ups turn up.",
+            "icon": "gui/invocations/gozag_bribe_branch.png", "per_rank": { "luck": 0.04 }, "eq": [0.0, 0.0] },
+        { "id": "fortune_c2",
+            "a": { "id": "second_thoughts", "name": "Second Thoughts", "desc": "Reroll the level-up offer twice a run.",
+                "icon": "gui/spells/enchantment/selective_amnesia.png", "mods": { "levelup_rerolls": 2 } },
+            "b": { "id": "heirloom", "name": "Heirloom", "desc": "The gunsmith is free on floors 1 and 2.",
+                "icon": "gui/invocations/kiku_bless_weapon.png", "mods": { "free_gunsmith": 2 } } },
+        { "id": "fortune_c3",
+            "a": { "id": "wider_choice", "name": "Wider Choice", "desc": "Every level-up offers a fourth card.",
+                "icon": "gui/spells/divination/identify.png", "mods": { "levelup_extra": 2 } },
+            "b": { "id": "deep_pockets", "name": "Deep Pockets", "desc": "Carry heavier guns.",
+                "icon": "gui/spells/translocation/apportation_new.png", "mods": { "carry": 2 } } },
+    ] },
 ]
 
 ## Keys that are not player stats (see above).
 const META_KEYS := ["levelup_rerolls", "levelup_extra", "free_gunsmith", "reveal_rooms", "reveal_secrets"]
 ## Stats counted in whole units rather than fractions.
-const INT_KEYS := ["max_hp", "armor", "pierce", "carry", "chain_jumps", "bounce", "pressure_limit", "thorns", "proj_count", "lifesteal"]
+const INT_KEYS := ["max_hp", "armor", "pierce", "carry", "chain_jumps", "bounce", "pressure_limit", "thorns", "proj_count", "lifesteal", "dash_charges"]
 const STAT_WORDS := {
     "dmg": "damage", "fire_rate": "fire rate", "crit": "crit chance", "max_hp": "max HP",
     "dodge": "dodge", "speed": "move speed", "range": "range", "proj_speed": "shot speed",
     "potency": "reaction potency", "state_duration": "element duration",
     "pressure_limit": "vent capacity", "vent_power": "vent power", "vent_radius": "vent radius",
     "vent_charge": "vent charge speed", "scrap_gain": "scrap", "luck": "luck", "carry": "carry",
-    "xp_gain": "XP gain", "armor": "armour",
+    "xp_gain": "XP gain", "armor": "armour", "dash_cooldown": "dash recharge speed",
+    "burn_time": "burn time", "vs_frozen": "damage to frozen foes", "thorns": "thorns",
+    "lifesteal": "HP per reaction", "dash_charges": "dash charge", "dash_hit": "dash hit",
 }
-const COND_WORDS := { "high_hp": "while at 80%+ HP", "low_hp": "while below 40% HP", "hot": "while hot", "cold": "while cold" }
 
 var save_path := SAVE_PATH
 var embers := 0                       # unspent
 var earned := 0                       # lifetime total
-var ranks: Dictionary = {}            # "slot:a" / "slot:b" -> rank bought
-var active: Dictionary = {}           # slot id -> "a" or "b"
+var nodes: Dictionary = {}            # node id -> rank bought (choice nodes: 0 or 1)
+var picks: Dictionary = {}            # choice node id -> "a" or "b"
 var survival := 0                     # Last Breath ranks bought
 var bounties: Dictionary = {}         # "class|boss kind" -> true once paid
 var earned_by: Dictionary = {}        # PAY_ORDER key (or "legacy") -> lifetime Embers
 var last_award: Dictionary = {}       # the last run's payout: { total, parts, counts, bounties }
-var _totals: Dictionary = {}          # key -> summed amount over active sides (no condition)
-var _cond: Dictionary = {}            # condition -> { key -> amount }
-var _slot_index: Dictionary = {}      # slot id -> index in SLOTS
+var rebuilt_refund := 0               # Embers the v2 -> v3 migration gave back, until the Shrine shows it
+var legacy_v2: Dictionary = {}        # the v2 board as it was migrated (ranks, active), kept for the record
+var _totals: Dictionary = {}          # key -> summed amount over bought passives and picked options
+var _triggers: Array = []             # Items trigger dicts of the picked options
+var _node_index: Dictionary = {}      # node id -> [branch index, row]
 var _quiet := false                   # balance probes buy without logging hub events
 
 
 func _init() -> void:
-    for i in SLOTS.size():
-        _slot_index[String(SLOTS[i]["id"])] = i
+    for bi in BRANCHES.size():
+        var ns: Array = BRANCHES[bi]["nodes"]
+        for row in ns.size():
+            _node_index[String(ns[row]["id"])] = [bi, row]
 
 
 func _ready() -> void:
@@ -269,75 +283,99 @@ func _ready() -> void:
 # --- Queries ---------------------------------------------------------------
 
 
-func slots() -> Array:
-    return SLOTS
+func branches() -> Array:
+    return BRANCHES
 
 
-func slot(slot_id: String) -> Dictionary:
-    if not _slot_index.has(slot_id):
+func node(id: String) -> Dictionary:
+    if not _node_index.has(id):
         return {}
-    return SLOTS[int(_slot_index[slot_id])]
+    var at: Array = _node_index[id]
+    return BRANCHES[int(at[0])]["nodes"][int(at[1])]
 
 
-## The side definition ("a" or "b") of a slot.
-func side(slot_id: String, s: String) -> Dictionary:
-    var sl := slot(slot_id)
-    if sl.is_empty():
-        return {}
-    return sl.get(s, {})
+## [branch index, row] of a node, or [-1, -1].
+func node_at(id: String) -> Array:
+    return _node_index.get(id, [-1, -1])
 
 
-func rank(slot_id: String, s: String) -> int:
-    return int(ranks.get("%s:%s" % [slot_id, s], 0))
+func is_choice(id: String) -> bool:
+    return node(id).has("a")
 
 
-func max_rank(slot_id: String, s: String) -> int:
-    return (side(slot_id, s).get("costs", []) as Array).size()
+func rank(id: String) -> int:
+    return int(nodes.get(id, 0))
 
 
-func active_side(slot_id: String) -> String:
-    return String(active.get(slot_id, "a"))
+func node_costs(id: String) -> Array:
+    var at := node_at(id)
+    if int(at[0]) < 0:
+        return []
+    return ROW_COSTS[int(at[1])]
+
+
+func max_rank(id: String) -> int:
+    return node_costs(id).size()
+
+
+func is_full(id: String) -> bool:
+    return rank(id) >= max_rank(id)
+
+
+## The picked option of a choice node ("a" by default).
+func pick(id: String) -> String:
+    return String(picks.get(id, "a"))
 
 
 func other_side(s: String) -> String:
     return "b" if s == "a" else "a"
 
 
-## Whether a side can be bought at all: element sidegrades need a gun of that element
-## in the unlocked pool (R6).
-func is_available(slot_id: String, s: String) -> bool:
-    var el := String(side(slot_id, s).get("requires", ""))
-    return el == "" or element_unlocked(el)
+## The option dict of a choice node.
+func option(id: String, s: String) -> Dictionary:
+    return node(id).get(s, {})
 
 
-func element_unlocked(el: String) -> bool:
-    for gid in Guns.ids():
-        if String(Element.NAMES[Guns.make(String(gid)).element]).to_lower() == el:
-            return true
-    return false
+## A node opens when the node above it in its branch is full.
+func is_open(id: String) -> bool:
+    var at := node_at(id)
+    if int(at[0]) < 0:
+        return false
+    if int(at[1]) == 0:
+        return true
+    var above: Dictionary = BRANCHES[int(at[0])]["nodes"][int(at[1]) - 1]
+    return is_full(String(above["id"]))
 
 
-## "Needs an Ice gun" for a locked element side, else "".
-func requirement_text(slot_id: String, s: String) -> String:
-    var el := String(side(slot_id, s).get("requires", ""))
-    if el == "" or element_unlocked(el):
+## "Fill Kindling first" for a closed node, else "".
+func requirement_text(id: String) -> String:
+    if is_open(id):
         return ""
-    var article := "an" if el in ["ice", "acid", "oil"] else "a"
-    return "Needs %s %s gun" % [article, el.capitalize()]
+    var at := node_at(id)
+    var above: Dictionary = BRANCHES[int(at[0])]["nodes"][int(at[1]) - 1]
+    return "Fill %s first" % node_title(String(above["id"]))
 
 
-## Embers for the next rank of a side, or -1 when it is maxed.
-func next_cost(slot_id: String, s: String) -> int:
-    var costs: Array = side(slot_id, s).get("costs", [])
-    var r := rank(slot_id, s)
+## A passive's name, or "Wildfire / Slow Burn" for a choice node.
+func node_title(id: String) -> String:
+    var d := node(id)
+    if d.has("a"):
+        return "%s / %s" % [String(d["a"]["name"]), String(d["b"]["name"])]
+    return String(d.get("name", id))
+
+
+## Embers for the next rank of a node, or -1 when it is full.
+func next_cost(id: String) -> int:
+    var costs := node_costs(id)
+    var r := rank(id)
     if r >= costs.size():
         return -1
     return int(costs[r])
 
 
-func can_buy(slot_id: String, s: String) -> bool:
-    var c := next_cost(slot_id, s)
-    return c >= 0 and embers >= c and is_available(slot_id, s)
+func can_buy(id: String) -> bool:
+    var c := next_cost(id)
+    return c >= 0 and embers >= c and is_open(id)
 
 
 func survival_max() -> int:
@@ -360,57 +398,42 @@ func revives() -> int:
     return survival
 
 
-## Summed bonus for a stat or meta key over the active sides (unconditional mods only).
-## Cached; cheap to call every frame.
+## Summed bonus for a stat or meta key over bought passives and picked options. Cached;
+## cheap to call every frame.
 func bonus(key: String) -> float:
     return float(_totals.get(key, 0.0))
 
 
-## Conditional bonus for `key` that holds for `player` right now (e.g. High Confidence).
-func cond_bonus(key: String, player) -> float:
-    if _cond.is_empty():
-        return 0.0
-    var v := 0.0
-    for c in _cond.keys():
-        var mods: Dictionary = _cond[c]
-        if mods.has(key) and Items.condition(String(c), player, {}):
-            v += float(mods[key])
-    return v
+## Conditional bonuses: the tree has none (High Confidence went with the A/B board). Kept
+## because Player.stat and the character sheet ask.
+func cond_bonus(_key: String, _player) -> float:
+    return 0.0
 
 
-## The mods a side gives at rank `r`.
-func side_mods(slot_id: String, s: String, r: int) -> Dictionary:
-    var d := side(slot_id, s)
-    var out: Dictionary = {}
-    if r <= 0 or d.is_empty():
-        return out
-    if d.has("ranks"):
-        var list: Array = d["ranks"]
-        for i in mini(r, list.size()):
-            var m: Dictionary = list[i]
-            for k in m.keys():
-                out[k] = float(out.get(k, 0.0)) + float(m[k])
-    else:
-        var per: Dictionary = d.get("per_rank", {})
-        for k in per.keys():
-            out[k] = float(per[k]) * float(r)
+## Items trigger dicts of the picked options; Player adds copies to boon_triggers at spawn.
+func triggers() -> Array:
+    var out: Array = []
+    for t in _triggers:
+        out.append((t as Dictionary).duplicate())
     return out
 
 
-## What a side does at rank `r`, in words: "+8 max HP", "+3% damage while at 80%+ HP".
-func effect_text(slot_id: String, s: String, r: int) -> String:
-    var d := side(slot_id, s)
+## The mods of a passive at rank `r`.
+func passive_mods(id: String, r: int) -> Dictionary:
+    var out: Dictionary = {}
+    var per: Dictionary = node(id).get("per_rank", {})
+    if r <= 0:
+        return out
+    for k in per.keys():
+        out[k] = float(per[k]) * float(r)
+    return out
+
+
+## What a passive gives at rank `r`, in words: "+8 max HP".
+func effect_text(id: String, r: int) -> String:
     if r <= 0:
         return "not learned"
-    var mods := side_mods(slot_id, s, r)
-    var parts: Array = []
-    for k in mods.keys():
-        parts.append(_effect_part(String(k), mods[k]))
-    var text := ", ".join(parts)
-    var cond := String(d.get("cond", ""))
-    if cond != "":
-        text += " " + String(COND_WORDS.get(cond, cond))
-    return text
+    return mods_text(passive_mods(id, r))
 
 
 func _effect_part(key: String, v: Variant) -> String:
@@ -439,12 +462,6 @@ func mods_text(mods: Dictionary) -> String:
 
 
 func _stat_text(key: String, v: Variant) -> String:
-    var words := { "dmg_": "damage", "potency_": "potency", "fire_rate_": "fire rate" }
-    for pre in words.keys():
-        var p := String(pre)
-        if key.begins_with(p):
-            var el := key.substr(p.length()).capitalize()
-            return "+%s%% %s %s" % [_num(float(v) * 100.0), el, String(words[pre])]
     var word := String(STAT_WORDS.get(key, key))
     if INT_KEYS.has(key):
         return "+%d %s" % [int(roundf(float(v))), word]
@@ -457,12 +474,29 @@ func _num(v: float) -> String:
     return String.num(v, 1)
 
 
-func talent_icon_path(slot_id: String, s: String) -> String:
-    return String(side(slot_id, s).get("icon", ""))
+## Icon path of a passive, or of option `s` of a choice node.
+func icon_path(id: String, s: String = "") -> String:
+    var d := node(id)
+    if d.has("a"):
+        return String(d.get(s if s != "" else pick(id), {}).get("icon", ""))
+    return String(d.get("icon", ""))
 
 
-func talent_icon(slot_id: String, s: String) -> Texture2D:
-    return Art.icon(talent_icon_path(slot_id, s), Vector2i(28, 12))
+func node_icon(id: String, s: String = "") -> Texture2D:
+    return Art.icon(icon_path(id, s), Vector2i(28, 12))
+
+
+## [id, icon path] of every passive and option, for the icon sheet (Art).
+func icon_rows() -> Array:
+    var out: Array = []
+    for br in BRANCHES:
+        for n in br["nodes"]:
+            if (n as Dictionary).has("a"):
+                for s in ["a", "b"]:
+                    out.append([String(n[s]["id"]), String(n[s]["icon"])])
+            else:
+                out.append([String(n["id"]), String(n["icon"])])
+    return out
 
 
 func ember_icon() -> Texture2D:
@@ -473,131 +507,128 @@ func survival_icon() -> Texture2D:
     return Art.icon(String(SURVIVAL["icon"]), Vector2i(28, 12))
 
 
-## Embers spent on the board and the survival track.
+## Embers spent on the tree and the survival track.
 func spent() -> int:
     var total := 0
-    for sl in SLOTS:
-        for s in ["a", "b"]:
-            var costs: Array = sl[s]["costs"]
-            for i in mini(rank(String(sl["id"]), s), costs.size()):
-                total += int(costs[i])
+    for id in nodes.keys():
+        var costs := node_costs(String(id))
+        for i in mini(rank(String(id)), costs.size()):
+            total += int(costs[i])
     var sc: Array = SURVIVAL["costs"]
     for i in mini(survival, sc.size()):
         total += int(sc[i])
     return total
 
 
-## Embers to buy every rank of every side and the whole survival track.
+## Embers to buy every node and the whole survival track.
 func total_cost() -> int:
     var total := 0
-    for sl in SLOTS:
-        for s in ["a", "b"]:
-            for c in sl[s]["costs"]:
+    for br in BRANCHES:
+        for row in (br["nodes"] as Array).size():
+            for c in ROW_COSTS[row]:
                 total += int(c)
     for c in SURVIVAL["costs"]:
         total += int(c)
     return total
 
 
-## Ranks bought over all sides, and the number of ranks that exist.
+## Ranks bought over all nodes, and the number of ranks that exist.
 func ranks_bought() -> int:
     var n := 0
-    for k in ranks.keys():
-        n += int(ranks[k])
+    for k in nodes.keys():
+        n += int(nodes[k])
     return n
 
 
 func ranks_total() -> int:
     var n := 0
-    for sl in SLOTS:
-        n += (sl["a"]["costs"] as Array).size() + (sl["b"]["costs"] as Array).size()
+    for br in BRANCHES:
+        for row in (br["nodes"] as Array).size():
+            n += (ROW_COSTS[row] as Array).size()
     return n
 
 
-## The active side of every slot with at least one rank, for telemetry and the probe log.
+## Every bought node, with the pick of a choice node, for telemetry and the probe log.
+## { slot: node id, side: "a" / "b" / "", id: the option or node id, rank }.
 func active_summary() -> Array:
     var out: Array = []
-    for sl in SLOTS:
-        var sid := String(sl["id"])
-        var s := active_side(sid)
-        var r := rank(sid, s)
-        if r > 0:
-            out.append({ "slot": sid, "side": s, "id": String(sl[s]["id"]), "rank": r })
+    for br in BRANCHES:
+        for n in br["nodes"]:
+            var id := String(n["id"])
+            var r := rank(id)
+            if r <= 0:
+                continue
+            if (n as Dictionary).has("a"):
+                var s := pick(id)
+                out.append({ "slot": id, "side": s, "id": String(n[s]["id"]), "rank": r })
+            else:
+                out.append({ "slot": id, "side": "", "id": id, "rank": r })
     return out
 
 
-## Upper bound on the board's stat power with every rank bought: the larger side of each
-## slot, summed. { dmg: fraction, hp: HP-equivalent per floor }.
+## Stat power of the passives with every rank bought: { dmg: fraction, hp: HP-equivalent
+## per floor }. Choice options are left out: their damage is measured by the bot probe.
 func max_power() -> Dictionary:
     var dmg := 0.0
     var hp := 0.0
-    var el_eq := 0.0
-    for sl in SLOTS:
-        var ea: Array = sl["a"]["eq"]
-        var eb: Array = sl["b"]["eq"]
-        var best := maxf(float(ea[0]), float(eb[0]))
-        if (sl["a"] as Dictionary).has("requires"):
-            # Element slots: their shares of the arsenal sum to at most 1 (see SLOTS),
-            # so together they add at most the largest one.
-            el_eq = maxf(el_eq, best)
-        else:
-            dmg += best
-        hp += maxf(float(ea[1]), float(eb[1]))
-    return { "dmg": dmg + el_eq, "hp": hp }
+    for br in BRANCHES:
+        for n in br["nodes"]:
+            var eq: Array = (n as Dictionary).get("eq", [0.0, 0.0])
+            dmg += float(eq[0])
+            hp += float(eq[1])
+    return { "dmg": dmg, "hp": hp }
 
 
-## Stat power of what is active now, by the same factors (scaled by rank / max).
+## Stat power of the passives bought now, by the same factors (scaled by rank / max).
 func current_power() -> Dictionary:
     var dmg := 0.0
     var hp := 0.0
-    var el_eq := 0.0
-    for sl in SLOTS:
-        var sid := String(sl["id"])
-        var s := active_side(sid)
-        var m := max_rank(sid, s)
-        if m <= 0:
-            continue
-        var f := float(rank(sid, s)) / float(m)
-        var eq: Array = sl[s]["eq"]
-        if (sl[s] as Dictionary).has("requires"):
-            el_eq = maxf(el_eq, float(eq[0]) * f)
-        else:
+    for br in BRANCHES:
+        for n in br["nodes"]:
+            var id := String(n["id"])
+            var eq: Array = (n as Dictionary).get("eq", [0.0, 0.0])
+            var m := max_rank(id)
+            if m <= 0:
+                continue
+            var f := float(rank(id)) / float(m)
             dmg += float(eq[0]) * f
-        hp += float(eq[1]) * f
-    return { "dmg": dmg + el_eq, "hp": hp }
+            hp += float(eq[1]) * f
+    return { "dmg": dmg, "hp": hp }
 
 
 # --- Spending --------------------------------------------------------------
 
 
-## Buy the next rank of a side. The active side does not change (switch with set_active).
-func buy(slot_id: String, s: String) -> bool:
-    if not can_buy(slot_id, s):
+## Buy the next rank of a node. A newly bought choice node starts on its picked option (A
+## unless it was flipped before).
+func buy(id: String) -> bool:
+    if not can_buy(id):
         return false
-    var cost := next_cost(slot_id, s)
+    var cost := next_cost(id)
     embers -= cost
-    ranks["%s:%s" % [slot_id, s]] = rank(slot_id, s) + 1
+    nodes[id] = rank(id) + 1
     _rebuild_totals()
     save()
     if not _quiet:
-        Telemetry.hub_event("talent_buy", { "slot": slot_id, "side": s, "id": String(side(slot_id, s)["id"]), "rank": rank(slot_id, s), "cost": cost, "left": embers })
+        Telemetry.hub_event("talent_buy", { "node": id, "pick": pick(id) if is_choice(id) else "", "rank": rank(id), "cost": cost, "left": embers })
     changed.emit()
     return true
 
 
-## Make side `s` the slot's active one. Free, any number of times (Hades' Mirror).
-func set_active(slot_id: String, s: String) -> void:
-    if slot(slot_id).is_empty() or not s in ["a", "b"] or active_side(slot_id) == s:
+## Pick option `s` of a choice node. Free, any number of times, in the Hollow.
+func set_pick(id: String, s: String) -> void:
+    if not is_choice(id) or not s in ["a", "b"] or pick(id) == s:
         return
-    active[slot_id] = s
+    picks[id] = s
     _rebuild_totals()
     save()
-    Telemetry.hub_event("talent_side", { "slot": slot_id, "side": s })
+    if not _quiet:
+        Telemetry.hub_event("talent_pick", { "node": id, "side": s, "id": String(option(id, s)["id"]) })
     changed.emit()
 
 
-func toggle(slot_id: String) -> void:
-    set_active(slot_id, other_side(active_side(slot_id)))
+func flip(id: String) -> void:
+    set_pick(id, other_side(pick(id)))
 
 
 func buy_survival() -> bool:
@@ -613,12 +644,11 @@ func buy_survival() -> bool:
     return true
 
 
-## Refund every rank and the survival track, free (Hades charges a Key; the report's R4
-## asks for free or cheap respec). Active sides stay as they were. Returns the refund.
+## Refund every node and the survival track, free. Picks stay as they were. Returns the refund.
 func refund_all() -> int:
     var back := spent()
     embers += back
-    ranks = {}
+    nodes = {}
     survival = 0
     _rebuild_totals()
     save()
@@ -627,70 +657,134 @@ func refund_all() -> int:
     return back
 
 
-## Balance probe (`--mastery=full`): every rank of both sides and the whole survival track,
-## element gates ignored, side `s` active everywhere.
+## The migration's refund, once: the Shrine shows it the first time it opens, then it is gone.
+func take_rebuild_note() -> int:
+    var n := rebuilt_refund
+    if n > 0:
+        rebuilt_refund = 0
+        save()
+    return n
+
+
+## The probe's pick for choice node number `i` (in tree order): "a", "b", or alternating
+## for "mix".
+func _probe_pick(s: String, i: int) -> String:
+    if s == "mix":
+        return "a" if i % 2 == 0 else "b"
+    return "b" if s == "b" else "a"
+
+
+## Balance probe (`--mastery=full`): every node and the whole survival track, option `s`
+## ("a", "b" or "mix") picked everywhere.
 func debug_max_all(s: String = "a") -> void:
-    for sl in SLOTS:
-        var sid := String(sl["id"])
-        for k in ["a", "b"]:
-            ranks["%s:%s" % [sid, k]] = (sl[k]["costs"] as Array).size()
-        active[sid] = s
+    var ci := 0
+    for br in BRANCHES:
+        for n in br["nodes"]:
+            var id := String(n["id"])
+            nodes[id] = max_rank(id)
+            if (n as Dictionary).has("a"):
+                picks[id] = _probe_pick(s, ci)
+                ci += 1
     survival = survival_max()
     _rebuild_totals()
     save()
 
 
 ## Balance probe (`--mastery=N`): spend `budget` Embers cheapest-first on the survival
-## track and the active sides (element gates respected), the way a player who never
-## switches sides would. Returns the Embers left over.
+## track and open nodes. Returns the Embers left over.
 func debug_spend_greedy(budget: int, s: String = "a") -> int:
     embers = budget
     _quiet = true
-    for sl in SLOTS:
-        active[String(sl["id"])] = s
+    var ci := 0
+    for br in BRANCHES:
+        for n in br["nodes"]:
+            if (n as Dictionary).has("a"):
+                picks[String(n["id"])] = _probe_pick(s, ci)
+                ci += 1
     _rebuild_totals()
     while true:
         var best_cost := -1
-        var best_slot := ""
+        var best := ""
         if can_buy_survival():
             best_cost = survival_next_cost()
-            best_slot = "*"
-        for sl in SLOTS:
-            var sid := String(sl["id"])
-            var side_key := active_side(sid)
-            if can_buy(sid, side_key):
-                var c := next_cost(sid, side_key)
-                if best_cost < 0 or c < best_cost:
-                    best_cost = c
-                    best_slot = sid
-        if best_slot == "":
+            best = "*"
+        for br in BRANCHES:
+            for n in br["nodes"]:
+                var id := String(n["id"])
+                if can_buy(id):
+                    var c := next_cost(id)
+                    if best_cost < 0 or c < best_cost:
+                        best_cost = c
+                        best = id
+        if best == "":
             break
-        if best_slot == "*":
+        if best == "*":
             buy_survival()
         else:
-            buy(best_slot, active_side(best_slot))
+            buy(best)
     _quiet = false
     return embers
 
 
+## `--talent-test` (hub bot, on its own instance file): buys, picks, gates and refunds on
+## whatever save is loaded, checking that no Ember is ever lost. Prints [TALENT-TEST].
+func self_test() -> bool:
+    var ok := true
+    _quiet = true
+    embers += 200   # enough to walk a branch; taken back at the end
+    var whole := embers + spent()   # lambdas capture by value: fixed before `check` exists
+    var fails: Array = []
+    var check := func(cond: bool, what: String) -> void:
+        if not cond:
+            fails.append(what)
+        if embers + spent() != whole:
+            fails.append("embers lost after " + what)
+    check.call(not can_buy("pyre_c1") or is_full("kindling"), "choice closed until the passive above is full")
+    for i in 3:
+        buy("kindling")
+    check.call(is_full("kindling"), "kindling full")
+    check.call(absf(bonus("potency") - 0.06) < 0.001, "kindling gives potency")
+    check.call(buy("pyre_c1"), "pyre_c1 bought")
+    check.call(not buy("pyre_c2"), "pyre_c2 closed until lingering is full")
+    set_pick("pyre_c1", "b")
+    check.call(absf(bonus("burn_time") - 1.0) < 0.001 and _triggers.is_empty(), "slow burn picked")
+    set_pick("pyre_c1", "a")
+    check.call(bonus("burn_time") == 0.0 and _triggers.size() == 1, "wildfire picked")
+    for i in 3:
+        buy("light_feet")
+    buy("stride_c1")
+    set_pick("stride_c1", "b")
+    check.call(_triggers.size() == 2, "second wind adds a trigger")
+    var back := refund_all()
+    check.call(spent() == 0 and back > 0, "refund all")
+    check.call(_triggers.is_empty() and _totals.is_empty(), "nothing active after refund")
+    embers -= 200
+    _quiet = false
+    save()
+    ok = fails.is_empty()
+    print("[TALENT-TEST] %s embers %d, picks %s%s" % ["PASS" if ok else "FAIL", embers, str(picks), "" if ok else " | " + "; ".join(fails)])
+    return ok
+
+
 func _rebuild_totals() -> void:
     _totals = {}
-    _cond = {}
-    for sl in SLOTS:
-        var sid := String(sl["id"])
-        var s := active_side(sid)
-        var r := rank(sid, s)
-        if r <= 0:
-            continue
-        var mods := side_mods(sid, s, r)
-        var cond := String(sl[s].get("cond", ""))
-        for k in mods.keys():
-            if cond == "":
-                _totals[k] = float(_totals.get(k, 0.0)) + float(mods[k])
+    _triggers = []
+    for br in BRANCHES:
+        for n in br["nodes"]:
+            var id := String(n["id"])
+            var r := rank(id)
+            if r <= 0:
+                continue
+            var mods: Dictionary
+            if (n as Dictionary).has("a"):
+                var opt: Dictionary = n[pick(id)]
+                mods = opt.get("mods", {})
+                for t in opt.get("triggers", []):
+                    _triggers.append(t)
             else:
-                if not _cond.has(cond):
-                    _cond[cond] = {}
-                _cond[cond][k] = float(_cond[cond].get(k, 0.0)) + float(mods[k])
+                mods = passive_mods(id, r)
+            for k in mods.keys():
+                _totals[k] = float(_totals.get(k, 0.0)) + float(mods[k])
 
 
 # --- Earning (R7) ------------------------------------------------------------
@@ -804,6 +898,8 @@ func earned_text() -> String:
     return ", ".join(bits) if not bits.is_empty() else "none yet"
 
 
+
+
 # --- Persistence -----------------------------------------------------------
 
 
@@ -812,13 +908,16 @@ func save() -> void:
         "version": SAVE_VERSION,
         "embers": embers,
         "earned": earned,
-        "ranks": ranks,
-        "active": active,
+        "nodes": nodes,
+        "picks": picks,
         "survival": survival,
         "bounties": bounties.keys(),
         "earned_by": earned_by,
         "last_award": last_award,
+        "rebuilt_refund": rebuilt_refund,
     }
+    if not legacy_v2.is_empty():
+        data["legacy_v2"] = legacy_v2
     var f := FileAccess.open(save_path, FileAccess.WRITE)
     if f == null:
         push_warning("Could not write mastery file: %s" % save_path)
@@ -827,15 +926,27 @@ func save() -> void:
     f.close()
 
 
+## Embers a version 2 board spent: every rank of every side at its old price.
+static func legacy_v2_spent(saved_ranks: Dictionary) -> int:
+    var total := 0
+    for k in saved_ranks.keys():
+        var costs: Array = LEGACY_V2_COSTS.get(String(k), [])
+        for i in mini(int(saved_ranks[k]), costs.size()):
+            total += int(costs[i])
+    return total
+
+
 func load_save() -> void:
     embers = 0
     earned = 0
-    ranks = {}
-    active = {}
+    nodes = {}
+    picks = {}
     survival = 0
     bounties = {}
     earned_by = {}
     last_award = {}
+    rebuilt_refund = 0
+    legacy_v2 = {}
     var migrated := false
     if FileAccess.file_exists(save_path):
         var f := FileAccess.open(save_path, FileAccess.READ)
@@ -844,7 +955,8 @@ func load_save() -> void:
             f.close()
             if parsed is Dictionary:
                 var d: Dictionary = parsed
-                if int(d.get("version", 1)) < 2:
+                var version := int(d.get("version", 1))
+                if version < 2:
                     # Version 1 (the node tree): refund everything as Embers.
                     var legacy := maxi(int(d.get("earned", d.get("points", 0))), int(d.get("points", 0)))
                     embers = legacy * LEGACY_EMBERS_PER_POINT
@@ -856,15 +968,6 @@ func load_save() -> void:
                     embers = int(d.get("embers", 0))
                     earned = int(d.get("earned", embers))
                     survival = clampi(int(d.get("survival", 0)), 0, survival_max())
-                    var saved_ranks: Dictionary = d.get("ranks", {})
-                    for k in saved_ranks.keys():
-                        var parts := String(k).split(":")
-                        if parts.size() == 2 and not slot(parts[0]).is_empty() and parts[1] in ["a", "b"]:
-                            ranks[String(k)] = clampi(int(saved_ranks[k]), 0, max_rank(parts[0], parts[1]))
-                    var saved_active: Dictionary = d.get("active", {})
-                    for k in saved_active.keys():
-                        if not slot(String(k)).is_empty() and String(saved_active[k]) in ["a", "b"]:
-                            active[String(k)] = String(saved_active[k])
                     for b in d.get("bounties", []):
                         bounties[String(b)] = true
                     var eb: Dictionary = d.get("earned_by", {})
@@ -873,9 +976,44 @@ func load_save() -> void:
                     var la = d.get("last_award", {})
                     if la is Dictionary:
                         last_award = la
+                    if version == 2:
+                        # Version 2 (the A/B board, Talent tree.md Migration): every rank
+                        # bought comes back as Embers at its old price; Last Breath, lifetime
+                        # Embers and bounties carry over. The old file is kept as a backup.
+                        var saved_ranks: Dictionary = d.get("ranks", {})
+                        var back := legacy_v2_spent(saved_ranks)
+                        embers += back
+                        rebuilt_refund = back
+                        legacy_v2 = { "ranks": saved_ranks, "active": d.get("active", {}), "refund": back }
+                        _backup(save_path, "_v2_backup")
+                        print("[MASTERY] save v2 -> v3: talent tree rebuilt, %d Embers refunded, %d to spend" % [back, embers])
+                        migrated = true
+                    else:
+                        var saved_nodes: Dictionary = d.get("nodes", {})
+                        for k in saved_nodes.keys():
+                            if not node(String(k)).is_empty():
+                                nodes[String(k)] = clampi(int(saved_nodes[k]), 0, max_rank(String(k)))
+                        var saved_picks: Dictionary = d.get("picks", {})
+                        for k in saved_picks.keys():
+                            if is_choice(String(k)) and String(saved_picks[k]) in ["a", "b"]:
+                                picks[String(k)] = String(saved_picks[k])
+                        rebuilt_refund = int(d.get("rebuilt_refund", 0))
+                        var lv = d.get("legacy_v2", {})
+                        if lv is Dictionary:
+                            legacy_v2 = lv
     _rebuild_totals()
     if migrated:
         save()
+
+
+## Copy `path` to the same name with `suffix` before ".json", once (an existing backup stays).
+static func _backup(path: String, suffix: String) -> void:
+    var to := path.trim_suffix(".json") + suffix + ".json"
+    if FileAccess.file_exists(to):
+        return
+    var err := DirAccess.copy_absolute(ProjectSettings.globalize_path(path), ProjectSettings.globalize_path(to))
+    if err != OK:
+        push_warning("Could not back up %s (error %d)" % [path, err])
 
 
 ## Wipe the board: no Embers, nothing bought.

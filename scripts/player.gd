@@ -260,6 +260,8 @@ func _ready() -> void:
     if _mastery != null:
         revives_left = int(_mastery.revives())
         levelup_rerolls = int(_mastery.bonus("levelup_rerolls"))
+        # Talent tree choices that act like gear triggers (Mastery.BRANCHES).
+        boon_triggers.append_array(_mastery.triggers())
 
 
 func main() -> Main:

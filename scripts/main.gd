@@ -202,12 +202,12 @@ func _ready() -> void:
         var probe_side := "a"
         for a in args:
             if a.begins_with("--mastery-side="):
-                probe_side = "b" if a.substr(15) == "b" else "a"
+                probe_side = a.substr(15) if a.substr(15) in ["b", "mix"] else "a"
         for a in args:
             if a.begins_with("--mastery="):
-                # Balance probe. "full": every rank of both sides of every talent and the
-                # whole survival track, side A active (B with --mastery-side=b). "N":
-                # spend N Embers cheapest-first on the survival track and active sides.
+                # Balance probe. "full": every node of the talent tree and the
+                # whole survival track, option A picked (B or alternating with --mastery-side=b/mix). "N":
+                # spend N Embers cheapest-first on the survival track and open nodes.
                 var spec := a.substr(10)
                 var left := 0
                 if spec == "full":

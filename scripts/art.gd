@@ -552,9 +552,8 @@ static func debug_icon_sheet(path: String) -> Error:
         class_rows.append([String(md["id"]), String(md["icon"]), Color.WHITE, false])
     sections.append(["MARKS", class_rows])
     var talent_rows: Array = []
-    for sl in Mastery.slots():
-        for s in ["a", "b"]:
-            talent_rows.append([String(sl[s]["id"]), Mastery.talent_icon_path(String(sl["id"]), s), Color.WHITE, false])
+    for row in Mastery.icon_rows():
+        talent_rows.append([String(row[0]), String(row[1]), Color.WHITE, false])
     talent_rows.append([String(Mastery.SURVIVAL["id"]), String(Mastery.SURVIVAL["icon"]), Color.WHITE, false])
     talent_rows.append(["embers", Mastery.EMBER_ICON, Color.WHITE, false])
     sections.append(["SHRINE TALENTS", talent_rows])

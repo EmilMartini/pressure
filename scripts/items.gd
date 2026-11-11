@@ -1105,10 +1105,18 @@ func fire(player: Player, event: String, ctx: Dictionary) -> void:
                 reps = 1
             for r in reps:
                 _do(tt, player, ctx)
-    # Level-up boons that act like gear triggers (LevelUps echo boons).
-    for t in player.boon_triggers:
+    # Level-up boons and Shrine talents that act like gear triggers (LevelUps echo boons,
+    # Mastery.BRANCHES choices).
+    for bi in player.boon_triggers.size():
+        var t: Dictionary = player.boon_triggers[bi]
         if not _event_matches(t["on"], event, ctx):
             continue
+        if t.has("every"):
+            var bkey := "%d:boon:%d" % [player.get_instance_id(), bi]
+            var bseen: int = int(_counters.get(bkey, 0)) + 1
+            _counters[bkey] = bseen
+            if bseen % maxi(2, int(t["every"])) != 0:
+                continue
         if t.has("chance") and randf() > float(t["chance"]):
             continue
         if t.has("if") and not condition(t["if"], player, ctx):
@@ -1280,6 +1288,9 @@ func _do(t: Dictionary, player: Player, ctx: Dictionary) -> void:
             GroundZone.seed_all(player)
         "spring_all":
             GroundZone.spring_all(player)
+        "dash_refill":
+            # Second Wind (Mastery): a kill gives back one dash charge.
+            player.dash_charges = mini(player.dash_max_charges(), player.dash_charges + 1)
 
 
 ## The element a vent makes for this player: what they last vented, else hot fire / cold ice.

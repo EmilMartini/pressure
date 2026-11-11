@@ -529,6 +529,13 @@ func play_fusion(entry: Dictionary, anchor: Node2D, pos: Vector2, potency: float
             dbg["fields"] += 1
 
 
+## Slow Burn (Mastery): fire set by your reactions burns longer.
+static func _burn_time_mult(source) -> float:
+    if source == null or not is_instance_valid(source) or not source.has_method("stat"):
+        return 1.0
+    return 1.0 + maxf(0.0, float(source.stat("burn_time")))
+
+
 ## Smoulder boon (LevelUps): burn, poison and bleed set by reactions, fusions, cataclysms.
 static func _dot_mult(source) -> float:
     if source == null or not is_instance_valid(source):
@@ -579,7 +586,7 @@ func _act_at(enemy: Node2D, pos: Vector2, source: Player, potency: float, act: A
                         e.apply_element(int(act[1]), potency * 0.8, source)
         "burn":
             if has_target:
-                enemy.add_burn(potency * float(act[1]) * _dot_mult(source), float(act[2]))
+                enemy.add_burn(potency * float(act[1]) * _dot_mult(source), float(act[2]) * _burn_time_mult(source))
         "poison":
             if has_target:
                 enemy.add_poison(potency * float(act[1]) * 0.5 * _dot_mult(source), float(act[2]))

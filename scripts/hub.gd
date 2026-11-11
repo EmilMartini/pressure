@@ -146,6 +146,8 @@ func _ready() -> void:
         if args.has("--keep-save"):
             Progress.load_save()
             Mastery.load_save()
+            if args.has("--talent-test"):
+                Mastery.self_test()   # the tree's buy / pick / refund check (Talent tree.md)
         else:
             Progress.reset()
             Mastery.reset()
