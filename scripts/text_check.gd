@@ -147,6 +147,14 @@ func _run() -> void:
         _rows.append({ "text": nm, "body": false, "px": 34, "w": Art.FONT.get_string_size(nm, HORIZONTAL_ALIGNMENT_LEFT, -1, 34).x + 46.0, "max": room, "named": true })
         var line := Hud._tagline(String(it.get("desc", "")))
         _rows.append({ "text": line, "body": true, "px": body_px, "w": Art.FONT_BODY.get_string_size(line, HORIZONTAL_ALIGNMENT_LEFT, -1, body_px).x, "max": room })
+    # Green and red numbers (ItemCard.draw_numbers): the parser finds signed numbers only.
+    for case in [["+25% scrap, -10 max HP", "+25% -10"], ["This gun: +40% fire rate, +50% pressure", "+40% +50%"], ["re-roll costs 5, +0.5 regen", "+0.5"]]:
+        var got: Array = []
+        for sp in ItemCard.number_spans(case[0]):
+            got.append(String(case[0]).substr(sp[0], sp[1] - sp[0]))
+        if " ".join(got) != case[1]:
+            print("[TEXT] FAIL number spans in \"%s\": %s" % [case[0], got])
+            fails += 1
     var holder := Node.new()
     fails += _report("pickup", holder, csv)
     holder.free()

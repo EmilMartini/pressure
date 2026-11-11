@@ -927,8 +927,58 @@ static func _render(canvas: CanvasItem, rect: Rect2, model: Dictionary, opts: Di
         var rf := _row_font(row)
         var indent := float(row.get("indent", 0.0))
         for line in _wrap(String(row["t"]), int(rf[1]), w - PAD * 2.0 - indent, rf[0]):
-            _text(canvas, Vector2(r.position.x + PAD + indent, y), line, int(rf[1]), row["c"], rf[0])
+            if row["c"] == TEXT:
+                # UI research (Brotato): the numbers in an effect line read green or red.
+                var f: Font = rf[0] if rf[0] != null else Art.FONT
+                draw_numbers(canvas, Vector2(r.position.x + PAD + indent, y + f.get_ascent(int(rf[1]))), line, f, int(rf[1]), TEXT)
+            else:
+                _text(canvas, Vector2(r.position.x + PAD + indent, y), line, int(rf[1]), row["c"], rf[0])
             y += float(rf[2])
+
+
+## UI research (Brotato): an effect line at a baseline with its signed numbers coloured,
+## gains GOOD and drawbacks BAD ("-10 max HP", and "+40% pressure", since pressure is heat).
+## The rest of the line keeps `color`. Returns the drawn width.
+static func draw_numbers(canvas: CanvasItem, base: Vector2, text: String, font: Font, size: int, color: Color) -> float:
+    var x := base.x
+    var at := 0
+    for span in number_spans(text):
+        var good := text[span[0]] == "+"
+        if text.substr(span[1], 9) == " pressure":
+            good = not good
+        x = _seg(canvas, x, base.y, text.substr(at, span[0] - at), font, size, color)
+        x = _seg(canvas, x, base.y, text.substr(span[0], span[1] - span[0]), font, size, Color(GOOD if good else BAD, color.a))
+        at = span[1]
+    x = _seg(canvas, x, base.y, text.substr(at), font, size, color)
+    return x - base.x
+
+
+## [start, end] of each signed number ("+8%", "-10", "+0.5") not inside a word.
+static func number_spans(text: String) -> Array:
+    var out: Array = []
+    var i := 0
+    var n := text.length()
+    while i < n - 1:
+        var c := text[i]
+        if (c == "+" or c == "-") and text[i + 1].is_valid_int() and (i == 0 or " (:,".contains(text[i - 1])):
+            var j := i + 1
+            while j < n and (text[j].is_valid_int() or (text[j] == "." and j + 1 < n and text[j + 1].is_valid_int())):
+                j += 1
+            if j < n and text[j] == "%":
+                j += 1
+            out.append([i, j])
+            i = j
+        else:
+            i += 1
+    return out
+
+
+static func _seg(canvas: CanvasItem, x: float, y: float, seg: String, font: Font, size: int, color: Color) -> float:
+    if seg == "":
+        return x
+    canvas.draw_string(font, Vector2(x + 1.0, y + 1.0), seg, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color(0, 0, 0, 0.8 * color.a))
+    canvas.draw_string(font, Vector2(x, y), seg, HORIZONTAL_ALIGNMENT_LEFT, -1, size, color)
+    return x + font.get_string_size(seg, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
 
 
 ## Text whose top edge is at `top`, with a drop shadow.

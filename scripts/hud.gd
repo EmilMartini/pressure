@@ -1119,7 +1119,11 @@ func _draw_pick(vp: Vector2) -> void:
     var pips := int(_pick.get("pips", 1))
     ItemCard.draw_pips(self, Vector2(box.end.x - 10.0 - float(pips) * 8.0, box.position.y + 9.0), pips, Color(frame, a), 6.0)
     if effect != "":
-        _body_in(Rect2(box.position.x, box.position.y + 40.0, box.size.x, 24.0), effect, 18, Color(UiTheme.BONE, a))
+        # The numbers in the line read green or red, as on the card (ItemCard.draw_numbers).
+        var bf := _body_font()
+        var bs := _bsz(18)
+        var base_y := box.position.y + 40.0 + (24.0 + bf.get_ascent(bs) - bf.get_descent(bs)) / 2.0
+        ItemCard.draw_numbers(self, Vector2(box.position.x + (box.size.x - eff_w) / 2.0, base_y), effect, bf, bs, Color(UiTheme.BONE, a))
 
 
 ## The one short line under a pickup's name: the first sentence of its effect, cut at a
