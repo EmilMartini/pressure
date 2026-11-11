@@ -275,6 +275,13 @@ func _fill_cards() -> void:
         _heads[i].text = head
         # Long headlines (an element name) step down so they stay on one or two lines.
         _heads[i].add_theme_font_size_override("font_size", 44 if head.length() <= 14 else 36)
+        # UI research (Brotato): a gain reads green, a loss red, like the item cards' numbers.
+        var head_col := HEAD_COL
+        if head.begins_with("+"):
+            head_col = ItemCard.GOOD
+        elif head.begins_with("-"):
+            head_col = ItemCard.BAD
+        _heads[i].add_theme_color_override("font_color", head_col)
         _deltas[i].text = LevelUps.before_after(opt, _player)
         var lines: Array = []
         var cost := false
@@ -283,7 +290,7 @@ func _fill_cards() -> void:
             cost = cost or bool(ln[1])
         _extras[i].text = "\n".join(lines)
         _extras[i].visible = not lines.is_empty()
-        _extras[i].add_theme_color_override("font_color", COST_COL if cost else UiTheme.BONE)
+        _extras[i].add_theme_color_override("font_color", COST_COL if cost else ItemCard.GOOD)
         _affects[i].text = String(opt.get("affects", ""))
         for l in [_names[i], _heads[i], _deltas[i], _extras[i], _affects[i]]:
             l.custom_minimum_size = Vector2(card_size.x - 28.0, 0)
