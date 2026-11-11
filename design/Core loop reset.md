@@ -1975,7 +1975,7 @@ drop moment. Neither adds any text to the fight.
 - Empowered next attack (Hot Streak or Clearcasting): a damage or crit buff proc (Close Shave,
   Marksman's Monocle, Riposte, Catch Spark, Overheat and the like) charges every weapon. The
   weapon glows and pulses until its next attack. That volley leaves at 1.6x projectile size
-  (a melee swing 1.3x wider) with a bright muzzle ring, and the proc gets a heavier sound, a
+  (a melee blade 1.3x broader; the reach stays the player's) with a bright muzzle ring, and the proc gets a heavier sound, a
   thump under a rising shimmer. Summon, ground and charge weapons only glow.
 - Rate limits: the same item or rule shows at most once every 2 s, any proc at most once a
   second (empowering procs skip that one), and the sound plays at most once every 1.5 s.
