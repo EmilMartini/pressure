@@ -1866,6 +1866,94 @@ chests 0 to 2 a floor. 0 `SCRIPT ERROR` in all 12 logs.
 3. Now and then a cleared room leaves a small chest in the middle (walk into it) or a gold spark
    cell that refills your active item.
 
+### Rare elites (2026-11-11, build `2026.11.11-rare1`)
+
+Emil's pick, after WoW's rare spawns: now and then a room holds one named foe that looks
+different, fights harder and always pays better than the room. Earned, never lying on the floor.
+Code: `scripts/rare_elite.gd` (`RareElite`), hooks in `Room` (`_spawn_rare`, `_rare_cards`,
+`_room_reward`, `_on_enemy_died`, `_take_group`), `Enemy` (`rare`, tick, draw) and
+`Main.start_floor` (`rare_arena`).
+
+**How often** (`RareElite.plan_floor`): each floor rolls `FLOOR_CHANCE` 55%; a floor after one
+with no rare always has one. That is 0.69 a floor over a long run (one every 1.45 floors), 2 to 5
+in a five-floor run (3.4 on average), never two dry floors in a row. It goes in one clear-the-room
+arena, the 2nd to 4th of the floor (floor 1: the 4th or 5th, after the gun picks), 4 s in; if the
+rest of the room dies first it comes at once, like a pending elite. Never in the boss room, the
+shop, treasure, secret or challenge rooms. The old balance has none.
+
+**Look:** the elite's body in its own tint, 25% bigger, a thick gold rim and a small gold crown
+with a red stone over its head. Its name shows once, small and gold, over the crown for 2.6 s as
+it arrives, then fades. No other text (decision 19). The names are **placeholders for Emil's
+review** (NPC-writing rule): three a region, short and said-out-loud, e.g. Old Knuckles and
+Mother Hollin (Ossuary Gate), Crankshaft and Iron Molly (Rust Ruins), Old Rime and Kettle
+(Frostvault), Slagmouth and Tongs (the Forge), Nobody and Twice (the Rift). All 24 are in
+`RareElite.NAMES`; rename freely.
+
+**Kit:** an elite plus
+- **an affix** from the deep elite pool (hasted, trail, volatile, barrage, sower, mortar, tether; never
+  regenerating, which with closest-first aim only healed unseen and dragged the fight), and
+- **a pattern of its own**, by name: **slam** (a red ring fills in at your feet for 0.85 s, the
+  body leaps there in the last 0.3 s, 13% of a bar inside 62 px) or **nova** (it glows with a
+  shrinking red ring for 0.7 s, then 12 slow shots in a ring, carrying the region's element,
+  with gaps to step through). Both tells are at least 0.5 s and use the Hostile look, so it is
+  never an unfair death; the slam uses the lobber's shell, so the ring cap and the kite bot's
+  dodging apply.
+- Elemental shield like any elite, double scrap.
+- **Health:** the most of 1.6 x an elite's base, 8 s of the measured power P, and 7 s of how
+  fast this run kills its plain elites (`RareElite.note_elite`, smoothed). P reads low against one
+  body (the open roster issue), so the elite kill speed is what sizes it on strong builds.
+- **Auto-aim is unchanged:** closest enemy first, no priority for the rare (decision 21).
+
+**Reward** (`Room._rare_cards`): at the room's clear, in the bonus pick's place, a **pick of 1 of
+2, Rare or better** on the boss rarity table, one step higher 25% of the time
+(`REWARD_UP`), and 35% of the time one card is a Rare-or-better weapon (`REWARD_WEAPON`). The
+room's own heart roll still happens. Room bonus picks are Common or better, so the rare's pick is
+always the better one. Its death has a 0.14 s hit-stop, a gold nova and the heavy burst sound.
+A Legendary card here will get the legendary beam once the procs and legendary pick-screen work lands.
+
+**Telemetry** (`runs.jsonl`): `rare_spawned` (floor, region, arena, name, pattern, affix, hp,
+P), `rare_killed` (seconds alive after it lands, game time), `rare_reward_shown` (best rarity,
+weapon offered), `rare_reward_taken` (kind, id). Hits from a rare are `damage_taken` with source
+`rare`. `python tools/pressure_report.py runs_N.jsonl --bots --rare` sums them. Bot lines:
+`[RARE] plan|spawned|killed|reward|taken`; `--rare-every` puts one on every floor.
+
+**Measured** (headless, `--fixed-fps 60`, `--kite`, route Ossuary Gate, Rust Ruins, Frostvault,
+the Forge, the Rift; logs `autotest/rare/`, `sum.py` summarises):
+
+| Runs | Floors | Rares | Kill time (s, after it lands) | Reward (best card) | Weapon offered |
+|---|---|---|---|---|---|
+| First health rule (1.8 x elite or 8 s of P), `--build=mid` from floor 2, natural and `--rare-every`, 2 runs | 8 | 6 | 1.8 to 6.9 (median 2.5): no longer than a plain elite | 4 Rare, 2 Epic | 2 of 6 |
+| 2.5 x elite or 7 s of elite kill speed, `--rare-every`, 1 run | 4 | 4 | 18.8 (regenerating), 9.7, 21.3, 12.9: too long | 2 Rare, 2 Epic | 0 of 4 |
+| **Final** (1.6 x elite, no regenerating), `--rare-every`, mid and storm builds, 2 full runs + 1 floor on the rebased tree | 9 | 9 | **5.9 to 10.8, median 7.8** (floor 2: 8.5, 10.8; floor 5: 6.6, 7.8) | 4 Rare, 5 Epic | 5 of 9 |
+
+- **Spawn rate:** the natural (no `--rare-every`) runs planned one on 3 of 5 floors (floors 3 and
+  4 of the mid run, the fresh bot's floor 1); the rule itself averages 0.69 a floor (200,000 simulated floors), 3.4 in a five-floor
+  run. Every planned rare spawned when its arena was reached (19 of 19).
+- **Rewards:** the bot took the item card every time (it does not weigh weapons). No Common or
+  Uncommon card ever showed in a rare row.
+- **Fair:** hits from a rare (`damage_taken` source `rare`, the 3 runs that log it): 0, 0, 1.
+  No death in a rare room; both full final runs won (the fresh bot from floor 1 died on floor 1,
+  the known no-gun bot gap, before its rare arena).
+- **0 `SCRIPT ERROR`** in all 8 logs. **fps** (headless, uncapped, 3 instances at once): rooms
+  with a rare median 227 to 308, other rooms 254 to 351, lowest rare-room tick 130; the lowest
+  tick of all (15) was a floor-5 boss room. The draw cost (crown, rim, name) is not measured headless.
+- Load check clean; `tools/exe_smoke.sh` ALL PASS on the rebased tree (with the boss patterns).
+
+**Watch, and the knobs**
+- Kill time is `HP_ELITE`, `HP_SECS` and `KILL_SECS`. If a rare melts before you notice its name,
+  raise `KILL_SECS`; if it drags, lower `HP_ELITE` (floor 2 is where it binds).
+- How often: `FLOOR_CHANCE` and the dry-floor rule. Reward: `REWARD_UP`, `REWARD_WEAPON`.
+- Not checked on screen (no game window this session): the crown, rim and name were not
+  screenshotted. Look at the first one: the crown should read at a glance in a crowd, the name
+  should be small and gone in under 3 s.
+
+**What to try (Emil)**
+1. Play to floor 3. About every one or two floors, one room has a bigger foe with a gold crown and
+   a name. Does it stand out in the crowd without text telling you?
+2. Kill it: a heavy pop, then at the clear a pick of 1 of 2 Rare-or-better cards where the bonus
+   pick would be (sometimes a weapon). Does it feel worth hunting?
+3. Rename the placeholders you don't like in `RareElite.NAMES`.
+
 ---
 
 ## 15. Defaults Emil may want to change
