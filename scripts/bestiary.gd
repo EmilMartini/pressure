@@ -14,10 +14,10 @@ const STATS := {
     "hopper": [30.0, 5.5, 75.0, 11.0, 6.0, 1],
     "burrower": [48.0, 8.5, 70.0, 13.0, 8.0, 2],
     "sentry": [55.0, 9.5, 0.0, 14.0, 6.0, 2],
-    "mirror": [44.0, 8.0, 110.0, 12.0, 8.0, 2],
+    "mirror": [52.0, 9.5, 110.0, 12.0, 8.0, 2],
     "bloater": [36.0, 6.5, 62.0, 13.0, 6.0, 1],
     "orbiter": [16.0, 3.0, 220.0, 8.0, 4.0, 1],
-    "ricochet": [50.0, 9.0, 95.0, 13.0, 10.0, 3],
+    "ricochet": [62.0, 11.0, 95.0, 13.0, 10.0, 3],
     "nest": [80.0, 14.0, 0.0, 18.0, 8.0, 3],
     "ghost": [24.0, 4.8, 95.0, 11.0, 7.0, 1],
     "tarcrawler": [42.0, 7.5, 55.0, 12.0, 7.0, 1],
@@ -299,7 +299,7 @@ const RICO_TELL := 0.7
 const RICO_SPEED := 520.0
 const RICO_TRAVEL := 900.0
 const RICO_BOUNCES := 2
-const RICO_DMG := 13.0
+const RICO_DMG := 12.0
 const RICO_STUN := 1.0
 
 const NEST_EVERY := 3.2
@@ -314,7 +314,7 @@ const GHOST_FADED_TAKEN := 0.5
 const TAR_EVERY := 0.35
 const TAR_LIFE := 7.0
 const TAR_R := 15.0
-const TAR_SLOW := 0.6         # speed in tar
+const TAR_SLOW := 0.7         # speed in tar or dazed
 
 const BELL_EVERY := 4.2
 const BELL_WIND := 0.9
@@ -846,6 +846,27 @@ static func _bounce_path(e: Enemy, from: Vector2, d: Vector2) -> Array:
         else:
             v.y = -v.y
     return pts
+
+
+## A body hit landing on a player: a ricochet's or mirror's run hits for its own number
+## (not the contact damage that grows with difficulty), with a hurt hint.
+static func contact_hit(e: Enemy, hit: float) -> float:
+    if e.kind_name == "ricochet" and int(e.bx.get("st", 0)) == 2:
+        Telemetry.hurt_hint = "charge:ricochet"
+        return RICO_DMG * e.damage_mult
+    if e.kind_name == "mirror" and float(e.bx.get("run", -1.0)) >= 0.0:
+        Telemetry.hurt_hint = "dash:mirror"
+        return MIRROR_DMG * e.damage_mult
+    return hit
+
+
+## After a body hit: a run hits once, never again before it ends.
+static func contact_cd(e: Enemy) -> float:
+    if e.kind_name == "ricochet" and int(e.bx.get("st", 0)) == 2:
+        return float(e.bx.get("left", 0.0)) / RICO_SPEED + 0.3
+    if e.kind_name == "mirror":
+        return maxf(0.0, float(e.bx.get("run", -1.0))) + 0.3
+    return 0.0
 
 
 ## Enemy._physics_process after move_and_slide: a ricochet that met a wall bounces (twice),

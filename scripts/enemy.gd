@@ -1461,8 +1461,10 @@ func _physics_process(delta: float) -> void:
             if kind_name == "charger" and _mode == MODE_DASH and not Main.old_balance:
                 hit = CHARGE_DMG * damage_mult
                 Telemetry.hurt_hint = "charge:" + Telemetry.enemy_label(self)
+            if Bestiary.has(kind_name):
+                hit = Bestiary.contact_hit(self, hit)
             target.take_damage(hit, self)
-            _contact_cd = 0.8
+            _contact_cd = maxf(0.8, Bestiary.contact_cd(self)) if Bestiary.has(kind_name) else 0.8
     _update_sprite()
     queue_redraw()
 

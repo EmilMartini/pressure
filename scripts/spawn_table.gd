@@ -57,8 +57,8 @@ const ROSTERS := {
         "crowd": { "grunt": [0, 9.0, -0.20], "tarcrawler": [0, 3.0, 0.10], "bomber": [0, 1.5, 0.12], "brute": [1, 1.0, 0.12] },
         "key": { "ricochet": [0, 1.0], "sentry": [0, 0.9], "burrower": [1, 0.9] } },
     "frostvault": {
-        "crowd": { "runner": [0, 7.0, -0.10], "ghost": [0, 3.0, 0.10], "splitter": [0, 1.5, 0.12], "warden": [1, 0.5, 0.06] },
-        "key": { "sniper": [0, 1.0], "mirror": [0, 0.9], "bell": [1, 0.9], "lobber": [0, 0.6] } },
+        "crowd": { "runner": [0, 7.0, -0.10], "ghost": [0, 3.0, 0.10], "splitter": [0, 1.5, 0.12], "brute": [1, 0.6, 0.06], "warden": [1, 0.5, 0.06] },
+        "key": { "sniper": [0, 1.0], "mirror": [0, 0.9], "bell": [1, 0.9] } },
     "the_forge": {
         "crowd": { "grunt": [0, 8.0, -0.20], "tarcrawler": [0, 3.5, 0.10], "bomber": [0, 2.0, 0.12], "brute": [0, 1.2, 0.12] },
         "key": { "sentry": [0, 1.0], "ricochet": [0, 1.0], "charger": [0, 0.7], "lobber": [1, 0.6] } },
@@ -73,8 +73,14 @@ const ROSTERS := {
 const GROUP_CAP := { "shaman": 1, "orbiter": 2, "bloater": 3, "tarcrawler": 3 }
 
 
+## `--classic-roster` (bots): every region fields the old shared tables, for before / after.
+static var _classic := -1
+
+
 static func roster(region: String) -> Dictionary:
-    if region == "" or Main.old_balance or not ROSTERS.has(region):
+    if _classic < 0:
+        _classic = 1 if OS.get_cmdline_user_args().has("--classic-roster") else 0
+    if region == "" or Main.old_balance or _classic == 1 or not ROSTERS.has(region):
         return {}
     return ROSTERS[region]
 ## Key threats alive at once (elites count against it): floor 1 one, then two from its
