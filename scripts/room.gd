@@ -514,7 +514,7 @@ func _spawn_chest() -> void:
     if data.chest_scrap <= 0:
         return
     var c := RoomPickup.new(main, "chest", data.chest_scrap)
-    c.position = Vector2(0, 40)
+    c.position = Vector2.ZERO   # where the burst pops: the middle is kept open
     pickups.add_child(c)
 
 
@@ -1480,9 +1480,9 @@ func _on_obstacle_cleared(dir: Vector2i) -> void:
     main.rooms[data.doors[dir]["to"]].discovered = true
     if was_secret:
         var how := String(doors[dir].opened_by) if doors.has(dir) else ""
-        Telemetry.event("hidden_room_found", { "floor": main.floor_number, "how": how,
+        var first := main.secret_opened(how)
+        Telemetry.event("hidden_room_found", { "floor": main.floor_number, "how": how, "first": first,
             "room": RoomData.Type.keys()[data.type].to_lower(), "floor_secs": snappedf(main.floor_secs(), 0.1) })
-        main.secret_opened(how)
         call_deferred("_add_door_cap", dir)
         _redraw_layout()
     _apply_doors()

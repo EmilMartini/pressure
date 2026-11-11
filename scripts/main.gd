@@ -34,6 +34,7 @@ var _boss_room_at := -1.0       # _clock when the party first entered this floor
 var _rush := false              # bots: --rush walks straight for the boss room
 var _secret_seek := false       # bots: --secret-seek looks for each floor's secret room (dashes into its cracked wall)
 var _secret_near_logged := false  # telemetry: the party stood in a room with a cracked wall this floor
+var _secret_found := false        # a cracked wall already gave way this floor
 var _open_gates := false        # bots: --open-gates walks through a shortcut gate from its far side
 var _gate_entry := Vector2i.ZERO  # the side a gate brings the party in by (enter_room)
 var _bot_doors := {}            # bots: depth -> the door picked for it
@@ -669,7 +670,7 @@ func start_floor(n: int) -> void:
         _prev_power = floor_arena_dps()
         _prev_power_floor = floor_number - 1
     _arena_dps = []
-    _loot = { "free": 0, "bought": 0, "guns": 0, "hearts": 0, "cards": 0, "levels": 0, "scrap_max": scrap, "earned": 0 }
+    _loot = { "free": 0, "bought": 0, "guns": 0, "hearts": 0, "cards": 0, "levels": 0, "scrap_max": scrap, "earned": 0, "secrets": 0, "cells": 0, "chests": 0 }
     if autotest and not players.is_empty():
         print("[FLOOR] %d region=%s at t=%.0f kills=%d scrap=%d hp=%.0f level=%d guns=%d items=%d" % [
             n, region_id, _clock, total_kills, scrap, players[0].hp, players[0].level, players[0].guns.size(), players[0].inventory.size()])
@@ -760,6 +761,7 @@ func _scout_reveal() -> void:
 ## then `hidden_room_found` (Room) when one gives way and `secret_entered` inside.
 func _log_secret_floor() -> void:
     _secret_near_logged = false
+    _secret_found = false
     var walls := 0
     var has := false
     for r in rooms.values():
@@ -789,11 +791,16 @@ func floor_secs() -> float:
     return _clock - _floor_t0
 
 
-## A cracked wall gave way (Room._on_obstacle_cleared).
-func secret_opened(how: String) -> void:
-    loot_note("secrets")
+## A cracked wall gave way (Room._on_obstacle_cleared). True for the floor's first one: the
+## find; later walls into the same room (a blast can open several) are not new finds.
+func secret_opened(how: String) -> bool:
+    var first := not _secret_found
+    _secret_found = true
+    if first:
+        loot_note("secrets")
     if autotest:
-        print("[SECRET] opened floor=%d how=%s at=%.1f" % [floor_number, how, floor_secs()])
+        print("[SECRET] opened floor=%d how=%s at=%.1f first=%s" % [floor_number, how, floor_secs(), str(first)])
+    return first
 
 
 ## Load the room at `pos`. `moved` is the direction the party travelled to get there,
@@ -1058,9 +1065,10 @@ func _floor_loot_end() -> void:
     f["scrap_end"] = scrap
     Telemetry.event("floor_loot", f)
     if autotest:
-        print("[LOOT] floor=%d free=%d bought=%d guns=%d hearts=%d cards=%d levels=%d earned=%d scrap_max=%d scrap_end=%d m=%.2f" % [
+        print("[LOOT] floor=%d free=%d bought=%d guns=%d hearts=%d cards=%d levels=%d earned=%d scrap_max=%d scrap_end=%d m=%.2f secrets=%d cells=%d chests=%d" % [
             floor_number, int(_loot["free"]), int(_loot["bought"]), int(_loot["guns"]), int(_loot["hearts"]), int(_loot["cards"]),
-            int(_loot["levels"]), int(_loot["earned"]), int(_loot["scrap_max"]), scrap, Items.depth_mult(floor_number)])
+            int(_loot["levels"]), int(_loot["earned"]), int(_loot["scrap_max"]), scrap, Items.depth_mult(floor_number),
+            int(_loot.get("secrets", 0)), int(_loot.get("cells", 0)), int(_loot.get("chests", 0))])
     _loot = {}
 
 

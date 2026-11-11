@@ -1,6 +1,6 @@
 """Per-floor pressure from telemetry (difficulty pass, 2026-11-09).
 
-    python tools/pressure_report.py runs.jsonl [more.jsonl] [--bots] [--shops] [--loot] [--moments]
+    python tools/pressure_report.py runs.jsonl [more.jsonl] [--bots] [--shops] [--loot] [--moments] [--secrets]
 
 --shops: every shop visit (shop_leave events, Core loop reset 6.5 / 13.2): scrap in, spent,
 left, the cheapest ware still for sale and rerolls, then the targets: share of visits spent
@@ -9,6 +9,9 @@ down (left < cheapest), median leftover against 45 x m and 80 x m, median reroll
 context.
 --loot: the per-floor floor_loot events (13.2): items free and bought, guns, hearts, cards
 shown, level-ups, scrap earned and the scrap high-water mark against two floors' income.
+--secrets: secret rooms (secrets pass, 2026-11-11): floors that had one, how many the party
+stood next to (secret_near), found (the floor's first hidden_room_found, by blast or dash) and entered, the
+median seconds into the floor, and the small pickups (spark cells, chests) taken.
 
 Human runs by default (`--bots` for bot runs). Uses the per-floor "pressure" event
 (scripts/pressure_meter.gd) when the build records it; older runs are rebuilt roughly from
@@ -147,6 +150,35 @@ def loot(runs):
         return
     print('  targets per floor: free 2 to 4, bought 1 to 3, cards <= 15, levels about 1.5; scrap never over 330 x m')
 
+def secrets(runs):
+    has = near = opened = entered = 0
+    how = {}
+    secs = []
+    picks = {}
+    for r in runs:
+        for e in r.get('events', []):
+            k = e.get('e')
+            if k == 'secret_floor' and e.get('secret'):
+                has += 1
+            elif k == 'secret_near':
+                near += 1
+            elif k == 'hidden_room_found':
+                if not e.get('first', True):
+                    continue   # a second wall into a room already found
+                opened += 1
+                how[e.get('how', '?')] = how.get(e.get('how', '?'), 0) + 1
+                if 'floor_secs' in e:
+                    secs.append(float(e['floor_secs']))
+            elif k == 'secret_entered':
+                entered += 1
+            elif k == 'pickup':
+                picks[e.get('kind', '?')] = picks.get(e.get('kind', '?'), 0) + 1
+    if not has:
+        print('  no secret_floor events')
+        return
+    print('  floors with a secret=%d stood next to one=%d opened=%d (%.0f%%) entered=%d how=%s median_secs_in=%s pickups=%s' % (
+        has, near, opened, 100.0 * opened / has, entered, how, median(secs) if secs else '-', picks))
+
 def moments(runs):
     best = {}
     for r in runs:
@@ -167,7 +199,7 @@ def moments(runs):
 
 def main():
     bots = '--bots' in sys.argv
-    if '--shops' in sys.argv or '--loot' in sys.argv or '--moments' in sys.argv:
+    if '--shops' in sys.argv or '--loot' in sys.argv or '--moments' in sys.argv or '--secrets' in sys.argv:
         runs = [r for path in sys.argv[1:] if not path.startswith('--') for r in load(path) if bool(r.get('bot')) == bots]
         if '--shops' in sys.argv:
             shops(runs)
@@ -175,6 +207,8 @@ def main():
             loot(runs)
         if '--moments' in sys.argv:
             moments(runs)
+        if '--secrets' in sys.argv:
+            secrets(runs)
         return
     for path in [a for a in sys.argv[1:] if not a.startswith('--')]:
         for r in load(path):
