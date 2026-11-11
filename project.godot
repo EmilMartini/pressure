@@ -37,6 +37,11 @@ Settings="*res://scripts/settings.gd"
 Rumble="*res://scripts/rumble.gd"
 Telemetry="*res://scripts/telemetry.gd"
 
+[debug]
+
+file_logging/log_path.template="user://logs/play.log"
+file_logging/max_log_files.template=10
+
 [display]
 
 window/size/viewport_width=1280

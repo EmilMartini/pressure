@@ -48,7 +48,7 @@ rm -f "$OUT/override.cfg"
 # capped log.
 run() {   # name instance args...
     local name=$1 inst=$2; shift 2
-    timeout 180 "$OUT/Pressure.exe" --headless --audio-driver Dummy -- "$@" --instance="$inst" 2>&1 | head -c 400000 > "$OUT/$name.log"
+    timeout 180 "$OUT/Pressure.exe" --headless --audio-driver Dummy --log-file "$OUT/$name.godot.log" -- "$@" --instance="$inst" 2>&1 | head -c 400000 > "$OUT/$name.log"
     echo "${PIPESTATUS[0]}" > "$OUT/$name.code"
 }
 printf '{"lighting": false}\n' > "$USERDIR/settings_autotest_9902.json"
