@@ -2120,6 +2120,7 @@ func _setup_autotest() -> void:
 
 const FOCUS_PROBE_ADD := 25.0
 var _focus_probe_t := -1.0
+var _input_probe_done := false   # --reward-probe / --modal-probe ran (InputProbe)
 var _drop_probe_at: Array = []   # --drop-probe: game seconds to place a legendary and an epic offer
 var _synergy_probe_t := -1.0
 var _synergy_probe_list: Array = []
@@ -2146,6 +2147,13 @@ func _synergy_report(p: Player) -> void:
 
 func _autotest_tick(delta: float) -> void:
     _clock += delta
+    if not _input_probe_done and _clock >= 6.0 and Room.here != null and not players.is_empty() and not get_tree().paused and not bot_paused:
+        # --reward-probe / --modal-probe (input_probe.gd): Emil's 2026-11-11 bugs.
+        _input_probe_done = true
+        if InputProbe.wanted("--reward-probe"):
+            InputProbe.reward(self)
+        if InputProbe.wanted("--modal-probe"):
+            InputProbe.modal(self)
     if _drop_probe_at.size() > 0 and _clock >= float(_drop_probe_at[0]) and Room.here != null and not players.is_empty() and not get_tree().paused:
         # --drop-probe: an epic and a legendary offer appear beside the player (ProcFx drop
         # moments: beam, sound, hit-stop; counted on [DROP-MOMENT]).
