@@ -151,7 +151,7 @@ var _own_base := 1.0   # Settings.own_fx() itself; _own_a adds the boss fade (be
 ## enemy shots are on the Crisp layer, above the whole world, either way. The player (z 22)
 ## stays on top. Eased over BOSS_EASE s so walking in and out does not pop.
 const BOSS_Z := 6
-const BOSS_OWN_A := 0.7
+const BOSS_OWN_A := 0.85   # punch pass (2026-11-11): 0.7 read as "meh"; the z drop under the boss stays
 const BOSS_SIZE := 0.8
 const BOSS_EASE := 0.3
 var boss_k := 0.0
@@ -1263,8 +1263,8 @@ func boss_death(pos: Vector2) -> void:
 func elite_death(pos: Vector2) -> void:
     _full = true
     if main != null:
-        main.hitstop(0.12)   # fun pass 1: 0.08 -> 0.12
-        main.shake(7.0)
+        main.hitstop(0.14)   # fun pass 1: 0.08 -> 0.12; punch pass 0.14
+        main.shake(9.0)
     _impact_ms = Time.get_ticks_msec()
     PostFx.shockwave(pos, 0.6, 220.0)
     PostFx.aberration_pulse(1.2)
@@ -1301,17 +1301,35 @@ func kill_punch(e: Enemy) -> void:
     var pos := e.global_position
     var big := e.radius > 15.0 or SpawnTable.KEY.has(e.kind_name)
     var col: Color = e.base_color.lightened(0.25)
-    ring(pos, e.radius * (2.6 if big else 1.8), col, 0.28 if big else 0.2)
-    pixels(Element.Kind.NONE, pos, 12 if big else 5, 150.0 if big else 100.0, 5.0, _pal_of(col))
+    ring(pos, e.radius * (3.0 if big else 2.2), col, 0.3 if big else 0.22)
+    pixels(Element.Kind.NONE, pos, 16 if big else 8, 170.0 if big else 120.0, 5.0, _pal_of(col))
+    # Punch pass (2026-11-11, "everything felt meh"): every kill gets a white pop and a nudge
+    # of shake (Main.shake keeps the largest, so a chain of kills never stacks it up).
+    _glow(pos, e.radius * (5.5 if big else 3.5), Color(1.0, 1.0, 1.0, 0.35 if big else 0.22), 0.12)
+    _shake(1.2)
     if not big:
         return
-    _glow(pos, e.radius * 5.0, Color(col, 0.25), 0.2)
-    Sfx.play("burst_small", -3.0, 0.08, pos)
+    _glow(pos, e.radius * 5.0, Color(col, 0.3), 0.22)
+    Sfx.play("burst_small", 0.0, 0.08, pos)
     var now := Time.get_ticks_msec()
     if main != null and now - _impact_ms >= IMPACT_GAP_MS:
         _impact_ms = now
-        main.hitstop(0.04)
-        main.shake(2.0)
+        main.hitstop(0.06)
+        main.shake(4.0)
+
+
+## Punch pass: a crit cracks with a white spark; a heavy one (a fifth of the body or more, the
+## heavy weapons' hits) adds shake and a 35 ms hit-stop, on the kill and reaction gap
+## IMPACT_GAP_MS, so a crit build never stutters.
+func crit_punch(pos: Vector2, r: float, heavy: bool) -> void:
+    _glow(pos, r * 3.5, Color(1.0, 0.95, 0.75, 0.3), 0.1)
+    if not heavy:
+        return
+    var now := Time.get_ticks_msec()
+    if main != null and now - _impact_ms >= IMPACT_GAP_MS:
+        _impact_ms = now
+        main.hitstop(0.035)
+        main.shake(3.0)
 
 
 # --- Signal handlers -------------------------------------------------------

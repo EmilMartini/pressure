@@ -2049,14 +2049,32 @@ levels from the profile, so the XP change is not in these numbers). Low = lowest
 
 | Floor | before (seed 1 / 2) | after (seed 1 / 2) |
 |---|---|---|
-| 2 | Hive Mother 26.6 s, paced 0.68, low 0.94 / boss not reached in 300 s | Hive Mother 32.3 s, low 0.94 / 37.6 s, low 0.79 |
-| 3 | Storm Warden 29.1 s, low 0.19 / no boss in 300 s, low 1.00 | 38.3 s, low 0.19 / no boss in 300 s, low 1.00 |
+| 2 | Hive Mother 26.6 s, paced 0.68, low 0.94 / boss not reached in 300 s (never under 50%) | Hive Mother 32.3 s, low 0.94 / 37.6 s, low 0.79 |
+| 3 | Storm Warden 29.1 s, low 0.19 / no boss in 300 s, never under 50% | 38.3 s, low 0.19 / no boss in 300 s, never under 50% |
 | 4 | Pyre Lord 31.3 s, low 0.38 / 32.0 s, low 0.62, under 50% 0.00 | **died in an arena** (under 50% 0.30) / 36.7 s, low 0.15, under 50% 0.46 |
-| 5 | Void Herald 44.7 s, low 0.97 / 38.0 s, low 0.70 | 34.0 s, low 0.92 / no boss in 300 s, low 1.00 |
+| 5 | Void Herald 44.7 s, low 0.97 / 38.0 s, low 0.70 | 34.0 s, low 0.92 / no boss in 300 s, never under 50% |
 
 0 SCRIPT ERRORs. Headless fps on floor 5: p10 155 -> 113, median 273 -> 236 (more bodies).
 Open: floor 2 is still mild for a strong build (damage taken 0.11-0.17 of max HP a minute):
 its threat is too few hits landing, not hit size. A real fresh-save run by Emil is the test.
+
+### Punch back (2026-11-11, build `2026.11.11-punch1`)
+
+Same run: "all effects felt a little meh". Tonight's quieting (own effects at 70% over a boss,
+the text diet, procs rate-limited, one cataclysm moment per 8 s) took the weight out of hits
+and kills. Restored without the noise; the text diet, proc limits and cataclysm ration stay.
+- Hits: two overbright frames (was one, at most every 0.07 s, was 0.1); elite and boss hit shake
+  1.0 / 1.4 -> 1.8 / 2.2. Hit sounds louder (`hit_flesh` -17 -> -12 dB, `hit_armour` -14 -> -11).
+- Crits (not on bosses): a white spark; a heavy crit (a fifth of the body's health or more) adds
+  a 35 ms hit-stop and shake 3, on the shared `IMPACT_GAP_MS` gap so crit builds never stutter.
+- Kills: every kill gets a white pop and shake 1.2 (Main.shake keeps the largest, so chains never
+  stack); bigger rings and more pixels; big kills 40 -> 60 ms hit-stop, shake 2 -> 4, a louder
+  burst. Death sounds +2-3 dB. Elite deaths 0.12 -> 0.14 s hit-stop, shake 7 -> 9.
+- Boss readability kept: own effects still draw under the boss (z 6); their opacity over a boss
+  0.7 -> 0.85. Telegraphs stay on the Crisp layer and keep their colour (no white frames while
+  telegraphing, as before).
+- Not checked: how it looks and sounds (no window tonight). Emil should judge the kill pop, the
+  shake level and the crit hit-stop.
 
 ## 15. Defaults Emil may want to change
 

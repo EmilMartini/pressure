@@ -353,7 +353,7 @@ var _white_frames := 0
 var _white_cd := 0.0
 var _kick := Vector2.ZERO
 var _stretch := 0.0
-const WHITE_CD := 0.1
+const WHITE_CD := 0.07   # Core loop reset 14 (punch): 0.1 -> 0.07, two white frames a hit
 const KICK_PX := 6.0
 const KICK_CROWD := ["grunt", "swarmer", "runner", "splitter"]   # half the kick in a horde
 
@@ -868,10 +868,14 @@ func take_damage(amount: float, color: Color, flash: bool = true, source: Player
                 _hit_shake_ms = now
                 var sfx := _fx()
                 if sfx != null:
-                    sfx._shake(1.4 if kind_name == "boss" else 1.0)
+                    sfx._shake(2.2 if kind_name == "boss" else 1.8)   # punch pass: was 1.4 / 1.0
         if _white_cd <= 0.0:
-            _white_frames = 1
+            _white_frames = 2
             _white_cd = WHITE_CD
+        if crit and kind_name != "boss":
+            var cfx := _fx()
+            if cfx != null:
+                cfx.crit_punch(global_position, radius, amount >= max_hp * 0.2)
         _hit_kick(amount, source)
         Sfx.hit_enemy(self)
     if hp <= 0.0:
