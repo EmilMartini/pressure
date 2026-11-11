@@ -146,8 +146,8 @@ static func _show(p: Player, key: String, col: Color, gun_id: String, big: bool)
     var now := _now()
     if now - int(_last_item.get(key, -100000)) < int(ITEM_GAP * 1000.0):
         return
-    if not big and now - _last_any < int(ANY_GAP * 1000.0):
-        return
+    if now - _last_any < int(ANY_GAP * 1000.0):
+        return   # empowering procs too: their weapon glow (Gun.empower) always shows
     _last_item[key] = now
     _last_any = now
     shown += 1
@@ -166,7 +166,7 @@ static func _show(p: Player, key: String, col: Color, gun_id: String, big: bool)
     var f := of(p)
     if f != null:
         f._light(col, big)
-    if big or now - _last_sound >= int(SOUND_GAP * 1000.0):
+    if now - _last_sound >= int(SOUND_GAP * 1000.0):
         _last_sound = now
         sounded += 1
         Sfx.play_at("proc_big" if big else "proc", p.global_position)

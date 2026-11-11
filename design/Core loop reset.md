@@ -1978,7 +1978,8 @@ drop moment. Neither adds any text to the fight.
   (a melee blade 1.3x broader; the reach stays the player's) with a bright muzzle ring, and the proc gets a heavier sound, a
   thump under a rising shimmer. Summon, ground and charge weapons only glow.
 - Rate limits: the same item or rule shows at most once every 2 s, any proc at most once a
-  second (empowering procs skip that one), and the sound plays at most once every 1.5 s.
+  second, and the sound plays at most once every 1.5 s. Empowering procs obey the same gaps
+  (a dash build makes many), but the weapon glow always shows.
 - Cost: one `ProcFx` node per player. It draws only while lit; otherwise it costs nothing.
 
 **Drop moment** (`Pedestal._tick_moment`, `ProcFx.drop_moment`). The first time an epic or
@@ -2007,6 +2008,7 @@ transient as `AudioStreamWAV`): no files, no downloads, no generative AI.
 | Same, gaps 2.0/0.7/1.1 s | 394 | 33 | 23 |
 | Same after rebasing on the boss patterns, gaps 2.0/0.7/1.1 s, 120 s | 670 | 48 | 30 |
 | Same, final gaps 2.0/1.0/1.5 s | 402 | 30 | 22 |
+| Same after the rare-elite rebase, empowering procs gapped too, with `--drop-probe`, 120 s (577 synergy procs) | 951 | 32 | 19 |
 | Melee family + proc gear (gaps 2.0/0.7/1.1) | 82 | 24 | 22 |
 | Thrown family + proc gear (final gaps) | 194 | 24 | 18 |
 | Ground family + proc gear (gaps 2.0/0.7/1.1) | 85 | 24 | 20 |
