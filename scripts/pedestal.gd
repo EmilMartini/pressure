@@ -36,6 +36,11 @@ var _sprite: Sprite2D
 var _t := randf() * TAU
 var _card: Node2D           # labels and the ItemCard, on the Crisp layer (sharp, above the pixel grid)
 var _gun_data: GunData      # cached for gun offers
+## Drop moment (ProcFx.drop_moment): an epic or legendary offer's beam bursts open the first
+## time it is on screen (offer["moment_done"] keeps it to once per offer).
+const MOMENT_LIFE := 1.3
+var _moment := 0.0          # s left on the beam burst
+var _seen_t := 0.0          # s this offer has been on screen, waiting to reveal
 
 
 func _init(p_offer: Dictionary) -> void:
@@ -209,7 +214,7 @@ func color() -> Color:
         "gun":
             # Rarity owns colour: a gun wears its tier's rarity colour, never its element's.
             var into := _merge_into()
-            return Items.tier_color(into.tier + 1 if into != null else 1)
+            return Items.RARITY_COLORS[maxi(offer_rarity(), Items.tier_rarity(into.tier + 1 if into != null else 1))]
         "carry":
             return Color(0.9, 0.9, 1.0)
         "repair":
@@ -229,8 +234,44 @@ func color() -> Color:
     return Color.WHITE
 
 
+## Rarity of an item or weapon offer (a weapon's rarity is fixed per weapon, 3.1); -1 else.
+func offer_rarity() -> int:
+    if empty() or offer.get("mystery", false):
+        return -1
+    match kind():
+        "item":
+            return int(item().get("rarity", 0))
+        "gun":
+            if _gun_data == null:
+                _gun_data = Guns.make(offer["id"])
+            return int(_gun_data.rarity) if _gun_data != null else 0
+    return -1
+
+
+func _tick_moment(delta: float) -> void:
+    if _moment > 0.0:
+        _moment = maxf(0.0, _moment - delta)
+        return
+    if offer.get("moment_done", false) or offer_rarity() < Items.Rarity.EPIC:
+        return
+    var xf := get_global_transform_with_canvas()
+    var vp := get_viewport_rect().grow(-40.0)
+    if not is_visible_in_tree() or not vp.has_point(xf.origin) or get_tree().paused:
+        _seen_t = 0.0
+        return
+    _seen_t += delta
+    if _seen_t < 0.35:
+        return   # a beat after it comes into view (room fade-ins, reward reveals)
+    offer["moment_done"] = true
+    _moment = MOMENT_LIFE
+    var p := _nearest_player()
+    ProcFx.drop_moment(p.main() if p != null else null, global_position, offer_rarity())
+
+
 func _process(delta: float) -> void:
     _t += delta
+    if kind() in ["item", "gun"]:
+        _tick_moment(delta)
     if offer.has("say_age"):
         offer["say_age"] = float(offer["say_age"]) + delta
     if _sprite != null and kind() not in ["sigil", "stairs"]:
@@ -307,7 +348,9 @@ func _draw_rarity_glow(glow: Texture2D, c: Color) -> void:
     if kind() == "item":
         r = int(item().get("rarity", 0))
     else:
-        r = Items.tier_rarity((_merge_into().tier + 1) if _merge_into() != null else 1)
+        r = maxi(offer_rarity(), Items.tier_rarity((_merge_into().tier + 1) if _merge_into() != null else 1))
+    if _moment > 0.0:
+        _draw_moment_beam(c, r)
     if r <= Items.Rarity.COMMON:
         return
     var sizes := [0.0, 70.0, 110.0, 150.0, 160.0]
@@ -325,6 +368,29 @@ func _draw_rarity_glow(glow: Texture2D, c: Color) -> void:
         var bw := 4.0 + sin(_t * 3.0)
         draw_rect(Rect2(-bw / 2.0, -260.0, bw, 250.0), Color(c, 0.22))
         draw_rect(Rect2(-bw / 6.0, -260.0, bw / 3.0, 250.0), Color(1.0, 0.95, 0.85, 0.25))
+
+
+## The drop moment's beam: a wide column of the rarity colour that bursts open and narrows
+## to the standing beam, a flare at the base and one ring (the epic one shorter and thinner).
+func _draw_moment_beam(c: Color, r: int) -> void:
+    var legend := r >= Items.Rarity.LEGENDARY
+    var life := MOMENT_LIFE
+    var f := 1.0 - _moment / life             # 0 -> 1
+    var open := minf(1.0, f / 0.12)           # bursts open in the first 0.15 s
+    var fade := 1.0 - maxf(0.0, (f - 0.25) / 0.75)
+    var h := (520.0 if legend else 300.0) * open
+    var w := lerpf(46.0 if legend else 26.0, 4.0, pow(f, 0.6))
+    var a := fade * (0.55 if legend else 0.4)
+    var glow: Texture2D = Art.PARTICLES["light"]
+    draw_rect(Rect2(-w * 0.5, -h, w, h), Color(c, a * 0.5))
+    draw_rect(Rect2(-w * 0.2, -h, w * 0.4, h), Color(c.lightened(0.5), a * 0.7))
+    draw_rect(Rect2(-w * 0.06, -h, w * 0.12, h), Color(1, 1, 1, a * 0.8))
+    var g := (150.0 if legend else 90.0) * (0.6 + 0.6 * open) * (1.0 - 0.3 * f)
+    draw_texture_rect(glow, Rect2(Vector2(-g * 0.5, -g * 0.5 - 30.0), Vector2(g, g)), false, Color(c, a))
+    var rr := lerpf(20.0, 140.0 if legend else 90.0, sqrt(f))
+    draw_set_transform(Vector2(0, 6), 0.0, Vector2(1.0, 0.5))
+    draw_arc(Vector2.ZERO, rr, 0.0, TAU, 40, Color(c.lightened(0.3), (1.0 - f) * 0.8), 3.0 if legend else 2.0)
+    draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
 const WELL_WATER := Color(0.42, 0.68, 0.92)

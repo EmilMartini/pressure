@@ -198,6 +198,37 @@ static func draw_frame(canvas: CanvasItem, r: Rect2, col: Color, highlight: bool
         canvas.draw_rect(Rect2(corner - Vector2(3, 3), Vector2(6, 6)), edge)
 
 
+## The legendary and epic card frame (drop moments, 2026-11-11): a soft outer glow in the
+## rarity colour, a second bright border, a light that runs along the top band and diamond
+## gems at the corners. Epic: the glow and the gems only, smaller.
+static func draw_rare_frame(canvas: CanvasItem, r: Rect2, col: Color, rarity: int) -> void:
+    var legend := rarity >= Items.Rarity.LEGENDARY
+    var t := float(Time.get_ticks_msec()) / 1000.0
+    var pulse := 0.5 + 0.5 * sin(t * TAU * 0.8)
+    var rings := 4 if legend else 2
+    for k in rings:
+        var gr := 2.0 + 3.0 * float(k)
+        canvas.draw_rect(r.grow(gr), Color(col, (0.22 if legend else 0.14) * (1.0 - float(k) / float(rings)) * (0.75 + 0.25 * pulse)), false, 3.0)
+    var bright := col.lightened(0.45)
+    if legend:
+        canvas.draw_rect(r.grow(-3.0), Color(bright, 0.9), false, 1.5)
+        # A light running along the top band, then down the sides.
+        var span := r.size.x * 0.22
+        var x := r.position.x - span + fmod(t * 0.45, 1.0) * (r.size.x + span * 2.0)
+        var x0 := maxf(r.position.x, x)
+        var x1 := minf(r.end.x, x + span)
+        if x1 > x0:
+            canvas.draw_rect(Rect2(x0, r.position.y, x1 - x0, 5.0), Color(1.0, 0.97, 0.85, 0.75))
+            canvas.draw_rect(Rect2(x0, r.end.y - 3.0, x1 - x0, 3.0), Color(bright, 0.5))
+    var gem := 7.0 if legend else 5.0
+    for c in [r.position, Vector2(r.end.x, r.position.y), Vector2(r.position.x, r.end.y), r.end]:
+        var p: Vector2 = c
+        var pts := PackedVector2Array([p + Vector2(0, -gem), p + Vector2(gem, 0), p + Vector2(0, gem), p + Vector2(-gem, 0)])
+        canvas.draw_colored_polygon(pts, Color(0, 0, 0, 0.9))
+        var inner := PackedVector2Array([p + Vector2(0, -gem + 2), p + Vector2(gem - 2, 0), p + Vector2(0, gem - 2), p + Vector2(-gem + 2, 0)])
+        canvas.draw_colored_polygon(inner, Color(bright, 0.8 + 0.2 * pulse))
+
+
 ## A tag chip (4.1): an element tag is its element badge; any other tag the same neutral
 ## chip with a small swatch in the tag colour and its name.
 static func draw_tag_chip(canvas: CanvasItem, pos: Vector2, tag: String, size: int = BADGE_SIZE) -> Vector2:
@@ -531,7 +562,7 @@ static func _item_model(item: Dictionary, opts: Dictionary) -> Dictionary:
     var model := {
         "icon": Items.icon(item), "icon_tint": Items.ui_icon_tint(item), "big": true,
         "title": String(item.get("name", "?")), "title_col": tc,
-        "sub": _sub_line(item), "sub_col": tc, "frame": rc, "pips": rarity + 1,
+        "sub": _sub_line(item), "sub_col": tc, "frame": rc, "pips": rarity + 1, "rarity": rarity,
         "chips": chips, "stack": stack, "cursed": curse != "" or bool(opts.get("cursed", false)),
         "rows": rows,
     }
@@ -743,7 +774,7 @@ static func _gun_model(data: GunData, opts: Dictionary) -> Dictionary:
         "icon": Art.gun_icon(data.id), "icon_tint": Color.WHITE, "big": true, "title": title,
         "title_col": Items.RARITY_TEXT_COLORS[tr],
         "sub": "%s %s, tier %s" % [Items.RARITY_NAMES[tr], "gun" if data.family == "gun" else data.family + " weapon", ROMAN[clampi(tier - 1, 0, ROMAN.size() - 1)]],
-        "sub_col": Items.RARITY_TEXT_COLORS[tr], "frame": Items.RARITY_COLORS[tr], "pips": clampi(tier, 1, 5),
+        "sub_col": Items.RARITY_TEXT_COLORS[tr], "frame": Items.RARITY_COLORS[tr], "pips": clampi(tier, 1, 5), "rarity": tr,
         "rim": tier >= Gun.MAX_TIER,
         "chips": chips, "rows": rows, "words": words,
     }
@@ -826,6 +857,8 @@ static func _render(canvas: CanvasItem, rect: Rect2, model: Dictionary, opts: Di
     var r := Rect2(rect.position, Vector2(w, h))
     var frame: Color = model.get("frame", TEXT)
     draw_frame(canvas, r, frame, bool(opts.get("highlight", false)))
+    if int(model.get("rarity", 0)) >= Items.Rarity.EPIC:
+        draw_rare_frame(canvas, r, frame, int(model["rarity"]))
     if bool(model.get("rim", false)):
         # A tier IV weapon: one thin bright rim inside the frame (Arsenal expansion 3.4).
         canvas.draw_rect(r.grow(-5.0), Color(1, 1, 1, 0.85), false, 1.0)
