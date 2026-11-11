@@ -49,17 +49,18 @@ static func play(main: Node, fusion_name: String, tier: int, pos: Vector2, reach
                 fx.signature(kind, pos, s, st)
         fx.burst_outline(pos, reach, lead, 0.45 if cata else 0.35)
         if cata:
-            fx.outline(pos, reach * 1.15, 0, 0.9, 2.0, 0.45)
+            # The moment's shockwave: one ring in the cataclysm's colour, wide and strong.
+            fx.outline(pos, reach * 1.6, fx._pal_of(col), 0.55, 4.0, 0.9)
         var tex: Texture2D = Art.PARTICLES.get(String(vis.get("fx", "circle")), Art.PARTICLES["circle"])
         fx.puff(tex, pos, Color(col, 0.5), size * (3.0 if cata else 2.0), 0.5 if cata else 0.35, true, Vector2.ZERO, 0.8)
         fx.throw_drops(lead, pos, clampf(reach * 0.7, 60.0, 200.0), 16 if cata else 10)
         var text := fusion_name.to_upper() if cata else fusion_name
         if first:
             # Clarity pass: a discovery is a HUD toast (held until the room is clear), not a
-            # second name in the fight.
+            # second name in the fight. A cataclysm's first find is the large one.
             var hud = main.get("hud")
             if hud != null:
-                hud.discover(fusion_name)   # quiet fights: one line at the left edge (section 4.5)
+                hud.discover(fusion_name, cata)   # quiet fights: at the left edge (section 4.5)
         # Clarity pass: one name per fusion every LABEL_GAP_MS, not one per fire.
         var now := Time.get_ticks_msec()
         if now - int(_last_label.get(fusion_name, -100000)) < LABEL_GAP_MS:
@@ -83,6 +84,8 @@ static func play(main: Node, fusion_name: String, tier: int, pos: Vector2, reach
     var sounds: Array = entry.get("sound", [])
     for i in sounds.size():
         Sfx.play(String(sounds[i]), (1.5 if cata else 0.0) - 2.5 * float(i), -1.0, pos)
+    if cata:
+        _moment(main, pos)
     # Weight. Screen-wide pulses (ripple, aberration, hit-stop, flash) are rationed for tier 3
     # so six fusions a second never smear the picture; a cataclysm always gets all of them.
     var now := Time.get_ticks_msec()
@@ -99,8 +102,30 @@ static func play(main: Node, fusion_name: String, tier: int, pos: Vector2, reach
     if cata or sigs.has(Element.Kind.HOLY) or sigs.has(Element.Kind.SHOCK):
         PostFx.bloom_pulse(1.0 if cata else 0.5)
     if main.has_method("hitstop"):
-        main.hitstop(0.16 if cata else 0.07)
-        main.flash(col.lightened(0.3), 0.42 if cata else 0.2, 0.35 if cata else 0.2)
+        # Never stack: a hit-stop already running (a boss phase, another moment) is enough.
+        if not (main.has_method("hitstop_active") and main.hitstop_active()):
+            main.hitstop(CATA_STOP if cata else 0.07)
+        main.flash(col.lightened(0.3), 0.42 if cata else 0.2, 0.3 if cata else 0.2)
+
+
+## Cataclysm moment (Vision gap 6.1 item 4): what makes the rare chain an event rather than
+## more particles. The hit-stop (CATA_STOP, above), a short zoom punch, two existing sounds
+## pitched down together, a strong rumble. Cataclysms are already rationed to one per
+## Fusions.CATACLYSM_ROOM_COOLDOWN, so this never runs twice inside 1.5 s.
+const CATA_STOP := 0.075
+const CATA_PUNCH := 0.06
+const CATA_PUNCH_SECS := 0.3
+## Moments played since start (bots: [CATA-MOMENT]).
+static var moments := 0
+
+
+static func _moment(main: Node, pos: Vector2) -> void:
+    moments += 1
+    if main.has_method("zoom_punch"):
+        main.zoom_punch(CATA_PUNCH, CATA_PUNCH_SECS)
+    Sfx.play("cata_boom", 0.0, -1.0, pos)
+    Sfx.play("cata_toll", -3.0)
+    Rumble.boom(0.85)
 
 
 ## The mix of the entry's element colours, lifted so it reads on dark floors.

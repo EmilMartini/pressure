@@ -97,6 +97,9 @@ const BANK := {
     "boss_rumble": ["door_heavy"],
     "boss_toll": ["gong"],
     "boss_sting": ["elite_sting"],
+    # Cataclysm moment (FusionFx): a big burst and the gong, both pitched well down, together.
+    "cata_boom": ["burst_large_1", "burst_large_2"],
+    "cata_toll": ["gong"],
     # Player
     "hurt": ["hurt_1", "hurt_2", "hurt_3"],
     # "You were hit": the hurt punch an octave and a bit down under the normal one, a
@@ -165,14 +168,14 @@ const TRIM := {
 }
 
 ## Base pitch per name; shots and hits get a wider wobble so repeats do not phase.
-const PITCH := { "boss_roar_low": 0.62, "boss_rumble": 0.45, "boss_toll": 0.55, "boss_sting": 0.8, "shoot_oil": 0.95, "shoot_void": 1.0, "hurt_low": 0.58, "sizzle_fire": 1.5, "sizzle_shock": 1.3 }
+const PITCH := { "cata_boom": 0.58, "cata_toll": 0.5, "boss_roar_low": 0.62, "boss_rumble": 0.45, "boss_toll": 0.55, "boss_sting": 0.8, "shoot_oil": 0.95, "shoot_void": 1.0, "hurt_low": 0.58, "sizzle_fire": 1.5, "sizzle_shock": 1.3 }
 const WOBBLE := {
     "shoot_fire": 0.14, "shoot_wet": 0.14, "shoot_shock": 0.1, "shoot_ice": 0.12, "shoot_oil": 0.12,
     "shoot_poison": 0.14, "shoot_acid": 0.12, "shoot_blood": 0.12, "shoot_void": 0.1, "shoot_holy": 0.06,
     "shoot_gale": 0.14, "shoot_stone": 0.12, "hit_flesh": 0.15, "hit_armour": 0.1, "hit_wall": 0.15,
     "hit": 0.15, "death_small": 0.1, "death_med": 0.08, "step_stone": 0.1, "step_moss": 0.1,
     "step_snow": 0.1, "step_ash": 0.1, "step_glass": 0.08, "drip": 0.2,
-    "die_boss": 0.0, "boss": 0.0, "boss_roar_low": 0.0, "boss_rumble": 0.0, "boss_toll": 0.0, "boss_sting": 0.0, "unlock": 0.0, "secret_found": 0.0, "level_up": 0.0, "heartbeat": 0.0,
+    "cata_boom": 0.03, "cata_toll": 0.0, "die_boss": 0.0, "boss": 0.0, "boss_roar_low": 0.0, "boss_rumble": 0.0, "boss_toll": 0.0, "boss_sting": 0.0, "unlock": 0.0, "secret_found": 0.0, "level_up": 0.0, "heartbeat": 0.0,
 }
 
 ## Max simultaneous voices per name; the oldest is stolen past this.
@@ -210,7 +213,7 @@ const DUCK := {
     "die_boss": [-10.0, 1.6], "boss": [-6.0, 1.2], "boss_phase": [-6.0, 1.0], "elite": [-4.0, 0.8],
     "unlock": [-6.0, 1.2], "secret_found": [-7.0, 1.6], "level_up": [-4.0, 0.8], "react_inferno": [-3.0, 0.4],
     "burst_large": [-3.0, 0.35], "nova_fire": [-3.0, 0.4], "down": [-6.0, 1.0], "revive": [-5.0, 1.0],
-    "wall_reveal": [-5.0, 1.4], "shield_break": [-3.0, 0.5],
+    "wall_reveal": [-5.0, 1.4], "shield_break": [-3.0, 0.5], "cata_boom": [-7.0, 0.7],
 }
 
 ## Footstep surface and reverb per floor theme (Themes ids).

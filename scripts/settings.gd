@@ -18,7 +18,8 @@ const DEFAULTS := {
     "screen_shake": 1.0,
     "hit_stop": true,
     "flashes": true,                  # full-strength screen flashes and the pulsing low-health edge
-    "damage_numbers": false,          # Core loop reset 4.5: quiet fights (big crits still show)
+    "damage_numbers": false,          # old on/off switch, read once to seed dmg_numbers (load)
+    "dmg_numbers": "big",             # "all", "big" (merged crits and boss hits) or "off" (Fx.dmg_mode)
     "fight_text": "quiet",            # "quiet", "reactions" or "everything" (Fx.fight_text)
     "vent_mode": "auto",              # "auto" (fires on its own) or "button" (PlayerInput)
     "own_fx": 0.45,                   # opacity of your own effects (own_fx()), 1 = full (clarity pass: 0.45)
@@ -287,6 +288,9 @@ func load_settings() -> void:
             values[key] = roundi(clampf(float(d[key]), float(rg[0]), float(rg[1])))
         else:
             values[key] = clampf(float(d[key]), 0.0, 1.0)
+    # Combat text diet (2026-11-11): the old on/off switch becomes "all" / "big hits".
+    if not d.has("dmg_numbers") and bool(d.get("damage_numbers", false)):
+        values["dmg_numbers"] = "all"
     # Post-fx defaults moved to a crisp pixel look: older files drop the CRT once.
     var rev := int(d.get("fx_rev", 0))
     if rev < FX_REV:

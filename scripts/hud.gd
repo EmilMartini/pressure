@@ -454,26 +454,45 @@ var _discover_t := 0.0
 
 ## The first time a reaction, fusion or cataclysm happens on this save: "Discovered: X" at the
 ## left screen edge for DISCOVER_SECS, one at a time (the rest queue). The codex keeps it.
-func discover(what: String) -> void:
+func discover(what: String, big := false) -> void:
     if not _discoveries.has(what):
         _discoveries.append(what)
+        if big:
+            _discover_big[what] = true
+
+
+## Cataclysms (FusionFx, first find only): the same line at the edge, large and held longer.
+var _discover_big := {}
+const DISCOVER_BIG_SECS := 4.0
 
 
 func _tick_discovery(delta: float) -> void:
     if _discoveries.is_empty():
         return
     if _discover_t <= 0.0:
-        _discover_t = DISCOVER_SECS
+        _discover_t = DISCOVER_BIG_SECS if _discover_big.has(_discoveries[0]) else DISCOVER_SECS
         Fx.count_text("discovery")
     _discover_t -= delta
     if _discover_t <= 0.0:
-        _discoveries.pop_front()
+        _discover_big.erase(_discoveries.pop_front())
 
 
 func _draw_discovery(vp: Vector2) -> void:
     if _discoveries.is_empty() or _discover_t <= 0.0:
         return
-    var a := clampf(_discover_t / 0.4, 0.0, 1.0) * clampf((DISCOVER_SECS - _discover_t) / 0.15, 0.0, 1.0)
+    var big := _discover_big.has(_discoveries[0])
+    var secs := DISCOVER_BIG_SECS if big else DISCOVER_SECS
+    var a := clampf(_discover_t / 0.4, 0.0, 1.0) * clampf((secs - _discover_t) / 0.15, 0.0, 1.0)
+    if big:
+        # A cataclysm's name, once ever: large, but at the left edge, never over the fight.
+        var name_ := String(_discoveries[0]).to_upper()
+        var bw := maxf(_body_width(name_, 34), _body_width("New cataclysm", 16)) + 36.0
+        var bbox := Rect2(0.0, vp.y * 0.36, bw, 66.0)
+        draw_rect(bbox, Color(0, 0, 0, 0.6 * a))
+        draw_rect(Rect2(bbox.position, Vector2(5.0, bbox.size.y)), Color(1.0, 0.8, 0.45, 0.9 * a))
+        _body_in(Rect2(bbox.position + Vector2(18, 4), Vector2(bw - 18.0, 20.0)), "New cataclysm", 16, Color(1.0, 0.85, 0.6, 0.85 * a), HORIZONTAL_ALIGNMENT_LEFT)
+        _body_in(Rect2(bbox.position + Vector2(18, 24), Vector2(bw - 18.0, 40.0)), name_, 34, Color(1.0, 0.95, 0.85, a), HORIZONTAL_ALIGNMENT_LEFT)
+        return
     var text := "Discovered: %s" % _discoveries[0]
     var w := _body_width(text, 20) + 28.0
     var box := Rect2(0.0, vp.y * 0.42, w, 32.0)

@@ -503,13 +503,57 @@ func _update_spectacle() -> void:
 func hitstop(secs: float, scale: float = 0.05) -> void:
     if secs <= 0.0 or not Settings.flag("hit_stop") or get_tree().paused:
         return
+    _ensure_ticker()
+    _hitstop_left = maxf(_hitstop_left, secs)
+    Engine.time_scale = scale
+
+
+## A hit-stop is running now (FusionFx: a moment never stacks a second one on top).
+func hitstop_active() -> bool:
+    return _hitstop_left > 0.0 or Engine.time_scale < 1.0
+
+
+func _ensure_ticker() -> void:
     if _ticker == null:
         _ticker = FeedbackTicker.new()
         _ticker.main = self
         _ticker.process_mode = Node.PROCESS_MODE_ALWAYS
         add_child(_ticker)
-    _hitstop_left = maxf(_hitstop_left, secs)
-    Engine.time_scale = scale
+
+
+## Cataclysm moment (Vision gap 6.1 item 4): the camera punches in by `amount` (0.05 = 5%
+## closer) in the first fifth of `life` real seconds and eases back over the rest. Scaled by
+## the screen-shake option (off = no punch). Runs on real time, so it plays through the
+## hit-stop; a punch already running is not restarted.
+var _punch_t := 0.0
+var _punch_life := 0.0
+var _punch_amt := 0.0
+var _punch_base := 0.0
+## Punches played since start (bots: [CATA-MOMENT]).
+var punches := 0
+
+
+func zoom_punch(amount: float, life: float = 0.3) -> void:
+    var amt := amount * Settings.shake_mult()
+    if camera == null or amt <= 0.0 or life <= 0.0 or _punch_t > 0.0:
+        return
+    _ensure_ticker()
+    _punch_base = camera.zoom.x
+    _punch_amt = amt
+    _punch_life = life
+    _punch_t = life
+    punches += 1
+
+
+func _tick_punch(real_delta: float) -> void:
+    if _punch_t <= 0.0:
+        return
+    _punch_t = maxf(0.0, _punch_t - real_delta)
+    var e := 1.0 - _punch_t / maxf(_punch_life, 0.001)
+    var k := e / 0.2 if e < 0.2 else pow(1.0 - (e - 0.2) / 0.8, 2.0)
+    if camera != null and is_instance_valid(camera):
+        var z := _punch_base * (1.0 + _punch_amt * k)
+        camera.zoom = Vector2(z, z)
 
 
 ## Bot, probe and capture runs: any user argument after `--` (or `--autotest` anywhere).
@@ -538,6 +582,7 @@ class FeedbackTicker extends Node:
 
 
 func _tick_feedback(real_delta: float) -> void:
+    _tick_punch(real_delta)
     if _hitstop_left > 0.0:
         _hitstop_left -= real_delta
         if _hitstop_left <= 0.0 or get_tree().paused:
@@ -555,11 +600,7 @@ func flash(color: Color, strength: float = 0.5, life: float = 0.25) -> void:
     if not Settings.flag("flashes"):
         strength *= 0.3
         life *= 2.0
-    if _ticker == null:
-        _ticker = FeedbackTicker.new()
-        _ticker.main = self
-        _ticker.process_mode = Node.PROCESS_MODE_ALWAYS
-        add_child(_ticker)
+    _ensure_ticker()
     if _flash_rect == null:
         var layer := CanvasLayer.new()
         layer.layer = 90

@@ -826,9 +826,9 @@ func take_damage(amount: float, color: Color, flash: bool = true, source: Player
         var fx := _fx()
         if fx != null:
             if shown > amount + 0.5:
-                fx.number(global_position + Vector2(0, -radius), shown, Color(0.62, 0.65, 0.7), crit)
+                fx.number(global_position + Vector2(0, -radius), shown, Color(0.62, 0.65, 0.7), crit, false, self)
             else:
-                fx.number(global_position + Vector2(0, -radius), amount, color if color != Color.WHITE else Color(0.95, 0.9, 0.85), crit)
+                fx.number(global_position + Vector2(0, -radius), amount, color if color != Color.WHITE else Color(0.95, 0.9, 0.85), crit, false, self)
     else:
         _dot_accum += amount
         _dot_color = color
@@ -1343,7 +1343,7 @@ func _physics_process(delta: float) -> void:
     if _dot_timer <= 0.0 and _dot_accum >= 0.5:
         var fx := _fx()
         if fx != null:
-            fx.number(global_position + Vector2(0, -radius), _dot_accum, _dot_color, false, true)
+            fx.number(global_position + Vector2(0, -radius), _dot_accum, _dot_color, false, true, self)
         _dot_accum = 0.0
         _dot_timer = 0.5
     if compound != "":

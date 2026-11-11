@@ -923,27 +923,90 @@ const BIG_HIT_MIN := 25.0
 var _hit_avg := 10.0
 
 
-func number(pos: Vector2, amount: float, color: Color, big := false, dim := false) -> void:
-    if not Settings.flag("damage_numbers"):
-        _hit_avg = lerpf(_hit_avg, amount, 0.03)
-        _quiet_big_hit(pos, amount, big)
-        return
+func number(pos: Vector2, amount: float, color: Color, big := false, dim := false, target: Object = null) -> void:
     _hit_avg = lerpf(_hit_avg, amount, 0.03)
-    if not big and amount < maxf(BIG_HIT_MIN, BIG_HIT * _hit_avg):
+    if dmg_mode() == "off" or amount <= 0.0:
         return
+    # Combat text diet (Vision gap 6.1 item 5): hits on one target merge for MERGE_SECS and
+    # print once, so a fast gun is one number, not a column of them.
+    var key: int = target.get_instance_id() if target != null else -1 - (_merge_seq % 1000)
+    if target == null:
+        _merge_seq += 1
+    var b: Dictionary = _merge.get(key, {})
+    if b.is_empty():
+        var boss := target != null and "kind_name" in target and String(target.get("kind_name")) == "boss"
+        b = { "t": MERGE_SECS, "sum": 0.0, "crit": false, "dim": true, "boss": boss, "hits": 0 }
+        _merge[key] = b
+    b["sum"] = float(b["sum"]) + amount
+    b["crit"] = bool(b["crit"]) or big
+    b["dim"] = bool(b["dim"]) and dim
+    b["pos"] = pos
+    b["color"] = color
+    b["hits"] = int(b["hits"]) + 1
+
+
+## Options "Damage numbers": "big" (default: merged crits and boss hits only), "all" or "off".
+static func dmg_mode() -> String:
+    var v := String(Settings.get_value("dmg_numbers"))
+    return v if v in ["all", "big", "off"] else "big"
+
+
+## Merged hits per target (Fx.number): flushed after MERGE_SECS of game time.
+const MERGE_SECS := 0.25
+## "Big hits": a boss's merged hits print at most every BOSS_NUM_GAP s of fight, other crits
+## at most every CRIT_GAP s (almost no fight text: Emil, 2026-11-11).
+const BOSS_NUM_GAP := 1.0
+const CRIT_GAP := 4.0
+var _merge := {}
+var _merge_seq := 0
+var _boss_num_t := 0.0
+## Merged numbers printed and dropped since start (bots: [DMG-TEXT]).
+static var dmg_shown := 0
+static var dmg_dropped := 0
+
+
+func _flush_numbers(delta: float) -> void:
+    if _merge.is_empty():
+        return
+    for key in _merge.keys():
+        var b: Dictionary = _merge[key]
+        b["t"] = float(b["t"]) - delta
+        if float(b["t"]) <= 0.0:
+            _merge.erase(key)
+            _show_number(b)
+
+
+func _show_number(b: Dictionary) -> void:
+    var amount := float(b["sum"])
+    var crit := bool(b["crit"])
+    var boss := bool(b["boss"])
+    var dim := bool(b["dim"])
+    var pos: Vector2 = b["pos"]
+    var color: Color = b["color"]
+    if dmg_mode() == "big":
+        if crit and amount >= QUIET_BIG * _hit_avg and fight_secs >= _big_hit_t:
+            _big_hit_t = fight_secs + CRIT_GAP
+        elif boss and amount >= maxf(BIG_HIT_MIN, BIG_HIT * _hit_avg) and fight_secs >= _boss_num_t:
+            _boss_num_t = fight_secs + BOSS_NUM_GAP
+            crit = false
+            dim = true
+        else:
+            dmg_dropped += 1
+            return
+    dmg_shown += 1
     var n := maxi(1, roundi(amount))
-    var text := str(n) + ("!" if big else "")
-    var size := 30 if big else (20 if dim else 24)
+    var text := str(n) + ("!" if crit else "")
+    var size := QUIET_SIZE if crit else (18 if dim else 20)
     var col := color
-    if big:
-        col = Color(1.0, 0.95, 0.55)
+    if crit:
+        col = Color(1.0, 0.82, 0.3)
     elif dim:
-        col = Color(color, 0.75)
-    var p := pos + Vector2(randf_range(-14.0, 14.0), -22.0 + randf_range(-6.0, 6.0))
-    _texts.append({ "pos": p, "text": text, "color": col, "t": 0.9 if big else 0.7, "life": 0.9 if big else 0.7, "size": size,
-        "vel": Vector2(randf_range(-20.0, 20.0), -70.0 if big else -50.0) })
+        col = Color(color.lerp(Color(0.9, 0.88, 0.84), 0.5), 0.8)
+    var p := pos + Vector2(randf_range(-10.0, 10.0), -22.0 + randf_range(-4.0, 4.0))
+    _texts.append({ "pos": p, "text": text, "color": col, "t": 0.9 if crit else 0.7, "life": 0.9 if crit else 0.7, "size": size,
+        "vel": Vector2(randf_range(-16.0, 16.0), -60.0 if crit else -45.0) })
     _cap_texts()
-    count_text("number")
+    count_text("bighit" if crit else ("boss_number" if boss else "number"))
 
 
 # --- Quiet fights (Core loop reset, section 4.5) ------------------------------
@@ -958,8 +1021,6 @@ static var fight_texts := 0
 static var fight_secs := 0.0
 static var _fighting := false
 static var fight_text_kinds: Dictionary = {}   # kind -> count, for the [HANDS] breakdown
-## At most one big-hit number every QUIET_GAP seconds (the quiet budget is 6 texts a minute).
-const QUIET_GAP := 12.0
 var _big_hit_t := 0.0
 
 
@@ -976,21 +1037,11 @@ static func count_text(kind := "other") -> void:
         fight_text_kinds[kind] = int(fight_text_kinds.get(kind, 0)) + 1
 
 
-func _quiet_big_hit(pos: Vector2, amount: float, crit: bool) -> void:
-    if not crit or amount < QUIET_BIG * _hit_avg or fight_secs < _big_hit_t:
-        return
-    _big_hit_t = fight_secs + QUIET_GAP
-    _texts.append({ "pos": pos + Vector2(0, -26.0), "text": str(maxi(1, roundi(amount))), "color": Color(1.0, 0.82, 0.3),
-        "t": 0.9, "life": 0.9, "size": QUIET_SIZE, "vel": Vector2(0.0, -55.0), "bighit": true })
-    _cap_texts()
-    count_text("bighit")
-
-
 ## Damage the player took: "-12" in hot red with a black outline, bigger and slower than
 ## the numbers you deal (which are white, element-tinted or yellow crits), rising from the
 ## figure. Never pushed out by a busy fight's numbers (see _cap_texts).
 func hurt_number(pos: Vector2, amount: float) -> void:
-    if not Settings.flag("damage_numbers"):
+    if dmg_mode() != "all":
         return
     var n := maxi(1, roundi(amount))
     var p := pos + Vector2(randf_range(-8.0, 8.0), -30.0)
@@ -1513,6 +1564,7 @@ func _process(delta: float) -> void:
             if int(sh["k"]) == SH_SPIKE:
                 _crumble(sh)
             _shapes.remove_at(i)
+    _flush_numbers(delta)
     _step_later(delta)
     _step_pixels(delta)
     _upload_pixels()
