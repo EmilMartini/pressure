@@ -13,7 +13,7 @@ extends Node
 const PER_SHEET := 24
 const COLS := 6
 const SAMPLE := ["lab_gloves", "ricochet_gloves", "vial_ice", "sigil_ice", "wishbone_ring", "leech_mail", "alembic", "bandage_roll", "seeker_lens"]
-const MIN_FONT := 18
+const MIN_FONT := Art.BODY_SIZE   # card sentences are body text at Art.BODY_SIZE (16 since 2026-11-11, Emil: a little large)
 const LEVEL_FONT_MIN := 18
 
 var main: Node
