@@ -1365,6 +1365,136 @@ the rebase on fun pass 1):
 **Done when** the section 8 checks pass for ground weapons, the idle ground build dies by
 the end of floor 3, and the screen check passes.
 
+#### Batch 4 done (2026-11-11, VERSION 2026.11.11-arsenal4)
+
+**Built:**
+- `ground_zone.gd` (`GroundZone`): one floor-effect class with a kind, owned by its weapon
+  (`Gun.bodies`, `GunData.mechanic` "ground"). The weapon never fires; `Gun._process` calls
+  `GroundZone.maintain`, which keeps rings and trails up and lays the rest.
+  - **aura**: a ring that follows you and ticks (2 a second) whenever a foe is inside.
+    Ember Halo burns; Thirst bleeds and slows (0.75 for 0.6 s); Corrosion Halo corrodes and
+    hits elites and bosses x1.5.
+  - **pulse** (Tide Ring): a ring that rolls out over 0.8 s when a foe is inside it; each
+    foe is hit once as the front reaches it and shoved out. Frost Caster keeps its instant
+    `nova`.
+  - **trail**: a point every 24 px you move, each lasting `linger` s, drawn as one dotted
+    line. A tick does one query around the whole line, then checks each foe against the
+    segments (28 px wide). Spark Trail, Plague Steps.
+  - **totem**: at your feet when a foe is near, and only when no totem of that weapon is
+    within 75% of its reach, so standing still keeps one up. Frost Totem; Wind Chime shoves
+    out; Pyre Totem throws fire at its two closest foes; Lightning Rods arc to the weapon's
+    other rods within 260 px and hit every foe on the line.
+  - **field**: under the closest pack (the middle of the foes within 60 px of the closest
+    one) that no field of the weapon covers yet. Slick Field and Hoarfrost slow; Geyser
+    Field bursts under one foe in it a tick (25 px, Wet with Fire, so Steam).
+  - **snare**: where the closest foe will be in 0.6 s, 40 to 220 px from you; it waits up
+    to 10 s and holds what steps on it (1.2 s, elites and bosses 0.4 s). Snap Trap; Rift
+    Snare holds the whole pack within 72 px (the first foe full damage, the rest half).
+  - **glyph**: a kill by any of your weapons leaves one (`GroundZone.on_kill`, from
+    `Enemy._die`), at most one every 0.3 s per weapon, up to 6, for 8 s. Holy Glyph smites
+    the next foe on it; Spike Glyphs hit everything within 50 px.
+  - **pod** (Ash Garden): laid like a snare, bursts (55 px, Poison with Fire) when a foe
+    comes within 50 px.
+  - **mine** (`mine.gd` stays): Spark Mine sets off the weapon's mines within 100 px a beat
+    later; Collapse Mine pulls foes within 1.9x its blast in for 0.5 s, then bursts.
+- **The rules (2.6):**
+  - Cap: at most 40 of a player's ground effects (group `ground_fx`): zones, today's pools
+    and mines. A trail counts one per three points. The oldest placed effect goes first;
+    rings and trails are never evicted.
+  - Ticks: one `Strike.enemies_in` query per zone tick, at most 12 foes hit a tick (the
+    closest first, like a melee swing); traps poll their small circle every 0.05 s.
+  - Look: a dashed 1 px rim at 50% alpha (one `draw_multiline` of a unit dash circle), a
+    fill of 12% (fields) or 7% (traps), no pulsing, a fade over the last 1 s, z -1 (under
+    enemies and every telegraph, like pools), at the own-effects alpha. Rings are a dashed
+    circle only, totems a pillar with an element gem, traps a jagged ring, glyphs a
+    three-stroke rune, trails a dotted line. No text. Ticks are silent; placing makes one
+    soft sound through the summon sound limit.
+- **The ground stat map (2.2):** `ground_dmg` (damage), fire rate speeds ticks and laying,
+  +1 projectile is +1 trap or totem (rings and pulses +15% radius), pierce +10% radius,
+  half the range bonus as radius, shot size as radius, duration (`state_duration` and
+  `zone_life`) makes zones last longer. Tier adds 5% radius a tier.
+- **Weapons:** 20 new ground weapons (133 in all), each with a code-drawn icon
+  (`weapon_looks.gd`: dashed ring, rolling rings, footprint dots, pillar and gem, slick,
+  jagged ring, pod, rune, mine). Frost Caster, Tar Mortar and Corrosion Burst keep their
+  tiles and numbers.
+- **Items (30), all locked until unlocked**, with the Ground tag and its resonance. At 3:
+  zones last 30% longer, radius +15%. At 5: doubled, and where one of your zones touches
+  another of yours with a different element, its hits carry that element too
+  (`ground_react`). A trigger with `"family": "ground"` fires only for ground weapons.
+  - 12 Ground passives: Deep Roots, Hair Trigger (traps near you burst when you dash),
+    Widen, Echo Step, Salted Earth, Tripwire, Overgrowth, Ley Lines, Aftershock (traps burst
+    again 0.5 s later at half), Footwork (rings +25% while you move), Soil Sense, Bloom;
+  - 6 mods: Stake Kit, Lodestone, Slow Fuse, Quick Set, Brimstone, Cool Stones;
+  - 2 actives: Seed (every trap and totem weapon lays to its cap at once) and Spring All
+    (every trap and mine of yours bursts);
+  - 6 element items, a state and a reaction item each for Holy, Gale and Stone: Censer Ash,
+    Sanctum Stone (Smite), Wind Sock, Gale Lantern (Firestorm), Grit Pouch, Quarry Bell (Mud);
+  - 2 healing items (Mending Moss: ground kills mend 1; Root Sap) and 2 stat items
+    (Groundskeeper's Gloves, Earth Oath).
+- **Unlocks:** Ember Halo is in the core set. 10 play goals open the ground Commons and
+  Uncommons, each with one Ground item. 8 ground-mastery steps (`kills_ground`, 60 to 2,600)
+  open the Rares and Epics with two to five items each. The Ground Trial ("You can't
+  attack: auras and traps only", you start with an Ember Halo) opens Ash Garden, Seed and
+  Earth Oath.
+- `--family-probe=ground` (Ember Halo, Frost Totem, Snap Trap, Spark Trail).
+- `--gun-probe=<id> --ground-perf[=ids]`: 40 pinned dummies; script and physics time a frame
+  with no weapon, with a four-weapon ground build at its own caps, and with the cap filled to
+  40 (12 extra totems and fields, 20 armed snares). `=ids` swaps in a comparison build.
+  `--ground-cap=N` (tests only) adds N to every trap cap. `[PERF]` lines carry `ground=`.
+
+**Deviations, and why:**
+| Spec | Built | Why |
+|---|---|---|
+| Totems at your feet, 2 to 3 per weapon | Only away from the weapon's other totems (75% of the reach) | Stacked at your feet, two totems doubled single-target damage (26 against 15) and paid you for standing still. |
+| Fields at the densest point near the closest foe | The next pack no field of the weapon covers | Two fields on one pack doubled their output (46 against 22 for Hoarfrost). |
+| Geyser Field: steam under packs | One geyser a tick under one foe in the field, 25 px | Field-wide steam put its pack number at 1,190 against the best w4 gun's 204. Now 178. |
+| Rings tick 2 to 4 a second | 2; fields 1.25; trails 2 (bigger ticks, same damage a second) | Hits are what costs frame time (see Checks). Halving the hits closed most of the gap to a gun build. |
+| Trails 18 px wide | 28 px, and 9 damage a tick | In a kite run the trail dealt 45 damage on a floor against the totem's 1,636. |
+| Pulse 110 to 160 px | Tide Ring 110 px | At 140 px it hit the whole probe pack (120 against 96 allowed). |
+| Pods 50 px | Ash Garden bursts 55 px at 8.5 | Poison and Fire on every burst ran the pack to 392. Now 132. |
+| Echo Step: a second, delayed line | Trails last twice as long | Same reward for moving, no second line to draw or query. |
+| Dash-trail patches count toward the cap | Not counted | They are `Cloud`s shared with reactions; pools and mines are counted. |
+| `--arsenal-perf` | `--ground-perf` in the gun probe | See Checks; the other families still have no perf scene. |
+| Legendaries (Stormcrown, The Bell, Event Horizon) | Not built | Batch 5. |
+
+**Checks** (headless, at most 3 instances, 0 `SCRIPT ERROR` in every run):
+| Check | Result | Pass |
+|---|---|---|
+| Weapon bands (`--gun-probe`, 8 s) | Single (band x60% x premium): Ember Halo 15.6 (15.0), Snap Trap 15.8 (15.0), Frost Totem 14.0 (15.0), Tide Ring 14.6 (15.0), Slick Field 11.7 (15.8), Wind Chime 15.0 (15.8), Spark Mine 20.6 (21.4), Thirst 16.4 (15.8), Rift Snare 21.0 (22.4), Pyre Totem 22.4 (22.4), Hoarfrost 17.4 (22.4), Corrosion Halo 23.4 (22.4), Lightning Rods 19.0 (22.4), Geyser Field 28.3 at 14 damage, now 15 (31.2), Ash Garden 23.2 (24.2), Collapse Mine 32.0 (31.2). Packs against 110% of the best gun of the weight (w2 96, w3 133, w4 224): Slick Field 93.6, Tide Ring 73, Hoarfrost 131.5, Rift Snare 94.5, Ash Garden 132, Geyser 178, Collapse Mine 185; the rest lower. Trails and glyphs read 0 (the probe stands still and nothing dies) | yes; fields sit under on single by design (their pack carries them) |
+| Family probe (`--family-probe=ground --kite --mastery=full`) | Before the rebase: 3 of 3 reach floor 3 (at 815, 944 and 940 s). After: see below | yes (needs 2 of 4) |
+| Ground stand-still (`--idle --family-probe=ground --build=human6980 --mastery=full --start-floor=2`) | 2 of 2 die on floor 2, at 38 and 39 s; 4.25 and 4.08 bars a minute; under 50% health 0.58 and 0.64 | yes |
+| Pressure, still against moving (floor 2) | Ground idle 4.08 to 4.25 against ground kite 0.07 | yes (at least 2x) |
+| Frame time (`--ground-perf`, real time, headless, a shared CPU) | 40 dummies: a strong AoE gun build (Mist Sprayer, Arc Rifle, Flare Pistol, Frost Caster) adds 13.2 ms a frame; the ground build at its caps 16.4 ms; the cap filled to 33 units 17.7 ms. With hits switched off, 40 effects cost nothing measurable: it is all hit cost (reactions, item triggers, hit feel) | **near miss**: about 3 ms over a gun build, 4.5 ms with the cap full (the spec allows 2) |
+| Frame time in play (`--perf`, kite, real time) | Floor 1: ground 1% low 53 fps, p99 16.4 ms against a gun loadout's 44 fps, 18.2 ms. Floor 3: 45 against 40 fps, p99 18.8 against 20.8 ms. Natural play peaked at 26 ground units | yes |
+| Cards (`--card-shot`) | `[CARDS] PASS 550`, at most 23 words, at most 298 px tall | yes |
+| Fusion | `[FUSION-CHECK] PASS` in every bot run | yes |
+| Load check (`--editor --quit`) | 0 `SCRIPT ERROR` | yes |
+
+**Not built or not checked:**
+- The `--read-shot=ground` layer check (needs a window). Zones draw at z -1, under enemies
+  (8), summons (2) and every hostile shot.
+- A Trial won end to end (as batches 2 and 3).
+- Ground weapons with Ground items stacked (Overgrowth, Stake Kit, Ley Lines): the 40 cap
+  holds the count, but no probe has measured a full Ground build.
+
+**Worth watching:**
+- Like summons after fun pass 1, ground movers take very little damage (0.07 bars a minute
+  on floor 2) while standing still dies fast. The levers are the 60% share and the caps.
+- Frost Totem dominated a kite run's damage (1,636 of 2,900 on a floor): a 110 px reach at
+  2 ticks a second hits a lot of a pack in real rooms. Watch it once Emil plays it.
+- Lightning Rods' arcs only fire when two rods stand apart; Hoarfrost and the fields sit
+  under the single band on purpose.
+
+**Screenshots for when Emil is away (window runs):**
+- A card contact sheet with the 20 new icons at 96 px and 22 px, and the Ground chip.
+- A fight with `--family-probe=ground`: the dashed halo, a totem with its faint reach, the
+  dotted trail behind the figure, a snare biting. Check that nothing of ours reads as a
+  hostile hazard and that every telegraph sits on top.
+- Slick Field and Hoarfrost under a pack; Geyser Field's bursts; Lightning Rods arcing;
+  Rift Snare holding a pack; Collapse Mine pulling; Ash Garden's pods.
+- A full cap: `--loadout=holy_glyph,ash_garden,snap_trap,spark_trail --ground-cap=6`, to see
+  that 40 effects keep the floor quiet.
+
 ### Batch 5: Legendaries, the last items, synergies and pacing
 
 **Builds:**
