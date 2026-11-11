@@ -189,6 +189,7 @@ const ARMOR_K := 15.0   # damage taken = amount x 15 / (15 + armour)
 var dash_charges := 1
 var dash_recharge := 0.0      # seconds until the next charge comes back
 var dashes := 0               # dashes this run (telemetry, bots)
+var hostile_slow := 0.0       # s left slowed by tar or a bell's ring (Bestiary.TAR_SLOW)
 var perfect_dodges := 0
 var _dash_t := 0.0            # seconds of dash movement left
 var _dash_dir := Vector2.RIGHT
@@ -957,6 +958,9 @@ func _physics_process(delta: float) -> void:
     if mv.length() > 0.2:
         _manual_dir = mv.normalized()
     var want := mv * move_speed() * (Room.WADE if _wading else 1.0)
+    if hostile_slow > 0.0:
+        hostile_slow = maxf(0.0, hostile_slow - delta)
+        want *= Bestiary.TAR_SLOW
     _tick_dash(delta)
     _tick_items(delta)
     if input.just_pressed("dash") and BossShow.hold <= 0.0:

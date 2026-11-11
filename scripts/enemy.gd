@@ -177,6 +177,7 @@ const MODE_DASH := 2
 const MODE_COOL := 3
 
 var kind_name := "grunt"
+var bx := {}   # roster kinds' own state (Bestiary)
 var max_hp := 20.0
 var hp := 20.0
 var speed := 110.0
@@ -394,7 +395,7 @@ var _hazard_tick := 0.0
 func configure(type: String, wave: int) -> void:
     kind_name = type
     _wave = wave
-    var s: Array = STATS.get(type, STATS["grunt"])
+    var s: Array = STATS.get(type, Bestiary.STATS.get(type, STATS["grunt"]))
     max_hp = float(s[0]) + float(s[1]) * float(wave)
     speed = float(s[2])
     radius = float(s[3])
@@ -406,7 +407,9 @@ func configure(type: String, wave: int) -> void:
         per = 0.8   # boss contact: 20 + 0.8 per difficulty
     contact_damage = float(s[4]) + per * float(wave)
     scrap_value = int(s[5])
-    base_color = KIND_COLORS.get(type, base_color)
+    base_color = KIND_COLORS.get(type, Bestiary.COLORS.get(type, base_color))
+    if Bestiary.has(type):
+        Bestiary.setup(self)
     match type:
         "swarmer":
             scrap_value = randi() % 2
@@ -445,7 +448,7 @@ var _crisp_on := false
 func _ensure_crisp() -> void:
     if _crisp_on or not is_inside_tree():
         return
-    if kind_name in ["bomber", "charger", "boss", "lobber"] or affix in ["volatile", "barrage", "sower", "mortar", "tether"]             or (kind_name == "spitter" and _wave >= _lob_diff()):
+    if kind_name in ["bomber", "charger", "boss", "lobber"] or affix in ["volatile", "barrage", "sower", "mortar", "tether"]             or (kind_name == "spitter" and _wave >= _lob_diff()) or Bestiary.needs_crisp(kind_name):
         _crisp_on = true
         Crisp.attach(self, _draw_hostile, 3)
 
@@ -522,6 +525,8 @@ func _setup_sprite() -> void:
     var key := boss_kind if boss_kind != "" else kind_name
     if KIND_COLORS.has(key):
         base_color = KIND_COLORS[key]
+    elif Bestiary.COLORS.has(key):
+        base_color = Bestiary.COLORS[key]
     else:
         base_color = Art.ENEMY_TINT.get(kind_name, base_color)
     var coord: Vector2i = KIND_TILES[key] if KIND_TILES.has(key) else Art.TILES.get(kind_name, Art.TILES["grunt"])
@@ -535,6 +540,8 @@ func _setup_sprite() -> void:
     else:
         _sprite.texture = Art.tile(coord)
         _sprite.modulate = base_color
+    if Bestiary.has(key):
+        _sprite.texture = Bestiary.texture(key)   # drawn in code (Enemy roster)
 
 
 func _fx() -> Fx:
@@ -771,6 +778,8 @@ func take_damage(amount: float, color: Color, flash: bool = true, source: Player
         return   # a spawn marker is not a target yet
     if source != null:
         last_hit_by = source
+    if kind_name != "boss":
+        amount *= Bestiary.taken_mult(self)   # a ward, a ghost between worlds
     if body != null:
         amount *= body.taken_mult(flash)   # the part hit, and the stagger bonus
         if _burrow_state == 2 and not body.any_visible():
@@ -994,6 +1003,7 @@ func _die() -> void:
         return
     _dead = true
     hp = minf(hp, 0.0)
+    Bestiary.on_death(self)
     if frozen_time > 0.0:
         Elements.nova.emit(global_position, radius * 2.5, Color(Element.COLORS[Element.Kind.ICE], 0.6))
     if last_hit_by != null and is_instance_valid(last_hit_by):
@@ -1102,6 +1112,8 @@ func _draw_hostile(cv: CanvasItem) -> void:
         _draw_boss_cracks(cv)
     if body != null and body.has_parts():
         _draw_parts(cv)
+    if Bestiary.has(kind_name):
+        Bestiary.draw_hostile(self, cv)
     if _mode == MODE_TELEGRAPH and emerge <= 0.0 and hp > 0.0:
         var length := (420.0 * 0.5 if Main.old_balance else CHARGE_LEN) if kind_name == "charger" else 300.0
         var a := 0.45 + 0.4 * absf(sin(_fx_t * 20.0))
@@ -1313,6 +1325,8 @@ func _physics_process(delta: float) -> void:
             _landed(global_position)
         queue_redraw()
         return
+    if Bestiary.hidden_tick(self, delta):
+        return
     if emerge > 0.0:
         emerge -= delta
         _guard_spawn()
@@ -1403,6 +1417,8 @@ func _physics_process(delta: float) -> void:
 
     _tick_affix(delta)
     _tick_shells(delta)
+    if kind_name != "boss":
+        Bestiary.tick(self, delta)
     if kind_name == "bomber" or affix == "volatile":
         var pl := _nearest_player()
         var near := pl.global_position.distance_to(global_position) if pl != null else INF
@@ -1426,6 +1442,7 @@ func _physics_process(delta: float) -> void:
     velocity += shove_vel
     shove_vel = shove_vel.move_toward(Vector2.ZERO, 900.0 * delta)
     move_and_slide()
+    Bestiary.after_move(self)
     if kind_name == "charger" and _mode == MODE_DASH and not Main.old_balance:
         for i in get_slide_collision_count():
             if get_slide_collision(i).get_collider() is StaticBody2D:
@@ -1495,6 +1512,8 @@ func _think(delta: float, target: Player) -> Vector2:
     var mult := _speed_mult()
     if kind_name == "boss":
         return _think_boss(delta, target, dir, dist, mult)
+    if Bestiary.has(kind_name):
+        return Bestiary.think(self, delta, target, dir, dist, mult)
     match kind_name:
         "spitter":
             _shoot_t -= delta
@@ -3105,6 +3124,8 @@ func _nearest_player() -> Player:
 func _draw() -> void:
     if intro and _intro_a < 0.05:
         return
+    if kind_name == "burrower" and int(bx.get("st", 0)) == 2:
+        return   # underground: only the mound and its cracks (Bestiary.draw_hostile)
     if emerge > 0.0 and not intro:
         # Telegraph: the spawn marker, the body faint until it arrives.
         var k := clampf(1.0 - emerge / EMERGE_SECS, 0.0, 1.0)
@@ -3133,6 +3154,8 @@ func _draw() -> void:
         draw_circle(Vector2(0, radius * 0.6), radius * 0.9, Color(0, 0, 0, 0.35))
     _draw_outline()
     _draw_kind()
+    if Bestiary.has(kind_name):
+        Bestiary.draw_body(self)
     if is_elite:
         draw_arc(Vector2.ZERO, radius - 2.0, 0.0, TAU, 32, Color(1.0, 0.85, 0.3), 2.0)
     if immune_to != Element.Kind.NONE:
@@ -3547,13 +3570,13 @@ const KEY_THREATS := ["spitter", "charger", "shaman", "bomber", "warden", "lobbe
 
 
 func is_key_threat() -> bool:
-    return kind_name in KEY_THREATS or affix in ["volatile", "barrage", "sower", "mortar", "tether"]
+    return kind_name in KEY_THREATS or Bestiary.KEY.has(kind_name) or affix in ["volatile", "barrage", "sower", "mortar", "tether"]
 
 
 ## Winding up an attack right now (charge telegraph, ring, teleport or gut-blast warning).
 func winding_up() -> bool:
     return _mode == MODE_TELEGRAPH or _ring_warn > 0.0 or _tele_warn > 0.0 or _gut_warn > 0.0 \
-            or _crouch_t > 0.0 or not _shells.is_empty() or _tether_state > 0
+            or _crouch_t > 0.0 or not _shells.is_empty() or _tether_state > 0 or Bestiary.winding_up(self)
 
 
 ## Shots in flight toward this enemy (Focus skips it once they cover its health).
