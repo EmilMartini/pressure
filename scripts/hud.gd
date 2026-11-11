@@ -53,7 +53,7 @@ var _pick: Dictionary = {}
 var _seen_items: Dictionary = {}   # player instance id -> item ids worn last frame
 var _seen_guns: Dictionary = {}    # player instance id -> gun ids carried last frame
 
-const PICK_TIME := 3.0
+const PICK_TIME := 2.5
 
 ## Health bar readability: per player instance id, [ghost fraction, hold secs, hit flash secs,
 ## last hp]. The ghost is the health just lost, shown in pale red and drained after a beat.
@@ -288,8 +288,27 @@ func _fighting() -> bool:
     return main != null and main.current != null and main.current.active
 
 
+## Seconds since this room's fight began (0 outside a fight), for fading fight-time text.
+var _fight_t := 0.0
+var _fight_room: Node = null
+const TITLE_HOLD := 2.5
+
+
+## 1 outside a fight and for the first TITLE_HOLD s of one, then fades out over 0.5 s.
+func _fight_fade() -> float:
+    if not _fighting():
+        return 1.0
+    return clampf((TITLE_HOLD + 0.5 - _fight_t) / 0.5, 0.0, 1.0)
+
+
 func _process(delta: float) -> void:
     _time += delta
+    var room_now: Node = main.current if main != null else null
+    if room_now != _fight_room or not _fighting():
+        _fight_room = room_now
+        _fight_t = 0.0
+    else:
+        _fight_t += delta
     if not _held.is_empty() and not _fighting():
         for text in _held:
             _toasts.append({ "text": text, "t": 5.0 })
@@ -306,7 +325,7 @@ func _process(delta: float) -> void:
 
 ## Notices new gear and guns on any player and keeps the newest for the pickup label.
 func _watch_pickups(delta: float) -> void:
-    if not _pick.is_empty():
+    if not _pick.is_empty() and _banner.is_empty():   # one announcement at a time
         _pick["t"] = float(_pick["t"]) - delta
         if float(_pick["t"]) <= 0.0:
             _pick = {}
@@ -346,13 +365,13 @@ func _announce_item(p: Player, id: String) -> void:
     var it: Dictionary = Items.get_item(id)
     if it.is_empty():
         return
-    var effect := String(it.get("desc", ""))
+    var name_ := String(it["name"])
     var n := p.item_count(id)
     if n > 1:
-        effect = "x%d   %s" % [n, effect]
+        name_ += "  x%d" % n
     _pick = {
-        "name": String(it["name"]), "effect": effect, "col": Items.rarity_text_color(it),
-        "frame": Items.rarity_color(it), "tag": Items.rarity_name(it).to_upper(),
+        "name": name_, "effect": _tagline(String(it.get("desc", ""))), "col": Items.rarity_text_color(it),
+        "frame": Items.rarity_color(it), "tag": Items.rarity_name(it).to_upper(), "pips": int(it.get("rarity", 0)) + 1,
         "icon": Items.icon(it), "icon_tint": Items.ui_icon_tint(it), "who": p.display_name(), "t": PICK_TIME,
     }
 
@@ -361,9 +380,9 @@ func _announce_gun(p: Player, g: Gun) -> void:
     var dmg: float = g.data.damage * g.tier_mult()
     var dps: float = g.data.dps_at(dmg, g.top_fire_rate())
     _pick = {
-        "name": g.display_name(), "effect": "%s, DPS %.0f, weight %d" % [Element.NAMES[g.data.element], dps, g.data.weight],
+        "name": g.display_name(), "effect": "%s weapon, %.0f DPS" % [Element.NAMES[g.data.element], dps],
         "col": Items.tier_text_color(g.tier), "frame": Items.tier_color(g.tier),
-        "tag": String(Items.RARITY_NAMES[Items.tier_rarity(g.tier)]).to_upper(),
+        "tag": String(Items.RARITY_NAMES[Items.tier_rarity(g.tier)]).to_upper(), "pips": int(Items.tier_rarity(g.tier)) + 1,
         "icon": Art.gun_icon(g.data.id), "icon_tint": Color.WHITE,
         "who": p.display_name(), "t": PICK_TIME,
     }
@@ -381,7 +400,6 @@ func _draw() -> void:
     if not main.players.is_empty():
         _draw_hotbars(vp, bottom)
         _draw_main_gear(main.players[0], bottom)
-        _draw_pick(bottom)
         _draw_vents(vp, bottom)
     if main.show_help:
         _draw_help(vp)
@@ -390,11 +408,15 @@ func _draw() -> void:
     _draw_discovery(vp)
     _draw_dash_hint(vp)
     _draw_banner(vp)
+    _draw_pick(vp)
 
 
 ## Synergy and resonance banners (section 12): top band only, one at a time, at most one
 ## every BANNER_GAP s (the rest queue), BANNER_SECS on screen. Title 28 px, line 22 px.
 const BANNER_SECS := 2.0
+## The one announcement slot at the top centre (pickups, then synergy banners), under the
+## room title, the enemy count and the boss bar, above main.message's line.
+const ANNOUNCE_Y := 164.0
 const BANNER_GAP := 8.0
 var _banners: Array = []          # queued { title, line, color, big }
 var _banner: Dictionary = {}      # showing now, with "t"
@@ -411,7 +433,7 @@ func _tick_banner(delta: float) -> void:
         _banner["t"] = float(_banner["t"]) - delta
         if float(_banner["t"]) <= 0.0:
             _banner = {}
-    if _banner.is_empty() and not _banners.is_empty() and _banner_ready <= 0.0:
+    if _banner.is_empty() and _pick.is_empty() and not _banners.is_empty() and _banner_ready <= 0.0:
         _banner = _banners.pop_front()
         _banner["t"] = BANNER_SECS
         _banner_ready = BANNER_GAP
@@ -423,7 +445,7 @@ func _draw_banner(vp: Vector2) -> void:
     var a := clampf(float(_banner["t"]) / 0.4, 0.0, 1.0) * clampf((BANNER_SECS - float(_banner["t"])) / 0.15 + 0.2, 0.0, 1.0)
     var col: Color = _banner["color"]
     var w := maxf(_body_width(String(_banner["title"]), 28), _body_width(String(_banner["line"]), 22)) + 60.0
-    var box := Rect2((vp.x - w) / 2.0, vp.y * 0.11, w, 70.0)
+    var box := Rect2((vp.x - w) / 2.0, ANNOUNCE_Y, w, 70.0)
     draw_rect(box, Color(0.04, 0.03, 0.05, 0.9 * a))
     draw_rect(box, Color(col, a), false, 3.0 if bool(_banner["big"]) else 2.0)
     _body_in(Rect2(box.position + Vector2(0, 4), Vector2(w, 34)), String(_banner["title"]), 28, Color(col, a))
@@ -470,6 +492,15 @@ func _tick_discovery(delta: float) -> void:
     if _discoveries.is_empty():
         return
     if _discover_t <= 0.0:
+        # UI research: no fight text. Small finds wait for the room to clear like toasts;
+        # a cataclysm's first find is the moment itself and shows at once.
+        if _fighting() and not _discover_big.has(_discoveries[0]):
+            for i in _discoveries.size():
+                if _discover_big.has(_discoveries[i]):
+                    _discoveries.push_front(_discoveries.pop_at(i))
+                    break
+            if not _discover_big.has(_discoveries[0]):
+                return
         _discover_t = DISCOVER_BIG_SECS if _discover_big.has(_discoveries[0]) else DISCOVER_SECS
         Fx.count_text("discovery")
     _discover_t -= delta
@@ -632,11 +663,18 @@ func _draw_top(vp: Vector2) -> void:
     if room == null:
         return
     var cx := vp.x / 2.0
-    _centered(34, "%s   %s" % [Regions.display_name(main.region_id).to_upper(), room.data.type_name().to_upper()], 28, Color(room.data.color(), 0.95), vp, true)
+    # UI research (Isaac): the room's name says where you are, then gets out of the fight.
+    var title_a := 0.95 * _fight_fade()
+    if title_a > 0.01:
+        _centered(34, "%s   %s" % [Regions.display_name(main.region_id).to_upper(), room.data.type_name().to_upper()], 28, Color(room.data.color(), title_a), vp, true)
     if room.active and room.data.type == RoomData.Type.ARENA and not Main.old_balance:
-        # Fun pass 1: a room to clear; the count of what is left, not a timer.
+        # Fun pass 1: a room to clear; the count of what is left, not a timer. Small while
+        # many remain; it grows and turns orange for the last three.
         var left := room.enemies_left()
-        _centered(96, "%d LEFT" % left, 40 if left > 3 else 48, Color(1.0, 0.75, 0.4) if left <= 3 else UiTheme.BONE, vp, true)
+        if left > 3:
+            _centered(70 if title_a <= 0.01 else 96, "%d LEFT" % left, 30, Color(UiTheme.BONE, 0.85), vp, true)
+        else:
+            _centered(96, "%d LEFT" % left, 44, Color(1.0, 0.75, 0.4), vp, true)
     elif room.active and room.data.type == RoomData.Type.ARENA:
         var secs := ceili(room.wave_time_left)
         var col := Color(1.0, 0.35, 0.3) if secs <= 5 else UiTheme.BONE
@@ -659,7 +697,8 @@ func _draw_top(vp: Vector2) -> void:
         elif b.body == null:
             _centered(104, "BOSS", 24, Color(1, 0.8, 0.8), vp, true)
     elif room.active:
-        _centered(86, "FIGHT", 40, Color(1.0, 0.5, 0.4), vp, true)
+        if _fight_fade() > 0.01:
+            _centered(86, "FIGHT", 40, Color(1.0, 0.5, 0.4, _fight_fade()), vp, true)
     else:
         var hint := ""
         match room.data.type:
@@ -1036,36 +1075,53 @@ func _draw_gear(p: Player, origin: Vector2, s: float) -> void:
 
 ## The last pickup in one line over the gear row: icon, name in its rarity colour, then
 ## what it does. Fades over its last half second.
-func _draw_pick(bottom: float) -> void:
-    if _pick.is_empty():
+## UI research (Isaac): a pickup is one moment at the top centre, the shared announcement
+## slot. The name is big in its rarity colour, with one short line under it, and it fades. No
+## rarity word and no sentence to read while moving; the card before the pick has the detail.
+func _draw_pick(vp: Vector2) -> void:
+    if _pick.is_empty() or not _banner.is_empty():
         return
-    var a := clampf(float(_pick["t"]) / 0.5, 0.0, 1.0)
-    var y := bottom - GEAR_BIG - 16.0 - 34.0 - (34.0 if not main.players[0].resonance_tiers.is_empty() else 0.0)
-    var name_text := String(_pick["name"])
+    var t := float(_pick["t"])
+    var a := clampf(t / 0.5, 0.0, 1.0) * clampf((PICK_TIME - t) / 0.15 + 0.1, 0.0, 1.0)
+    var name_text := String(_pick["name"]).to_upper()
     if main.players.size() > 1:
-        name_text = "%s: %s" % [_pick["who"], name_text]
+        name_text = "%s: %s" % [String(_pick["who"]).to_upper(), name_text]
     var effect := String(_pick["effect"])
-    var name_w := _body_width(name_text, 20)
-    var eff_w := _body_width(effect, 20)
-    var w := minf(30.0 + name_w + 14.0 + eff_w + 16.0, 760.0)
-    var box := Rect2(MARGIN - 8.0, y, w, 30.0)
-    draw_rect(box, Color(0.05, 0.04, 0.06, 0.88 * a))
+    var name_size := 34
+    var name_w := _font.get_string_size(name_text, HORIZONTAL_ALIGNMENT_LEFT, -1, name_size).x
+    var eff_w := _body_width(effect, 18)
+    var w := clampf(maxf(name_w + 46.0, eff_w) + 64.0, 340.0, vp.x - 80.0)
+    var slide := (1.0 - clampf((PICK_TIME - t) / 0.15, 0.0, 1.0)) * -10.0
+    var box := Rect2((vp.x - w) / 2.0, ANNOUNCE_Y + slide, w, 66.0)
     var col: Color = _pick["col"]
     var frame: Color = _pick.get("frame", col)
-    var tag := String(_pick.get("tag", ""))
-    var tag_w := _body_width(tag, 16) + 10.0 if tag != "" else 0.0
-    box.size.x = minf(box.size.x + tag_w, 800.0)
-    draw_rect(Rect2(box.position, Vector2(4.0, box.size.y)), Color(frame, a))
-    draw_rect(box, Color(frame, 0.6 * a), false, 1.5)
-    _icon_tex(_pick["icon"], Rect2(box.position + Vector2(10, 4), Vector2(22, 22)), Color(_pick["icon_tint"], a))
-    var x := box.position.x + 38.0
-    _body_in(Rect2(x, y, name_w, 30.0), name_text, 20, Color(col, a), HORIZONTAL_ALIGNMENT_LEFT)
-    x += name_w + 10.0
-    if tag != "":
-        _body_in(Rect2(x, y + 2.0, tag_w, 30.0), tag, 16, Color(col, a), HORIZONTAL_ALIGNMENT_LEFT)
-        x += tag_w
-    x += 4.0
-    _body_in(Rect2(x, y, box.end.x - x - 8.0, 30.0), effect, 20, Color(UiTheme.BONE, a), HORIZONTAL_ALIGNMENT_LEFT)
+    draw_rect(box, Color(0.04, 0.03, 0.05, 0.9 * a))
+    draw_rect(Rect2(box.position, Vector2(box.size.x, 3.0)), Color(frame, a))
+    draw_rect(Rect2(box.position + Vector2(0, box.size.y - 3.0), Vector2(box.size.x, 3.0)), Color(frame, a))
+    # Name row: the icon and the name, centred together.
+    var row_w := 32.0 + 12.0 + name_w
+    var x := box.position.x + (box.size.x - row_w) / 2.0
+    _icon_tex(_pick["icon"], Rect2(x, box.position.y + 7.0, 32.0, 32.0), Color(_pick["icon_tint"], a))
+    _title(Vector2(x + 44.0, box.position.y + 34.0), name_text, name_size, Color(col, a))
+    # Rarity pips in the top-right corner: the colour always comes with its rarity mark.
+    var pips := int(_pick.get("pips", 1))
+    ItemCard.draw_pips(self, Vector2(box.end.x - 10.0 - float(pips) * 8.0, box.position.y + 9.0), pips, Color(frame, a), 6.0)
+    if effect != "":
+        _body_in(Rect2(box.position.x, box.position.y + 40.0, box.size.x, 24.0), effect, 18, Color(UiTheme.BONE, a))
+
+
+## The one short line under a pickup's name: the first sentence of its effect, cut at a
+## comma when that is still long. Item effects are mostly short stat lines already.
+static func _tagline(desc: String) -> String:
+    var line := desc.strip_edges()
+    var dot := line.find(". ")
+    if dot > 0:
+        line = line.substr(0, dot)
+    if line.length() > 48:
+        var comma := line.rfind(", ", 48)
+        if comma > 12:
+            line = line.substr(0, comma)
+    return line.trim_suffix(".")
 
 
 ## A row of charge pips along the bottom edge of the active item's box.

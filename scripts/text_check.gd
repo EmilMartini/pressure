@@ -136,6 +136,22 @@ func _run() -> void:
         if lv.has_method("close_for_test"):
             lv.close_for_test()
 
+    # Pickup banner (hud.gd _draw_pick): every item's name in the pixel font at 34 px beside
+    # its icon, and its one short line in the body font, inside the banner's widest box.
+    _rows.clear()
+    var room := SCREEN.x - 80.0 - 64.0
+    var body_px := maxi(Art.bpx(18), 18)
+    for id in Items.catalog.keys():
+        var it: Dictionary = Items.catalog[id]
+        var nm := String(it.get("name", "")).to_upper() + "  X3"
+        _rows.append({ "text": nm, "body": false, "px": 34, "w": Art.FONT.get_string_size(nm, HORIZONTAL_ALIGNMENT_LEFT, -1, 34).x + 46.0, "max": room, "named": true })
+        var line := Hud._tagline(String(it.get("desc", "")))
+        _rows.append({ "text": line, "body": true, "px": body_px, "w": Art.FONT_BODY.get_string_size(line, HORIZONTAL_ALIGNMENT_LEFT, -1, body_px).x, "max": room })
+    var holder := Node.new()
+    fails += _report("pickup", holder, csv)
+    holder.free()
+    screens += 1
+
     csv.close()
     on = false
     if fails == 0:
