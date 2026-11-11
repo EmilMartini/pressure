@@ -6,7 +6,7 @@ extends RefCounted
 
 const GRID := 9
 const DIRS: Array[Vector2i] = [Vector2i.UP, Vector2i.DOWN, Vector2i.LEFT, Vector2i.RIGHT]
-const ARENAS := 4   # arena rooms a floor (Core loop reset 5.0)
+const ARENAS := 6   # arena rooms a floor (Core loop reset 5.0: 4; fun pass 1: 6, shorter rooms)
 const OBSTACLES := ["pool", "thicket", "valve", "ward", "rubble", "miasma"]
 
 
@@ -21,10 +21,25 @@ static func generate(region_id: String, luck: float = 0.0, players: Array = []) 
         target = 1 + ARENAS + (4 if Progress.has("room:challenge") or force_challenge != "" else 3)
     var start := Vector2i(GRID / 2, GRID / 2)
     var rooms: Dictionary = {}
+    if not Main.old_balance:
+        target -= 1   # the treasure room is added next to the start (fun pass 1)
     for attempt in 60:
         rooms = _grow(start, target)
         if rooms.size() >= target:
             break
+    # Fun pass 1: every floor's item room is one door from the start, so a reward is in
+    # sight the moment a floor opens. A free cell touching only the start room.
+    var treasure_near := false
+    if not Main.old_balance:
+        var cells: Array = []
+        for d in DIRS:
+            var n: Vector2i = start + d
+            if _in_grid(n) and not rooms.has(n) and _neighbor_count(rooms, n) == 1:
+                cells.append(n)
+        if not cells.is_empty():
+            var tp: Vector2i = cells.pick_random()
+            rooms[tp] = _new_room(tp, RoomData.Type.TREASURE)
+            treasure_near = true
 
     # Plain doors between every adjacent pair (the growth rule keeps it a tree).
     for p in rooms.keys():
@@ -35,16 +50,18 @@ static func generate(region_id: String, luck: float = 0.0, players: Array = []) 
     # Dead ends, farthest first, become the special rooms.
     var leaves: Array = []
     for p in rooms.keys():
-        if p != start and rooms[p].doors.size() == 1:
+        if p != start and rooms[p].doors.size() == 1 and rooms[p].type != RoomData.Type.TREASURE:
             leaves.append(p)
     leaves.sort_custom(func(a, b): return _dist(a, start) > _dist(b, start))
     var fallback: Array = []
     for p in rooms.keys():
-        if p != start and not leaves.has(p):
+        if p != start and not leaves.has(p) and rooms[p].type != RoomData.Type.TREASURE:
             fallback.append(p)
     fallback.sort_custom(func(a, b): return _dist(a, start) > _dist(b, start))
     var candidates: Array = leaves + fallback
     var specials := [RoomData.Type.BOSS, RoomData.Type.TREASURE, RoomData.Type.SHOP]
+    if treasure_near:
+        specials.erase(RoomData.Type.TREASURE)
     if Progress.has("room:challenge") or force_challenge != "":
         specials.append(RoomData.Type.CHALLENGE)
     for i in mini(specials.size(), candidates.size()):

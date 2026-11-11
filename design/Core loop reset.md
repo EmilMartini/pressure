@@ -1527,6 +1527,92 @@ Relic selected. That is the walk's assumption, not the migration (his Relic is k
 
 ---
 
+### Fun pass 1 (2026-11-11, build `2026.11.10-fun1`)
+
+Emil played 5 runs after session 4 and the arsenal batches: "its not fun". He quit 3 on floor 2,
+6.5 to 8 minutes in, at 54 to 61% health: the fighting felt flat, nothing grew, and it was too
+slow and too long. He chose Isaac's loop as the model: something for every room, an item room
+early on each floor, a boss per floor. This pass changes values and small behaviours only.
+
+**Changed**
+- **Rooms to clear, not waves to survive** (`Room._tick_room`). An arena spawns a fixed quota and
+  clears when all of it is dead: `CROWD_QUOTA` 9 to 14 fodder (`CROWD_ALIVE` 4 to 6 alive at once),
+  the floor's key threats with one more alive than `SpawnTable.key_budget` and `KEY_EXTRA` 4 more
+  over the room, refilled every 1.2 s, and the elite timers on a 25 s clock (an elite still pending
+  when the rest is dead comes at once, the room's last stand). `ROOM_MAX_SECS` 45 ends a room with
+  something stuck out of reach. The HUD shows "N LEFT" instead of a countdown. `Main.old_balance`
+  keeps the timed waves.
+- **Six arenas a floor** (`FloorGen.ARENAS` 4 to 6). **The item room is next to the start** on
+  every floor (a free cell touching only the start room; the old farthest-leaf rule is the
+  fallback), and its doorway glows gold until visited (`Door.treasure`). So every floor opens
+  with a reward in sight.
+- **Every clear pays something you can see:** the scrap burst (10 pieces, with a coin jingle),
+  then a 20% heart (`ROOM_HEART`), else an 18% bonus pick of 1 of 2 item cards (`ROOM_BONUS`,
+  not in floor 1's gun-pick rooms). Arena scrap is 17 x m (was 25), so six rooms pay about what
+  four did.
+- **Level-ups about once a minute:** a clear fills 55% of the current level's bar
+  (`CLEAR_LEVEL`) and a boss clear a whole bar, on top of kill XP; the pick opens at the clear.
+- **Boss reward:** 45 x m scrap (was 30) and a heart, besides the pick of 1 of 3.
+- **Punch** (`Fx.kill_punch`): every kill pops a ring of the body's colour and a few pixels. Big
+  bodies and key threats add a 40 ms hit-stop (spaced like the reaction impacts), a glow, a
+  2 px shake and a `burst_small` thump. Elite deaths now take a 0.12 s hit-stop (was 0.08) and a
+  `burst_large` layer. Elite and boss hits shake the screen a little, at most once per 0.4 s
+  (`Enemy.HIT_SHAKE_MS`). Options' hit-stop and shake settings still apply.
+- **A heal between floors: the stairs heal 30% of max health** (`Main.STAIRS_HEAL`), a chosen
+  heal outside the Mending reserve. Decision 14's "no free full heals" still holds.
+- **Bug: quitting paid 0 Embers.** Run `958a87513ffc480a` (12:45 UTC, 2026-11-10) ended
+  `abandoned` with 0 Embers and no death event. Closing the window (X or Alt+F4) never called
+  `abandon_run`, so Telemetry closed the run on its own. `Main` now handles
+  `NOTIFICATION_WM_CLOSE_REQUEST` with `abandon_run()`, and `_exit_tree` pays the 75% for any
+  run still open. `--close-probe` checks it.
+
+**Measured** (headless, `--fixed-fps 60`, route Ossuary Gate, Rust Ruins, Frostvault, the Forge,
+the Rift; logs `autotest/fun1/`). Before = main at 3a4af1d, same bots; Emil = his 5 runs.
+
+| Measure | Before | After |
+|---|---|---|
+| Room clear (floors 2 to 5) | 45 s (floors 1, 2) and 55 s (floors 3+), a timer; Emil 45 s | 13 to 37 s, median about 21 |
+| Arenas a floor | 4 | 6 |
+| Floor time (floors 2 to 5) | 284 to 360 s | 198 to 300 s |
+| Level-ups a floor | 1 to 2; Emil 2 to 3 a run, none after 4 min | 3 to 6 (floor 2: 3 or 4, floor 5: 6), at clears |
+| Free items a floor (treasure, boss, bonus) | 0 to 3 (0 on floor 2 for the fresh bot) | 2 to 8 |
+| Hearts a floor | 0 to 3 | 3 to 9, plus the stairs' 30% |
+| Cards shown a floor | 3 to 17 | 20 to 43 (more level-ups and bonus picks) |
+| Run length | fresh bot died on floors 1 and 2 | fresh bot won in 22.5 and 23.1 min (floor 1 about 5.7 min, slowed by the bot's empty first arena) |
+| Bosses | 28 to 70 s | 28 to 68 s (Brute King 33.7 and 68.5, others 28 to 58) |
+| Stand-still (idle, human build from floor 2) | 4 of 4 died on floor 2 | 3 of 3 died on floor 3; floor 2 damage 0.68 to 0.79 bars a minute |
+| Mover, same build | 1 died on floor 3, 1 on floor 4 | 3 of 3 won; floor 2 damage 0.07 to 0.13 a minute, under 50% at most 0.06 of a floor from floor 2 |
+| Quit | 0 Embers on a window close | `[QUIT-CHECK] PASS` for the pause menu and for a window close (`--close-probe`): 75% |
+
+The first tuning, with 25 x m arenas, a 30% room heart and the old key budget, let 4 of 4 idle
+bots through floor 2, so the key threats got +1 alive, 4 extra and a 1.2 s refill.
+
+Checks: load check clean; `[FUSION-CHECK] PASS`; `[HUB-WALK] PASS`, `[HUB-FRESH] PASS`; 0
+`SCRIPT ERROR` in every bot log; `[SPAWN-CHECK] PASS`; Emil's save, mastery and settings files
+unchanged by bots.
+
+**Watch, and the knobs**
+- **It is easier now.** Movers win with health to spare, and the stand-still check passes only at
+  its loosest (dies by the end of floor 3). If runs feel safe, the levers are `ROOM_HEART`,
+  `STAIRS_HEAL`, `KEY_ALIVE_PLUS` and `Room.FLOOR_HP`, not the room length.
+- **Scrap piles up on floors 4 and 5** (500 to 1,000 unspent for the bot). Next step: alcoves
+  and caches by m (session 3's deviation), or ARENA_SCRAP 14.
+- **Cards a floor are 20 to 43**, well over section 5.2's 15. That's on purpose this pass ("no
+  growth or reward"). If reading cards becomes the chore again, trim `ROOM_BONUS` first.
+- **A run is about 22 to 23 minutes** for the bot, under the 25 to 30 target. Room length is
+  `CROWD_QUOTA` (+2 a floor is about +3 s a room).
+- **The fresh bot enters floor 1's first arena with no weapon** (0 dps in both builds), so its
+  floor-1 rooms run to the 45 s cap. This is a bot gap, not the game's; humans have a gun.
+
+**What to try (Emil)**
+1. Play to floor 3. Each room should take about 20 s ("N LEFT" at the top) and end with scrap
+   flying to you, sometimes a heart or a bonus pick. Too short or too long?
+2. On each new floor, walk into the gold-glowing door next to the start: the item room.
+3. Count the level-ups: about one a minute, always at a room's clear. Does it feel like growth?
+4. Kill a charger, a lobber or an elite and listen: a short freeze, a ring and a thump. Too much
+   or too little?
+5. The stairs heal 30%, and closing the window mid-run now pays 75% of the Embers.
+
 ---
 
 ## 15. Defaults Emil may want to change

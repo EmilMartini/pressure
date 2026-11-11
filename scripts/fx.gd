@@ -1194,8 +1194,8 @@ func boss_death(pos: Vector2) -> void:
 func elite_death(pos: Vector2) -> void:
     _full = true
     if main != null:
-        main.hitstop(0.08)
-        main.shake(6.0)
+        main.hitstop(0.12)   # fun pass 1: 0.08 -> 0.12
+        main.shake(7.0)
     _impact_ms = Time.get_ticks_msec()
     PostFx.shockwave(pos, 0.6, 220.0)
     PostFx.aberration_pulse(1.2)
@@ -1220,6 +1220,29 @@ func _on_enemy_died(e: Enemy) -> void:
         boss_death(e.global_position)
     elif e.is_elite:
         elite_death(e.global_position)
+        Sfx.play("burst_large", -2.0, 0.05, e.global_position)   # fun pass 1: a heavier layer
+    elif not Main.old_balance:
+        kill_punch(e)
+
+
+## Fun pass 1 (the fight felt flat): every kill pops. A ring of the body's colour and a few
+## pixels; a big body or key threat (spitter, lobber, charger) adds a 40 ms hit-stop (spaced
+## by IMPACT_GAP_MS, so a chain of kills never stutters), a wider ring, a burst and a thump.
+func kill_punch(e: Enemy) -> void:
+    var pos := e.global_position
+    var big := e.radius > 15.0 or SpawnTable.KEY.has(e.kind_name)
+    var col: Color = e.base_color.lightened(0.25)
+    ring(pos, e.radius * (2.6 if big else 1.8), col, 0.28 if big else 0.2)
+    pixels(Element.Kind.NONE, pos, 12 if big else 5, 150.0 if big else 100.0, 5.0, _pal_of(col))
+    if not big:
+        return
+    _glow(pos, e.radius * 5.0, Color(col, 0.25), 0.2)
+    Sfx.play("burst_small", -3.0, 0.08, pos)
+    var now := Time.get_ticks_msec()
+    if main != null and now - _impact_ms >= IMPACT_GAP_MS:
+        _impact_ms = now
+        main.hitstop(0.04)
+        main.shake(2.0)
 
 
 # --- Signal handlers -------------------------------------------------------

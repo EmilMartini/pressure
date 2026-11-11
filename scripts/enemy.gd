@@ -184,6 +184,8 @@ var radius := 12.0
 var contact_damage := 8.0
 var damage_mult := 1.0   # late-floor pressure, set by the room on spawn; scales shots too
 var base_color := Color(0.85, 0.30, 0.30)
+const HIT_SHAKE_MS := 400
+static var _hit_shake_ms := 0
 var immune_to: int = Element.Kind.NONE
 ## Exposed (Regions): a reaction here made the region's resistances count as weaknesses.
 var exposed_time := 0.0
@@ -825,6 +827,14 @@ func take_damage(amount: float, color: Color, flash: bool = true, source: Player
         _flash = 0.12
         _flash_color = color
         _squash = 1.0
+        if (is_elite or kind_name == "boss") and not Main.old_balance:
+            # Fun pass 1: a little shake on elite and boss hits, sparse (one per HIT_SHAKE_MS).
+            var now := Time.get_ticks_msec()
+            if now - _hit_shake_ms >= HIT_SHAKE_MS:
+                _hit_shake_ms = now
+                var sfx := _fx()
+                if sfx != null:
+                    sfx._shake(1.4 if kind_name == "boss" else 1.0)
         if _white_cd <= 0.0:
             _white_frames = 1
             _white_cd = WHITE_CD

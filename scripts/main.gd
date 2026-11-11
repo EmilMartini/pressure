@@ -638,8 +638,15 @@ func start_floor(n: int) -> void:
             p.hp = maxf(p.hp, p.max_hp * 0.4)
         if Main.old_balance:
             p.heal(maxf(0.0, p.max_hp * (0.6 if n <= 2 else 0.4) - p.hp), "stairs")
-        # Core loop reset, section 10: the stairs no longer heal; the Mending reserve refills.
+        # Core loop reset, section 10: the Mending reserve refills. Fun pass 1: the stairs heal
+        # STAIRS_HEAL of max health again (a chosen heal, outside the reserve), so a floor
+        # never opens at the last floor's low.
         p.refill_mending()
+        if not Main.old_balance and n >= 2:
+            var before := p.hp
+            p.heal(p.max_hp * STAIRS_HEAL, "stairs")
+            if p.hp > before + 0.5:
+                p.say("+%d health" % int(roundf(p.hp - before)))
 
     enter_room(Vector2i(FloorGen.GRID / 2, FloorGen.GRID / 2), Vector2i.ZERO)
     announce(Regions.display_name(region_id))
@@ -814,6 +821,11 @@ func on_room_cleared(_room: Room) -> void:
     floor_rooms_cleared += 1
     _update_spectacle()
     announce("Room cleared")
+    if autotest and floor_number >= 2 and OS.get_cmdline_user_args().has("--close-probe"):
+        # Fun pass 1: the scene torn down without the pause menu (the window's X) still pays.
+        print("[QUIT] close-probe: quitting without abandon_run")
+        get_tree().quit()
+        return
     if autotest and floor_number >= 2 and OS.get_cmdline_user_args().has("--quit-probe"):
         # Core loop reset 11.2: leaving from the pause menu pays 75% of a death's Embers.
         var death := int(Mastery.preview(floor_number, false, String(Loadout.current()["mark"]))["total"])
@@ -1379,6 +1391,20 @@ func talk_archivist(o: Dictionary, pl: Player) -> void:
 ## too; after `_end_run` this finds nothing new.
 func _exit_tree() -> void:
     Progress.keep_well_items(well_items)
+    # Fun pass 1: a run torn down any other way still pays like a quit (no UI here: the
+    # scene is leaving the tree). Bots only with --close-probe, which checks it.
+    var probe := autotest and OS.get_cmdline_user_args().has("--close-probe")
+    if (not autotest or probe) and not (game_over or victory or _abandoned or floor_number <= 0):
+        _abandoned = true
+        var death := int(Mastery.preview(floor_number, false, String(Loadout.current()["mark"]))["total"])
+        var before := Mastery.embers
+        var award: Dictionary = Mastery.award(floor_number, false, String(Loadout.current()["mark"]), QUIT_EMBERS)
+        Telemetry.run_end(self, false, award, true)
+        Progress.end_run(false, floor_number, total_kills, int(award.get("total", 0)), region_id, "")
+        if probe:
+            var paid := Mastery.embers - before
+            var want := roundi(float(death) * QUIT_EMBERS)
+            print("[QUIT-CHECK] %s close floor=%d death_award=%d paid=%d want=%d" % ["PASS" if death > 0 and absi(paid - want) <= 2 else "FAIL", floor_number, death, paid, want])
 
 
 ## Each region's start room has a Well: once per region one worn item can go down it.
@@ -1432,6 +1458,17 @@ func _drop_in_well(o: Dictionary, pl: Player, room: Room, id: String) -> void:
 
 ## Leaving a run that is still going (pause menu: hub, restart or quit) counts as a death
 ## and pays QUIT_EMBERS of its Embers. Once only; a run already over pays nothing more.
+const STAIRS_HEAL := 0.3
+
+
+## Closing the window (X, Alt+F4) mid-run quits like the pause menu's "Quit game": it pays
+## QUIT_EMBERS of the death award. Before fun pass 1 it paid nothing (run 958a87513ffc480a,
+## 2026-11-10: Telemetry closed the run itself, `abandoned` with 0 Embers).
+func _notification(what: int) -> void:
+    if what == NOTIFICATION_WM_CLOSE_REQUEST:
+        abandon_run()
+
+
 func abandon_run() -> void:
     if game_over or victory or _abandoned or floor_number <= 0:
         return

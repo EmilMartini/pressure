@@ -608,7 +608,11 @@ func _draw_top(vp: Vector2) -> void:
         return
     var cx := vp.x / 2.0
     _centered(34, "%s   %s" % [Regions.display_name(main.region_id).to_upper(), room.data.type_name().to_upper()], 28, Color(room.data.color(), 0.95), vp, true)
-    if room.active and room.data.type == RoomData.Type.ARENA:
+    if room.active and room.data.type == RoomData.Type.ARENA and not Main.old_balance:
+        # Fun pass 1: a room to clear; the count of what is left, not a timer.
+        var left := room.enemies_left()
+        _centered(96, "%d LEFT" % left, 40 if left > 3 else 48, Color(1.0, 0.75, 0.4) if left <= 3 else UiTheme.BONE, vp, true)
+    elif room.active and room.data.type == RoomData.Type.ARENA:
         var secs := ceili(room.wave_time_left)
         var col := Color(1.0, 0.35, 0.3) if secs <= 5 else UiTheme.BONE
         var size := 64 if secs > 5 else 72 + int(8.0 * absf(sin(_time * 8.0)))

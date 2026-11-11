@@ -107,6 +107,34 @@ const ELITE_SECS_P := 5.0   # bots kill these in a 2 to 3 s median (all guns foc
 ## is there to be mowed down. With the full B the mover died on floor 3 in 3 or 4 runs of 4.
 const CROWD_BUILD_POW := 0.35
 const BOSS_SECS_P := 35.0
+## Fun pass 1 (2026-11-10, Isaac's loop): an arena is a room to clear, not a wave to survive.
+## It spawns a fixed quota (CROWD_QUOTA fodder, CROWD_ALIVE of them alive at once, plus the
+## floor's key threats up to their alive budget, KEY_EXTRA more over the room, and the elite
+## timers) and clears when all of it is dead: about 20 to 30 s. Elite timers run on ROOM_SECS;
+## an elite still pending when the rest is dead comes at once. ROOM_MAX_SECS stops the wait
+## for anything stuck out of reach.
+const ROOM_SECS := 25.0
+const ROOM_MAX_SECS := 45.0
+const CROWD_ALIVE := [4, 5, 5, 6, 6]
+const CROWD_QUOTA := [9, 11, 12, 13, 14]
+const KEY_EXTRA := 4
+## Key threats alive at once in a clear-the-room arena: the floor budget + KEY_ALIVE_PLUS,
+## refilled every KEY_REFILL_ROOM s (short rooms need the threats sooner; standing still loses).
+const KEY_ALIVE_PLUS := 1
+const KEY_REFILL_ROOM := 1.2
+## Every cleared room pays something you can see (fun pass 1): the scrap burst, then ROOM_HEART
+## a heart, else ROOM_BONUS a bonus pick of 1 of 2 item cards. A clear also fills CLEAR_LEVEL of
+## the current level's XP bar (boss rooms BOSS_CLEAR_LEVEL), so a level comes about once a minute.
+const ROOM_HEART := 0.2
+const ROOM_BONUS := 0.18
+const CLEAR_LEVEL := 0.55
+const BOSS_CLEAR_LEVEL := 1.0
+var _crowd_left := 0
+var _keys_left := 0
+var _planned_n := 0
+var _spawned_n := 0
+var _room_t := 0.0
+var _spawn_done_t := -1.0
 var _key_t := KEY_FIRST
 var _syn0 := 0.0                    # Enemy.synergy_dealt when the arena wave began
 
@@ -115,11 +143,11 @@ var _syn0 := 0.0                    # Enemy.synergy_dealt when the arena wave be
 ## health (elites and bosses pay their own), the rest as the wave-end burst. Elites pay
 ## ELITE_SCRAP x m each, at most ELITE_PAID a room; the boss BOSS_SCRAP x m; a won challenge
 ## CHALLENGE_SCRAP x m. m = Items.depth_mult(floor).
-const ARENA_SCRAP := 25.0
+const ARENA_SCRAP := 17.0   # fun pass 1: 25 -> 17, six arenas a floor pay about what four did
 const KILL_SHARE := 0.7
 const ELITE_SCRAP := 4.0
 const ELITE_PAID := 3
-const BOSS_SCRAP := 30.0
+const BOSS_SCRAP := 45.0   # fun pass 1: 30 -> 45
 const CHALLENGE_SCRAP := 15.0
 ## Hearts (5.1): ARENA_HEART chance at an arena wave's end, ELITE_HEART per elite killed; a
 ## won challenge and a secret room always leave one.
@@ -328,13 +356,132 @@ func _begin_arena() -> void:
     _pay_frac = 0.0
     _spawned_hp = 0.0
     _elites_paid = 0
-    main.announce("Survive %d seconds" % int(wave_duration))
+    _room_t = 0.0
+    _spawn_done_t = -1.0
+    if not Main.old_balance:
+        var fi := clampi(main.floor_number, 1, CROWD_QUOTA.size()) - 1
+        wave_duration = ROOM_SECS
+        wave_time_left = ROOM_SECS
+        _elite_timer = ROOM_SECS * 0.3 if diff >= 2 else INF
+        _elite_timer2 = ROOM_SECS * 0.6 if main.floor_number >= 2 else INF
+        _crowd_left = int(CROWD_QUOTA[fi])
+        _keys_left = SpawnTable.key_budget(main.floor_number, main.floor_arenas_done()) + KEY_ALIVE_PLUS + KEY_EXTRA
+        _key_t = 1.5
+        _planned_n = _crowd_left + _keys_left
+        _spawned_n = 0
+        main.announce("Clear the room")
+    else:
+        main.announce("Survive %d seconds" % int(wave_duration))
     Sfx.play("wave_start")
+
+
+## Fun pass 1: what is still to kill in a clear-the-room arena (alive, still to come, elites).
+func enemies_left() -> int:
+    var n := _crowd_left + _keys_left + (0 if _elite_timer == INF else 1) + (0 if _elite_timer2 == INF else 1)
+    for e in enemies.get_children():
+        if e is Enemy and not e.is_queued_for_deletion() and e.hp > 0.0 and not e._corpse:
+            n += 1
+    return n
+
+
+func _alive_count() -> int:
+    var n := 0
+    for e in enemies.get_children():
+        if e is Enemy and not e.is_queued_for_deletion() and e.hp > 0.0 and not e._corpse:
+            n += 1
+    return n
+
+
+## Fun pass 1: the clear-the-room arena tick (Main.old_balance keeps the timed wave).
+func _tick_room(delta: float) -> void:
+    _room_t += delta
+    wave_time_left = maxf(0.0, ROOM_SECS - _room_t)
+    _spawn_timer -= delta
+    _elite_timer -= delta
+    _elite_timer2 -= delta
+    var alive := _alive_count()
+    var fi := clampi(main.floor_number, 1, CROWD_ALIVE.size()) - 1
+    if _spawn_timer <= 0.0:
+        _spawn_timer = 0.5
+        var target := int(CROWD_ALIVE[fi])
+        if _crowd_left > 0 and alive - _keys_alive() < target:
+            var before := enemies.get_child_count()
+            _spawn_group()
+            var made := maxi(1, enemies.get_child_count() - before)
+            _crowd_left = maxi(0, _crowd_left - made)
+            _spawned_n += made
+            _spawn_timer = 0.6 if _room_t > 2.0 else 0.25
+    if _keys_left > 0:
+        _key_t -= delta
+        if _key_t <= 0.0:
+            _key_t = KEY_REFILL_ROOM
+            var budget := SpawnTable.key_budget(main.floor_number, main.floor_arenas_done()) + KEY_ALIVE_PLUS
+            if _keys_alive() < budget and alive < SCREEN_CAP:
+                var kind := SpawnTable.key_kind(main.floor_number, main.floor_arenas_done())
+                if kind == "":
+                    _keys_left = 0
+                else:
+                    var e := _spawn_enemy(kind, _spawn_point())
+                    e.emerge = Enemy.EMERGE_SECS
+                    _keys_left -= 1
+                    _spawned_n += 1
+    # The rest is dead: a pending elite comes now, the room's last stand.
+    var rest_done := _crowd_left <= 0 and _keys_left <= 0 and alive == 0
+    if _elite_timer <= 0.0 or (rest_done and _elite_timer != INF):
+        _elite_timer = INF
+        _spawn_elite(SpawnTable.elite_count(diff_now(), main.floor_number))
+        return
+    if _elite_timer2 <= 0.0 or (rest_done and _elite_timer2 != INF):
+        _elite_timer2 = INF
+        _spawn_elite(SpawnTable.elite_count(diff_now(), main.floor_number))
+        return
+    if _crowd_left <= 0 and _keys_left <= 0 and _spawn_done_t < 0.0:
+        _spawn_done_t = _room_t
+    if (rest_done and _elite_timer == INF and _elite_timer2 == INF) or _room_t >= ROOM_MAX_SECS:
+        if main.autotest:
+            var left_kinds: Array = []
+            for e in enemies.get_children():
+                if e is Enemy and e.hp > 0.0:
+                    left_kinds.append("%s@%.0f,%.0f" % [e.kind_name, e.position.x, e.position.y])
+            print("[ROOM] clear floor=%d arena=%d secs=%.1f spawned_all_at=%.1f spawned=%d/%d alive=%d dps=%.0f left=%s" % [main.floor_number, main.floor_arenas_done() + 1, _room_t, _spawn_done_t, _spawned_n, _planned_n, alive, ((Enemy.dealt_total - _dealt0) / maxf(1.0, _room_t)), ",".join(left_kinds)])
+        var dealt := (Enemy.dealt_total - _dealt0) - 0.5 * (Enemy.synergy_dealt - _syn0)
+        main.note_arena_dps(dealt / maxf(8.0, _room_t))
+        Telemetry.wave_end(self, _floor_pedestals(), _floor_scrap())
+        _finish_fight(maxi(0, int(roundf(_budget - _budget_paid))))
+        _room_reward()
+        _arena_gun_pick()
+
+
+func diff_now() -> int:
+    return main.difficulty()
+
+
+func _keys_alive() -> int:
+    var n := 0
+    for e in enemies.get_children():
+        if e is Enemy and not e.is_queued_for_deletion() and e.hp > 0.0 and (SpawnTable.KEY.has(e.kind_name) or e.kind_name == "elite"):
+            n += 1
+    return n
+
+
+## Fun pass 1: a cleared room always shows something: a heart, else now and then a bonus pick
+## of 1 of 2 item cards (never in floor 1's gun-pick rooms, which already offer a choice).
+func _room_reward() -> void:
+    var gun_room := main.floor_number == 1 and main.floor_arenas_done() <= FLOOR1_GUN_PICKS
+    if randf() < ROOM_HEART:
+        drop_heart(Vector2.ZERO, true)
+    elif not gun_room and randf() < ROOM_BONUS / (1.0 - ROOM_HEART):
+        _reward_cards("bonus", "treasure", "shop", ["", ""], Items.Rarity.COMMON, -150.0)
+        _build_pedestals()
+        main.announce("Bonus: choose 1 of 2")
 
 
 func _tick_arena(delta: float) -> void:
     var diff := main.difficulty()
     Music.set_intensity(clampf(float(enemies.get_child_count()) / 6.0, 0.15, 1.0))
+    if not Main.old_balance:
+        _tick_room(delta)
+        return
     var before := ceili(wave_time_left)
     wave_time_left -= delta
     if wave_time_left <= 3.0 and ceili(wave_time_left) != before:
@@ -565,6 +712,9 @@ func _pay_kill(e: Enemy) -> void:
     # The room's total spawned health, extrapolated over the wave from what has come so far.
     var elapsed := maxf(8.0, wave_duration - wave_time_left)
     var expected := maxf(1.0, _spawned_hp * maxf(1.0, wave_duration / elapsed))
+    if not Main.old_balance:
+        # A clear-the-room arena: the total from what came so far and the room's quota.
+        expected = maxf(1.0, _spawned_hp * maxf(1.0, float(_planned_n) / float(maxi(1, _spawned_n))))
     var pool := _budget * KILL_SHARE
     var pay := minf(pool * e.max_hp / expected, pool - _budget_paid)
     if pay <= 0.0:
@@ -844,6 +994,8 @@ func _tick_boss(delta: float) -> void:
         for id in ways:
             data.stock.append(FloorGen.offer("stairs", String(id), 0))
         _finish_fight(30 if Main.old_balance else int(roundf(BOSS_SCRAP * Items.depth_mult(main.floor_number))))
+        if not Main.old_balance:
+            drop_heart(Vector2.ZERO, true)   # fun pass 1: the boss always leaves a heart too
         _build_pedestals()
         Music.boss_phase(0)
         if show != null and is_instance_valid(show):
@@ -879,13 +1031,21 @@ func _finish_fight(bonus_scrap: int) -> void:
         e.vanish()
     for sh in get_tree().get_nodes_in_group("enemy_projectiles"):
         sh.queue_free()
-    _drop_scrap(Vector2.ZERO, bonus_scrap, 6)
+    _drop_scrap(Vector2.ZERO, bonus_scrap, 6 if Main.old_balance else 10)
     # Everything left on the floor flies to the party: no walking the room for scrap.
     for c in pickups.get_children():
         if c is Scrap or c is Heart:
             c.vacuum = true
     main.on_room_cleared(self)
     Sfx.play("cleared")
+    if not Main.old_balance:
+        Sfx.play("buy", -4.0)   # fun pass 1: the clear's scrap burst jingles
+        # Fun pass 1: a clear fills part of the level bar, so a level comes about once a
+        # minute and its pick opens here, at the clear.
+        var share := BOSS_CLEAR_LEVEL if data.type == RoomData.Type.BOSS else CLEAR_LEVEL
+        for pl in main.players:
+            if pl.alive:
+                pl.gain_xp(pl.xp_to_next() * share)
     for pl in main.players:
         if pl.alive:
             Items.fire(pl, "room_clear", { "pos": pl.global_position })
@@ -1222,6 +1382,9 @@ func _build_doors() -> void:
         add_child(door)
         doors[d] = door
         door.entered.connect(func(dir: Vector2i): door_entered.emit(dir))
+        var to_room: RoomData = main.rooms.get(data.doors[d]["to"]) if main != null else null
+        if to_room != null and to_room.type == RoomData.Type.TREASURE and not to_room.visited and not Main.old_balance:
+            door.treasure = true
         var ob: String = data.doors[d]["obstacle"]
         if ob == "secret":
             door.set_secret(_secret_method(d))

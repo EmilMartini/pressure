@@ -17,6 +17,9 @@ var secret: SecretWall = null   # a hidden room's way in, looking like plain wal
 var _blocker_shape: CollisionShape2D
 var _lock: Sprite2D
 var _armed := false   # ignore overlaps until the room has settled
+## Fun pass 1: the doorway into a floor's unvisited item room glows gold, a reward in sight.
+var treasure := false
+var _glow_t := 0.0
 
 
 func _init(p_dir: Vector2i, gap: float, depth: float) -> void:
@@ -113,6 +116,12 @@ func _on_body_entered(body: Node) -> void:
         entered.emit(dir)
 
 
+func _process(delta: float) -> void:
+    if treasure:
+        _glow_t += delta
+        queue_redraw()
+
+
 func _physics_process(_delta: float) -> void:
     # A player who walks into an open doorway after it armed also counts, even if the
     # overlap began earlier (for example while the door was still locked).
@@ -127,6 +136,10 @@ func _physics_process(_delta: float) -> void:
 
 func _draw() -> void:
     var r := Rect2(-size / 2.0, size)
+    if treasure:
+        var k := 0.5 + 0.5 * sin(_glow_t * 3.0)
+        draw_rect(r.grow(10.0), Color(1.0, 0.8, 0.3, 0.10 + 0.08 * k))
+        draw_rect(r.grow(4.0), Color(1.0, 0.85, 0.4, 0.22 + 0.12 * k))
     match state:
         State.LOCKED:
             draw_rect(r, Color(0.02, 0.02, 0.03))
