@@ -29,7 +29,7 @@ const CAP := 40
 const FADE := 1.0
 const TRAIL_STEP := 24.0
 const TRAIL_MAX := 30
-const TRAIL_HALF := 9.0
+const TRAIL_HALF := 14.0      # half the trail's width: foes chasing you walk your line
 const PACK_R := 60.0
 const SNARE_LEAD := 0.6
 const SNARE_MIN := 40.0
@@ -43,6 +43,7 @@ const FILL_A := 0.12
 const HOLD := 1.2          # snares: seconds a foe is held (elites and bosses HOLD_ELITE)
 const HOLD_ELITE := 0.4
 const PLACE_DB := -10.0
+const GEYSER_R := 25.0
 const SPREAD := 0.75        # totems and fields: no new one within this share of the radius of another
 ## Effects kept up per weapon by style, before +1 projectile and Ground items.
 const STYLE_CAP := { "aura": 1, "trail": 1, "totem": 2, "field": 2, "snare": 3, "glyph": 6, "pod": 4, "pulse": 2 }
@@ -50,6 +51,7 @@ const STYLE_CAP := { "aura": 1, "trail": 1, "totem": 2, "field": 2, "snare": 3, 
 const TRAP_LIFE := { "snare": 10.0, "glyph": 8.0, "pod": 8.0 }
 
 static var _born := 0
+static var _test_cap := -1
 static var _dash := PackedVector2Array()   # a unit circle as 24 dashes (draw_multiline pairs)
 
 var gun: Gun
@@ -65,6 +67,7 @@ var _pts := PackedVector2Array()     # trail: segment points, oldest first
 var _pt_t := PackedFloat32Array()    # trail: when each point was laid (zone time)
 var _queue: Array = []               # pulse: [distance, enemy] not yet reached by the front
 var _dur := 0.4                      # pulse: seconds to roll out
+var _burst_k := 0                    # Geyser Field: which foe the next geyser bursts under
 var _el_flip := false                # two-element fields alternate per tick
 
 
@@ -170,8 +173,19 @@ static func cap_of(g: Gun) -> int:
         return 1
     var base := g.data.cap if g.data.cap > 0 else int(STYLE_CAP.get(st, 2))
     base += maxi(0, g.shot_count() - g.data.projectile_count)
-    base += int(g.player.stat("trap_cap"))
+    base += int(g.player.stat("trap_cap")) + test_cap()
     return maxi(1, base)
+
+
+## `--ground-cap=N` (perf checks only): N more effects per weapon and 3N more trail points,
+## so a test can fill the 40-effect cap without the items.
+static func test_cap() -> int:
+    if _test_cap < 0:
+        _test_cap = 0
+        for a in OS.get_cmdline_user_args():
+            if a.begins_with("--ground-cap="):
+                _test_cap = maxi(0, int(a.substr(13)))
+    return _test_cap
 
 
 ## A zone's radius (2.2): half the range bonus, +10% per pierce, the size stats and Ground
@@ -455,6 +469,18 @@ func _tick_zone(delta: float) -> void:
                     fx.ray(c + Vector2(0, -14), e.global_position, Color(s.color, 0.5), 0.12, 1.0)
             _pressured()
             return
+        "geyser_field":
+            # A geyser bursts under one foe in the field each tick (turn about), splashing
+            # GEYSER_R px: steam where it lands, not over the whole field.
+            _burst_k += 1
+            var at: Vector2 = foes[_burst_k % foes.size()].global_position
+            for e in Strike.enemies_in(tree, at, GEYSER_R):
+                s.hit(e, 1.0, e.global_position)
+            var fx := Strike.fx_of(self)
+            if fx != null:
+                fx.pixels(gun.data.element, at, 5, 60.0, 4.0)
+            _pressured()
+            return
         "lightning_rods":
             for e in foes:
                 s.hit(e, 1.0, e.global_position)
@@ -550,7 +576,7 @@ func _tick_trail(delta: float) -> void:
         _pt_t.append(_t)
         changed = true
     var keep := life_of(gun)
-    var cap := TRAIL_MAX + 3 * int(p.stat("trap_cap"))
+    var cap := TRAIL_MAX + 3 * (int(p.stat("trap_cap")) + test_cap())
     while not _pts.is_empty() and (_t - _pt_t[0] > keep or _pts.size() > cap):
         _pts.remove_at(0)
         _pt_t.remove_at(0)
