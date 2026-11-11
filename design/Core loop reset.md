@@ -1696,7 +1696,7 @@ Frostvault, then the Forge or the Chapel). Before = the same build with `--class
 
 | Check | Before (classic roster) | After (region rosters) | Pass |
 |---|---|---|---|
-| Stand-still dies by floor 3 | 3 of 3 died on floor 4 (two arenas, one boss room) | 2 of 3 died on floor 3, 1 in the floor-4 boss room | better, not all |
+| Stand-still dies by floor 3 | 3 of 3 died on floor 4 (two arenas, one boss room) | 2 of 4 died on floor 3, 2 in the floor-4 boss room | better, not all |
 | Idle damage a minute, floors 2 / 3 (bars) | 0.64 to 0.80 / 1.00 to 1.16 | 0.47 to 0.70 / 1.12 to 3.96 | |
 | Movers reach floor 3 to 4 | (fun pass 1: 3 of 3 won) | 5 of 5 won (4 with the build, 1 fresh save from floor 1) | yes |
 | Movers under pressure from floor 3 (time under 50%) | | 0.00 to 0.07 | no (as fun pass 1 found) |
@@ -1706,7 +1706,7 @@ Frostvault, then the Forge or the Chapel). Before = the same build with `--class
 | Spawns | | `[SPAWN-CHECK] PASS`, 0 close, in every run | yes |
 | Old rule: six-gun idle, first region | | died on floor 1 at 32 s | yes |
 | Fusion probe, hub walk, load check | | `[FUSION-CHECK] PASS`, `[HUB-WALK] PASS`, `[HUB-FRESH] PASS`; 0 `SCRIPT ERROR` in every log | yes |
-| `tools/exe_smoke.sh` | | `[SMOKE] ALL PASS` | yes |
+| `tools/exe_smoke.sh` | | `[SMOKE] ALL PASS` (after rebasing onto arsenal batch 3) | yes |
 
 Before fun pass 1 landed (the timed waves, same build, routes to the Forge or the Chapel): the
 classic roster's movers reached floor 4 3 of 3 and the roster's 3 of 3 (one won); floor-3 time
