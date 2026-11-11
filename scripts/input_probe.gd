@@ -23,6 +23,7 @@ static func reward(main) -> void:
     var p: Player = main.players[0]
     main.bot_paused = true
     p.input.force_move = Vector2.ZERO
+    p.global_position = room.to_global(Vector2.ZERO)
     _free_guns(main)
     var keep_type: int = room.data.type
     room.data.type = RoomData.Type.CHALLENGE
@@ -104,6 +105,9 @@ static func _hold_case(main, label: String, down: InputEvent, up: InputEvent, pa
     var room: Room = Room.here
     var p: Player = main.players[0]
     var tree: SceneTree = main.get_tree()
+    # The room centre, clear of door triggers (the bot may have stopped by a door).
+    p.global_position = room.to_global(Vector2.ZERO)
+    p.velocity = Vector2.ZERO
     var o := _plinth(room, p)
     p.level = maxi(2, p.level)
     main.levelup.open(p)
