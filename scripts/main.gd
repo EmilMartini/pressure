@@ -1349,6 +1349,8 @@ func _on_player_died(_p: Player) -> void:
     if autotest:
         print("[DEATH] floor=%d region=%s room=%s diff=%d t=%.0f kills=%d level=%d" % [floor_number, region_id, current.data.type_name() if current else "-", difficulty(), _clock, total_kills, players[0].level])
         _print_arena("death")
+        if current != null and current.boss != null and is_instance_valid(current.boss):
+            print("[BOSS-LOSS] kind=%s secs=%.1f boss_hp=%.2f" % [current.boss.boss_kind, current._boss_secs, current.boss.hp / maxf(1.0, current.boss.max_hp)])
     pressure_meter.flush(true)
     _end_run(false)
 
@@ -2327,6 +2329,27 @@ func _bot_dash(p: Player) -> void:
         if en._fuse > 0.0 and en._fuse < BOT_DASH_LOOK and en.global_position.distance_to(pos) <= Enemy.BOMB_RADIUS + p.radius:
             danger = en.global_position
         var toward := false
+        if en._slam_warn > 0.0 and en._slam_warn < BOT_DASH_LOOK and en._leap_to.distance_to(pos) <= (Enemy.LEAP_R if en._leap else Enemy.SLAM_R) + p.radius:
+            danger = en._leap_to   # a Brute King slam about to land
+        for sk in en._strikes:
+            # A Storm Warden strike circle about to land on us.
+            var skr := en.radius * Enemy.STRIKE_SELF_R if sk["self"] else Enemy.STRIKE_R
+            if float(sk["warn"]) > 0.0 and float(sk["warn"]) < BOT_DASH_LOOK and Vector2(sk["pos"]).distance_to(pos) <= skr + p.radius:
+                danger = Vector2(sk["pos"])
+        if en._burrow_state == 2 and en._burrow_t < BOT_DASH_LOOK and en._burrow_at.distance_to(pos) <= Enemy.ERUPT_R + p.radius:
+            danger = en._burrow_at   # the Hive Mother bursting up under us
+        if danger == Vector2.INF:
+            for wv in en._waves:
+                # A shockwave arc about to reach us: dash through it, toward where it began.
+                if float(wv["warn"]) > 0.0:
+                    continue
+                var tw: Vector2 = pos - Vector2(wv["o"])
+                var gap := tw.length() - float(wv["r"])
+                if gap > 0.0 and gap < float(wv["speed"]) * BOT_DASH_LOOK + 16.0 \
+                        and absf(angle_difference(float(wv["a"]), tw.angle())) <= float(wv["hw"]) + 0.1:
+                    danger = Vector2(wv["o"])
+                    toward = true
+                    break
         if danger == Vector2.INF and Bestiary.has(en.kind_name):
             var bt := Bestiary.bot_threats(en, pos)
             if bool(bt["dash"]):

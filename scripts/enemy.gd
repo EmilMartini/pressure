@@ -365,6 +365,28 @@ const BRUTE_BARREL_CAP := 4
 const BARREL_HIT_R := 34.0
 const GUT_RADIUS := 130.0
 const GUT_WARN := 1.1
+## Brute King ground slam (Boss patterns, 2026-11-11): close in, he rears up inside a marked
+## circle, then slams it. Phase 2+: the slam throws four arcs of shockwave aimed at you with
+## gaps between them (step into a gap or dash through); phase 3: a second slam follows, aimed
+## again. Each phase change opens with a roar slam.
+const SLAM_R := 150.0
+const SLAM_RANGE := 220.0
+const SLAM_WARN := 0.9
+const SLAM_ARC := PI / 4.0 * 0.62   # half width of each shockwave arc (gaps of ~34 degrees)
+var _slam_warn := 0.0
+var _slam_warn0 := 1.0
+var _slam_cd := 3.5
+var _slam_more := 0
+var _slam_marks: Array = []   # [{ "o", "t", "s" }] cracks left where he slammed (cosmetic)
+var _king_phase := 1
+## Leap slam: out of slam range he crouches, leaps and lands on where you stood, inside a
+## marked circle (LEAP_R) that shows for the whole wind-up.
+const LEAP_R := 110.0
+const LEAP_CROUCH := 0.4      # share of the wind-up spent crouched before he leaves the floor
+var _leap := false
+var _leap_from := Vector2.ZERO
+var _leap_to := Vector2.ZERO
+var _lob_t := 2.5             # Hive Mother: brood spit (shells on you and round you)
 var _burrow_state := 0       # Hive Mother: 1 digging in (wind-up), 2 underground, 0 above
 var _burrow_t := 0.0
 var _burrow_at := Vector2.ZERO
@@ -377,6 +399,7 @@ var _strikes: Array = []     # Storm Warden: [{ "pos", "warn", "flash", "self" }
 var _strike_t := 1.5
 var _storm_trail := 0.0
 const STRIKE_R := 58.0
+const BURST_WARN := 0.55       # Storm Warden: wind-up before a bolt burst
 const STRIKE_SELF_R := 1.6     # x radius: a recharge strike on himself
 var _wells: Array = []        # Void Herald: gravity wells [{ "pos", "r", "warn", "t" }]
 var _volleys: Array = []      # Void Herald phase 3: shards closing in [{ "from", "to", "warn", "t", "hit" }]
@@ -1457,7 +1480,7 @@ func _physics_process(delta: float) -> void:
                 Sfx.play_at("hit_wall", global_position, -2.0)
                 break
 
-    if target != null and _contact_cd <= 0.0 and is_instance_valid(target) and _burrow_state != 2:
+    if target != null and _contact_cd <= 0.0 and is_instance_valid(target) and _burrow_state != 2 and not (_leap and _slam_warn > 0.0):
         var reach := contact_reach() + target.radius + 2.0
         if global_position.distance_squared_to(target.global_position) <= reach * reach:
             var hit := contact_damage
@@ -1736,7 +1759,7 @@ func _tick_shells(delta: float) -> void:
         _shells.remove_at(i)
         var at: Vector2 = sh["at"]
         var r := float(sh["r"])
-        var col := Color(0.55, 0.85, 0.35) if kind_name == "spitter" else Color(0.95, 0.65, 0.3)
+        var col := Color(0.55, 0.85, 0.35) if kind_name == "spitter" or boss_kind == "hive_mother" else Color(0.95, 0.65, 0.3)
         Elements.nova.emit(at, r, Color(col, 0.6))
         var fx := _fx()
         if fx != null:
@@ -1915,6 +1938,11 @@ func _tick_boss_passive(delta: float) -> void:
                 Elements.nova.emit(s["pos"], 30.0, Color(base_color, 0.6))
     match boss_kind:
         "brute_king":
+            _tick_flame_waves(delta)
+            for i in range(_slam_marks.size() - 1, -1, -1):
+                _slam_marks[i]["t"] = float(_slam_marks[i]["t"]) - delta
+                if float(_slam_marks[i]["t"]) <= 0.0:
+                    _slam_marks.remove_at(i)
             for i in range(_barrels.size() - 1, -1, -1):
                 var b: Dictionary = _barrels[i]
                 b["t"] = float(b["t"]) + delta
@@ -2166,6 +2194,12 @@ func _draw_pyre_hostile(cv: CanvasItem) -> void:
             Hostile.dash_ring(cv, lp, float(hz["r"]) * (1.0 - 0.3 * warn), 0.6 + 0.4 * absf(sin(_fx_t * 12.0)), 3.0)
         else:
             Hostile.dash_ring(cv, lp, float(hz["r"]), 0.7 * clampf(float(hz["t"]), 0.0, 1.0))
+    _draw_waves(cv)
+
+
+## Arc shockwaves (Pyre Lord flame waves, Brute King slam): the wind-up shows the arc at his
+## feet and its reach, then the band rolls out.
+func _draw_waves(cv: CanvasItem) -> void:
     for wv in _waves:
         var o := to_local(wv["o"])
         var a := float(wv["a"])
@@ -2439,7 +2473,7 @@ func _think_warden(delta: float, target: Player, dir: Vector2, dist: float, mult
     if _t1 <= 0.0 and _burst_left <= 0:
         _t1 = [3.0, 2.6, 2.4][clampi(_phase - 1, 0, 2)]
         _burst_left = 5 if _phase < 3 else 3
-        _burst_t = 0.0
+        _burst_t = BURST_WARN   # the rods glow before the first bolt (Boss patterns: >= 0.5 s tells)
     if _burst_left > 0:
         _burst_t -= delta
         if _burst_t <= 0.0:
@@ -2536,6 +2570,12 @@ func _land_strike(sk: Dictionary) -> void:
 
 
 func _draw_warden_hostile(cv: CanvasItem) -> void:
+    if _burst_left > 0 and _burst_t > 0.13 and hp > 0.0:
+        # The burst winds up: a crackling ring closing on him.
+        var kb := 1.0 - (_burst_t - 0.13) / (BURST_WARN - 0.13)
+        var ab := 0.5 + 0.4 * absf(sin(_fx_t * 20.0))
+        cv.draw_arc(Vector2.ZERO, radius * (1.9 - 0.6 * kb), 0.0, TAU, 32, Color(Hostile.DARK, 0.8), 5.0)
+        cv.draw_arc(Vector2.ZERO, radius * (1.9 - 0.6 * kb), 0.0, TAU, 32, Color(Hostile.RED, ab), 2.0)
     for sk in _strikes:
         var at := to_local(sk["pos"])
         var r := radius * STRIKE_SELF_R if sk["self"] else STRIKE_R
@@ -2870,6 +2910,16 @@ func _think_hive(delta: float, target: Player, dir: Vector2, dist: float, mult: 
         var w := _world()
         if w != null:
             Cloud.spawn(w, body.part_world(body.part_index("sacs")) + Vector2(randf_range(-40.0, 40.0), randf_range(-20.0, 30.0)), Element.Kind.POISON, 70.0, 6.0, 1.0, null)
+    _lob_t -= delta
+    if _lob_t <= 0.0:
+        # Brood spit: shells land on you and round where you are heading (rings first).
+        _lob_t = [4.5, 4.0, 3.4][ph]
+        var aim := target.global_position + target.velocity * 0.35
+        var sdmg := _projectile_damage(6.0) * SHELL_DMG
+        _lob_at(aim, SHELL_WARN, 50.0, sdmg)
+        for k in [2, 3, 4][ph]:
+            _lob_at(_pick_point_near(aim, 80.0, 160.0), SHELL_WARN + 0.15 * float(k + 1), 50.0, sdmg)
+        _squash = 1.0
     if _phase >= 2 and _t3 <= 0.0 and _mode == MODE_CHASE:
         _t3 = 6.0 if _phase == 2 else 8.0
         _burrow_state = 1
@@ -2926,6 +2976,32 @@ func _think_brute(delta: float, target: Player, dir: Vector2, dist: float, mult:
         if _gut_warn <= 0.0:
             _gut_blast()
         return Vector2.ZERO
+    _slam_cd -= delta
+    if _phase > _king_phase:
+        # The phase change opens with a roar and a slam: the new pattern, announced.
+        _king_phase = _phase
+        _mode = MODE_CHASE
+        _start_slam(1.2)
+        _slam_more = 1 if _phase >= 3 else 0
+        return Vector2.ZERO
+    if _slam_warn > 0.0:
+        _slam_warn -= delta
+        if _leap:
+            var k := clampf(1.0 - _slam_warn / maxf(0.01, _slam_warn0), 0.0, 1.0)
+            if k > LEAP_CROUCH:
+                global_position = _leap_from.lerp(_leap_to, smoothstep(LEAP_CROUCH, 1.0, k))
+        if _slam_warn <= 0.0:
+            if _leap:
+                global_position = _leap_to
+            _slam(target)
+        return Vector2.ZERO
+    if _mode == MODE_CHASE and _slam_cd <= 0.0:
+        if dist <= SLAM_RANGE:
+            _start_slam(SLAM_WARN if _phase < 3 else 0.75)
+        else:
+            _start_slam(1.0 if _phase < 3 else 0.85, _pick_point_near(target.global_position, 0.0, 20.0))
+        _slam_more = 1 if _phase >= 3 else 0
+        return Vector2.ZERO
     var lure := Vector2.INF
     if _phase >= 2 and _swallowed < 3:
         lure = _swallow_near()
@@ -2938,6 +3014,48 @@ func _think_brute(delta: float, target: Player, dir: Vector2, dist: float, mult:
     if _phase < 3:
         return _charge_ai(delta, dir, dist, mult, 0.8, 480.0, 0.6, 2.5 if _phase == 1 else 1.8, 340.0)
     return _charge_ai(delta, dir, dist, mult, 0.5, 540.0, 0.6, 1.2, 420.0)
+
+
+## A slam where he stands, or with `to` a leap slam onto `to`.
+func _start_slam(warn: float, to: Vector2 = Vector2.INF) -> void:
+    _slam_warn = warn
+    _slam_warn0 = warn
+    _leap = to != Vector2.INF
+    _leap_from = global_position
+    _leap_to = to if _leap else global_position
+    Sfx.play_at("hit_wall", global_position, -8.0)
+    if BossBody.log_enabled and body != null:
+        print("[BOSS-MOVE] t=%.1f kind=brute_king %s phase=%d" % [body.age, "leap_windup" if _leap else "slam_windup", _phase])
+
+
+## The slam lands: everyone inside the circle is hurt; phase 2+ it throws the shockwave arcs.
+func _slam(target: Player) -> void:
+    var at := global_position
+    var sr := LEAP_R if _leap else SLAM_R
+    _leap = false
+    for p in get_tree().get_nodes_in_group("players"):
+        if is_instance_valid(p) and p.alive and p.global_position.distance_to(at) <= sr + 12.0:
+            Telemetry.hurt_hint = "slam:" + Telemetry.enemy_label(self)
+            p.take_damage(_projectile_damage(11.0) * damage_mult, self, at)
+    Elements.nova.emit(at, sr, Color(0.8, 0.62, 0.45, 0.8))
+    Sfx.play_at("hit_wall", at, 3.0)
+    var fx := _fx()
+    if fx != null:
+        fx._shake(7.0)
+        fx.puff(Art.PARTICLES["smoke"], at, Color(0.32, 0.27, 0.22, 0.7), sr * 1.5, 0.6, false, Vector2(0, -15))
+    _squash = 1.0
+    _slam_marks.append({ "o": at, "t": 1.4, "s": randf() * TAU })
+    if _phase >= 2:
+        var aim := (target.global_position - at).angle() if target != null and is_instance_valid(target) else randf() * TAU
+        for k in 4:
+            _add_wave(aim + float(k) * PI / 2.0, SLAM_ARC, 250.0)
+    if _slam_more > 0:
+        _slam_more -= 1
+        _start_slam(0.7)
+    else:
+        _slam_cd = [3.6, 3.0, 2.6][clampi(_phase - 1, 0, 2)]
+    if BossBody.log_enabled and body != null:
+        print("[BOSS-MOVE] t=%.1f kind=brute_king slam phase=%d" % [body.age, _phase])
 
 
 func _throw_barrel(to: Vector2) -> void:
@@ -3009,6 +3127,25 @@ func _gut_blast() -> void:
 
 
 func _draw_brute_hostile(cv: CanvasItem) -> void:
+    for m in _slam_marks:
+        # Cracks in the floor where he slammed, fading (cosmetic, so dark, never red).
+        var o := to_local(m["o"])
+        var ca := 0.75 * clampf(float(m["t"]) / 0.6, 0.0, 1.0)
+        for j in 8:
+            var a := float(m["s"]) + TAU * float(j) / 8.0
+            var pts := PackedVector2Array([o])
+            for q in 3:
+                pts.append(o + Vector2.from_angle(a + 0.25 * sin(float(m["s"]) * 7.0 + float(j * 3 + q))) * SLAM_R * (0.35 + 0.28 * float(q)))
+            cv.draw_polyline(pts, Color(0.08, 0.05, 0.03, ca), 3.0)
+    if _slam_warn > 0.0 and hp > 0.0:
+        var ks := 1.0 - _slam_warn / maxf(0.01, _slam_warn0)
+        var ka := 0.5 + 0.4 * absf(sin(_fx_t * 16.0))
+        var sc := to_local(_leap_to) if _leap else Vector2.ZERO
+        var srr := LEAP_R if _leap else SLAM_R
+        cv.draw_circle(sc, srr * ks, Color(Hostile.RED, 0.16))
+        cv.draw_arc(sc, srr, 0.0, TAU, 48, Color(Hostile.DARK, 0.8), 6.0)
+        cv.draw_arc(sc, srr, 0.0, TAU, 48, Color(Hostile.RED, ka), 2.5)
+    _draw_waves(cv)
     for b in _barrels:
         var k := float(b["t"]) / float(b["dur"])
         var to := to_local(b["to"])
@@ -3070,6 +3207,8 @@ func _update_sprite() -> void:
         c = c.lerp(Color(1, 0.3, 0.2), 0.7)
     if _crouch_t > 0.0:
         c = c.lerp(Color(1, 0.3, 0.2), 0.6)
+    if _slam_warn > 0.0 and fmod(_slam_warn, 0.16) < 0.08:
+        c = c.lerp(Color(1, 0.3, 0.2), 0.7)
     if _fuse >= 0.0 and fmod(_fuse, 0.1) < 0.05:
         c = c.lerp(Color(1, 1, 0.6), 0.8)
     if kind_name == "boss" and _phase >= 2:
@@ -3081,7 +3220,7 @@ func _update_sprite() -> void:
         # One overbright frame: the body goes white for a beat. A telegraph (red crouch, lit
         # fuse, wind-up) keeps its colour: the tell is the clearest thing on screen.
         _white_frames -= 1
-        if _crouch_t <= 0.0 and _fuse < 0.0 and _mode != MODE_TELEGRAPH:
+        if _crouch_t <= 0.0 and _fuse < 0.0 and _mode != MODE_TELEGRAPH and _slam_warn <= 0.0:
             c = Color(2.4, 2.4, 2.4, c.a) if Settings.flag("flashes") else Color(1.0, 1.0, 1.0, c.a)
     _sprite.modulate = c
     if absf(velocity.x) > 1.0:
@@ -3098,6 +3237,9 @@ func _update_sprite() -> void:
         hop = 1.5 + 1.5 * sin(_fx_t * 5.0 + float(get_instance_id() % 7))   # a hover, not a hop
     var s := _sprite_scale * (_spawn_t + 0.35 * sin(_spawn_t * PI))
     _sprite.scale = Vector2(s * (1.0 + 0.4 * _squash), s * (1.0 - 0.4 * _squash))
+    if _slam_warn > 0.0:
+        var rear := 1.0 - _slam_warn / maxf(0.01, _slam_warn0)
+        _sprite.scale *= Vector2(1.0 - 0.12 * rear, 1.0 + 0.22 * rear)   # he rears up
     _stretch = move_toward(_stretch, 1.0 if _lunge_t > 0.0 else 0.0, delta * 10.0)
     if _stretch > 0.01:
         _sprite.scale *= Fx.stretch(velocity, 0.3 * _stretch)
@@ -3107,6 +3249,10 @@ func _update_sprite() -> void:
         var br := sin(_fx_t * (2.2 + 0.7 * float(_phase - 1)))
         _sprite.scale *= Vector2(1.0 - 0.025 * br, 1.0 + 0.045 * br)
     _sprite.position = Vector2(0, -hop) + _kick
+    if _leap and _slam_warn > 0.0:
+        var kl := clampf(1.0 - _slam_warn / maxf(0.01, _slam_warn0), 0.0, 1.0)
+        if kl > LEAP_CROUCH:
+            _sprite.position.y -= sin(PI * (kl - LEAP_CROUCH) / (1.0 - LEAP_CROUCH)) * 70.0   # in the air
     _sprite.rotation = (sin(_anim_t) * 0.12 if moving else 0.0)
 
 

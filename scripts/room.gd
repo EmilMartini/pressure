@@ -62,6 +62,7 @@ var _add_timer := 0.0
 var _add_time_left := 0.0
 var _dealt0 := 0.0                  # Enemy.dealt_total when the arena wave began
 var _boss_secs := 0.0               # game seconds since the boss rose
+var _boss_hurt0 := -1.0             # bots: player 1's hurt_total when the fight clock started
 var _boss_p2 := -1.0                # game seconds when it reached phase two
 
 ## Floors 2+: the boss is sized to what the party's build actually deals. Its health is at
@@ -1015,6 +1016,8 @@ func _tick_boss(delta: float) -> void:
         return   # the entrance and the beat after the death hold the fight clock and the adds
     var was := _boss_secs
     _boss_secs += delta
+    if _boss_hurt0 < 0.0 and not main.players.is_empty():
+        _boss_hurt0 = main.players[0].hurt_total
     if boss != null and is_instance_valid(boss):
         boss.pace_t = _boss_secs
     if main.autotest and OS.get_cmdline_user_args().has("--boss-shot") and boss != null and is_instance_valid(boss):
@@ -1350,9 +1353,10 @@ func _on_enemy_died(e: Enemy) -> void:
         Progress.add("bosses")
         if main.autotest:
             var pl: Player = main.players[0]
-            print("[BOSS] floor=%d kind=%s secs=%.1f phase2=%.1f max_hp=%.0f arena_dps=%.0f player_hp=%.0f/%.0f low=%.2f boss_dps=%.0f paced=%.2f" % [
+            print("[BOSS] floor=%d kind=%s secs=%.1f phase2=%.1f max_hp=%.0f arena_dps=%.0f player_hp=%.0f/%.0f low=%.2f boss_dps=%.0f paced=%.2f hurt=%.0f" % [
                 main.floor_number, e.boss_kind, _boss_secs, _boss_p2, e.max_hp, main.floor_arena_dps(), pl.hp, pl.max_hp, low_hp,
-                (e.max_hp + e.pace_lost) / maxf(0.1, _boss_secs), e.pace_lost / maxf(1.0, e.max_hp + e.pace_lost)])
+                (e.max_hp + e.pace_lost) / maxf(0.1, _boss_secs), e.pace_lost / maxf(1.0, e.max_hp + e.pace_lost),
+                pl.hurt_total - maxf(0.0, _boss_hurt0)])
             if e.body != null:
                 print("[BOSS-BODY] kind=%s secs=%.1f max_hp=%.0f %s" % [e.boss_kind, _boss_secs, e.max_hp, e.body.summary()])
             if OS.get_cmdline_user_args().has("--boss-only"):
