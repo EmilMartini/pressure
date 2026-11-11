@@ -233,7 +233,7 @@ delivered on paper but misses what Emil meant.
 | Request | Status | Evidence |
 |---|---|---|
 | Bosses as cool creatures with phases and elemental chains, such as steaming a fire boss and shocking the steam (11-06) | ⚠ Partly | Phase 0b: body parts, stagger, three phases, quench vats, name card, phase music. The chain example works on the Pyre Lord. But see section 4: none is a "creature" yet |
-| "Wow factor" bosses (11-09) | Not delivered | Section 4 |
+| "Wow factor" bosses (11-09) | ⚠ Partly | Section 4. 2026-11-11: three or more telegraphed patterns per boss, a leap slam and roar slam for the Brute King (`design/Boss patterns.md`) |
 
 **Tally:** about 75 distinct requests. About 47 delivered, 17 partly, 3 not delivered and 8
 superseded. Eleven of them carry a ⚠. That says a lot: the requests that are about *how
