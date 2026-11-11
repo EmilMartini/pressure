@@ -1784,6 +1784,55 @@ once `autotest/WINDOWS_OK` exists):
    pool; a tar trail; a faded and a solid ghost.
 6. A full floor-3 Frostvault arena, for readability inside the crowd.
 
+### Secrets and small pickups (2026-11-11, build `2026.11.11-secrets1`)
+
+Isaac's loop has a secret room on almost every floor and small pickups that are not items. Fun
+pass 1 gave every clear a reward; this pass adds the find-it-yourself reward and two pickups
+that are neither cards nor healing, so decisions 14 (healing scarce) and 17 (pick 1 of N) hold.
+
+**Secret room** (`FloorGen._place_secret_room`, `SecretWall`, `Room._secret_entered`)
+- **One a floor:** 60% on floor 1 (`SECRET_FLOOR1_CHANCE`), always from floor 2. The old
+  balance keeps its hidden room behind an element wall.
+- **Where:** Isaac's rule. The empty cell touching the most rooms wins (2 or more when the floor
+  has such a cell), never one next to the boss room. **Every** room it touches gets a cracked
+  wall into it, so it can be found from any side. Once you step inside, the other walls open
+  too and its doors lead back out anywhere.
+- **The tell:** the cracked wall is drawn with the bricks around it, plus a dark, bold crack
+  with two branches and the dust motes it already breathed out. The rooms' hairline decoy
+  cracks stay hairline, so a bold crack is a real tell, but you have to look at the walls.
+  Shots on it still thunk hollow.
+- **Opening:** no bombs exist, so it opens to what every kit has. **Any explosion** (a vent, a
+  barrel, a bomber, a reaction burst of 90 px or more) or **two dashes into it** (the first
+  widens the crack with a thud and a puff of grit, the second breaks it). The element-specific
+  methods (roots, mud, rusted...) are gone outside the old balance: one rule, easy to learn.
+- **Inside:** always a pick of 1 of 2 (`SECRET_CARDS`), Rare or better on the boss rarity
+  table; 35% of the time one card is a Rare-or-better weapon (`SECRET_WEAPON`). Plus one heart.
+  Scavenger's Eye still adds a card a copy. The old 50% scrap pile is gone (scrap already piles
+  up on floors 4 and 5). Nothing in it is needed to finish the floor.
+- **Map:** the room stays off the map until a wall gives way (the Shrine's Dowser talent still
+  shows it, as before).
+
+**Small pickups at a clear** (`RoomPickup`, `Room._room_reward`)
+- The clear's roll is now one ladder: heart 20%, else bonus pick 18% (not in floor 1's gun-pick
+  rooms), else a **spark cell** 15% when someone holds an active item (`ROOM_CELL`). A cell flies
+  to you and refills the active; on a full active it overcharges by one, which the next room's
+  refill never takes back. Isaac's battery.
+- Separately, 15% of clears (`ROOM_CHEST`) put the scrap burst in a **small chest** at the room's
+  middle instead of popping it out. Walk into it: it bursts with 1.5x the burst
+  (`RoomPickup.CHEST_MULT`) and 30% of the time a spark cell. A chest you leave waits for you.
+  The extra is about 2% of a floor's scrap: a moment, not income.
+- Why these two: hearts are capped by decision 14 and cards by section 5.2, so the new pickups
+  pay in things you see and use at once (a charge, a pop of coins) and never ask you to read.
+
+**Telemetry** (`runs.jsonl`): `secret_floor` (has a secret, how many cracked walls),
+`secret_near` (the first time this floor you stood in a room with one), `hidden_room_found`
+(now with `how`: blast, dash; the room it was found from; seconds into the floor),
+`secret_entered`, and `pickup` (cell or chest). `floor_loot` counts `secrets`, `cells` and
+`chests`. Found rate = `hidden_room_found` / `secret_floor` with `secret` true. The bot flag
+`--secret-seek` makes the bot walk to every cracked wall it sees and dash into it.
+
+**Measured:** see the section's handoff note below.
+
 ---
 
 ## 15. Defaults Emil may want to change

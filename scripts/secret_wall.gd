@@ -14,6 +14,9 @@ extends StaticBody2D
 ##   blast   any explosion: a vent of either kind, a barrel, a bomber, a reaction burst
 ##   rubble  (alcove fronts) any explosion, or two stone hits
 ## Nothing on screen names the method; the brick tint and crack colour hint at it.
+## Secrets pass (2026-11-11): outside the old balance every hidden-room wall is "blast", its
+## crack is drawn bold (a real tell next to the hairline decoys) and DASH_HITS dashes into it
+## also break it, the first one widening the crack. `opened_by` says how it went.
 
 signal cleared
 
@@ -36,6 +39,12 @@ const WALL_METHODS := {
     "blast": [],
 }
 const BLAST_MIN := 90.0   # novas this big count as an explosion
+const DASH_HITS := 2
+
+var opened_by := ""
+var _dash_hits := 0
+var _dash_cd := 0.0
+var _bold := false
 
 var kind := "door"
 var method := "blast"
@@ -103,6 +112,7 @@ func _ready() -> void:
     _over.name = "Crack"
     _over.draw.connect(_draw_over)
     add_child(_over)
+    _bold = not Main.old_balance
     _make_crack()
     _dust_t = randf_range(1.0, 3.0)
     Elements.nova.connect(_on_nova)
@@ -124,6 +134,11 @@ func _make_crack() -> void:
     var k := rng.randi_range(2, n - 2)
     _branch.append(_crack[k])
     _branch.append((_crack[k] + across * rng.randf_range(6.0, 10.0) * (1.0 if rng.randf() < 0.5 else -1.0) + along * 5.0).round())
+    if _bold:
+        # The tell: a second branch the other way, so the crack reads as a break, not a hairline.
+        var k2 := clampi(n - k, 1, n - 1)
+        _branch.append(_crack[k2])
+        _branch.append((_crack[k2] - across * rng.randf_range(6.0, 10.0) * (1.0 if rng.randf() < 0.5 else -1.0) - along * 5.0).round())
 
 
 ## Projectiles test against obstacles through this (see Projectile). A shot that lands on
@@ -147,33 +162,68 @@ func apply_element(element: int, _potency: float = 1.0, _dir: Vector2 = Vector2.
     match method:
         "roots":
             if element == Element.Kind.FIRE:
-                _open()
+                _open(method)
         "acid":
             if element == Element.Kind.ACID:
-                _open()
+                _open(method)
         "rusted":
             if element == Element.Kind.SHOCK:
-                _open()
+                _open(method)
         "mud":
             if element == Element.Kind.WET:
                 _hits += 1
                 if _hits >= 3:
-                    _open()
+                    _open(method)
         "frozen":
             if element == Element.Kind.ICE:
                 _iced = 6.0
             elif element == Element.Kind.STONE and _iced > 0.0:
-                _open()
+                _open(method)
         "rubble":
             if element == Element.Kind.STONE:
                 _hits += 1
                 if _hits >= 2:
-                    _open()
+                    _open("stone")
     return true
 
 
 func is_open() -> bool:
     return _done
+
+
+## A player dashed into the wall (Player._dash_bump): the first dash widens the crack with a
+## thud and a puff of grit, the DASH_HITS-th breaks it. Old balance: dashes do nothing.
+func dash_hit(_by: Node2D) -> void:
+    if _done or Main.old_balance or _dash_cd > 0.0:
+        return
+    _dash_cd = 0.35
+    _dash_hits += 1
+    if _dash_hits >= DASH_HITS:
+        _open("dash")
+        return
+    Sfx.play("hit_stone", -2.0, 0.05)
+    _flash(Color(0.95, 0.9, 0.8))
+    _widen_crack()
+    var fx := _fx()
+    if fx != null:
+        var depth := absf(size.dot(inward.abs())) * 0.5
+        fx.pixels(Element.Kind.STONE, global_position + inward * depth, 10, 90.0, maxf(size.x, size.y) * 0.2)
+    var scene := get_tree().current_scene
+    if scene != null and scene.has_method("shake"):
+        scene.shake(3.0)
+
+
+## More branches off the crack: the wall is clearly about to go.
+func _widen_crack() -> void:
+    var rng := RandomNumberGenerator.new()
+    rng.seed = hash(Vector2i(global_position.round())) + 99
+    var along := Vector2(1, 0) if size.x >= size.y else Vector2(0, 1)
+    var across := along.orthogonal()
+    for k in 2:
+        var at: Vector2 = _crack[rng.randi_range(1, _crack.size() - 2)]
+        _branch.append(at)
+        _branch.append((at + across * rng.randf_range(8.0, 14.0) * (1.0 if k == 0 else -1.0) + along * rng.randf_range(-6.0, 6.0)).round())
+    _over.queue_redraw()
 
 
 func _flash(c: Color) -> void:
@@ -193,7 +243,7 @@ func _on_nova(pos: Vector2, radius: float, color: Color) -> void:
         return
     _last_nova = pos
     if method == "blast" or method == "rubble":
-        _open()
+        _open("blast")
         return
     _flash(Color(color, 1.0))
 
@@ -212,6 +262,7 @@ func _process(delta: float) -> void:
     if _done:
         return
     _thunk_cd = maxf(0.0, _thunk_cd - delta)
+    _dash_cd = maxf(0.0, _dash_cd - delta)
     _iced = maxf(0.0, _iced - delta)
     if _glow > 0.0:
         _glow = maxf(0.0, _glow - delta)
@@ -235,10 +286,11 @@ func _breathe() -> void:
         fx._px(p, v, randf_range(1.4, 2.2), 2.0, 0.32, Fx.B.DRIFT, Element.Kind.STONE, false, Vector2(randf() * TAU, 0))
 
 
-func _open() -> void:
+func _open(how: String = "") -> void:
     if _done:
         return
     _done = true
+    opened_by = how
     remove_from_group("obstacles")
     remove_from_group("secret_walls")
     var gp := global_position
@@ -272,8 +324,15 @@ func _fx() -> Fx:
 func _draw_over() -> void:
     var spec: Dictionary = METHODS[method]
     var c: Color = spec["crack"]
-    _over.draw_polyline(_crack, Color(c, 0.55), 1.0)
-    _over.draw_line(_branch[0], _branch[1], Color(c, 0.4), 1.0)
+    if _bold:
+        # Secrets pass: a dark break with a lighter lip, wider than the hairline decoys.
+        _over.draw_polyline(_crack, Color(c, 0.9), 2.5)
+        _over.draw_polyline(_crack, Color(1.0, 0.95, 0.85, 0.18), 1.0)
+        for i in range(0, _branch.size() - 1, 2):
+            _over.draw_line(_branch[i], _branch[i + 1], Color(c, 0.75), 1.5)
+    else:
+        _over.draw_polyline(_crack, Color(c, 0.55), 1.0)
+        _over.draw_line(_branch[0], _branch[1], Color(c, 0.4), 1.0)
     if _iced > 0.0:
         _over.draw_polyline(_crack, Color(Element.COLORS[Element.Kind.ICE], 0.5), 1.0)
     if _glow > 0.0:

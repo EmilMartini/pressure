@@ -973,6 +973,8 @@ func _physics_process(delta: float) -> void:
     else:
         velocity = want
     move_and_slide()
+    if _dash_t > 0.0:
+        _dash_bump()
 
     if PlayerInput.vent_auto():
         _auto_vent(delta)
@@ -1270,6 +1272,15 @@ func dash(mv: Vector2) -> bool:
         Settings.set_value("dash_learned", true)
     return true
 
+
+
+## Secrets pass: a dash that runs into a cracked wall (SecretWall) knocks at it.
+func _dash_bump() -> void:
+    for i in get_slide_collision_count():
+        var c := get_slide_collision(i)
+        var o := c.get_collider()
+        if o is SecretWall:
+            (o as SecretWall).dash_hit(self)
 
 
 func _tick_dash(delta: float) -> void:

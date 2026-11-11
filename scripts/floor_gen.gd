@@ -67,7 +67,10 @@ static func generate(region_id: String, luck: float = 0.0, players: Array = []) 
     for i in mini(specials.size(), candidates.size()):
         rooms[candidates[i]].type = specials[i]
 
-    _place_hidden_room(rooms, start)
+    if Main.old_balance:
+        _place_hidden_room(rooms, start)
+    elif force_secret or floor_number >= 2 or randf() < SECRET_FLOOR1_CHANCE:
+        _place_secret_room(rooms, start)
     if not Main.old_balance and floor_number >= DEAL_FROM_FLOOR and randf() < DEAL_CHANCE:
         _place_deal_room(rooms)
     _shape_rooms(rooms, start, Regions.get_region(region_id).get("layouts", []))
@@ -139,6 +142,59 @@ static func _place_hidden_room(rooms: Dictionary, start: Vector2i) -> void:
     # ("secret") is picked when the party first stands in that room (Room._secret_method).
     from.doors[-d] = { "to": best, "obstacle": "secret", "secret": "" }
     hidden.doors[d] = { "to": best + d, "obstacle": "" }
+
+
+## Secrets pass (2026-11-11): one secret room a floor, SECRET_FLOOR1_CHANCE on floor 1 and
+## always from floor 2. Isaac's rule: the empty cell touching the most rooms (2 or more where
+## the floor has one), never next to the boss room; every room it touches gets a cracked wall
+## into it, so it can be found from any side. The bot probe `--secret-seek` sets force_secret.
+const SECRET_FLOOR1_CHANCE := 0.6
+static var force_secret := false
+
+
+static func _secret_link_ok(r: RoomData) -> bool:
+    return r.type not in [RoomData.Type.BOSS, RoomData.Type.HIDDEN, RoomData.Type.DEAL]
+
+
+static func _place_secret_room(rooms: Dictionary, start: Vector2i) -> void:
+    var best: Array = []
+    var best_score := -1.0
+    var seen := {}
+    for p in rooms.keys():
+        for d in DIRS:
+            var n: Vector2i = p + d
+            if not _in_grid(n) or rooms.has(n) or seen.has(n):
+                continue
+            seen[n] = true
+            var links := 0
+            var near_boss := false
+            for d2 in DIRS:
+                var q: Vector2i = n + d2
+                if rooms.has(q):
+                    if (rooms[q] as RoomData).type == RoomData.Type.BOSS:
+                        near_boss = true
+                    elif _secret_link_ok(rooms[q]):
+                        links += 1
+            if near_boss or links == 0:
+                continue
+            # Touching more rooms wins; among equals, a little farther from the start.
+            var score := float(mini(links, 3)) * 10.0 + minf(float(_dist(n, start)), 6.0) * 0.5
+            if score > best_score + 0.01:
+                best_score = score
+                best = [n]
+            elif absf(score - best_score) <= 0.01:
+                best.append(n)
+    if best.is_empty():
+        return
+    var cell: Vector2i = best.pick_random()
+    var hidden := _new_room(cell, RoomData.Type.HIDDEN)
+    rooms[cell] = hidden
+    for d in DIRS:
+        var q: Vector2i = cell + d
+        if rooms.has(q) and _secret_link_ok(rooms[q]):
+            # The cracked wall on the neighbour's side; plain doors back out of the secret room.
+            (rooms[q] as RoomData).doors[-d] = { "to": cell, "obstacle": "secret", "secret": "blast" }
+            hidden.doors[d] = { "to": q, "obstacle": "" }
 
 
 ## Size class, layout, seed and puzzle for every room; one floor in four (one in two with
@@ -250,8 +306,12 @@ const TREASURE_THREE_FROM := 3
 const BEHAVIOUR_SHARE := 0.6
 const CURSED_FROM := 2
 const CURSED_CHANCE := 0.25
-## Secret room: half the time pick 1 of 2 (Rare or better), else a scrap pile of SECRET_PILE x m.
+## Secret room (secrets pass, 2026-11-11): always a pick of 1 of SECRET_CARDS, Rare or better on
+## the boss table, one card a weapon SECRET_WEAPON of the time, plus one heart. The old scrap pile
+## (SECRET_PILE x m, half the secrets) is gone: scrap already piles up on floors 4 and 5.
 const SECRET_PILE := 25
+const SECRET_CARDS := 2
+const SECRET_WEAPON := 0.35
 ## Deal room: from DEAL_FROM_FLOOR, DEAL_CHANCE a floor, a door off the boss room. Two Epic or
 ## Legendary cards priced in max health (DEAL_HP), money (DEAL_MONEY_SHARE of scrap held, at
 ## least DEAL_MONEY_MIN x m) or a run curse; and a DEAL_HEAL_PCT heal for DEAL_HEAL_PRICE x m.
@@ -307,27 +367,35 @@ static func _stock_rooms_reset(rooms: Dictionary, floor_number: int, luck: float
                     r.stock.append(c)
                 r.chest_tier = n
             RoomData.Type.HIDDEN:
-                r.hearts = 1
-                var eye := 0   # Scavenger's Eye: secrets always hold items, 1 more a copy
-                for pl in players:
-                    if pl != null and is_instance_valid(pl):
-                        eye = maxi(eye, int(pl.stat("secret_loot")))
-                if eye > 0 or randf() < 0.5:
-                    var ids: Array = []
-                    for i in 2 + eye:
-                        var rar := mini(maxi(Items.Rarity.RARE, Items.roll_rarity("boss", floor_number, luck)), Items.max_rarity_unlocked())
-                        var id := Drops.roll_item_at(rar, ids + _mod_ids(), "hidden", players)
-                        ids.append(id)
-                        var o := Items.offer(id, 0)
-                        o["group"] = "secret"
-                        r.stock.append(o)
-                else:
-                    r.loose_scrap = int(roundf(SECRET_PILE * _m(floor_number)))
+                stock_secret(r, floor_number, luck, players)
             RoomData.Type.CHALLENGE:
                 r.challenge_kind = force_challenge if force_challenge != "" else ("elite" if randf() < 0.5 else "timed")
                 r.stock.append(offer("sigil", "", 0))
             RoomData.Type.DEAL:
                 stock_deal(r, floor_number, luck, players)
+
+
+## A secret room's stock: a heart and a pick of 1 of SECRET_CARDS (more with Scavenger's Eye).
+static func stock_secret(r: RoomData, floor_number: int, luck: float, players: Array) -> void:
+    r.hearts = 1
+    var eye := 0   # Scavenger's Eye: 1 more card a copy
+    for pl in players:
+        if pl != null and is_instance_valid(pl):
+            eye = maxi(eye, int(pl.stat("secret_loot")))
+    var ids: Array = []
+    var cards: Array = []
+    for i in SECRET_CARDS + eye:
+        var rar := mini(maxi(Items.Rarity.RARE, Items.roll_rarity("boss", floor_number, luck)), Items.max_rarity_unlocked())
+        var id := Drops.roll_item_at(rar, ids + _mod_ids(), "hidden", players)
+        ids.append(id)
+        cards.append(Items.offer(id, 0))
+    if randf() < SECRET_WEAPON and not cards.is_empty():
+        var wid := Drops.roll_gun(players, [], Items.roll_rarity("boss", floor_number, luck, true), Items.Rarity.RARE)
+        if wid != "":
+            cards[cards.size() - 1] = weapon_offer(wid, floor_number)
+    for o in cards:
+        o["group"] = "secret"
+        r.stock.append(o)
 
 
 ## Bot probe `--challenge=timed|elite`: every floor has a challenge room of that kind.

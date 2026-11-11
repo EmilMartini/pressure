@@ -1300,7 +1300,8 @@ func recharge_active(player: Player, amount: int) -> void:
     var max_charges := active_max_charges(player)
     if max_charges <= 0:
         return
-    player.active_charges = clampi(player.active_charges + amount, 0, max_charges)
+    # A spark cell (RoomPickup) can overcharge by one: a refill never takes that back.
+    player.active_charges = maxi(player.active_charges, clampi(player.active_charges + amount, 0, max_charges))
 
 
 ## Spend one charge and run the active item's actions. False when there is nothing to use.

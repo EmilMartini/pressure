@@ -47,6 +47,8 @@ var stock: Array = []
 var loose_scrap := 0
 ## Hearts lying in the room (Core loop reset 5.1: a secret room always holds one).
 var hearts := 0
+## A small chest left by a clear (secrets pass): the scrap inside, 0 once opened.
+var chest_scrap := 0
 
 ## Challenge rooms (Core loop reset 11.1): "elite" (two waves of elites behind locked
 ## doors) or "timed" (kill TIMED_KILLS in TIMED_SECS; failing costs nothing).

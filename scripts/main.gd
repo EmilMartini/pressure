@@ -32,6 +32,8 @@ var gate: Dictionary = {}
 var _floor_t0 := 0.0            # _clock at floor start ([TRAVEL] lines)
 var _boss_room_at := -1.0       # _clock when the party first entered this floor's boss room
 var _rush := false              # bots: --rush walks straight for the boss room
+var _secret_seek := false       # bots: --secret-seek looks for each floor's secret room (dashes into its cracked wall)
+var _secret_near_logged := false  # telemetry: the party stood in a room with a cracked wall this floor
 var _open_gates := false        # bots: --open-gates walks through a shortcut gate from its far side
 var _gate_entry := Vector2i.ZERO  # the side a gate brings the party in by (enter_room)
 var _bot_doors := {}            # bots: depth -> the door picked for it
@@ -161,6 +163,8 @@ func _ready() -> void:
     old_balance = autotest and args.has("--old-balance")
     curses = {}
     FloorGen.force_challenge = ""
+    _secret_seek = autotest and args.has("--secret-seek")
+    FloorGen.force_secret = _secret_seek
     for a in args:
         if autotest and a.begins_with("--challenge="):
             FloorGen.force_challenge = a.substr(12)
@@ -672,6 +676,7 @@ func start_floor(n: int) -> void:
     Telemetry.floor_start(self)
     pressure_meter.start_floor(n, region_id)
     rooms = FloorGen.generate(region_id, party_luck(), players)
+    _log_secret_floor()
     _place_archivist()
     _place_well()
     gate = Shortcuts.plan(rooms, region_id)
@@ -750,6 +755,47 @@ func _scout_reveal() -> void:
             rd.discovered = true
 
 
+## Secrets pass telemetry: whether this floor has a secret room and how many cracked walls lead
+## into it (`secret_floor`), the first time the party stands in a room with one (`secret_near`),
+## then `hidden_room_found` (Room) when one gives way and `secret_entered` inside.
+func _log_secret_floor() -> void:
+    _secret_near_logged = false
+    var walls := 0
+    var has := false
+    for r in rooms.values():
+        var rd: RoomData = r
+        if rd.type == RoomData.Type.HIDDEN:
+            has = true
+        for d in rd.doors.keys():
+            if String(rd.doors[d]["obstacle"]) == "secret":
+                walls += 1
+    Telemetry.event("secret_floor", { "floor": floor_number, "secret": has, "walls": walls })
+    if autotest:
+        print("[SECRET] floor=%d has=%s walls=%d" % [floor_number, str(has), walls])
+
+
+func _log_secret_near(rd: RoomData) -> void:
+    if _secret_near_logged:
+        return
+    for d in rd.doors.keys():
+        if String(rd.doors[d]["obstacle"]) == "secret":
+            _secret_near_logged = true
+            Telemetry.event("secret_near", { "floor": floor_number, "floor_secs": snappedf(floor_secs(), 0.1) })
+            return
+
+
+## Seconds since this floor began (game clock).
+func floor_secs() -> float:
+    return _clock - _floor_t0
+
+
+## A cracked wall gave way (Room._on_obstacle_cleared).
+func secret_opened(how: String) -> void:
+    loot_note("secrets")
+    if autotest:
+        print("[SECRET] opened floor=%d how=%s at=%.1f" % [floor_number, how, floor_secs()])
+
+
 ## Load the room at `pos`. `moved` is the direction the party travelled to get there,
 ## or ZERO when dropped in (floor start).
 func enter_room(pos: Vector2i, moved: Vector2i) -> void:
@@ -788,6 +834,7 @@ func enter_room(pos: Vector2i, moved: Vector2i) -> void:
         _arena_snap = [_clock, players[0].hp, players[0].hurt_total, players[0].healed_total, players[0].healed_leech, players[0].healed_regen]
     pressure_meter.room_entered()
     current = Room.new(rooms[pos], self)
+    _log_secret_near(rooms[pos])
     if rooms[pos].type == RoomData.Type.SHOP and not old_balance:
         _shop_in = scrap
         shop_rerolls = 0
@@ -2421,6 +2468,13 @@ func _bot_navigate(p: Player) -> void:
     if not room.data.cleared:
         p.input.force_move = room.path_dir(p.global_position, Vector2.ZERO) if p.global_position.length() > 60.0 else Vector2.ZERO
         return
+    if _secret_seek and _bot_seek_secret(p, room):
+        return
+    # A small chest left by the clear: walk over to pop it.
+    for c in room.pickups.get_children():
+        if c is RoomPickup and c.kind == "chest" and not c.is_queued_for_deletion() and _bot_idle < 10.0:
+            p.input.force_move = room.path_dir(p.global_position, c.global_position)
+            return
     var dir := _bot_next_dir()
     if dir == Vector2i.ZERO:
         p.input.force_move = Vector2.ZERO
@@ -2431,6 +2485,29 @@ func _bot_navigate(p: Player) -> void:
         enter_room(door_target(dir), dir)
         return
     p.input.force_move = room.path_dir(p.global_position, room.door_world_position(dir))
+
+
+## `--secret-seek`: in a cleared room with a cracked wall, walk up to it and dash into it (a
+## player who knows the tell). Gives a wall up after 12 s.
+func _bot_seek_secret(p: Player, room: Room) -> bool:
+    for dir in room.data.doors.keys():
+        if String(room.data.doors[dir]["obstacle"]) != "secret" or _bot_skip.has([current_pos, dir]):
+            continue
+        _bot_obstacle_time += get_process_delta_time()
+        if _bot_obstacle_time > 12.0:
+            _print_stats("Gave up on a cracked wall")
+            _bot_skip[[current_pos, dir]] = true
+            _bot_obstacle_time = 0.0
+            continue
+        var wall := room.door_world_position(dir)
+        var stand := wall - Vector2(dir) * 110.0
+        if p.global_position.distance_to(stand) > 30.0:
+            p.input.force_move = room.path_dir(p.global_position, stand)
+        else:
+            p.input.force_move = Vector2.ZERO
+            p.dash(Vector2(dir))
+        return true
+    return false
 
 
 ## Whether the bot would use an offer right now (same rule for walking to it and for

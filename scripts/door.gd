@@ -13,6 +13,7 @@ var state: int = State.OPEN
 var size: Vector2
 var obstacle: Obstacle = null
 var secret: SecretWall = null   # a hidden room's way in, looking like plain wall
+var opened_by := ""             # how the secret wall gave way: "blast", "dash" or an element
 
 var _blocker_shape: CollisionShape2D
 var _lock: Sprite2D
@@ -93,6 +94,8 @@ func set_secret(method: String) -> void:
 
 
 func _on_obstacle_cleared() -> void:
+    if secret != null:
+        opened_by = secret.opened_by
     obstacle = null
     secret = null
     set_state(State.OPEN)

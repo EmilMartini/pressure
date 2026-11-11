@@ -127,6 +127,11 @@ const KEY_REFILL_ROOM := 1.2
 ## the current level's XP bar (boss rooms BOSS_CLEAR_LEVEL), so a level comes about once a minute.
 const ROOM_HEART := 0.2
 const ROOM_BONUS := 0.18
+## Secrets pass (2026-11-11), small pickups that are not cards and do not heal: ROOM_CELL a spark
+## cell (only when someone holds an active), and on its own roll ROOM_CHEST that the clear's scrap
+## burst comes in a small chest instead, worth RoomPickup.CHEST_MULT of it.
+const ROOM_CELL := 0.15
+const ROOM_CHEST := 0.15
 const CLEAR_LEVEL := 0.55
 const BOSS_CLEAR_LEVEL := 1.0
 var _crowd_left := 0
@@ -288,6 +293,9 @@ func _ready() -> void:
     for i in data.hearts:
         drop_heart(Vector2(-60.0 + 40.0 * float(i), 70.0), true)
     data.hearts = 0
+    _spawn_chest()
+    if first_visit and data.type == RoomData.Type.HIDDEN and not Main.old_balance:
+        _secret_entered()
     if first_visit:
         # Loot count (13.2): every reward card and ware is a card shown, once.
         var n := 0
@@ -447,7 +455,13 @@ func _tick_room(delta: float) -> void:
         var dealt := (Enemy.dealt_total - _dealt0) - 0.5 * (Enemy.synergy_dealt - _syn0)
         main.note_arena_dps(dealt / maxf(8.0, _room_t))
         Telemetry.wave_end(self, _floor_pedestals(), _floor_scrap())
-        _finish_fight(maxi(0, int(roundf(_budget - _budget_paid))))
+        var burst := maxi(0, int(roundf(_budget - _budget_paid)))
+        var chest := burst > 0 and randf() < ROOM_CHEST
+        _finish_fight(0 if chest else burst)
+        if chest:
+            data.chest_scrap = int(roundf(float(burst) * RoomPickup.CHEST_MULT))
+            _spawn_chest()
+            main.loot_note("chests")
         _room_reward()
         _arena_gun_pick()
 
@@ -468,12 +482,53 @@ func _keys_alive() -> int:
 ## of 1 of 2 item cards (never in floor 1's gun-pick rooms, which already offer a choice).
 func _room_reward() -> void:
     var gun_room := main.floor_number == 1 and main.floor_arenas_done() <= FLOOR1_GUN_PICKS
-    if randf() < ROOM_HEART:
+    var roll := randf()
+    if roll < ROOM_HEART:
         drop_heart(Vector2.ZERO, true)
-    elif not gun_room and randf() < ROOM_BONUS / (1.0 - ROOM_HEART):
+    elif not gun_room and roll < ROOM_HEART + ROOM_BONUS:
         _reward_cards("bonus", "treasure", "shop", ["", ""], Items.Rarity.COMMON, -150.0)
         _build_pedestals()
         main.announce("Bonus: choose 1 of 2")
+    elif roll < ROOM_HEART + ROOM_BONUS + ROOM_CELL and _party_has_active():
+        drop_cell(Vector2.ZERO)
+
+
+func _party_has_active() -> bool:
+    for pl in main.players:
+        if pl.alive and Items.active_max_charges(pl) > 0:
+            return true
+    return false
+
+
+## A spark cell (RoomPickup "cell") that flies to the party.
+func drop_cell(pos: Vector2) -> void:
+    var c := RoomPickup.new(main, "cell")
+    c.position = pos
+    c.vacuum = true
+    pickups.add_child(c)
+    main.loot_note("cells")
+
+
+## The clear's scrap burst, held in a small chest at the room's middle (data.chest_scrap).
+func _spawn_chest() -> void:
+    if data.chest_scrap <= 0:
+        return
+    var c := RoomPickup.new(main, "chest", data.chest_scrap)
+    c.position = Vector2(0, 40)
+    pickups.add_child(c)
+
+
+## RoomPickup calls this when the party touches the chest: the scrap bursts out, sometimes a
+## spark cell with it.
+func open_chest(c: RoomPickup) -> void:
+    var pos := c.position
+    _drop_scrap(pos, data.chest_scrap, 10)
+    data.chest_scrap = 0
+    for s in pickups.get_children():
+        if s is Scrap:
+            s.vacuum = true
+    if randf() < RoomPickup.CHEST_CELL and _party_has_active():
+        drop_cell(pos)
 
 
 func _tick_arena(delta: float) -> void:
@@ -1394,6 +1449,19 @@ func _build_doors() -> void:
             door.obstacle_cleared.connect(_on_obstacle_cleared)
 
 
+## The first step into a floor's secret room (secrets pass): every other cracked wall into it
+## opens too, so its plain doors lead back out anywhere, and the find is logged.
+func _secret_entered() -> void:
+    for d in data.doors.keys():
+        var q: RoomData = main.rooms.get(data.doors[d]["to"])
+        if q != null and q.doors.has(-d) and String(q.doors[-d]["obstacle"]) == "secret":
+            q.doors[-d]["obstacle"] = ""
+    Sfx.play("secret_found")
+    Telemetry.event("secret_entered", { "floor": main.floor_number, "cards": data.stock.size(), "floor_secs": snappedf(main.floor_secs(), 0.1) })
+    if main.autotest:
+        print("[SECRET] entered floor=%d cards=%d" % [main.floor_number, data.stock.size()])
+
+
 ## The method a hidden room's secret wall opens to: chosen the first time the party sees
 ## it, from what the party can make then (fire, ice + stone, acid, shock, water, a blast).
 func _secret_method(d: Vector2i) -> String:
@@ -1411,7 +1479,10 @@ func _on_obstacle_cleared(dir: Vector2i) -> void:
     data.doors[dir]["obstacle"] = ""
     main.rooms[data.doors[dir]["to"]].discovered = true
     if was_secret:
-        Telemetry.event("hidden_room_found", { "floor": main.floor_number })
+        var how := String(doors[dir].opened_by) if doors.has(dir) else ""
+        Telemetry.event("hidden_room_found", { "floor": main.floor_number, "how": how,
+            "room": RoomData.Type.keys()[data.type].to_lower(), "floor_secs": snappedf(main.floor_secs(), 0.1) })
+        main.secret_opened(how)
         call_deferred("_add_door_cap", dir)
         _redraw_layout()
     _apply_doors()
