@@ -20,6 +20,15 @@ var force_dash := false      # the bot presses dash (one physics frame)
 var _prev: Dictionary = {}
 var _cur: Dictionary = {}
 var _edges: Dictionary = {}
+## Modal guard: a level-up, pick screen, well, pause menu or moment prompt pauses the tree,
+## and the press that closes it (A / E / Enter) is still down on the next physics tick. Once
+## a poll finds it missed ticks (the tree was paused), every button counts as held until
+## it is released, and no press counts for MODAL_LOCKOUT s, so the confirm never reaches a
+## pedestal, the stairs or a route door. swallow() does the same for an overlay that does
+## not pause.
+const MODAL_LOCKOUT := 0.25
+var _last_poll_frame := -1
+var _lockout := 0   # physics ticks left with no new presses
 
 ## "pad" or "kb": whichever this player touched last. Drives on-screen prompts.
 var last_kind := "kb"
@@ -105,6 +114,11 @@ func _update_kind() -> void:
 func poll() -> void:
     _update_kind()
     _update_aim_idle()
+    var frame := Engine.get_physics_frames()
+    var resumed := _last_poll_frame >= 0 and frame - _last_poll_frame > 1
+    _last_poll_frame = frame
+    if resumed:
+        swallow()
     _prev = _cur.duplicate()
     var auto_vent := vent_auto()
     var rt := device >= 0 and Input.get_joy_axis(device, JOY_AXIS_TRIGGER_RIGHT) > TRIGGER_PRESS
@@ -122,9 +136,21 @@ func poll() -> void:
         _cur["active"] = _button(JOY_BUTTON_X, KEY_F)
         _cur["vent"] = _button(JOY_BUTTON_LEFT_SHOULDER, KEY_SPACE)
     force_dash = false
+    if _lockout > 0:
+        _lockout -= 1
+        return
     for action in _cur.keys():
         if _cur[action] and not _prev.get(action, false):
             _edges[action] = true
+
+
+## A modal just closed: drop pending presses, treat every button as held until released,
+## and take no new press for MODAL_LOCKOUT s (a fresh press after it works at once).
+func swallow() -> void:
+    _edges.clear()
+    for action in _cur.keys():
+        _cur[action] = true
+    _lockout = int(ceil(MODAL_LOCKOUT * float(Engine.physics_ticks_per_second)))
 
 
 func _update_aim_idle() -> void:
@@ -151,6 +177,8 @@ func just_pressed(action: String) -> bool:
 ## Like just_pressed, but each press is handed out once. Use this from _process code,
 ## which can run several times per physics tick and would otherwise see one press twice.
 func take_pressed(action: String) -> bool:
+    if _last_poll_frame >= 0 and Engine.get_physics_frames() - _last_poll_frame > 1:
+        return false   # just unpaused, not polled yet: the next poll swallows what is pending
     if _edges.has(action):
         _edges.erase(action)
         return true
