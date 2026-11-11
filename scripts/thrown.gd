@@ -377,6 +377,7 @@ static func _return_mult(p: Projectile) -> float:
 static func _last_hit(p: Projectile, e: Enemy) -> void:
     if _stat(p, "thrown_split") > 0.0 and p.fork_count <= 0 and not p.t_split:
         p.t_split = true
+        ProcFx.res_proc(p.shooter, "thrown", p.gun_id)
         p.fork_count = 2
         p._fork(e)
 

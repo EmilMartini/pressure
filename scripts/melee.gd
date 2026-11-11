@@ -171,6 +171,8 @@ static func swing(g: Gun, dir: Vector2, back: bool) -> void:
     if g.player.stat("whirl") > 0.0 and n % WHIRL_EVERY == 0:
         full = true
     var finisher := style == "jab" and n % FINISHER_EVERY == 0
+    if finisher or full:
+        ProcFx.weapon_proc(g)   # every Nth swing: the weapon lights up (rate-limited)
     _start(g, _target(g, dir), dir, style, el, full, finisher, back)
     if finisher and g.player.stat("finisher_twice") > 0.0:
         _later(g, 0.1, func(): _start(g, _target(g, g.aim_dir()), g.aim_dir(), style, el, false, true, not back))
@@ -241,6 +243,8 @@ static func _start(g: Gun, e: Enemy, dir: Vector2, style: String, el: int, full:
     # centre, whichever hover spot it swings from (2026-11-11, Emil: weapons swung way out).
     sw.reach = r + 4.0
     var lim := maxf(16.0, _span(p.global_position, piv, sw.dir, sw.reach))
+    if g._emp_now:
+        size *= 1.3   # the empowered swing (ProcFx): a visibly broader blade (reach stays the player's)
     match style:
         "slam":
             # The head lands on the target, at most the reach away from the player.

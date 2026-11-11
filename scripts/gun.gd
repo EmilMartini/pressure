@@ -68,6 +68,15 @@ const READY_EVERY := 0.15
 ## Focus targeting (Focus.update): ranked targets; shot or beam k goes to targets[k], extras
 ## doubling up on targets[0]. Empty outside auto aim.
 var targets: Array = []
+## Procs that light up (ProcFx): a flash when an item proc came from this weapon, and an
+## empowered volley waiting (glows until the next attack, which leaves bigger).
+const FLASH := 0.22
+var _flash := 0.0
+var _flash_col := Color.WHITE
+var empower_left := 0.0     # s the waiting empowered volley stays charged
+var empower_col := Color.WHITE
+var _emp_now := false       # this trigger pull is the empowered one
+var _lit := false           # the sprite carries a light tint (cleared once it ends)
 
 
 func _init(p_data: GunData, p_player: Player) -> void:
@@ -162,12 +171,54 @@ func _process(delta: float) -> void:
     _sprite.scale = Vector2.ONE * (1.0 + 0.08 * float(tier - 1)) * (1.15 if not pose.is_empty() else 1.0)
     if _reload > 0.0:
         _reload = maxf(0.0, _reload - delta)
-    if _charging or data.spin_up > 0.0 or data.magazine > 0 or not swings.is_empty() or _trail_on:
+    if _flash > 0.0 or empower_left > 0.0 or _lit:
+        _tick_light(delta)
+    if _charging or data.spin_up > 0.0 or data.magazine > 0 or not swings.is_empty() or _trail_on or _lit:
         _trail_on = not swings.is_empty()
         queue_redraw()
 
 
+## A proc lit this weapon (ProcFx): a bright flash and a small pop.
+func proc_flash(col: Color) -> void:
+    _flash = FLASH
+    _flash_col = col
+
+
+## A proc empowered the next attack: the weapon glows until it fires (or `secs` pass).
+func empower(col: Color, secs: float) -> void:
+    empower_left = maxf(empower_left, secs)
+    empower_col = col
+
+
+func _tick_light(delta: float) -> void:
+    _flash = maxf(0.0, _flash - delta)
+    empower_left = maxf(0.0, empower_left - delta)
+    _lit = _flash > 0.0 or empower_left > 0.0
+    if not _lit:
+        _sprite.modulate = Color.WHITE
+        return
+    var k := _flash / FLASH
+    var e := 0.0
+    if empower_left > 0.0:
+        e = 0.55 + 0.45 * sin(Time.get_ticks_msec() * 0.014)
+    var tint := Color.WHITE.lerp(_flash_col if k > 0.0 else empower_col, 0.35 * maxf(k, e * 0.6))
+    var lift := 1.0 + 0.9 * k + 0.35 * e
+    _sprite.modulate = Color(tint.r * lift, tint.g * lift, tint.b * lift, 1.0)
+    _sprite.scale *= 1.0 + 0.3 * k + 0.06 * e
+
+
 func _draw() -> void:
+    if _lit:
+        var glow: Texture2D = Art.PARTICLES["light"]
+        var a := Settings.own_fx()
+        if _flash > 0.0:
+            var k := _flash / FLASH
+            var g := 34.0 + 14.0 * (1.0 - k)
+            draw_texture_rect(glow, Rect2(Vector2(-g, -g) * 0.5, Vector2(g, g)), false, Color(_flash_col, 0.55 * k * a))
+            draw_arc(Vector2.ZERO, 9.0 + 9.0 * (1.0 - k), 0.0, TAU, 20, Color(_flash_col.lightened(0.4), 0.8 * k * a), 1.5)
+        if empower_left > 0.0:
+            var e := 0.55 + 0.45 * sin(Time.get_ticks_msec() * 0.014)
+            draw_texture_rect(glow, Rect2(Vector2(-20, -20), Vector2(40, 40)), false, Color(empower_col, (0.25 + 0.2 * e) * a))
     if not swings.is_empty():
         _draw_swings()
     # Charge: a glow gathering at the muzzle. Repeater: a ring that fills as it spins up.
@@ -383,6 +434,12 @@ func _next_element() -> int:
 func fire(dir: Vector2) -> void:
     _aim = dir
     _since_fire = 0.0
+    _emp_now = false
+    if empower_left > 0.0 and data.mechanic not in ["summon", "ground", "charge"]:
+        # The empowered volley (ProcFx): this attack leaves bigger, with a bright ring.
+        empower_left = 0.0
+        _emp_now = true
+        ProcFx.empowered_shot(self, global_position + dir * 14.0)
     var rate := fire_rate()
     cooldown = 1.0 / rate
     var kick := 1.0 + float(data.weight) * 0.5
@@ -417,6 +474,7 @@ func fire(dir: Vector2) -> void:
                 _shoot(dir)   # aimed: the gun fires too (doors, props), the turret keeps to enemies
             if not _fire_turret(dir):
                 cooldown = 0.25   # a turret is already up: nothing to do
+                _emp_now = false
                 return
         _:
             var burst := maxi(1, data.burst_count)
@@ -434,6 +492,7 @@ func fire(dir: Vector2) -> void:
                     _mag = 0
                     _reload = data.reload_time * data.fire_rate / maxf(0.05, rate)
                     cooldown = maxf(cooldown, _reload)
+    _emp_now = false
     _recoil = 5.0 + float(data.weight) if kick > 0.5 else 2.0
     player.add_pressure(data.pressure_per_shot * (1.0 + _gm("g_pressure")))
     if kick != 0.0:
@@ -459,6 +518,8 @@ func shoot_from(muzzle: Vector2, dir: Vector2, focus := false) -> void:
     var splash := player.stat("splash")
     var shards := int(player.stat("shards"))
     var size_mult := maxf(0.3, 1.0 + player.stat("shot_size"))
+    if _emp_now:
+        size_mult *= ProcFx.EMPOWER_SCALE
     var spectral := player.stat("spectral") > 0.0
     var boomerang := player.stat("boomerang") > 0.0
     var bounces := int(player.stat("bounce")) + int(_gm("g_bounce"))

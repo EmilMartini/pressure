@@ -568,6 +568,7 @@ var syn_hits: Dictionary = {}
 
 func note_syn(id: String) -> void:
     syn_hits[id] = int(syn_hits.get(id, 0)) + 1
+    ProcFx.syn_proc(id)
 
 
 ## The local player's item counts, kept by Player.recalc_stats: a roll weights the missing
@@ -1103,6 +1104,8 @@ func fire(player: Player, event: String, ctx: Dictionary) -> void:
             if _has_per(t):
                 tt = _scaled(t, n)
                 reps = 1
+            if ProcFx.is_proc(t, event, n):
+                ProcFx.item_proc(player, item, tt, ctx)   # light and sound, rate-limited
             for r in reps:
                 _do(tt, player, ctx)
     # Level-up boons and Shrine talents that act like gear triggers (LevelUps echo boons,

@@ -545,6 +545,7 @@ func _react(s: Strike) -> void:
                 var ex: Array = s.extras.duplicate()
                 ex.append(el)
                 s.extras = ex
+                ProcFx.res_proc(p, "ground", gun.data.id)
                 return
 
 

@@ -165,11 +165,13 @@ const TRIM := {
     "scrap": -10.0, "tick": -6.0, "drip": -16.0, "door_lock": -6.0, "door_open": -6.0, "cleared": -6.0,
     "buy": -6.0, "deny": -8.0, "unlock": -4.0, "secret_found": -2.0, "wall_reveal": -4.0,
     "step_stone": -15.0, "step_moss": -13.0, "step_snow": -15.0, "step_ash": -15.0, "step_glass": -14.0,
+    "proc": -13.0, "proc_big": -9.0, "legend_drop": -5.0, "epic_drop": -8.0,
 }
 
 ## Base pitch per name; shots and hits get a wider wobble so repeats do not phase.
 const PITCH := { "cata_boom": 0.58, "cata_toll": 0.5, "boss_roar_low": 0.62, "boss_rumble": 0.45, "boss_toll": 0.55, "boss_sting": 0.8, "shoot_oil": 0.95, "shoot_void": 1.0, "hurt_low": 0.58, "sizzle_fire": 1.5, "sizzle_shock": 1.3 }
 const WOBBLE := {
+    "proc": 0.04, "proc_big": 0.03, "legend_drop": 0.0, "epic_drop": 0.0,
     "shoot_fire": 0.14, "shoot_wet": 0.14, "shoot_shock": 0.1, "shoot_ice": 0.12, "shoot_oil": 0.12,
     "shoot_poison": 0.14, "shoot_acid": 0.12, "shoot_blood": 0.12, "shoot_void": 0.1, "shoot_holy": 0.06,
     "shoot_gale": 0.14, "shoot_stone": 0.12, "hit_flesh": 0.15, "hit_armour": 0.1, "hit_wall": 0.15,
@@ -189,7 +191,7 @@ const VOICES := {
 ## Shared caps per family (name prefix), so twelve shot voices never pile up at once.
 const GROUP_VOICES := { "shoot_": 6, "hit_": 5, "rx_": 6, "burst_": 3, "death_": 5, "step_": 4 }
 ## Per-name rate limits longer than MIN_INTERVAL.
-const INTERVAL := { "hit_flesh": 0.035, "hit_wall": 0.08, "hit": 0.06, "drip": 0.15, "tick": 0.0, "hurt": 0.12, "hurt_low": 0.12, "sizzle_fire": 0.2, "sizzle_shock": 0.2 }
+const INTERVAL := { "proc": 0.3, "proc_big": 0.3, "legend_drop": 1.0, "epic_drop": 1.0, "hit_flesh": 0.035, "hit_wall": 0.08, "hit": 0.06, "drip": 0.15, "tick": 0.0, "hurt": 0.12, "hurt_low": 0.12, "sizzle_fire": 0.2, "sizzle_shock": 0.2 }
 
 ## Event reactions and the signature ones: dedicated, layered sounds instead of the
 ## composed element layers.
@@ -214,6 +216,7 @@ const DUCK := {
     "unlock": [-6.0, 1.2], "secret_found": [-7.0, 1.6], "level_up": [-4.0, 0.8], "react_inferno": [-3.0, 0.4],
     "burst_large": [-3.0, 0.35], "nova_fire": [-3.0, 0.4], "down": [-6.0, 1.0], "revive": [-5.0, 1.0],
     "wall_reveal": [-5.0, 1.4], "shield_break": [-3.0, 0.5], "cata_boom": [-7.0, 0.7],
+    "legend_drop": [-8.0, 1.4], "epic_drop": [-4.0, 0.6],
 }
 
 ## Footstep surface and reverb per floor theme (Themes ids).
@@ -284,6 +287,7 @@ func _ready() -> void:
                 if s != null:
                     list.append(s)
         _streams[snd] = list
+    _synth_bank()
     for i in 2:
         var a := AudioStreamPlayer.new()
         a.bus = "Ambience"
@@ -300,6 +304,68 @@ func _ready() -> void:
     for d in Element.DEFS:
         _weights[String(d["name"])] = _weight_of(d)
         _defs[String(d["name"])] = d
+
+
+# --- Synthesized sounds (procs and drop moments) -----------------------------
+## Built in code at start (no files): sine partials with fast envelopes, a little noise
+## for the transient. "proc" is a short bright "shing" (three pitches, picked at random),
+## "proc_big" a low thump under a rising shimmer (the empowered proc), "legend_drop" a
+## swelling major chord over a sub boom, "epic_drop" a shorter two-note shimmer.
+
+const SYNTH_RATE := 22050
+
+
+func _synth_bank() -> void:
+    var procs: Array = []
+    for fv in [1318.5, 1480.0, 1568.0]:
+        var f: float = fv
+        procs.append(_synth_wav(0.16, func(t: float) -> float:
+            var env := exp(-t * 28.0) * minf(1.0, t * 900.0)
+            var sweep := f * (1.0 + 0.06 * minf(1.0, t * 20.0))
+            var v := sin(TAU * sweep * t) * 0.55 + sin(TAU * sweep * 1.5 * t) * 0.3 + sin(TAU * sweep * 2.01 * t) * 0.15
+            var click := randf_range(-1.0, 1.0) * exp(-t * 400.0) * 0.4
+            return v * env + click))
+    _streams["proc"] = procs
+    _streams["proc_big"] = [_synth_wav(0.38, func(t: float) -> float:
+        var thump := sin(TAU * (120.0 - 70.0 * minf(1.0, t * 8.0)) * t) * exp(-t * 14.0) * 0.8
+        var rise := 880.0 * (1.0 + minf(1.0, t * 4.0))
+        var shim := (sin(TAU * rise * t) * 0.5 + sin(TAU * rise * 1.5 * t) * 0.25) * exp(-t * 7.0) * minf(1.0, t * 60.0)
+        return thump + shim * 0.6 + randf_range(-1.0, 1.0) * exp(-t * 300.0) * 0.3)]
+    _streams["legend_drop"] = [_synth_wav(1.6, func(t: float) -> float:
+        var boom := sin(TAU * (70.0 - 30.0 * minf(1.0, t * 3.0)) * t) * exp(-t * 4.0) * 0.7
+        var swell := minf(1.0, t * 5.0) * exp(-maxf(0.0, t - 0.3) * 2.2)
+        var trem := 0.85 + 0.15 * sin(TAU * 7.0 * t)
+        var chord := 0.0
+        for fr: float in [440.0, 554.4, 659.3, 880.0, 1318.5]:
+            chord += sin(TAU * fr * t + fr * 0.01)
+        var sparkle := sin(TAU * 2637.0 * t) * 0.15 * exp(-t * 3.0) * (0.5 + 0.5 * sin(TAU * 11.0 * t))
+        return boom + chord * 0.13 * swell * trem + sparkle * swell)]
+    _streams["epic_drop"] = [_synth_wav(0.8, func(t: float) -> float:
+        var swell := minf(1.0, t * 8.0) * exp(-t * 4.0)
+        var a := sin(TAU * 659.3 * t) + 0.8 * sin(TAU * 987.8 * t) + 0.4 * sin(TAU * 1318.5 * t)
+        var lo := sin(TAU * 90.0 * t) * exp(-t * 10.0) * 0.4
+        return a * 0.25 * swell + lo)]
+
+
+## A mono 16-bit stream of `secs` seconds from `f(t)` (-1..1, clipped softly).
+func _synth_wav(secs: float, f: Callable) -> AudioStreamWAV:
+    var n := int(secs * SYNTH_RATE)
+    var data := PackedByteArray()
+    data.resize(n * 2)
+    var fade := int(0.01 * SYNTH_RATE)
+    for i in n:
+        var t := float(i) / float(SYNTH_RATE)
+        var v: float = f.call(t)
+        if i > n - fade:
+            v *= float(n - i) / float(fade)
+        v = tanh(v * 1.2) * 0.9
+        data.encode_s16(i * 2, int(clampf(v, -1.0, 1.0) * 32767.0))
+    var w := AudioStreamWAV.new()
+    w.format = AudioStreamWAV.FORMAT_16_BITS
+    w.mix_rate = SYNTH_RATE
+    w.stereo = false
+    w.data = data
+    return w
 
 
 # --- Public API ----------------------------------------------------------------
