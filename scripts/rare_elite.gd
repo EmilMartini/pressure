@@ -18,7 +18,7 @@ extends RefCounted
 const FLOOR_CHANCE := 0.55
 const SPAWN_AT := 4.0          # s into the arena (a pending rare comes at once when the rest is dead)
 const HP_SECS := 8.0           # health: this many seconds of the build's measured damage (P)
-const HP_ELITE := 2.5          # at least this many times an elite's base health
+const HP_ELITE := 1.6          # at least this many times an elite's base health (2.5 took 19 s on floor 2)
 ## P reads low against a single body (the crowd spreads it), so the rare is also sized by how
 ## fast this run kills its plain elites: KILL_SECS of that damage (an elite dies in 2 to 3 s).
 const KILL_SECS := 7.0
@@ -106,8 +106,11 @@ static func apply(e: Enemy, region_id: String, power: float, diff: int, floor_nu
     var affix := ""
     for i in 6:
         affix = SpawnTable.elite_affix(maxi(diff, 10), floor_number)
-        if affix != "" and not (pat == "nova" and affix == "barrage"):
+        # Not regenerating: with closest-first aim it mostly heals unseen and only drags the fight.
+        if affix != "" and affix != "regenerating" and not (pat == "nova" and affix == "barrage"):
             break
+    if affix == "" or affix == "regenerating":
+        affix = "mortar" if pat == "nova" else "barrage"
     e.rare = { "name": String(p[0]), "pat": pat, "t": 2.0, "warn": 0.0, "name_t": NAME_SECS, "from": Vector2.ZERO, "to": Vector2.ZERO, "t0": 0.0 }
     e.base_color = p[1]
     e.max_hp = maxf(maxf(e.max_hp * HP_ELITE, power * HP_SECS), _elite_dps * KILL_SECS)

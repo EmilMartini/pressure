@@ -1,6 +1,6 @@
 """Per-floor pressure from telemetry (difficulty pass, 2026-11-09).
 
-    python tools/pressure_report.py runs.jsonl [more.jsonl] [--bots] [--shops] [--loot] [--moments] [--secrets]
+    python tools/pressure_report.py runs.jsonl [more.jsonl] [--bots] [--shops] [--loot] [--moments] [--secrets] [--rare]
 
 --shops: every shop visit (shop_leave events, Core loop reset 6.5 / 13.2): scrap in, spent,
 left, the cheapest ware still for sale and rerolls, then the targets: share of visits spent
@@ -12,6 +12,9 @@ shown, level-ups, scrap earned and the scrap high-water mark against two floors'
 --secrets: secret rooms (secrets pass, 2026-11-11): floors that had one, how many the party
 stood next to (secret_near), found (the floor's first hidden_room_found, by blast or dash) and entered, the
 median seconds into the floor, and the small pickups (spark cells, chests) taken.
+--rare: rare elites (2026-11-11): floors played, rares spawned and killed, the median kill
+time, the reward's best rarity, how often a weapon was offered, rewards taken, and hits taken
+from a rare (damage_taken with source "rare").
 
 Human runs by default (`--bots` for bot runs). Uses the per-floor "pressure" event
 (scripts/pressure_meter.gd) when the build records it; older runs are rebuilt roughly from
@@ -179,6 +182,37 @@ def secrets(runs):
     print('  floors with a secret=%d stood next to one=%d opened=%d (%.0f%%) entered=%d how=%s median_secs_in=%s pickups=%s' % (
         has, near, opened, 100.0 * opened / has, entered, how, median(secs) if secs else '-', picks))
 
+def rare(runs):
+    floors = spawned = killed = taken = weapon = shown = 0
+    secs = []
+    best = {}
+    hurt = 0
+    names = ['Common', 'Uncommon', 'Rare', 'Epic', 'Legendary']
+    for r in runs:
+        for e in r.get('events', []):
+            k = e.get('e')
+            if k == 'floor_start':
+                floors += 1
+            elif k == 'rare_spawned':
+                spawned += 1
+            elif k == 'rare_killed':
+                killed += 1
+                secs.append(float(e.get('secs', 0)))
+            elif k == 'rare_reward_shown':
+                shown += 1
+                weapon += 1 if e.get('weapon') else 0
+                b = names[max(0, min(4, int(e.get('best', 0))))]
+                best[b] = best.get(b, 0) + 1
+            elif k == 'rare_reward_taken':
+                taken += 1
+            elif k == 'damage_taken' and str(e.get('source', '')) == 'rare':
+                hurt += 1
+    if not spawned:
+        print('  no rare_spawned events')
+        return
+    print('  floors=%d rares spawned=%d (%.2f a floor) killed=%d median_kill_secs=%s rewards shown=%d best=%s weapon offered=%d taken=%d hits_from_rare=%d' % (
+        floors, spawned, spawned / max(1, floors), killed, median(secs) if secs else '-', shown, best, weapon, taken, hurt))
+
 def moments(runs):
     best = {}
     for r in runs:
@@ -199,7 +233,7 @@ def moments(runs):
 
 def main():
     bots = '--bots' in sys.argv
-    if '--shops' in sys.argv or '--loot' in sys.argv or '--moments' in sys.argv or '--secrets' in sys.argv:
+    if '--shops' in sys.argv or '--loot' in sys.argv or '--moments' in sys.argv or '--secrets' in sys.argv or '--rare' in sys.argv:
         runs = [r for path in sys.argv[1:] if not path.startswith('--') for r in load(path) if bool(r.get('bot')) == bots]
         if '--shops' in sys.argv:
             shops(runs)
@@ -209,6 +243,8 @@ def main():
             moments(runs)
         if '--secrets' in sys.argv:
             secrets(runs)
+        if '--rare' in sys.argv:
+            rare(runs)
         return
     for path in [a for a in sys.argv[1:] if not a.startswith('--')]:
         for r in load(path):
