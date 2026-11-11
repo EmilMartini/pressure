@@ -43,6 +43,7 @@ const FILL_A := 0.12
 const HOLD := 1.2          # snares: seconds a foe is held (elites and bosses HOLD_ELITE)
 const HOLD_ELITE := 0.4
 const PLACE_DB := -10.0
+const MAX_HITS := 12        # foes one zone tick may hit (like a melee swing)
 const GEYSER_R := 25.0
 const SPREAD := 0.75        # totems and fields: no new one within this share of the radius of another
 ## Effects kept up per weapon by style, before +1 projectile and Ground items.
@@ -454,6 +455,10 @@ func _tick_zone(delta: float) -> void:
         _tick = 0.1   # nothing inside: look again soon (cheap, one query)
         return
     _tick = _tick_gap()
+    if foes.size() > MAX_HITS:
+        # At most MAX_HITS foes a tick, the closest to the zone first (bounds the cost).
+        foes.sort_custom(func(a, b): return a.global_position.distance_squared_to(c) < b.global_position.distance_squared_to(c))
+        foes.resize(MAX_HITS)
     var s := _strike()
     _react(s)
     var id := gun.data.id

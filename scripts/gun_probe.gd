@@ -96,6 +96,10 @@ func _run() -> void:
     p.input.force_move = Vector2.ZERO
     p.input.force_fire = false
     await get_tree().create_timer(0.5).timeout
+    if Array(OS.get_cmdline_user_args()).any(func(x): return x == "--ground-perf" or x.begins_with("--ground-perf=")):
+        await _ground_perf()
+        get_tree().quit()
+        return
     if _shots:
         await _take_shots()
         await _card_sheet()
@@ -203,6 +207,66 @@ func _measure_setup(id: String, spots: Array) -> void:
         main.current.enemies.add_child(e)
         _dummies.append(e)
     await get_tree().process_frame
+
+
+## `--ground-perf` (Arsenal expansion 2.7): 40 pinned dummies around the player. Script plus
+## physics time a frame (1) with no weapon, (2) with a four-weapon ground build at its own
+## caps (Ember Halo, Frost Totem, Slick Field, Snap Trap, Spark Trail: rings, totems, fields,
+## snares and a trail, every one ticking or armed among the dummies), and (3) a stress stage
+## that adds 12 totems and fields and 20 armed snares up to the 40-effect cap. Prints
+## [GROUND-PERF]; the build stage is the realistic worst case, the stress stage is not
+## reachable in play (two to three ticking zones per weapon at most).
+func _ground_perf() -> void:
+    var p: Player = main.players[0]
+    var spots: Array = []
+    for k in 40:
+        spots.append(Vector2.RIGHT.rotated(TAU * float(k) / 40.0 * 3.0) * (90.0 + 5.0 * float(k)))
+    await _measure_setup("frost_totem", spots)
+    for g in p.guns.duplicate():
+        p.drop_gun(g)
+    await get_tree().create_timer(1.0).timeout
+    var empty := await _frame_ms(_secs)
+    var build_ids := ["frost_totem", "slick_field", "snap_trap", "ember_halo"]
+    for a in OS.get_cmdline_user_args():
+        if a.begins_with("--ground-perf="):
+            build_ids = Array(a.substr(14).split(","))   # a comparison build (guns)
+    for gid in build_ids:
+        p.add_gun(gid, false)
+    var by := {}
+    for g in p.guns:
+        by[g.data.style] = g
+    await get_tree().create_timer(4.0).timeout
+    var build := await _frame_ms(_secs)
+    var build_units := GroundZone.count(p)
+    var home := Strike.world_parent(p)
+    var made := 0
+    for k in (32 if by.has("totem") and by.has("field") and by.has("snare") else 0):
+        var kind := "totem" if k < 6 else ("field" if k < 12 else "snare")
+        var g: Gun = by[kind]
+        var at: Vector2 = spots[(k * 7) % spots.size()]
+        if kind == "snare":
+            at = Vector2(-400.0 - 30.0 * float(k % 10), 240.0 + 30.0 * float(k / 10))   # armed, nothing on them
+        var z := GroundZone.new(g, kind, GroundZone.radius_of(g), 600.0)
+        home.add_child(z)
+        z.global_position = at
+        g.bodies.append(z)
+        made += 1
+    await get_tree().create_timer(1.0).timeout
+    var stress := await _frame_ms(_secs)
+    print("[GROUND-PERF] dummies=%d empty_ms=%.3f build_ms=%.3f (cap units %d) stress_ms=%.3f (cap units %d) build_extra_ms=%.3f stress_extra_ms=%.3f" % [
+        spots.size(), empty, build, build_units, stress, GroundZone.count(p), build - empty, stress - empty])
+
+
+## Mean script plus physics time a frame over `secs`.
+func _frame_ms(secs: float) -> float:
+    var t := 0.0
+    var n := 0
+    var until := Time.get_ticks_msec() + int(secs * 1000.0)
+    while Time.get_ticks_msec() < until:
+        await get_tree().process_frame
+        t += Performance.get_monitor(Performance.TIME_PROCESS) + Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS)
+        n += 1
+    return t / maxf(1.0, float(n)) * 1000.0
 
 
 func _lost() -> float:
