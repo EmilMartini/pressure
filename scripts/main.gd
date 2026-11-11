@@ -2900,6 +2900,18 @@ func _print_fusion_summary() -> void:
     print(ProcFx.report())
     print(ProcFx.drop_report())
     print("[LEGENDARY] fired=%s" % str(Legendary.fired))
+    print("[RUN-STATS] secs=%.0f %s" % [_clock, JSON.stringify(Progress.run_stats)])   # tools/unlock_sim.py
+    if not players.is_empty():
+        # Every carried legendary's rule fired at least once this run (batch 5).
+        var carried: Array = []
+        var quiet: Array = []
+        for g in players[0].guns:
+            if is_instance_valid(g) and g.data.legend != "":
+                carried.append(g.data.legend)
+                if int(Legendary.fired.get(g.data.legend, 0)) <= 0:
+                    quiet.append(g.data.legend)
+        if not carried.is_empty():
+            print("[LEGENDARY-PROBE] %s %d of %d%s" % ["PASS" if quiet.is_empty() else "FAIL", carried.size() - quiet.size(), carried.size(), (" quiet=" + ",".join(quiet)) if not quiet.is_empty() else ""])
     print("[DMG-TEXT] mode=%s shown=%d dropped=%d fight_texts=%d fight_secs=%.0f kinds=%s" % [
         Fx.dmg_mode(), Fx.dmg_shown, Fx.dmg_dropped, Fx.fight_texts, Fx.fight_secs, str(Fx.fight_text_kinds)])
     # Brotato's rule: nothing finishes emerging within Enemy.SPAWN_ASSERT of a player.

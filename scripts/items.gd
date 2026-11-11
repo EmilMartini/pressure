@@ -560,6 +560,38 @@ const SYNERGIES := [
     { "id": "sunburst", "name": "Sunburst", "needs": ["godhead", "mortar_kit"], "line": "Your shots burst 30 px wider", "mods": { "splash": 30 }, "color": Color(1.0, 0.95, 0.6) },
     { "id": "long_shot", "name": "Long Shot", "needs": ["long_fuse", "brass_spyglass"], "line": "Far shots hit like boulders: +30% size", "mods": { "shot_size": 0.3, "range": 0.2 }, "color": Color(0.9, 0.8, 0.6) },
     { "id": "frostbite", "name": "Frostbite", "needs": ["transmuter", "frost_treads"], "line": "Frozen foes take 40% more damage", "mods": { "vs_frozen": 0.4 }, "color": Color(0.6, 0.9, 1.0) },
+    # Arsenal expansion batch 5 (5.4): 30 more, 10 weapon pairs, 12 weapon + item, 8 item pairs.
+    # A "gun:<id>" half is a carried weapon (Player.synergy_counts).
+    { "id": "conductors_net", "name": "Conductor's Net", "needs": ["gun:storm_kunai", "gun:lightning_rods"], "line": "Shocked foes take 25% more damage", "mods": { "vs_shocked": 0.25 }, "color": Color(0.7, 0.8, 1.0) },
+    { "id": "blizzard", "name": "Blizzard", "needs": ["gun:frost_totem", "gun:wind_chime"], "line": "Totems last 50% longer, reach 20% wider", "mods": { "totem_life": 0.5, "zone_radius": 0.2 }, "color": Color(0.75, 0.9, 1.0) },
+    { "id": "big_and_little", "name": "Big and Little", "needs": ["gun:clay_golem", "gun:bone_club"], "line": "Melee and summons +20% damage", "mods": { "melee_dmg": 0.2, "summon_dmg": 0.2 }, "color": Color(0.85, 0.75, 0.6) },
+    { "id": "reel_and_slash", "name": "Reel and Slash", "needs": ["gun:harpoon", "gun:tide_spear"], "line": "Melee reach +20%", "mods": { "reach": 0.2 }, "color": Color(0.5, 0.75, 1.0) },
+    { "id": "fire_and_ice", "name": "Fire and Ice", "needs": ["gun:flare_pistol", "gun:frost_caster"], "line": "Frozen and burning foes take 20% more", "mods": { "vs_frozen": 0.2, "vs_burning": 0.2 }, "color": Color(0.9, 0.6, 0.8) },
+    { "id": "storm_front", "name": "Storm Front", "needs": ["gun:arc_rifle", "gun:rain_drone"], "line": "Wet foes take 25% more damage", "mods": { "vs_wet": 0.25 }, "color": Color(0.55, 0.75, 1.0) },
+    { "id": "blade_dance", "name": "Blade Dance", "needs": ["gun:twin_fangs", "gun:steel_knives"], "line": "Melee swings 20% faster", "mods": { "swing_speed": 0.2 }, "color": Color(0.85, 0.85, 0.95) },
+    { "id": "halo_and_stones", "name": "Halo and Stones", "needs": ["gun:orbit_stones", "gun:ember_halo"], "line": "+1 summon, rings 15% wider", "mods": { "summon_cap": 1, "ring_radius": 0.15 }, "color": Color(1.0, 0.7, 0.4) },
+    { "id": "tar_and_spark", "name": "Tar and Spark", "needs": ["gun:slick_wand", "gun:spark_mine"], "line": "Oiled foes take 30% more damage", "mods": { "vs_oiled": 0.3 }, "color": Color(0.6, 0.5, 0.3) },
+    { "id": "sunlit_glyphs", "name": "Sunlit Glyphs", "needs": ["gun:radiant_ray", "gun:holy_glyph"], "line": "+20% reaction power", "mods": { "potency": 0.2 }, "color": Color(1.0, 0.95, 0.6) },
+    { "id": "parry_wall", "name": "Parry Wall", "needs": ["gun:parry_blade", "ward_vent"], "line": "Your guard holds: +2 armor", "mods": { "armor": 2 }, "color": Color(0.8, 0.85, 0.95) },
+    { "id": "killer_bees", "name": "Killer Bees", "needs": ["gun:wasp_nest", "seeker_lens"], "line": "Summons +25% damage", "mods": { "summon_dmg": 0.25 }, "color": Color(0.95, 0.85, 0.3) },
+    { "id": "eagle_eye", "name": "Eagle Eye", "needs": ["gun:longshot", "marksman_monocle"], "line": "+15% crit chance", "mods": { "crit": 0.15 }, "color": Color(0.95, 0.9, 0.6) },
+    { "id": "twin_rotors", "name": "Twin Rotors", "needs": ["gun:scout_drone", "fork"], "line": "+1 summon", "mods": { "summon_cap": 1 }, "color": Color(0.7, 0.9, 1.0) },
+    { "id": "glacial_lance", "name": "Glacial Lance", "needs": ["gun:glacier_lance", "frost_treads"], "line": "Frozen foes take 35% more damage", "mods": { "vs_frozen": 0.35 }, "color": Color(0.6, 0.9, 1.0) },
+    { "id": "ember_crown", "name": "Ember Crown", "needs": ["gun:ember_halo", "overheat"], "line": "Burning foes take 25% more damage", "mods": { "vs_burning": 0.25 }, "color": Color(1.0, 0.5, 0.2) },
+    { "id": "powder_keg", "name": "Powder Keg", "needs": ["gun:clay_grenade", "powder_horn"], "line": "Your blasts burst 30 px wider", "mods": { "splash": 30 }, "color": Color(1.0, 0.7, 0.35) },
+    { "id": "grave_garden", "name": "Grave Garden", "needs": ["gun:ash_garden", "deep_roots"], "line": "+1 to every trap and totem cap", "mods": { "trap_cap": 1 }, "color": Color(0.6, 0.8, 0.4) },
+    { "id": "iron_rain", "name": "Iron Rain", "needs": ["gun:boulder_mortar", "brass_spyglass"], "line": "+20% range, shots 20% bigger", "mods": { "range": 0.2, "shot_size": 0.2 }, "color": Color(0.8, 0.75, 0.65) },
+    { "id": "blood_moon", "name": "Blood Moon", "needs": ["gun:blood_rapier", "leech_mail"], "line": "Reactions near you heal 1 more", "mods": { "lifesteal": 1 }, "color": Color(0.9, 0.2, 0.3) },
+    { "id": "storm_herald", "name": "Storm Herald", "needs": ["gun:storm_pike", "fork"], "line": "Chains reach 1 more foe", "mods": { "chain_jumps": 1 }, "color": Color(0.75, 0.85, 1.0) },
+    { "id": "hunters_reel", "name": "Hunter's Reel", "needs": ["gun:harpoon", "hunters_oath"], "line": "Thrown +25% damage", "mods": { "thrown_dmg": 0.25 }, "color": Color(0.6, 0.8, 0.7) },
+    { "id": "wildfire", "name": "Wildfire", "needs": ["flash_point", "cinder_heart"], "line": "Burning foes take 30% more damage", "mods": { "vs_burning": 0.3 }, "color": Color(1.0, 0.45, 0.15) },
+    { "id": "relay_race", "name": "Relay Race", "needs": ["cross_training", "slingers_rhythm"], "line": "+15% damage", "mods": { "dmg": 0.15 }, "color": Color(0.9, 0.85, 0.7) },
+    { "id": "warden_line", "name": "Warden Line", "needs": ["warden_drum", "groundwork"], "line": "Your zones last 30% longer", "mods": { "zone_life": 0.3 }, "color": Color(0.65, 0.8, 0.5) },
+    { "id": "glass_cannon", "name": "Glass Cannon", "needs": ["glass_edge", "hollow_crown"], "line": "Crits hit 50% harder", "mods": { "crit_dmg": 0.5 }, "color": Color(0.85, 0.9, 1.0) },
+    { "id": "storm_and_rime", "name": "Storm and Rime", "needs": ["storm_step", "rime_step"], "line": "+1 dash charge", "mods": { "dash_charges": 1 }, "color": Color(0.7, 0.9, 1.0) },
+    { "id": "cold_iron", "name": "Cold Iron", "needs": ["cold_blood", "frostbite_steel"], "line": "Frozen foes take 30% more damage", "mods": { "vs_frozen": 0.3 }, "color": Color(0.65, 0.85, 0.95) },
+    { "id": "rooted_rings", "name": "Rooted Rings", "needs": ["deep_roots", "widen"], "line": "Rings 20% wider, totems last 30% longer", "mods": { "ring_radius": 0.2, "totem_life": 0.3 }, "color": Color(0.6, 0.8, 0.45) },
+    { "id": "pack_tactics", "name": "Pack Tactics", "needs": ["handlers_whistle", "pack_howl"], "line": "Summons +20% damage", "mods": { "summon_dmg": 0.2 }, "color": Color(0.85, 0.7, 0.5) },
 ]
 
 ## Synergy rules that fired this run (the --synergy-probe reads it): id -> times.
@@ -707,7 +739,7 @@ func resonances_for(counts: Dictionary, player: Player = null) -> Dictionary:
 func synergy_if_taken(player: Player, id: String) -> Dictionary:
     if player == null or not is_instance_valid(player):
         return {}
-    var before: Dictionary = player.gear_counts()
+    var before: Dictionary = player.synergy_counts(player.gear_counts())
     var after := before.duplicate()
     after[id] = int(after.get(id, 0)) + 1
     var had := synergies_for(before, resonances_for(before))
@@ -1677,6 +1709,50 @@ func _build_catalog() -> void:
     # Stat and trade-off (2).
     _add("groundskeeper_gloves", "Groundskeeper's Gloves", "hands", C, "+12% ground damage", { "ground_dmg": 0.12 }, [], GR)
     _add("earth_oath", "Earth Oath", "head", R, "Ground +30% damage, guns -20% damage", { "ground_dmg": 0.30, "gun_dmg": -0.20 }, [], GRO)
+
+    # ======================= ARSENAL EXPANSION BATCH 5 (5.1): cross-family behaviour items,
+    # trade-offs and actives, 30 in all. All start locked and open through the batch 5
+    # milestones in progress.gd (three items each). Only existing trigger verbs.
+    # Cross-family relays (5): kills by one family speed up the next one.
+    _add("cross_training", "Cross Training", "hands", U, "Melee kills: guns +25% damage for 3 s", {}, [{ "on": "kill", "melee": true, "do": "buff", "key": "gun_dmg", "amount": 0.25, "secs": 3.0 }], { "tags": ["blade", "gunslinger"], "locked": true })
+    _add("slingers_rhythm", "Slinger's Rhythm", "hands", U, "Thrown kills: melee +25% damage for 3 s", {}, [{ "on": "kill", "family": "thrown", "do": "buff", "key": "melee_dmg", "amount": 0.25, "secs": 3.0 }], { "tags": ["thrown", "blade"], "locked": true })
+    _add("handlers_whistle", "Handler's Whistle", "trinket", U, "Gun kills: summons +25% damage for 3 s", {}, [{ "on": "kill", "family": "gun", "do": "buff", "key": "summon_dmg", "amount": 0.25, "secs": 3.0 }], { "tags": ["gunslinger", "swarm"], "locked": true })
+    _add("groundwork", "Groundwork", "feet", U, "Summon kills: ground +25% damage for 3 s", {}, [{ "on": "kill", "family": "summon", "do": "buff", "key": "ground_dmg", "amount": 0.25, "secs": 3.0 }], { "tags": ["swarm", "ground"], "locked": true })
+    _add("warden_drum", "Warden Drum", "trinket", U, "Ground kills: thrown +25% damage for 3 s", {}, [{ "on": "kill", "family": "ground", "do": "buff", "key": "thrown_dmg", "amount": 0.25, "secs": 3.0 }], { "tags": ["ground", "thrown"], "locked": true })
+    # Cross-family behaviour (11).
+    _add("tenth_strike", "Tenth Strike", "ring", R, "Every 10th hit bursts in a ring of its element", {}, [{ "on": "hit", "every": 10, "every_per": -2, "do": "nova", "element": "last", "radius": 90, "potency": 6 }], { "tags": ["alchemy"], "locked": true })
+    _add("blade_echo", "Blade Echo", "ring", R, "20% of melee hits arc to 2 foes", {}, [{ "on": "hit", "melee": true, "chance": 0.20, "do": "chain", "count": 2, "radius": 160, "potency": 5 }], { "tags": ["blade", "shock"], "locked": true })
+    _add("shrapnel_belt", "Shrapnel Belt", "chest", U, "Thrown kills fling 3 shards", {}, [{ "on": "kill", "family": "thrown", "do": "shoot", "element": "gun", "count": 3, "count_per": 1, "potency": 4 }], { "tags": ["thrown"], "locked": true })
+    _add("storm_step", "Storm Step", "feet", R, "Dashing arcs lightning to 3 foes", {}, [{ "on": "dash", "do": "chain", "count": 3, "radius": 200, "potency": 6 }], { "tags": ["swift", "shock"], "locked": true, "element": "shock" })
+    _add("rime_step", "Rime Step", "feet", U, "Dashing chills foes within 120 px", {}, [{ "on": "dash", "do": "nova", "element": "ice", "radius": 120, "potency": 4 }], { "tags": ["swift", "ice"], "locked": true, "element": "ice" })
+    _add("aegis_trophy", "Aegis Trophy", "trinket", R, "Elite kills shield you", {}, [{ "on": "elite_kill", "do": "shield", "amount": 1.5 }], { "tags": ["guard"], "locked": true, "stack": "once" })
+    _add("cinder_heart", "Cinder Heart", "chest", R, "Below 40% health, hits burn", {}, [{ "on": "hit", "if": "low_hp", "do": "apply", "element": "fire", "potency": 4 }], { "tags": ["fire", "guard"], "locked": true, "element": "fire", "stack": "once" })
+    _add("cold_blood", "Cold Blood", "ring", U, "30% of hits on frozen foes bleed", {}, [{ "on": "hit", "if": "target_frozen", "chance": 0.30, "do": "apply", "element": "blood", "potency": 4 }], { "tags": ["ice", "blood"], "locked": true, "element": "blood" })
+    _add("flash_point", "Flash Point", "trinket", R, "15% of hits on oiled foes erupt", {}, [{ "on": "hit", "if": "target_oiled", "chance": 0.15, "do": "nova", "element": "fire", "radius": 70, "potency": 6 }], { "tags": ["oil", "fire"], "locked": true, "element": "fire" })
+    _add("pack_howl", "Pack Howl", "chest", R, "Summon kills mend 1 health", {}, [{ "on": "kill", "family": "summon", "do": "heal", "amount": 1 }], { "tags": ["swarm"], "locked": true, "stack": "once" })
+    _add("catchers_mitt", "Catcher's Mitt", "hands", U, "Catching a thrown weapon: +20% damage for 2 s", {}, [{ "on": "catch", "do": "buff", "key": "dmg", "amount": 0.20, "secs": 2.0 }], { "tags": ["thrown", "swift"], "locked": true })
+    # Trade-offs (8).
+    _add("glass_edge", "Glass Edge", "hands", R, "Melee +35% damage, -20 max health", { "melee_dmg": 0.35, "max_hp": -20 }, [], { "tags": ["blade"], "locked": true, "stack": "once" })
+    _add("throwers_oath", "Thrower's Oath", "head", R, "Thrown +30% damage, guns -20% damage", { "thrown_dmg": 0.30, "gun_dmg": -0.20 }, [], { "tags": ["thrown"], "locked": true, "stack": "once" })
+    _add("lone_wolf", "Lone Wolf", "head", R, "Guns +25% damage, summons -30% damage", { "gun_dmg": 0.25, "summon_dmg": -0.30 }, [], { "tags": ["gunslinger"], "locked": true, "stack": "once" })
+    _add("heavy_hands", "Heavy Hands", "hands", U, "Melee +20% damage, -8% move speed", { "melee_dmg": 0.20, "speed": -0.08 }, [], { "tags": ["blade"], "locked": true })
+    _add("sharp_mind", "Sharp Mind", "head", R, "+25% reaction power, -10% damage", { "potency": 0.25, "dmg": -0.10 }, [], { "tags": ["alchemy"], "locked": true })
+    _add("ground_pact", "Ground Pact", "feet", R, "Ground +30% damage, melee -20% damage", { "ground_dmg": 0.30, "melee_dmg": -0.20 }, [], { "tags": ["ground"], "locked": true, "stack": "once" })
+    _add("hollow_crown", "Hollow Crown", "head", E, "+20% damage, -25 max health", { "dmg": 0.20, "max_hp": -25 }, [], { "tags": ["gunslinger", "blade"], "locked": true, "stack": "once" })
+    _add("iron_lung", "Iron Lung", "chest", U, "+2 armor, -10% move speed", { "armor": 2, "speed": -0.10 }, [], { "tags": ["guard"], "locked": true })
+    # Actives (6).
+    _add("thunder_bell", "Thunder Bell", "active", R, "Use: lightning arcs to 6 foes", {}, [],
+        { "tags": ["shock"], "locked": true, "active": { "charges": 3, "do": [{ "do": "chain", "count": 6, "radius": 260, "potency": 12 }] } })
+    _add("frost_horn", "Frost Horn", "active", R, "Use: a freezing ring 220 px wide", {}, [],
+        { "tags": ["ice"], "locked": true, "active": { "charges": 3, "do": [{ "do": "nova", "element": "ice", "radius": 220, "potency": 12 }] } })
+    _add("war_cry", "War Cry", "active", U, "Use: +40% damage for 5 s", {}, [],
+        { "tags": ["blade"], "locked": true, "active": { "charges": 2, "do": [{ "do": "buff", "key": "dmg", "amount": 0.40, "secs": 5.0 }] } })
+    _add("miasma_flask", "Miasma Flask", "active", U, "Use: a poison cloud around you", {}, [],
+        { "tags": ["poison"], "locked": true, "active": { "charges": 3, "do": [{ "do": "cloud", "element": "poison", "radius": 120, "secs": 4.0 }] } })
+    _add("iron_skin", "Iron Skin", "active", U, "Use: shield yourself", {}, [],
+        { "tags": ["guard"], "locked": true, "active": { "charges": 2, "do": [{ "do": "shield", "amount": 2.0 }] } })
+    _add("shard_bomb", "Shard Bomb", "active", C, "Use: 8 shards of your element burst out", {}, [],
+        { "tags": ["gunslinger"], "locked": true, "active": { "charges": 3, "do": [{ "do": "shoot", "element": "gun", "count": 8, "potency": 6 }] } })
 
     _add("slipstream_boots", "Slipstream Boots", "feet", R, "Dashing leaves a 2 s trail of your vent element", {}, [{ "on": "dash", "do": "trail", "element": "vent", "secs": 2.0, "secs_per": 1.0 }], { "tags": ["swift", "vent"] })
     _add("shoulder_charge", "Shoulder Charge", "chest", R, "Dashing through enemies hits them for gun damage", { "dash_hit": 1.0 }, [], { "tags": ["swift", "guard"] })

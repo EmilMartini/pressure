@@ -475,6 +475,15 @@ func item_count(id: String) -> int:
 
 
 ## id -> copies of everything the player owns: passives, the active and every gun mod.
+## Gear counts plus "gun:<id>" for every carried weapon: the synergy halves (Arsenal 5.4).
+func synergy_counts(counts: Dictionary) -> Dictionary:
+    var out := counts.duplicate()
+    for g in guns:
+        if g != null and is_instance_valid(g) and g.data != null:
+            out["gun:" + g.data.id] = 1
+    return out
+
+
 func gear_counts() -> Dictionary:
     var out: Dictionary = inventory.duplicate()
     var act := String(equipment.get("active", ""))
@@ -558,7 +567,7 @@ func recalc_stats() -> void:
         var rm := Items.resonance_mods(String(t), int(res[t]))
         for k in rm.keys():
             _stats[k] = float(_stats.get(k, 0.0)) + float(rm[k])
-    var syn := Items.synergies_for(counts, res)
+    var syn := Items.synergies_for(synergy_counts(counts), res)
     for sid in syn:
         var sd := Items.synergy(String(sid))
         _stats["syn_" + String(sid)] = 1.0

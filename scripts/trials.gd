@@ -23,8 +23,24 @@ const DEFS := {
         "rewards": ["gun:hive_queen", "item:call_the_swarm", "item:hive_oath"] },
     "ground": { "name": "Ground", "rule": "You can't attack: auras and traps only. You start with an Ember Halo.",
         "rewards": ["gun:ash_garden", "item:seed", "item:earth_oath"] },
+    # Batch 5: seven more, to 12. Each opens a legendary early (a second road to its feat).
+    "thrown_only": { "name": "Thrown Only", "rule": "Thrown weapons only. You start with Steel Knives.",
+        "rewards": ["gun:skyfall"] },
+    "gunslinger": { "name": "Gunslinger", "rule": "Guns only. You start with a Water Pistol.",
+        "rewards": ["gun:heart_of_the_forge"] },
+    "light_touch": { "name": "Light Touch", "rule": "Only weapons of weight 1 or 2.",
+        "rewards": ["gun:echo_engine"] },
+    "heavy_hand": { "name": "Heavy Hand", "rule": "Only weapons of weight 3 or more. You start with an Arc Rifle.",
+        "rewards": ["gun:glass_of_ages"] },
+    "commons": { "name": "Commons", "rule": "Only Common and Uncommon weapons.",
+        "rewards": ["gun:orrery"] },
+    "cold_front": { "name": "Cold Front", "rule": "Only Wet and Ice weapons. You start with a Water Pistol.",
+        "rewards": ["gun:tidebreaker"] },
+    "pyre": { "name": "Pyre", "rule": "Only Fire weapons. You start with a Flare Pistol.",
+        "rewards": ["gun:phoenix_lantern"] },
 }
-const ORDER := ["blades_only", "no_guns", "one_element", "summoner", "ground"]
+const ORDER := ["blades_only", "no_guns", "one_element", "summoner", "ground", "thrown_only", "gunslinger",
+    "light_touch", "heavy_hand", "commons", "cold_front", "pyre"]
 
 static var _element := -1   # one_element: the run's element, fixed at the start
 
@@ -74,6 +90,28 @@ static func allows(id: String) -> bool:
                 return true
             var d := Guns.make(id)
             return d.element == _element or d.alt_element == _element or d.extra_element == _element
+        "thrown_only":
+            return Guns.family_of(id) == "thrown"
+        "gunslinger":
+            return Guns.family_of(id) == "gun"
+        "light_touch", "heavy_hand", "cold_front", "pyre":
+            return _fits(t, Guns.make(id))
+        "commons":
+            return Guns.rarity_of(id) <= Items.Rarity.UNCOMMON
+    return true
+
+
+## The batch 5 rules that read the weapon's numbers.
+static func _fits(t: String, d: GunData) -> bool:
+    match t:
+        "light_touch":
+            return d.weight <= 2
+        "heavy_hand":
+            return d.weight >= 3
+        "cold_front":
+            return d.element in [Element.Kind.WET, Element.Kind.ICE]
+        "pyre":
+            return d.element == Element.Kind.FIRE
     return true
 
 
@@ -109,6 +147,14 @@ static func start(player: Player) -> void:
                     player.drop_gun(g)
             if player.guns.is_empty():
                 player.add_gun("ember_halo", false)
+        "thrown_only", "gunslinger", "light_touch", "heavy_hand", "commons", "cold_front", "pyre":
+            for g in player.guns.duplicate():
+                if not allows(g.data.id):
+                    player.drop_gun(g)
+            if player.guns.is_empty():
+                var first := { "thrown_only": "steel_knives", "gunslinger": "water_pistol", "light_touch": "water_pistol",
+                    "heavy_hand": "arc_rifle", "commons": "water_pistol", "cold_front": "water_pistol", "pyre": "flare_pistol" }
+                player.add_gun(String(first[t]), false)
         "one_element":
             if player.guns.is_empty():
                 player.add_gun("water_pistol", false)

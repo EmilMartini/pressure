@@ -887,7 +887,14 @@ func _build_trials() -> void:
     col.add_child(UiTheme.label("THE TRIALS", 40, LIT))
     _trials_body = VBoxContainer.new()
     _trials_body.add_theme_constant_override("separation", 10)
-    col.add_child(_trials_body)
+    # Twelve Trials (batch 5) are taller than the screen: the board scrolls, following focus.
+    var scroll := ScrollContainer.new()
+    scroll.custom_minimum_size = Vector2(800, 720)
+    scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+    scroll.follow_focus = true
+    _trials_body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    scroll.add_child(_trials_body)
+    col.add_child(scroll)
     _trials_back = UiTheme.button("Back", _close_overlay)
     col.add_child(_trials_back)
 

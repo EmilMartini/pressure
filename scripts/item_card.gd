@@ -744,6 +744,11 @@ static func _gun_model(data: GunData, opts: Dictionary) -> Dictionary:
             if g != gun and g.data.id == data.id and int(g.tier) == tier and tier < Gun.MAX_TIER:
                 rows.append(_row("You carry one: combines to tier %s" % ROMAN[tier], LABEL_SIZE, GOOD))
                 break
+        if gun == null:
+            # Arsenal 5.4: a weapon can be a synergy half too.
+            var wsyn: Dictionary = Items.synergy_if_taken(player, "gun:" + data.id)
+            if not wsyn.is_empty():
+                rows.append(_row("Forms SYNERGY: %s" % wsyn["name"], LABEL_SIZE, wsyn.get("color", SET_COL)))
     if opts.has("price"):
         var price := int(opts["price"])
         var afford: bool = bool(opts.get("afford", true))

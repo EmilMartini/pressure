@@ -1600,7 +1600,66 @@ to carry over: weapons and their checks come first.
   single huge numbers; a bank lands even if the Glass leaves the loadout.
 - Second Sun and The Conductor scale with build width (reactions, foes hit); probes alone
   understate them.
-- Feats are guesses at "late but reachable"; `--unlock-sim` should set them.
+- Feats were first guesses; part 2 moved them late with `tools/unlock_sim.py` (below).
+
+#### Batch 5 part 2 done (2026-11-11, VERSION 2026.11.11-arsenal5): items, synergies, Trials, pacing
+
+**Built:**
+- **30 items** (`items.gd`, the batch 5 block), all locked, three per new milestone
+  (`b5_mile_1` to `_10` in `progress.gd`: 10 runs, 300 summon kills, 300 ground kills,
+  1,000 reactions, 600 melee kills, 600 thrown kills, 60 vents, 60 elites, 400 rooms,
+  12 bosses). Only existing trigger verbs, so no new item code:
+  - 5 relays, one family's kills power the next for 3 s (+25%): Cross Training (melee to
+    guns), Slinger's Rhythm (thrown to melee), Handler's Whistle (guns to summons),
+    Groundwork (summons to ground), Warden Drum (ground to thrown);
+  - 11 cross-family behaviour items: Tenth Strike, Blade Echo, Shrapnel Belt, Storm Step,
+    Rime Step, Aegis Trophy, Cinder Heart, Cold Blood, Flash Point, Pack Howl (summon kills
+    mend 1, inside the Mending budget), Catcher's Mitt;
+  - 8 trade-offs: Glass Edge, Thrower's Oath, Lone Wolf, Heavy Hands, Sharp Mind, Ground
+    Pact, Hollow Crown, Iron Lung;
+  - 6 actives: Thunder Bell, Frost Horn, War Cry, Miasma Flask, Iron Skin, Shard Bomb.
+- **30 synergies** (to 50, `Items.SYNERGIES`): 10 weapon pairs, 12 weapon plus item, 8 item
+  pairs. A `"gun:<id>"` half is a carried weapon (`Player.synergy_counts`), so a weapon
+  pickup forms one with today's banner, and a weapon card says "Forms SYNERGY: name". All
+  30 give stats (vs-state damage, family damage, caps, reach, radius), not new behaviour.
+- **Trials to 12** (`trials.gd`): Thrown Only, Gunslinger, Light Touch (weight 1 to 2),
+  Heavy Hand (weight 3 and up), Commons (Common and Uncommon only), Cold Front (Wet and Ice),
+  Pyre (Fire). Each opens one legendary early, a second road beside its feat. The board
+  scrolls now (12 rows are taller than the screen; it follows focus).
+- **Legendary feats moved late** to section 6.3's bands by the sim (easier ones from run
+  50, the hard ones, Skyfall, Event Horizon and Prism Disc, at 149 to 172).
+- `[LEGENDARY-PROBE] PASS n of m` at the end of every bot run: every carried legendary's
+  rule fired. `[RUN-STATS] secs=N {json}`: the run's stat gains, which
+  `tools/unlock_sim.py --run-stats=FILE` scales to a 30-minute run.
+- `tools/unlock_sim.py`: replays stat gains run after run against every goal in
+  `ACHIEVEMENTS` and prints unlocks a run by the 6.3 bands.
+
+**Checks** (headless, 0 `SCRIPT ERROR` in every run):
+| Check | Result | Pass |
+|---|---|---|
+| Items fire | Three 300 s bot runs with the 30 items equipped (`--proc-gear`): 0 errors, p99 7.2 to 8.3 ms | yes |
+| Synergies form | `--loadout=frost_totem,wind_chime,parry_blade --proc-gear=cross_training,slingers_rhythm,ward_vent`: `[SYNERGY] formed blizzard`, `relay_race`, `parry_wall` (a weapon pair, an item pair, a weapon plus item) | yes |
+| Trials | `--trial=heavy_hand`, `pyre`, `thrown_only`, `commons` start with the right weapons | yes (not won end to end) |
+| Cards | `[CARDS]` 598 cards, at most 23 words, at most 294 px; every FAIL is the pre-existing "font 16" | yes for this batch |
+| Unlock pacing (`tools/unlock_sim.py`, default 30-minute run) | Runs 1 to 10: 21.7 a run (spec about 4); 11 to 40: 2.2 (about 2); 41 to 120: 0.29 (about 1); 121 to 240: 0.03 (about 0.5); last unlock run 172 | **no**: see below |
+
+**Pacing, what the sim says:** the early bands are front-loaded by the earlier batches' goals
+(family play goals and masteries of 60 to 600 kills fall in the first runs when every
+family gets a share of the kills). The sim's player model is crude (450 kills, 350
+reactions, 12 rooms a run, kills split 40/20/15/15/10 by family, discoveries as a share of
+what is left), so the next step is to feed it real `[RUN-STATS]` from Emil's runs (the
+telemetry has them) before moving goals. The legendaries now sit at runs 50 to 172.
+
+**Not built (carry over):**
+- `--legendary-probe` as a measured ceiling (1.6x an Epic with kills and reactions) and
+  `--loot-sim` (legendary and synergy shares per run; `SYNERGY_CARD_CHANCE` untuned at 0.4
+  with 50 synergies).
+- The behaviour versions of the spec's synergies (Conductor's Net's knives as rods,
+  Blizzard's snowstorm, Big and Little's shared slam): built as stats.
+- Five new cursed pedestals (curses are code, not data); 3.6's celebration extras.
+- Two items short: the catalog now holds 298 (228 passives, 45 mods, 25 actives, from
+  `--card-shot`'s cards.csv) against the spec's 300; weapons are 151.
+- Pacing of runs 1 to 10 and 41 to 120 (above).
 
 ---
 
