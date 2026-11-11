@@ -75,6 +75,13 @@ const STATS := {
     "summon_speed": ["summon speed", "pct"], "summon_size": ["summon size", "pct"],
     "drone_rate": ["drone attack rate", "pct"], "swarm_respawn": ["faster swarm return", "pct"],
     "turret_life": ["turret time", "pct"],
+    "ground_dmg": ["ground damage", "pct"], "zone_radius": ["zone radius", "pct"],
+    "zone_life": ["zone time", "pct"], "zone_rate": ["zone tick rate", "pct"],
+    "zone_slow": ["zone slow", "pct"], "trap_cap": ["to every trap cap", "int"],
+    "trap_radius": ["trap size", "pct"], "hold_time": ["snare hold", "pct"],
+    "lay_rate": ["laying speed", "pct"], "ring_radius": ["ring radius", "pct"],
+    "ring_move": ["ring damage while moving", "pct"], "totem_life": ["totem time", "pct"],
+    "trail_life": ["trail time", "pct"],
     "dmg": ["damage", "pct"], "potency": ["reaction potency", "pct"], "fire_rate": ["fire rate", "pct"],
     "proj_speed": ["projectile speed", "pct"], "range": ["range", "pct"], "pierce": ["pierce", "int"],
     "proj_count": ["projectile per shot", "int", "projectiles per shot"], "max_hp": ["max HP", "int"],
@@ -381,6 +388,12 @@ static func action_text(t: Dictionary, active: bool) -> String:
             return "%d wasps fight beside you for %.0f s" % [int(t.get("count", 6)), float(t.get("secs", 8.0))]
         "mark":
             return "mark the foe"
+        "hair_trigger":
+            return "your traps near you burst"
+        "seed":
+            return "plant every trap and totem at once"
+        "spring_all":
+            return "every trap and mine of yours bursts"
     return String(t.get("do", "?"))
 
 

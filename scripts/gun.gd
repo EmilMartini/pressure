@@ -126,6 +126,8 @@ func _process(delta: float) -> void:
             _shoot(_aim)
     if data.mechanic == "summon":
         Summon.maintain(self, delta)
+    elif data.mechanic == "ground":
+        GroundZone.maintain(self, delta)
     var face := _aim
     var pose: Array = []
     if data.family == "melee":
@@ -332,6 +334,8 @@ func strike(el: int = -1) -> Strike:
             fam_dmg = player.stat("thrown_dmg")
         "summon":
             fam_dmg = player.stat("summon_dmg")
+        "ground":
+            fam_dmg = player.stat("ground_dmg")
     s.damage = data.damage * tier_mult() * maxf(0.1, 1.0 + player.stat("dmg") + player.stat("dmg_" + ek) + _gm("g_dmg") + fam_dmg)
     s.potency = s.damage * data.reaction_mult * (1.0 + potency_bonus(player.stat("potency") + player.stat("potency_" + ek)))
     s.crit = randf() < player.stat("crit")
@@ -400,8 +404,8 @@ func fire(dir: Vector2) -> void:
             return
         "mine":
             _fire_mine(dir)
-        "summon":
-            cooldown = 0.5   # the bodies fight on their own (Summon)
+        "summon", "ground":
+            cooldown = 0.5   # the bodies or zones fight on their own (Summon, GroundZone)
             return
         "turret":
             if player.alive and player._aim_firing:
@@ -840,7 +844,8 @@ func _fire_mine(dir: Vector2) -> void:
     for i in n:
         var off := 0.0 if n == 1 else lerpf(-0.5, 0.5, float(i) / float(n - 1))
         var s := strike(_next_element())
-        var m := Mine.new(s, data.aura_radius * size_mult() * (1.0 + 0.1 * float(shot_pierce())), data.linger)
+        var m := Mine.new(s, data.aura_radius * size_mult() * (1.0 + 0.1 * float(shot_pierce())) * (1.0 + player.stat("zone_radius")), data.linger * (1.0 + player.stat("zone_life")))
+        m.behaviour = data.behaviour
         var land := global_position + dir.rotated(off) * dist * randf_range(0.85, 1.15)
         Strike.world_parent(self).add_child(m)
         m.toss(global_position, land)

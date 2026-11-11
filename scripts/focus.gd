@@ -57,7 +57,7 @@ func update(p: Player, delta: float) -> void:
         cands.append(e)
     var claims := {}   # enemy instance id -> guns with it as their first target
     for g in p.guns:
-        if g.data.family == "melee" or g.data.mechanic == "summon":
+        if g.data.family == "melee" or g.data.mechanic == "summon" or g.data.mechanic == "ground":
             # Melee swings at what is in reach; summon bodies pick from themselves (2.1).
             g.targets = []
             continue

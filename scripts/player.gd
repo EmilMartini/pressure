@@ -1148,8 +1148,8 @@ func _update_aim(delta: float) -> void:
 ## Where gun `g` fires this frame, or ZERO for "not now". Assisted mode bends an aimed shot
 ## onto the enemy or boss part inside a narrow cone; manual never bends; auto picks the nearest.
 func gun_dir(g: Gun) -> Vector2:
-    if g.data.mechanic == "summon":
-        return Vector2.ZERO   # summon bodies pick their own targets; aim never moves them
+    if g.data.mechanic == "summon" or g.data.mechanic == "ground":
+        return Vector2.ZERO   # summon bodies and ground zones pick their own spots; aim never moves them
     if g.data.family == "melee":
         return _melee_dir(g)
     if _aim_firing:

@@ -1013,7 +1013,10 @@ func _die() -> void:
             Progress.add("kills_thrown")   # thrown mastery (Arsenal expansion 6.2)
         elif fam == "summon":
             Progress.add("kills_summon")   # summon mastery (Arsenal expansion 6.2)
+        elif fam == "ground":
+            Progress.add("kills_ground")   # ground mastery (Arsenal expansion 6.2)
         Items.fire(last_hit_by, "kill", ctx)
+        GroundZone.on_kill(last_hit_by, global_position)   # glyph weapons (2.6)
         if is_elite:
             Items.fire(last_hit_by, "elite_kill", ctx)
     # Plague: a poisoned corpse passes it on.

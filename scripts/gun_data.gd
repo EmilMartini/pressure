@@ -53,6 +53,15 @@ const ARCHETYPES := {
     "orbit": ["summon", "bodies circle you and hit what they touch"],
     "swarm": ["summon", "fliers strike once, then come back"],
     "golem": ["summon", "a slow golem walks with you and slams packs"],
+    # Arsenal expansion batch 4: ground styles (GroundZone). Mines keep "mine", the nova "nova".
+    "aura": ["ground", "a ring around you burns what comes near"],
+    "pulse": ["ground", "a ring rolls out from you"],
+    "trail": ["ground", "moving leaves a line that hurts foes crossing it"],
+    "totem": ["ground", "plants a totem that hits all near it"],
+    "field": ["ground", "spreads a zone under the closest pack"],
+    "snare": ["ground", "sets traps in foes' paths"],
+    "glyph": ["ground", "kills leave a glyph that hits the next foe"],
+    "pod": ["ground", "pods that burst when a foe comes near"],
 }
 
 ## Arsenal expansion 2.1: every weapon belongs to one of five families. The family comes
@@ -65,7 +74,8 @@ const FAMILY_OF := {
     "bola": "thrown", "anchor": "thrown",
     "turret": "summon", "drone": "summon", "familiar": "summon", "orbit": "summon", "swarm": "summon",
     "golem": "summon",
-    "nova": "ground", "mine": "ground",
+    "nova": "ground", "mine": "ground", "aura": "ground", "pulse": "ground", "trail": "ground",
+    "totem": "ground", "field": "ground", "snare": "ground", "glyph": "ground", "pod": "ground",
 }
 const FAMILY_NAMES := { "gun": "Gun", "melee": "Melee", "thrown": "Thrown", "summon": "Summon", "ground": "Ground" }
 ## Family -> the item tag a carried weapon counts toward (5.3, Brotato's classes).
@@ -200,6 +210,11 @@ func dps_at(dmg: float, rate: float) -> float:
             return dmg * rate * float(projectile_count)
         "summon":
             return dmg * rate * float(summon_bodies()) * summon_share()
+        "ground":
+            # Zones tick `fire_rate` times a second; traps fire once per lay (`lifetime` s).
+            if style in ["snare", "glyph", "pod"]:
+                return dmg / maxf(0.1, lifetime)
+            return dmg * rate
     if magazine > 0 and rate > 0.0:
         # Revolver: the magazine at the trigger rate, then the reload.
         var mag := float(magazine)
@@ -272,6 +287,10 @@ func how() -> String:
         "charge":
             return "Charges %.1f s, then a rail through every enemy in line" % charge_time
         "mine":
+            if behaviour == "chain":
+                return "Tossed mines; when one bursts, the ones near it follow"
+            if behaviour == "collapse":
+                return "Tossed mines pull foes in, then crush them"
             return "Tosses mines that burst when an enemy steps near (%.0f s)" % linger
         "turret":
             if chain_jumps > 0:
@@ -287,6 +306,22 @@ func how() -> String:
             return "%s strike once, back after %.0f s" % [_bodies_word("flier"), Summon.SWARM_RESPAWN]
         "golem":
             return "A golem walks with you and slams packs (%.0f px)" % aura_radius
+        "aura":
+            return "A %.0f px ring around you hits foes inside %.0f times a second" % [aura_radius, fire_rate]
+        "pulse":
+            return "A ring rolls out %.0f px from you, shoving foes" % max_range
+        "trail":
+            return "Moving leaves a line that hurts foes on it (%.0f s)" % linger
+        "totem":
+            return "Plants up to %d totems at your feet; each hits foes within %.0f px" % [cap if cap > 0 else 2, aura_radius]
+        "field":
+            return "A %.0f px zone under the closest pack for %.0f s" % [aura_radius, linger]
+        "snare":
+            return "Sets up to %d traps in foes' paths; a trap holds what it bites" % (cap if cap > 0 else 3)
+        "glyph":
+            return "Kills leave a glyph that strikes the next foe on it"
+        "pod":
+            return "Sets pods that burst (%.0f px) when a foe comes near" % aura_radius
         "knife":
             return "%d knives stick for %.1f s, then fly back" % [projectile_count, Thrown.STICK]
         "disc":

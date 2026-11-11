@@ -27,6 +27,7 @@ func _init(s: Strike, p_radius: float, p_life: float) -> void:
 func _ready() -> void:
     modulate.a = Settings.own_fx()   # "Your effects" (friend or foe, see Hostile)
     add_to_group("gun_fx")
+    GroundZone.join(self, strike.shooter)   # pools count toward the 40 ground effects (2.6)
     var tree := get_tree()
     strike.stamp(self, global_position, radius * 0.8, true)
     strike.touch_world(tree, global_position, radius * 0.6, Vector2.ZERO)

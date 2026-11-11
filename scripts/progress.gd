@@ -9,7 +9,7 @@ signal unlocked(unlock_id: String, achievement_name: String)
 const SAVE_PATH := "user://save.json"
 
 ## Always available, run one included.
-const BASE_UNLOCKS := ["gun:water_pistol", "gun:arc_rifle", "gun:flare_pistol", "gun:slick_wand", "gun:tin_sabre", "gun:steel_knives", "gun:scout_drone", "obstacle:pool", "mark:vagrant"]
+const BASE_UNLOCKS := ["gun:water_pistol", "gun:arc_rifle", "gun:flare_pistol", "gun:slick_wand", "gun:tin_sabre", "gun:steel_knives", "gun:scout_drone", "gun:ember_halo", "obstacle:pool", "mark:vagrant"]
 
 ## stat: the Progress stat that counts toward it. goal: the number to reach.
 ## Phase 3: the counter guns below moved to lessons (scripts/lessons.gd): oil_slinger,
@@ -297,6 +297,46 @@ const ACHIEVEMENTS := [
         "stat": "kills_summon", "goal": 1800, "rewards": ["gun:thunderhead", "item:shared_mind", "item:feeding_frenzy", "item:swarm_beacon"] },
     { "id": "summon_mastery_8", "name": "Swarm VIII", "desc": "Kill 2600 enemies with summon weapons",
         "stat": "kills_summon", "goal": 2600, "rewards": ["gun:sun_and_moon", "item:brood", "item:tether", "item:brood_chamber"] },
+    # Arsenal expansion batch 4 (6.2): auras and traps. Play goals open the Commons and
+    # Uncommons, each with one Ground item; ground mastery (kills by ground weapons, their
+    # zones, traps and mines) opens the Rares and Epics in family order. Ember Halo is in
+    # BASE_UNLOCKS; Ash Garden comes from the Ground Trial (Trials.DEFS).
+    { "id": "ground_play_1", "name": "Sparkwalker", "desc": "Kill 300 enemies",
+        "stat": "kills", "goal": 300, "rewards": ["gun:spark_trail", "item:groundskeeper_gloves"] },
+    { "id": "ground_play_2", "name": "Trapper", "desc": "Clear 25 rooms",
+        "stat": "rooms", "goal": 25, "rewards": ["gun:snap_trap", "item:tripwire"] },
+    { "id": "ground_play_3", "name": "Cold Stone", "desc": "Set off 800 reactions",
+        "stat": "reactions", "goal": 800, "rewards": ["gun:frost_totem", "item:grit_pouch"] },
+    { "id": "ground_play_4", "name": "High Tide", "desc": "Vent 45 times",
+        "stat": "vents", "goal": 45, "rewards": ["gun:tide_ring", "item:quick_set"] },
+    { "id": "ground_play_5", "name": "Plague Walker", "desc": "Kill 16 elites",
+        "stat": "elites", "goal": 16, "rewards": ["gun:plague_steps", "item:wind_sock"] },
+    { "id": "ground_play_6", "name": "Slick", "desc": "Start 9 runs",
+        "stat": "runs_started", "goal": 9, "rewards": ["gun:slick_field", "item:salted_earth"] },
+    { "id": "ground_play_7", "name": "Chimes", "desc": "Clear 14 floors",
+        "stat": "floors", "goal": 14, "rewards": ["gun:wind_chime", "item:widen"] },
+    { "id": "ground_play_8", "name": "Live Wire", "desc": "Kill 1600 enemies",
+        "stat": "kills", "goal": 1600, "rewards": ["gun:spark_mine", "item:stake_kit"] },
+    { "id": "ground_play_9", "name": "Hallowed", "desc": "Discover 13 different reactions",
+        "stat": "reactions_discovered", "goal": 13, "rewards": ["gun:holy_glyph", "item:censer_ash"] },
+    { "id": "ground_play_10", "name": "Thirsty", "desc": "Beat 6 bosses",
+        "stat": "bosses", "goal": 6, "rewards": ["gun:thirst", "item:mending_moss"] },
+    { "id": "ground_mastery_1", "name": "Ground I", "desc": "Kill 60 enemies with ground weapons",
+        "stat": "kills_ground", "goal": 60, "rewards": ["gun:rift_snare", "item:overgrowth", "item:lodestone"] },
+    { "id": "ground_mastery_2", "name": "Ground II", "desc": "Kill 150 enemies with ground weapons",
+        "stat": "kills_ground", "goal": 150, "rewards": ["gun:pyre_totem", "item:deep_roots", "item:brimstone"] },
+    { "id": "ground_mastery_3", "name": "Ground III", "desc": "Kill 300 enemies with ground weapons",
+        "stat": "kills_ground", "goal": 300, "rewards": ["gun:hoarfrost", "item:footwork", "item:gale_lantern"] },
+    { "id": "ground_mastery_4", "name": "Ground IV", "desc": "Kill 500 enemies with ground weapons",
+        "stat": "kills_ground", "goal": 500, "rewards": ["gun:spike_glyphs", "item:bloom", "item:sanctum_stone"] },
+    { "id": "ground_mastery_5", "name": "Ground V", "desc": "Kill 800 enemies with ground weapons",
+        "stat": "kills_ground", "goal": 800, "rewards": ["gun:corrosion_halo", "item:ley_lines", "item:slow_fuse"] },
+    { "id": "ground_mastery_6", "name": "Ground VI", "desc": "Kill 1200 enemies with ground weapons",
+        "stat": "kills_ground", "goal": 1200, "rewards": ["gun:lightning_rods", "item:echo_step", "item:quarry_bell"] },
+    { "id": "ground_mastery_7", "name": "Ground VII", "desc": "Kill 1800 enemies with ground weapons",
+        "stat": "kills_ground", "goal": 1800, "rewards": ["gun:geyser_field", "item:aftershock", "item:soil_sense", "item:cool_stones", "item:root_sap"] },
+    { "id": "ground_mastery_8", "name": "Ground VIII", "desc": "Kill 2600 enemies with ground weapons",
+        "stat": "kills_ground", "goal": 2600, "rewards": ["gun:collapse_mine", "item:hair_trigger", "item:spring_all"] },
 ]
 
 var save_path := SAVE_PATH

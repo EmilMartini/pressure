@@ -263,6 +263,60 @@ static func icon(id: String) -> Texture2D:
                 _disc(img, Vector2(16, 16), 7.0, METAL_DARK)
                 _disc(img, Vector2(16, 16), 4.5, edge)
                 _stroke(img, Vector2(18, 14), Vector2(28, 6), 3.0, METAL)
+        # --- Ground (batch 4): geometric marks (a dashed ring, a pillar with a gem, a jagged
+        # ring, a three-stroke rune, a dotted line) -----------------------------------
+        "aura", "pulse":
+            var rings := [12.0] if d.style == "aura" else [6.0, 10.0, 14.0]
+            for rr in rings:
+                for k in 12:
+                    var a0 := TAU * float(k) / 12.0
+                    _stroke(img, Vector2(16, 16) + Vector2.RIGHT.rotated(a0) * rr, Vector2(16, 16) + Vector2.RIGHT.rotated(a0 + 0.26) * rr, 1.5, edge)
+            if d.style == "aura":
+                _disc(img, Vector2(16, 13), 3.0, Color(0.85, 0.82, 0.78))
+                _poly(img, [Vector2(12, 22), Vector2(20, 22), Vector2(18, 16), Vector2(14, 16)], Color(0.85, 0.82, 0.78))
+            else:
+                _disc(img, Vector2(16, 16), 2.5, second)
+        "trail":
+            for k in 6:
+                var at := Vector2(5 + 4.2 * k, 26 - 3.6 * k + (2.0 if k % 2 == 0 else -1.0))
+                _disc(img, at, 1.8, edge)
+            _poly(img, [Vector2(23, 5), Vector2(29, 5), Vector2(29, 11), Vector2(23, 11)], Color(0.62, 0.5, 0.32))
+        "totem":
+            _poly(img, [Vector2(12, 12), Vector2(20, 12), Vector2(20, 28), Vector2(12, 28)], Color(0.58, 0.55, 0.50))
+            _poly(img, [Vector2(9, 27), Vector2(23, 27), Vector2(23, 30), Vector2(9, 30)], Color(0.42, 0.40, 0.37))
+            _stroke(img, Vector2(12, 19), Vector2(20, 19), 1.0, Color(0.42, 0.40, 0.37))
+            _disc(img, Vector2(16, 8), 4.5, edge)
+            _disc(img, Vector2(15, 7), 1.5, Color(1, 1, 1, 0.8))
+        "field":
+            for k in 7:
+                var at := Vector2(16, 18) + Vector2(cos(TAU * k / 7.0) * 11.0, sin(TAU * k / 7.0) * 7.0)
+                _disc(img, at, 1.6, edge)
+            _disc(img, Vector2(16, 18), 5.0, edge.darkened(0.3))
+            _disc(img, Vector2(14, 17), 1.8, second)
+        "snare", "pod":
+            var pts: Array = []
+            for k in 17:
+                var a1 := TAU * float(k) / 16.0
+                pts.append(Vector2(16, 17) + Vector2.RIGHT.rotated(a1) * (12.0 if k % 2 == 0 else 8.0))
+            for k in 16:
+                _stroke(img, pts[k], pts[k + 1], 1.5, METAL if d.style == "snare" else edge.darkened(0.2))
+            if d.style == "pod":
+                _disc(img, Vector2(16, 17), 5.0, edge)
+                _disc(img, Vector2(16, 17), 2.5, second)
+            else:
+                _disc(img, Vector2(16, 17), 3.0, edge)
+        "glyph":
+            _stroke(img, Vector2(7, 25), Vector2(16, 6), 2.0, edge)
+            _stroke(img, Vector2(16, 6), Vector2(25, 25), 2.0, edge)
+            _stroke(img, Vector2(10, 17), Vector2(22, 17), 2.0, second if second != edge else edge.lightened(0.3))
+        "mine":
+            _disc(img, Vector2(16, 18), 9.0, Color(0.62, 0.6, 0.56))
+            _disc(img, Vector2(16, 18), 6.0, edge.darkened(0.3))
+            _disc(img, Vector2(16, 17), 2.5, Color(1, 1, 1, 0.9))
+            var ex: Color = Element.COLORS.get(d.extra_element, edge) if d.extra_element != Element.Kind.NONE else edge
+            for k in 4:
+                var a2 := TAU * float(k) / 4.0 + PI * 0.25
+                _stroke(img, Vector2(16, 18) + Vector2.RIGHT.rotated(a2) * 9.0, Vector2(16, 18) + Vector2.RIGHT.rotated(a2) * 13.0, 2.0, ex)
         _:   # sweep: a blade, a guard, a grip
             _stroke(img, Vector2(4, 28), Vector2(9, 23), 3.0, GRIP)
             _stroke(img, Vector2(6, 19), Vector2(13, 26), 2.5, second if second != edge else METAL_DARK)

@@ -66,6 +66,11 @@ const ORDER := [
     "tar_crawler", "storm_kite", "acid_slime", "holy_wisps", "leech_jar", "watchers_eye",
     "tesla_post", "blood_hound", "clay_golem", "mortar_drone", "frost_blades", "thunderhead",
     "sun_and_moon", "hive_queen",
+    # Arsenal expansion batch 4: auras and traps (section 4.5), the 20 new non-legendary ones.
+    "ember_halo", "spark_trail", "snap_trap", "frost_totem", "tide_ring", "plague_steps",
+    "slick_field", "wind_chime", "spark_mine", "holy_glyph", "thirst", "rift_snare", "pyre_totem",
+    "hoarfrost", "spike_glyphs", "corrosion_halo", "lightning_rods", "geyser_field", "ash_garden",
+    "collapse_mine",
 ]
 
 ## Arsenal expansion 4.1 to 4.5: every existing weapon's rarity (0 Common .. 4 Legendary)
@@ -552,6 +557,67 @@ const DEFS := {
     "hive_queen": { "display_name": "Hive Queen", "archetype": "swarm", "rarity": 3, "element": K.POISON,
         "extra_element": K.GALE, "weight": 4, "cap": 4, "damage": 22.5, "fire_rate": 2.0, "projectile_speed": 320.0,
         "max_range": 320.0, "pressure_per_shot": 0.3, "reaction_mult": 0.3 },
+    # --- Auras and traps (Arsenal expansion 4.5, batch 4) -----------------------------
+    # Single-target dps is 60% of the gun band for the weight times the rarity premium
+    # (2.6: zones win on packs and states). For a zone `damage` is per tick and `fire_rate`
+    # ticks a second (pulses: rings a second); `aura_radius` is the ring, reach or trap size
+    # (a pulse's is `max_range`); `linger` how long a zone or trail point lasts; `lifetime`
+    # the seconds between two placements; `cap` the zones kept up; `max_range` how far a
+    # field, snare or pod is laid. Pressure is per tick that hits, or per trap laid.
+    "ember_halo": { "display_name": "Ember Halo", "archetype": "aura", "rarity": 0, "element": K.FIRE, "weight": 2,
+        "damage": 4.3, "fire_rate": 3.0, "aura_radius": 70.0, "max_range": 120.0, "pressure_per_shot": 0.6, "reaction_mult": 1.0 },
+    "spark_trail": { "display_name": "Spark Trail", "archetype": "trail", "rarity": 0, "element": K.SHOCK, "weight": 1,
+        "damage": 3.5, "fire_rate": 3.0, "linger": 2.5, "max_range": 120.0, "pressure_per_shot": 0.4, "reaction_mult": 1.0 },
+    "snap_trap": { "display_name": "Snap Trap", "archetype": "snare", "rarity": 0, "element": K.STONE, "weight": 2,
+        "cap": 3, "damage": 18.0, "fire_rate": 1.0, "lifetime": 1.2, "aura_radius": 30.0, "max_range": 260.0,
+        "pressure_per_shot": 0.5, "reaction_mult": 1.2 },
+    "frost_totem": { "display_name": "Frost Totem", "archetype": "totem", "rarity": 0, "element": K.ICE, "weight": 2,
+        "cap": 2, "damage": 7.0, "fire_rate": 2.0, "lifetime": 2.5, "linger": 7.0, "aura_radius": 110.0, "max_range": 160.0,
+        "pressure_per_shot": -0.8, "reaction_mult": 1.2 },
+    "tide_ring": { "display_name": "Tide Ring", "archetype": "pulse", "rarity": 0, "element": K.WET, "weight": 2,
+        "damage": 15.0, "fire_rate": 1.0, "max_range": 140.0, "knockback": 140.0, "pressure_per_shot": -2.0, "reaction_mult": 1.2 },
+    "plague_steps": { "display_name": "Plague Steps", "archetype": "trail", "rarity": 1, "element": K.POISON, "weight": 1,
+        "damage": 3.8, "fire_rate": 2.5, "linger": 3.0, "max_range": 120.0, "pressure_per_shot": 0.3, "reaction_mult": 1.2 },
+    "slick_field": { "display_name": "Slick Field", "archetype": "field", "rarity": 1, "element": K.OIL, "weight": 2,
+        "cap": 2, "damage": 5.5, "fire_rate": 2.5, "lifetime": 1.8, "linger": 4.0, "aura_radius": 85.0, "max_range": 300.0,
+        "pressure_per_shot": 0.3, "reaction_mult": 1.3 },
+    "wind_chime": { "display_name": "Wind Chime", "archetype": "totem", "rarity": 1, "element": K.GALE, "weight": 2,
+        "cap": 2, "damage": 7.5, "fire_rate": 2.0, "lifetime": 2.5, "linger": 7.0, "aura_radius": 100.0, "max_range": 160.0,
+        "knockback": 140.0, "pressure_per_shot": -0.3, "reaction_mult": 1.2 },
+    "spark_mine": { "display_name": "Spark Mine", "archetype": "mine", "behaviour": "chain", "rarity": 1, "element": K.SHOCK,
+        "weight": 3, "damage": 15.0, "fire_rate": 1.4, "max_range": 300.0, "aura_radius": 55.0, "linger": 8.0,
+        "pressure_per_shot": 1.5, "reaction_mult": 1.3 },
+    "holy_glyph": { "display_name": "Holy Glyph", "archetype": "glyph", "rarity": 1, "element": K.HOLY, "weight": 2,
+        "cap": 6, "damage": 30.0, "fire_rate": 1.0, "lifetime": 1.0, "aura_radius": 32.0, "max_range": 120.0,
+        "pressure_per_shot": 0.3, "reaction_mult": 1.3 },
+    "thirst": { "display_name": "Thirst", "archetype": "aura", "rarity": 1, "element": K.BLOOD, "weight": 2,
+        "damage": 5.0, "fire_rate": 2.5, "aura_radius": 65.0, "max_range": 120.0, "pressure_per_shot": 0.5, "reaction_mult": 1.2 },
+    "rift_snare": { "display_name": "Rift Snare", "archetype": "snare", "rarity": 2, "element": K.VOID, "weight": 3,
+        "cap": 3, "damage": 28.0, "fire_rate": 1.0, "lifetime": 1.4, "aura_radius": 30.0, "max_range": 260.0,
+        "pressure_per_shot": -0.5, "reaction_mult": 1.3 },
+    "pyre_totem": { "display_name": "Pyre Totem", "archetype": "totem", "rarity": 2, "element": K.FIRE, "weight": 3,
+        "cap": 2, "damage": 12.0, "fire_rate": 1.6, "lifetime": 2.5, "linger": 7.0, "aura_radius": 130.0, "max_range": 180.0,
+        "pressure_per_shot": 0.8, "reaction_mult": 1.2 },
+    "hoarfrost": { "display_name": "Hoarfrost", "archetype": "field", "rarity": 2, "element": K.ICE, "weight": 3,
+        "cap": 2, "damage": 8.0, "fire_rate": 2.5, "lifetime": 1.8, "linger": 4.0, "aura_radius": 90.0, "max_range": 300.0,
+        "pressure_per_shot": -0.8, "reaction_mult": 1.3 },
+    "spike_glyphs": { "display_name": "Spike Glyphs", "archetype": "glyph", "rarity": 2, "element": K.STONE, "weight": 3,
+        "cap": 6, "damage": 40.0, "fire_rate": 1.0, "lifetime": 0.6, "aura_radius": 36.0, "max_range": 120.0,
+        "pressure_per_shot": 0.3, "reaction_mult": 1.3 },
+    "corrosion_halo": { "display_name": "Corrosion Halo", "archetype": "aura", "rarity": 2, "element": K.ACID, "weight": 3,
+        "damage": 6.5, "fire_rate": 3.0, "aura_radius": 80.0, "max_range": 120.0, "pressure_per_shot": 0.7, "reaction_mult": 1.2 },
+    "lightning_rods": { "display_name": "Lightning Rods", "archetype": "totem", "rarity": 2, "element": K.SHOCK, "weight": 3,
+        "cap": 3, "damage": 9.5, "fire_rate": 2.0, "lifetime": 2.0, "linger": 7.0, "aura_radius": 90.0, "max_range": 160.0,
+        "pressure_per_shot": 0.7, "reaction_mult": 1.2 },
+    "geyser_field": { "display_name": "Geyser Field", "archetype": "field", "rarity": 3, "element": K.WET,
+        "extra_element": K.FIRE, "weight": 4, "cap": 2, "damage": 13.0, "fire_rate": 2.0, "lifetime": 1.8, "linger": 4.0,
+        "aura_radius": 90.0, "max_range": 300.0, "pressure_per_shot": 0.2, "reaction_mult": 0.4 },
+    "ash_garden": { "display_name": "Ash Garden", "archetype": "pod", "rarity": 3, "element": K.POISON,
+        "extra_element": K.FIRE, "weight": 3, "cap": 4, "damage": 29.0, "fire_rate": 1.0, "lifetime": 1.2,
+        "aura_radius": 70.0, "max_range": 260.0, "pressure_per_shot": 1.0, "reaction_mult": 0.4 },
+    "collapse_mine": { "display_name": "Collapse Mine", "archetype": "mine", "behaviour": "collapse", "rarity": 3,
+        "element": K.VOID, "extra_element": K.STONE, "weight": 4, "damage": 24.0, "fire_rate": 1.2, "max_range": 300.0,
+        "aura_radius": 60.0, "linger": 8.0, "pressure_per_shot": -0.5, "reaction_mult": 0.5 },
 }
 
 

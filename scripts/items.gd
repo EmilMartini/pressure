@@ -502,15 +502,16 @@ const VIAL_CHANCE_CAP := 0.60
 
 ## Tags and resonances (3.1, section 12; Emil's decision: sets became these). Owning 3 items
 ## with a tag forms its resonance; 5 doubles it and adds a visual tier.
-const TAGS := ["vent", "guard", "gunslinger", "seeker", "alchemy", "swift", "fortune", "blade", "thrown", "swarm"]
+const TAGS := ["vent", "guard", "gunslinger", "seeker", "alchemy", "swift", "fortune", "blade", "thrown", "swarm", "ground"]
 const TAG_NAMES := { "vent": "Vent", "guard": "Guard", "gunslinger": "Gunslinger", "seeker": "Seeker",
-    "alchemy": "Alchemy", "swift": "Swift", "fortune": "Fortune", "blade": "Blade", "thrown": "Thrown", "swarm": "Swarm" }
+    "alchemy": "Alchemy", "swift": "Swift", "fortune": "Fortune", "blade": "Blade", "thrown": "Thrown", "swarm": "Swarm", "ground": "Ground" }
 const TAG_COLORS := {
     "vent": Color(1.00, 0.55, 0.25), "guard": Color(0.65, 0.72, 0.85), "gunslinger": Color(0.95, 0.80, 0.50),
     "seeker": Color(0.55, 0.85, 1.00), "alchemy": Color(0.50, 0.95, 0.55), "swift": Color(0.60, 1.00, 0.92),
     "fortune": Color(1.00, 0.85, 0.30), "blade": Color(0.82, 0.84, 0.92),
     "thrown": Color(0.80, 0.70, 0.55),
     "swarm": Color(0.70, 0.85, 0.55),
+    "ground": Color(0.72, 0.62, 0.48),
 }
 const RESONANCE_AT := [3, 5]
 ## Tag -> [mods at 3, line at 3]. At 5 every number doubles. An element tag gives +25%
@@ -529,6 +530,8 @@ const RESONANCES := {
     "thrown": [{ "thrown_bounce": 1 }, "+1 bounce or return hit"],
     # Arsenal expansion 5.3: at 5 it doubles and summons carry your highest-tier weapon's element.
     "swarm": [{ "summon_cap": 1 }, "+1 to every summon cap"],
+    # Arsenal expansion 5.3: at 5 it doubles and your zones react with each other where they touch.
+    "ground": [{ "zone_life": 0.30, "zone_radius": 0.15 }, "Zones last 30% longer, radius +15%"],
 }
 
 ## Synergies (section 12): two specific items (or an item and a tag's resonance), built on
@@ -619,6 +622,8 @@ func resonance_mods(tag: String, tier: int) -> Dictionary:
         out["thrown_split"] = 1.0
     if tag == "swarm" and tier >= 2:
         out["swarm_tether"] = 1.0
+    if tag == "ground" and tier >= 2:
+        out["ground_react"] = 1.0
     return out
 
 
@@ -1269,6 +1274,12 @@ func _do(t: Dictionary, player: Player, ctx: Dictionary) -> void:
             Summon.brood(player, String(ctx.get("gun", "")), pos, int(t.get("count", 1)), float(t.get("secs", 4.0)))
         "swarm_call":
             Summon.brood(player, "", player.global_position, int(t.get("count", 6)), float(t.get("secs", 8.0)))
+        "hair_trigger":
+            GroundZone.spring_near(player, float(t.get("radius", 90.0)))
+        "seed":
+            GroundZone.seed_all(player)
+        "spring_all":
+            GroundZone.spring_all(player)
 
 
 ## The element a vent makes for this player: what they last vented, else hot fire / cold ice.
@@ -1601,6 +1612,53 @@ func _build_catalog() -> void:
     # Stat and trade-off (2).
     _add("kennel_keys", "Kennel Keys", "trinket", C, "+12% summon damage", { "summon_dmg": 0.12 }, [], SW)
     _add("hive_oath", "Hive Oath", "head", R, "Summons +30% damage, guns -20% damage", { "summon_dmg": 0.30, "gun_dmg": -0.20 }, [], SWO)
+
+    # ======================= ARSENAL EXPANSION BATCH 4 (5.1, 5.2): Ground items. All start
+    # locked and open through the ground unlocks in progress.gd and the Ground Trial.
+    # "family": "ground" on a trigger: only hits and kills by a ground weapon (its zones,
+    # traps and mines). Ground stats: ground_dmg, zone_radius, zone_life, zone_rate,
+    # zone_slow, trap_cap, trap_radius, trap_echo, hold_time, lay_rate, ring_radius,
+    # ring_move, totem_life, trail_life (GroundZone).
+    var GR := { "tags": ["ground"], "locked": true }
+    var GRO := { "tags": ["ground"], "locked": true, "stack": "once" }
+    # Ground passives (12, behaviour).
+    _add("deep_roots", "Deep Roots", "feet", U, "Totems last 50% longer", { "totem_life": 0.50 }, [], GR)
+    _add("hair_trigger", "Hair Trigger", "trinket", R, "Traps also burst when you dash past", {}, [{ "on": "dash", "do": "hair_trigger", "radius": 90 }], GRO)
+    _add("widen", "Widen", "ring", C, "Rings +20% radius", { "ring_radius": 0.20 }, [], GR)
+    _add("echo_step", "Echo Step", "feet", U, "Trails last twice as long", { "trail_life": 1.0 }, [], GRO)
+    _add("salted_earth", "Salted Earth", "hands", U, "Your zones slow foes 15%", { "zone_slow": 0.15 }, [], GRO)
+    _add("tripwire", "Tripwire", "trinket", C, "Snares hold foes 50% longer", { "hold_time": 0.50 }, [], GR)
+    _add("overgrowth", "Overgrowth", "chest", R, "+1 to every trap and totem cap", { "trap_cap": 1 }, [], GR)
+    _add("ley_lines", "Ley Lines", "head", R, "Your zones tick 20% faster", { "zone_rate": 0.20 }, [], GR)
+    _add("aftershock", "Aftershock", "trinket", R, "Traps burst again 0.5 s later at half damage", { "trap_echo": 1 }, [], GRO)
+    _add("footwork", "Footwork", "feet", U, "While you move, rings hit 25% harder", { "ring_move": 0.25 }, [], GR)
+    _add("soil_sense", "Soil Sense", "head", U, "Fields, traps and totems are laid 30% faster", { "lay_rate": 0.30 }, [], GR)
+    _add("bloom", "Bloom", "chest", U, "Snares, pods and glyphs 30% wider", { "trap_radius": 0.30 }, [], GR)
+    # Ground mods (6): they fit any weapon (a ground weapon's +1 shot is +1 trap, or a wider ring).
+    _add("stake_kit", "Stake Kit", "mod", R, "This weapon: +1 trap or wider ring, -15% damage", { "g_count": 1, "g_dmg": -0.15 }, [], GR)
+    _add("lodestone", "Lodestone", "mod", U, "This weapon: +25% range, +1 pierce", { "g_range": 0.25, "g_pierce": 1 }, [], GR)
+    _add("slow_fuse", "Slow Fuse", "mod", U, "This weapon: +25% damage, -15% fire rate", { "g_dmg": 0.25, "g_fire_rate": -0.15 }, [], GR)
+    _add("quick_set", "Quick Set", "mod", C, "This weapon: +20% fire rate, -10% damage", { "g_fire_rate": 0.20, "g_dmg": -0.10 }, [], GR)
+    _add("brimstone", "Brimstone", "mod", U, "This weapon: hits also burn, -10% damage", { "extra_element": "fire", "g_dmg": -0.10 }, [], GR)
+    _add("cool_stones", "Cool Stones", "mod", C, "This weapon: -40% pressure, -10% damage", { "g_pressure": -0.40, "g_dmg": -0.10 }, [], GR)
+    # Ground actives (2).
+    _add("seed", "Seed", "active", U, "Use: plant every trap and totem at once", {}, [],
+        { "tags": ["ground"], "locked": true, "active": { "charges": 3, "do": [{ "do": "seed" }] } })
+    _add("spring_all", "Spring All", "active", R, "Use: every trap and mine of yours bursts", {}, [],
+        { "tags": ["ground"], "locked": true, "active": { "charges": 3, "do": [{ "do": "spring_all" }] } })
+    # Element items: a state item and a reaction item each for Holy, Gale and Stone.
+    _add("censer_ash", "Censer Ash", "trinket", C, "20% of ground hits bless the foe", {}, [{ "on": "hit", "family": "ground", "chance": 0.20, "do": "apply", "element": "holy", "potency": 4 }], { "tags": ["ground", "holy"], "locked": true, "element": "holy" })
+    _add("sanctum_stone", "Sanctum Stone", "ring", R, "Smite strikes 2 more foes nearby", {}, [{ "on": "reaction:Smite", "do": "chain", "count": 2, "radius": 200, "potency": 5 }], { "tags": ["ground", "holy"], "locked": true, "element": "holy" })
+    _add("wind_sock", "Wind Sock", "hands", C, "20% of ground hits catch the wind", {}, [{ "on": "hit", "family": "ground", "chance": 0.20, "do": "apply", "element": "gale", "potency": 4 }], { "tags": ["ground", "gale"], "locked": true, "element": "gale" })
+    _add("gale_lantern", "Gale Lantern", "trinket", U, "Firestorm leaves a fire cloud", {}, [{ "on": "reaction:Firestorm", "do": "cloud", "element": "fire", "radius": 90, "secs": 3.0 }], { "tags": ["ground", "gale"], "locked": true, "element": "gale" })
+    _add("grit_pouch", "Grit Pouch", "trinket", C, "20% of ground hits grind stone in", {}, [{ "on": "hit", "family": "ground", "chance": 0.20, "do": "apply", "element": "stone", "potency": 4 }], { "tags": ["ground", "stone"], "locked": true, "element": "stone" })
+    _add("quarry_bell", "Quarry Bell", "trinket", U, "Mud slows foes nearby", {}, [{ "on": "reaction:Mud", "do": "slow", "radius": 150 }], { "tags": ["ground", "stone"], "locked": true, "element": "stone" })
+    # Healing (2), inside the Mending budget.
+    _add("mending_moss", "Mending Moss", "chest", R, "Ground kills mend 1 health", {}, [{ "on": "kill", "family": "ground", "do": "heal", "amount": 1 }], GRO)
+    _add("root_sap", "Root Sap", "trinket", U, "+10% Mending reserve, zones last 10% longer", { "mend": 0.10, "zone_life": 0.10 }, [], GR)
+    # Stat and trade-off (2).
+    _add("groundskeeper_gloves", "Groundskeeper's Gloves", "hands", C, "+12% ground damage", { "ground_dmg": 0.12 }, [], GR)
+    _add("earth_oath", "Earth Oath", "head", R, "Ground +30% damage, guns -20% damage", { "ground_dmg": 0.30, "gun_dmg": -0.20 }, [], GRO)
 
     _add("slipstream_boots", "Slipstream Boots", "feet", R, "Dashing leaves a 2 s trail of your vent element", {}, [{ "on": "dash", "do": "trail", "element": "vent", "secs": 2.0, "secs_per": 1.0 }], { "tags": ["swift", "vent"] })
     _add("shoulder_charge", "Shoulder Charge", "chest", R, "Dashing through enemies hits them for gun damage", { "dash_hit": 1.0 }, [], { "tags": ["swift", "guard"] })
