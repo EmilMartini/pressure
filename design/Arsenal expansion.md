@@ -1309,7 +1309,7 @@ the rebase on fun pass 1):
 | Fusion probe, idle bot | `[FUSION-CHECK] PASS` (and in every bot run); the standard idle six-weapon bot dies on floor 1 at 33 s | yes |
 | Hub walk | `[HUB-WALK] PASS`, `[HUB-FRESH] PASS` | yes |
 | Load check (`--editor --quit`) | 0 `SCRIPT ERROR` | yes |
-| Smoke | SMOKE_ROW | yes |
+| Smoke (`tools/exe_smoke.sh`) | `[SMOKE] ALL PASS` | yes |
 
 **Not built or not checked:**
 - `--arsenal-perf` (40 enemies, two summon weapons at cap). Bodies do one retarget per
