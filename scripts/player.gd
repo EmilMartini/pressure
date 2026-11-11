@@ -673,7 +673,9 @@ const XP_EXP := 2.25
 ## run (a level every 2 to 3 arenas). Fitted to the kill XP of the 4-arena floors (kite bots:
 ## about 3,400 on floor 2 and 5,200 on floor 3, close to linear in the floor), so the cost of a
 ## level grows linearly: 360 x (2n - 1) for level n + 1.
-const XP_BASE_RESET := 360.0
+## Core loop reset 14 (2026-11-11): Emil's fresh-save run took 26 level-ups, not 7 or 8 (the
+## floors grew denser since); 360 -> 700 puts that same XP at about 19.
+const XP_BASE_RESET := 700.0
 const XP_EXP_RESET := 2.0
 
 

@@ -2028,6 +2028,36 @@ transient as `AudioStreamWAV`): no files, no downloads, no generative AI.
 Bot tools: `--proc-gear[=ids]`, `--drop-probe`, `--no-proc-fx`. Bots print `[PROC]` (raw, shown,
 sounded, empowered, empowered shots, per minute) and `[DROP-MOMENT]` at the end of a run.
 
+### Difficulty up (2026-11-11, build `2026.11.11-hard1`)
+
+Emil, fresh save, Vagrant: "the game was super duper easy". That run won all 5 floors in 21.5
+minutes, never under 52% HP, floor-end HP 64 / 98 / 94 / 87 / 100%. Every boss stopped at the
+pace guard with 56-87% of his damage held back. 26 level-ups (meant to be 7 or 8), ~43 free
+items, 642 scrap unspent. Fresh-save runs should usually fail around floors 2-3 (Hades rule).
+
+A few big levers (floor 1 untouched):
+- Enemy damage, `Room.FLOOR_DAMAGE` floors 2-5: 1.0 / 1.15 / 1.55 / 1.55 -> **1.4 / 1.65 / 2.0 / 2.2**
+  (bosses and summons too).
+- Fuller rooms, `CROWD_ALIVE` 5/5/6/6 -> **6/7/8/8**, `CROWD_QUOTA` 11/12/13/14 -> **13/15/17/18** (floors 2-5).
+- Bosses: `BOSS_SECS_P` 35 -> **45** s of measured power; floors 2-5 take at least
+  `BossBody.PACE_DEEP` **34 s** (the pace guard was 28). Void Herald share 1.75 -> 1.4 so the bot fight stays ~35-45 s.
+- Level-ups: `Player.XP_BASE_RESET` 360 -> **700**: the XP of Emil's run gives ~19 levels, not 27.
+  Item and reward-choice logic untouched (another session owns it).
+
+Bots: `--build=storm --start-floor=N --one-floor --seed=1/2` (the human-replay build; it gets its
+levels from the profile, so the XP change is not in these numbers). Low = lowest HP share.
+
+| Floor | before (seed 1 / 2) | after (seed 1 / 2) |
+|---|---|---|
+| 2 | Hive Mother 26.6 s, paced 0.68, low 0.94 / boss not reached in 300 s | Hive Mother 32.3 s, low 0.94 / 37.6 s, low 0.79 |
+| 3 | Storm Warden 29.1 s, low 0.19 / no boss in 300 s, low 1.00 | 38.3 s, low 0.19 / no boss in 300 s, low 1.00 |
+| 4 | Pyre Lord 31.3 s, low 0.38 / 32.0 s, low 0.62, under 50% 0.00 | **died in an arena** (under 50% 0.30) / 36.7 s, low 0.15, under 50% 0.46 |
+| 5 | Void Herald 44.7 s, low 0.97 / 38.0 s, low 0.70 | 34.0 s, low 0.92 / no boss in 300 s, low 1.00 |
+
+0 SCRIPT ERRORs. Headless fps on floor 5: p10 155 -> 113, median 273 -> 236 (more bodies).
+Open: floor 2 is still mild for a strong build (damage taken 0.11-0.17 of max HP a minute):
+its threat is too few hits landing, not hit size. A real fresh-save run by Emil is the test.
+
 ## 15. Defaults Emil may want to change
 
 **Settled by Emil (2026-11-10, before session 1):**

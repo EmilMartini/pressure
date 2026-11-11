@@ -110,7 +110,9 @@ const ELITE_SECS_P := 5.0   # bots kill these in a 2 to 3 s median (all guns foc
 ## The crowd (not key threats, elites or bosses) takes B at half the power: section 8's crowd
 ## is there to be mowed down. With the full B the mover died on floor 3 in 3 or 4 runs of 4.
 const CROWD_BUILD_POW := 0.35
-const BOSS_SECS_P := 35.0
+## Core loop reset 14: 35 -> 45. Emil's floor 2 to 5 bosses all hit the pace guard with 56 to
+## 87% of his damage held back; floors 2+ also take PACE_DEEP s (BossBody) at the least.
+const BOSS_SECS_P := 45.0
 ## Fun pass 1 (2026-11-10, Isaac's loop): an arena is a room to clear, not a wave to survive.
 ## It spawns a fixed quota (CROWD_QUOTA fodder, CROWD_ALIVE of them alive at once, plus the
 ## floor's key threats up to their alive budget, KEY_EXTRA more over the room, and the elite
@@ -119,8 +121,10 @@ const BOSS_SECS_P := 35.0
 ## for anything stuck out of reach.
 const ROOM_SECS := 25.0
 const ROOM_MAX_SECS := 45.0
-const CROWD_ALIVE := [4, 5, 5, 6, 6]
-const CROWD_QUOTA := [9, 11, 12, 13, 14]
+## Core loop reset 14 (2026-11-11, "super duper easy"): floors 2 to 5 fuller, floor 1 kept;
+## were [4, 5, 5, 6, 6] alive and [9, 11, 12, 13, 14] a room.
+const CROWD_ALIVE := [4, 6, 7, 8, 8]
+const CROWD_QUOTA := [9, 13, 15, 17, 18]
 const KEY_EXTRA := 4
 ## Key threats alive at once in a clear-the-room arena: the floor budget + KEY_ALIVE_PLUS,
 ## refilled every KEY_REFILL_ROOM s (short rooms need the threats sooner; standing still loses).
@@ -1015,7 +1019,7 @@ func _begin_boss() -> void:
         var want := BOSS_SECS_P * main.measured_power() * BossBody.hp_share(boss.boss_kind)
         boss.max_hp = clampf(maxf(want, boss.max_hp), formula, formula * BOSS_HP_MAX_MULT)
         boss.hp = boss.max_hp
-        boss.pace_secs = BossBody.pace_secs(boss.boss_kind)
+        boss.pace_secs = BossBody.pace_secs(boss.boss_kind) if main.floor_number <= 1 else maxf(BossBody.pace_secs(boss.boss_kind), BossBody.PACE_DEEP)
         if main.floor_number >= 2:
             boss.rally_secs = RALLY_SECS
             boss.rally_at = RALLY_AT.duplicate()
@@ -1213,7 +1217,9 @@ func party_guns_factor() -> float:
 ## (tuned on its own); floors 2 to 5 were x1.0, 1.15, 1.3, 1.5 (blasts flat) and are now
 ## FLOOR_DAMAGE (GDD "Late-floor balance": with Leech capped, a replay of run 4487a37a's own
 ## hits puts its low point on floors 2 to 5 near 51, 62, 42 and 28%).
-const FLOOR_DAMAGE := [1.0, 1.0, 1.15, 1.55, 1.55, 1.55]
+## Core loop reset 14 (2026-11-11, "super duper easy"): Emil's fresh-save Vagrant never fell
+## under 52% and ended floors 2 to 5 at 98, 94, 87 and 100%; was 1.0, 1.15, 1.55, 1.55.
+const FLOOR_DAMAGE := [1.0, 1.0, 1.4, 1.65, 2.0, 2.2]
 
 
 static func floor_damage_mult(floor_number: int) -> float:

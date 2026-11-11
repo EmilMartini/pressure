@@ -68,7 +68,7 @@ const HP_SHARE := {
     "hive_mother": 1.15,  # Core loop reset 9 (35 s of measured P): at 1.5 the mover took 57 s; was 1.5 when bosses had 30 s of a lower arena P
     "storm_warden": 0.85,   # Core loop reset 9: at 1.5 the mover took 52 s, at 1.15 49 to 54 s (his armour slows the fight)
     "drowned_choir": 1.55,   # x0.77 like the Hive Mother and the Storm Warden (not yet measured at 35 s of P)   # at 1.5 the bot fights took 20 to 24 s
-    "void_herald": 1.75,   # x0.77 like the Hive Mother and the Storm Warden (not yet measured at 35 s of P)   # at 1.0 to 1.9 the bot fights took 14 to 29 s   # at 1.0 to 1.3 the bot fights took 17 to 35 s
+    "void_herald": 1.4,   # Core loop reset 14: 1.75 -> 1.4 with BOSS_SECS_P 35 -> 45 (storm bot 44.7 s at 1.75, nothing held back)   # x0.77 like the Hive Mother and the Storm Warden (not yet measured at 35 s of P)   # at 1.0 to 1.9 the bot fights took 14 to 29 s   # at 1.0 to 1.3 the bot fights took 17 to 35 s
 }
 
 
@@ -94,6 +94,9 @@ const FLOOR1_MULT := {
 ## so health sized from the arenas cannot hold a strong build by itself.
 const PACE_SECS := {}
 const PACE_DEFAULT := 28.0
+## Core loop reset 14 (2026-11-11): floors 2 to 5 last at least this long (strong builds stood
+## through 28 s fights untouched); the Brute King keeps PACE_DEFAULT.
+const PACE_DEEP := 34.0
 const PACE_OVER := 0.15
 const PACE_SLACK := 0.05
 
