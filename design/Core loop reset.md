@@ -1613,6 +1613,177 @@ unchanged by bots.
    or too little?
 5. The stairs heal 30%, and closing the window mid-run now pays 75% of the Embers.
 
+### Enemy roster (2026-11-11, build `2026.11.11-roster`)
+
+Why: all eleven classic kinds came up in every region, so regions only differed by their
+floor and light (Vision gap analysis). Isaac's fights are fun because each room holds a few
+enemies with distinct, readable patterns. Twelve new kinds now sit beside the classics, and
+each region fields its own 7 or 8 kinds.
+
+**Built**
+- `scripts/bestiary.gd` (class `Bestiary`): stats, colours, the 16 px silhouettes (drawn in
+  code as bitmaps, tinted like the sheet tiles, with the same 2 px dark outline), the
+  behaviour, the telegraphs on the Crisp layer, and a `[ROSTER]` kill-time tally. `Enemy`
+  calls in at a few hooks (`configure`, `_think`, `_physics_process`, `_draw`, `_draw_hostile`,
+  `take_damage`, `_die`); per-body state lives in `Enemy.bx`.
+- **Carried element.** Every new kind carries its region's own element (the one the region
+  resists) as a state, renewed 4 s after a reaction takes it: Cistern bodies are Wet (your
+  Shock electrifies them and the reaction Exposes them), Gardens Poison, Rust Ruins Stone,
+  Frostvault Ice, the Forge Fire, the Chapel Holy, the Rift Void; the Ossuary Gate's carry
+  none. Their shots, beams and rings take that colour, and hoppers and bloaters leave it on
+  the floor (water to shock, ice, oil, poison gas to light).
+- **Spawn tables.** `SpawnTable.ROSTERS`: per region a crowd table (kind -> first arena, base
+  weight, weight per difficulty) and a key table (kind -> first arena, weight). The key budget
+  (`key_budget`), elites, the screen cap and the power curve (sessions 2 to 4) are unchanged;
+  new key threats sit on that budget, are drawn 1.15x and get the edge arrow. `GROUP_CAP`
+  keeps orbiters to 2 and bloaters and tar crawlers to 3 a group. `--classic-roster` (bots)
+  fields the old shared tables everywhere, for before / after.
+- The player takes `hostile_slow` (tar, a bell's ring): x0.7 speed while it lasts.
+- The kite bot reads the new tells the way a player does: it steps out of a warming or
+  burning beam, a locked sniper line, a mirror's or ricochet's path, a bell's reach and
+  bloater pools, and dashes through a bell's ring toward the bell.
+
+**The new enemies** (damage as a share of a 100 HP bar, times the floor's damage multiplier)
+
+| Enemy | Role | Pattern and the decision it forces | Telegraph | Damage | Regions |
+|---|---|---|---|---|---|
+| **Hopper** (squat frog) | crowd | Crouches, then leaps to where you will be (half a second of your run ahead, up to 280 px) | Landing ring for the whole crouch and flight (0.95 s) | 9, 44 px; splashes its element | Cistern, Gardens |
+| **Burrower** (drill) | key | Digs in, travels under the floor toward you, marks a spot and erupts there; then sits stunned 1.4 s taking 1.3x. Step off the cracks, then punish it | A red crouch (0.5 s), a moving dirt mound, then a 1.0 s ring at the spot | 12, 52 px | Ossuary Gate, Gardens, Rust Ruins |
+| **Sentry** (tripod turret) | key | Never moves. A 300 px beam swings to face you, then burns for 2.6 s, sweeping after you at 26 degrees a second; off 1.6 s. Cross it or walk round, or go and break it | A flickering thin red line for 0.8 s before it burns (from the moment it lands) | 3 a quarter second in the beam | Rust Ruins, the Forge, the Chapel |
+| **Mirror** (split diamond) | key | Copies your dash: each time you dash it dashes 220 px straight at where you went. Between dashes it keeps 200 to 280 px and throws two shards. Dash less, or dash where its copy cannot reach | A red line along its run for 0.35 s | 11 (dash), 5 a shard | Frostvault, the Rift |
+| **Bloater** (spotted sac) | crowd | Walks at you; its death leaves a pool. Kill it away from you, or walk out | The pool fills in for 0.7 s, then a marching red edge for 3.5 s | 4 every 0.5 s in the pool | Cistern, Gardens |
+| **Orbiter** (winged halo) | crowd | Circles an ally (a key threat or elite first) and wards it: the ally takes 40% damage while the link holds. Get close and kill the orbiter first | A gold link and ring on the ally | 4 contact | Chapel, the Rift |
+| **Ricochet** (spiked ball) | key | Charges 900 px (one hit a charge), bouncing off two walls; stunned 1 s on the third | The whole bounce path in red for 0.7 s, a ring at each bounce | 12 | Cistern, Rust Ruins, the Forge |
+| **Nest** (hive mound) | key | Never moves; puts out two mites (swarmers) every 3.2 s while it has fewer than four. Push in and break it, or drown in mites | Spawn markers for 0.8 s; pips on the nest count its brood; never within 140 px of you | via mites | Cistern, Gardens, the Rift |
+| **Ghost** (sheet) | crowd | Drifts through walls. Faded for 2 s (cannot touch you, takes half damage), then solid for 1.8 s and surging. Shoot it when solid, step away as it firms up | Red rim for the last 0.4 s before it turns solid | 7 contact | Ossuary Gate, Frostvault, the Rift |
+| **Tar crawler** (low slug) | crowd | Slow, leaves a tar trail for 7 s that slows you to 0.7x, and lays oil you can light under the crowd. Don't fight in its trail, or burn it | Dark tar on the floor | 7 contact | Rust Ruins, the Forge |
+| **Bell** | key | Rings every 4.2 s: a wave rolls out to 230 px and dazes you (0.7x speed, 0.8 s). Stand outside its reach, or dash through the wave (i-frames, and a perfect dodge) | 0.9 s windup: its reach as a dashed ring, a pulsing rim | 8 and the daze | Ossuary Gate, Frostvault, the Chapel |
+| **Sniper** (hooded rifleman) | key | Hangs back at 380 to 520 px. Aims a thin line that follows you for 1.0 s, locks it for 0.4 s, then fires at 950 px/s. Sidestep at the lock, or break its sight | The tracking line, then a thick flashing locked line | 13 | Frostvault, the Chapel, the Rift |
+
+**Rosters** (crowd / key; the arena a kind first appears in, when not the first)
+
+| Region | Crowd | Key | Kinds |
+|---|---|---|---|
+| Ossuary Gate | grunt, runner, swarmer, ghost (2nd arena) | spitter, burrower (2nd), bell (3rd) | 7 |
+| Drowned Cistern | grunt, swarmer, hopper, bloater | lobber, nest (2nd), ricochet (2nd) | 7 |
+| Rotting Gardens | runner, swarmer, bloater, hopper, splitter (2nd) | spitter, nest, burrower (2nd) | 8 |
+| Rust Ruins | grunt, tar crawler, bomber, brute (2nd) | ricochet, sentry, burrower (2nd), spitter | 8 |
+| Frostvault | runner, ghost, splitter, brute (2nd) | sniper, mirror, bell (2nd), lobber | 8 |
+| The Forge | grunt, tar crawler, bomber, brute | sentry, ricochet, charger, lobber (2nd) | 8 |
+| Chapel of Ash | runner, wisp, orbiter, shaman | bell, sniper, sentry, spitter | 8 |
+| The Rift | swarmer, wisp, ghost, orbiter, brute | mirror, nest, sniper | 8 |
+
+Every new kind is in 2 or 3 regions; every region has 3 or 4 new kinds and no two share
+their key set.
+
+**Tuning on the way** (all measured, see below)
+- Ricochet and mirror runs dealt their contact damage, which grows with difficulty (about 23 on
+  floor 4), and a ricochet could hit twice in one run: a 0.50 three-second burst on a Forge
+  death. Now one hit a run, at its own number (12 and 11).
+- Frostvault's first crowd (runner, ghost, splitter, warden) was gentler than the classics for
+  movers: ghosts are harmless half the time. It gained a late brute (from the second arena,
+  weight 0.6); a brute at full weight killed 2 of 2 movers on floor 3.
+- On the clear-the-room build (fun pass 1) the new key threats died in 1 to 3 s, before their
+  first attack, and idle bots lived to floors 4 and 5. So they act sooner after landing
+  (sniper aims 1.0 s, a sentry warms from landing, bells ring within a second), have 25 to 45%
+  more health, the bell holds 110 to 190 px (it sat outside its own 230 px ring), the mirror
+  throws three shards every 2.2 s, Frostvault got its lobber back (the warden left) and Rust
+  Ruins a spitter.
+
+**Measured** (headless, `--fixed-fps 60`, `--build=human6980 --mastery=full --start-floor=2`,
+on main with fun pass 1, three routes to the Rift: Rust Ruins, Cistern and Gardens, each then
+Frostvault, then the Forge or the Chapel). Before = the same build with `--classic-roster`.
+
+| Check | Before (classic roster) | After (region rosters) | Pass |
+|---|---|---|---|
+| Stand-still dies by floor 3 | 3 of 3 died on floor 4 (two arenas, one boss room) | 2 of 3 died on floor 3, 1 in the floor-4 boss room | better, not all |
+| Idle damage a minute, floors 2 / 3 (bars) | 0.64 to 0.80 / 1.00 to 1.16 | 0.47 to 0.70 / 1.12 to 3.96 | |
+| Movers reach floor 3 to 4 | (fun pass 1: 3 of 3 won) | 5 of 5 won (4 with the build, 1 fresh save from floor 1) | yes |
+| Movers under pressure from floor 3 (time under 50%) | | 0.00 to 0.07 | no (as fun pass 1 found) |
+| Worst 3 s outside boss rooms, movers | | 0.00 to 0.40 (0.40: an elite on floor 5) | yes |
+| Worst 3 s outside boss rooms, idle | 0.18 to 0.56 | 0.16 to 0.59 (both highs at a death, mostly an elite's body) | idle only |
+| Bosses | 28 to 70 s (fun pass 1) | 28 to 53 s; Brute King 52.7 s for the fresh run | unchanged |
+| Spawns | | `[SPAWN-CHECK] PASS`, 0 close, in every run | yes |
+| Old rule: six-gun idle, first region | | died on floor 1 at 32 s | yes |
+| Fusion probe, hub walk, load check | | `[FUSION-CHECK] PASS`, `[HUB-WALK] PASS`, `[HUB-FRESH] PASS`; 0 `SCRIPT ERROR` in every log | yes |
+| `tools/exe_smoke.sh` | | `[SMOKE] ALL PASS` | yes |
+
+Before fun pass 1 landed (the timed waves, same build, routes to the Forge or the Chapel): the
+classic roster's movers reached floor 4 3 of 3 and the roster's 3 of 3 (one won); floor-3 time
+under 50% 0.14 to 0.40 classic, 0.13 to 0.46 roster; idle died on floor 2 for both (one roster
+idle reached floor 3 through the Cistern).
+
+**Per enemy** (final config: 3 idle and 5 mover runs, floors 1 to 5; life is from landing to
+death; damage in bars of max health, averaged per run; `[ROSTER]` and `[ROSTER-DMG]` lines)
+
+| Enemy | Spawned | Killed | Mean life (s) | Idle: bars a run | Movers: bars a run |
+|---|---|---|---|---|---|
+| bell (new) | 119 | 119 | 2.4 | 0.00 | 0.00 |
+| bloater (new) | 116 | 110 | 2.6 | 0.00 | 0.01 |
+| burrower (new) | 58 | 56 | 4.1 | 0.07 | 0.02 |
+| ghost (new) | 714 | 680 | 2.2 | 0.04 | 0.00 |
+| hopper (new) | 130 | 122 | 2.6 | 0.16 | 0.00 |
+| mirror (new) | 158 | 157 | 1.8 | 0.05 | 0.04 |
+| nest (new) | 132 | 124 | 3.4 | 0.00 | 0.00 |
+| orbiter (new) | 296 | 282 | 1.3 | 0.00 | 0.00 |
+| ricochet (new) | 100 | 100 | 2.0 | 0.04 | 0.01 |
+| sentry (new) | 110 | 90 | 2.2 | 0.00 | 0.01 |
+| sniper (new) | 216 | 211 | 3.0 | 0.64 | 0.02 |
+| tarcrawler (new) | 308 | 264 | 2.6 | 0.00 | 0.00 |
+| bomber | 284 | 267 | 1.6 | 0.11 | 0.00 |
+| brute | 505 | 442 | 3.1 | 0.00 | 0.12 |
+| charger | 27 | 27 | 1.7 | 0.00 | 0.00 |
+| elite | 426 | 421 | 5.2 | 1.49 | 0.21 |
+| grunt | 515 | 477 | 1.9 | 0.00 | 0.02 |
+| lobber | 129 | 128 | 1.9 | 0.08 | 0.00 |
+| runner | 946 | 902 | 1.7 | 0.00 | 0.00 |
+| shaman | 52 | 45 | 2.3 | 0.00 | 0.00 |
+| spitter | 125 | 122 | 2.0 | 0.28 | 0.04 |
+| splitter | 287 | 270 | 2.4 | 0.04 | 0.05 |
+| swarmer | 2394 | 2337 | 1.0 | 0.00 | 0.09 |
+| wisp | 565 | 526 | 1.7 | 0.02 | 0.00 |
+
+How to read it: the human build kills almost everything in 1 to 4 s, new kinds included, so most
+of them get one attack in. What hurts a player who stands still is ranged and lands where you
+stand: the sniper (0.64 bars a run, the top source after elites), spitters, hoppers, burrowers
+and lobbers. The kite bot reads every tell perfectly, so movers take almost nothing from the new
+kinds; a human will not dodge every one.
+
+**What's left, and for Emil**
+- **Everything melts on the clear-the-room build.** The measured power P comes from the floor's
+  last three arenas, and quick clears with small quotas measure low (166 to 646 against par 350
+  to 1,100 on floors 2 to 4), so B sits at its 0.8 floor and enemies get their least health.
+  This is fun pass 1 meeting session 2's curve, not the roster; it is why movers win with
+  health to spare and why the stand-still check only half passes (the classic roster fails it
+  too on this build). The fix belongs in `Main.measured_power` and `Room._tick_room` (measure
+  damage over fight time, not the old wave time): a session of its own.
+- **Kill times are short** (key threats 2 to 4 s). If the patterns don't get to show, raise the
+  health of the seven key kinds in `Bestiary.STATS` before anything else.
+- **Bells, sentries and nests did almost no damage to bots.** Their tells are long and the bots
+  kill them first; they still shape where a human stands. Watch them in play.
+- **One kite run stalled after the Cistern boss** (timed waves, before the rebase) until its
+  time cap; not seen again in 12 later runs.
+
+**What to try (Emil)**
+1. In each region, can you name the new enemy by its shape before it acts? Frog, drill, tripod,
+   diamond, sac, halo, spiked ball, mound, sheet, slug, bell, hooded rifleman.
+2. Stand still in the Gardens or the Ossuary Gate for a few seconds: the cracks under you are a
+   burrower. Step off, then shoot it while it sits stunned.
+3. Dash near a mirror (Frostvault, the Rift): it copies the dash straight at you. Dash through a
+   bell's ring instead of running from it.
+4. Shock a Cistern crowd: they all carry Wet. Light a tar trail in the Forge or Rust Ruins.
+5. In the Chapel, find the orbiter's gold link and kill it first; the warded enemy takes 40%.
+
+**Screenshots and windowed checks to take while Emil is away** (the windowed bot launcher, only
+once `autotest/WINDOWS_OK` exists):
+1. A contact sheet of the twelve silhouettes at the 1.5 zoom, tinted, beside a grunt.
+2. A burrower's mound and its crack ring; a hopper's landing ring under the player.
+3. A sentry's flickering warm-up line and the solid beam; a sniper's tracking line and its lock.
+4. A ricochet's bounce path; a mirror's copied-dash line; a bell's reach ring and its wave.
+5. An orbiter's link on a key threat; a nest with its brood pips and spawn markers; a bloater
+   pool; a tar trail; a faded and a solid ghost.
+6. A full floor-3 Frostvault arena, for readability inside the crowd.
+
 ---
 
 ## 15. Defaults Emil may want to change

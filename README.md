@@ -762,7 +762,11 @@ stay; for A/B runs), `--loadout=id@tier,...` with a `--build` replaces the build
 (gear and levels stay), so element builds compare on one footing, `--one-floor`
 quits when the next floor starts, and
 `--old-balance` turns the late-floor tuning off (uncapped Leech, formula bosses without the
-rally, the old floor damage) for before/after comparisons. Each boss kill prints a `[BOSS]`
+rally, the old floor damage) for before/after comparisons. `--classic-roster` fields the old
+shared enemy tables in every region instead of the region rosters (`SpawnTable.ROSTERS`,
+design doc "Enemy roster"); each floor's readout adds `[ROSTER]` (per enemy kind: spawned,
+killed, mean seconds from landing to death) and `[ROSTER-DMG]` (every damage source, in bars of
+max health). Each boss kill prints a `[BOSS]`
 line (game seconds, phase two, max health, the arena output it was sized from) and a
 `[BOSS-BODY]` line (max health, phases reached and when, staggers, every reaction and fusion
 per body part). During the fight `[BOSS-PHASE]`, `[STAGGER]` and `[BOSS-CHAIN]` lines log
