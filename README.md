@@ -24,7 +24,8 @@ hit obstacles, props, secret walls and puzzle pieces, which auto-fire never targ
 | Vent pressure | Space | LB |
 | Use active item | F | X |
 | Fire manually (aim with right stick / mouse, else facing) | Left mouse | RT |
-| Character sheet | C | Back / Select |
+| Character sheet | C | Back / Select (tap) |
+| Mark this moment (Fun / Boring / Unfair / Confusing) | F8 | Hold Back / Select |
 | Pause | Esc | Start |
 | Join (players 2-4) | | Start on a pad that has not joined |
 | Give player 1 a gun (debug) | 1 to 0 | |
@@ -37,6 +38,25 @@ Menus take controller input directly: d-pad or left stick to move, A to press, B
 back, shoulders to switch Journal tabs. Prompts appear on the things themselves: walk up
 to a pedestal and a key cap shows A or E depending on whether you last touched the pad
 or the keyboard. F1 shows a full control strip if you want one.
+
+## Marking a moment (F8)
+
+Something just felt great, dull, unfair or confusing? Press F8 (or hold Back on a pad for
+half a second) mid-run. The game pauses under a small card at the top: press 1 to 4 (or
+click, or d-pad and A) for Fun, Boring, Unfair or Confusing. Tab types an optional note
+first (Enter goes back to the tags); Esc, B or F8 again cancels. The pick records a `moment`
+telemetry event with the room, floor, time, health, build, the nearest enemies and what hurt
+you in the last 5 s, and saves a small screenshot of that frame to `user://moments/`
+(`%APPDATA%/Godot/app_userdata/Pressure/moments`). The note never leaves your PC.
+`python tools/moments_report.py` lists every moment with its context and what happened next
+(read-only; `--tag=unfair`, `--last=N`, `--json`). Bots: `--moment-probe` drives the card
+through real key events and prints `[MOMENT-CHECK]` and `[CHECKPOINT-CHECK]`.
+
+Telemetry is crash-safe: after every room clear and moment the open run is written alone to
+`telemetry/runs.open.json` (small, no hitch); floor changes store it into `runs.jsonl` as
+before. A crash or a killed process loses at most the room in progress: the next launch
+merges the checkpoint in as a partial record marked `recovered: true` (`saved_at` says which
+checkpoint). `--kill-after-rooms=N` (bots) hard-kills the process to test this.
 
 ## Character sheet (the Build page)
 

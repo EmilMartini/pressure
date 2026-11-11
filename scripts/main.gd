@@ -16,6 +16,7 @@ var camera: PixelCamera
 var pause_menu: PauseMenu
 var levelup: LevelUpScreen
 var gun_pick: GunPickScreen
+var moment_prompt: MomentPrompt   # F8 / hold Back: "this moment" (moment_prompt.gd)
 var _pending_levelups: Array = []
 var _shake := 0.0
 
@@ -76,6 +77,9 @@ var _recruit_probe := false
 ## Items dropped in a Well this run (Loadout): saved for the Wellkeeper when the run ends.
 var well_items: Array = []
 var _well_probe := false
+var _moment_probe := 0         # --moment-probe: 1 waiting, 2 marked (waiting for a room clear), 3 done
+var _moment_probe_rooms := 0
+var _kill_after_rooms := 0     # --kill-after-rooms=N: hard-kill the bot after N room clears (crash-safety probe)
 var well_screen: WellScreen
 ## Balance probe `--old-balance`: the late-floor tuning of 2026-11-05 off (uncapped Leech,
 ## formula bosses without the rally, old floor damage), for like-for-like bot comparisons.
@@ -138,6 +142,8 @@ func _ready() -> void:
     add_child(levelup)
     gun_pick = GunPickScreen.new(self)
     add_child(gun_pick)
+    moment_prompt = MomentPrompt.new(self)
+    add_child(moment_prompt)
     well_screen = WellScreen.new()
     add_child(well_screen)
 
@@ -145,6 +151,10 @@ func _ready() -> void:
     autotest = args.has("--autotest")
     _recruit_probe = autotest and args.has("--recruit-probe")
     _well_probe = autotest and args.has("--well-probe")
+    _moment_probe = 1 if autotest and args.has("--moment-probe") else 0
+    for a in args:
+        if autotest and a.begins_with("--kill-after-rooms="):
+            _kill_after_rooms = int(a.substr(19))
     _rush = autotest and args.has("--rush")
     _open_gates = autotest and args.has("--open-gates")
     Enemy.spawn_log = autotest   # [SPAWN-MOVED] / [SPAWN-CLOSE] lines (Enemy.EMERGE_SECS)
@@ -1153,21 +1163,35 @@ func _handle_joins() -> void:
 
 
 var _back_was_down: Dictionary = {}
+var _back_held: Dictionary = {}   # device -> seconds Back has been held, -1 once it marked a moment
 
 
-## The pad's Back / Select button opens that player's character sheet.
+## The pad's Back / Select button: a tap opens that player's character sheet (on release),
+## holding it MomentPrompt.HOLD_SECS marks a moment (moment_prompt.gd).
 func _handle_sheet_buttons() -> void:
     if pause_menu.visible:
+        _back_held.clear()
         return
+    var delta := get_process_delta_time() / maxf(Engine.time_scale, 0.001)
     for d in Input.get_connected_joypads():
         if not _joined_devices.has(d):
             continue
         var down := Input.is_joy_button_pressed(d, JOY_BUTTON_BACK)
-        if down and not _back_was_down.get(d, false):
-            for p in players:
-                if p.input.device == d:
-                    pause_menu.show_sheet(p, true)
-                    break
+        var was: bool = _back_was_down.get(d, false)
+        if down and not was:
+            _back_held[d] = 0.0
+        elif down and _back_held.has(d) and float(_back_held[d]) >= 0.0:
+            _back_held[d] = float(_back_held[d]) + delta
+            if float(_back_held[d]) >= MomentPrompt.HOLD_SECS:
+                _back_held[d] = -1.0
+                moment_prompt.open(true)
+        elif not down and was:
+            if _back_held.has(d) and float(_back_held[d]) >= 0.0:
+                for p in players:
+                    if p.input.device == d:
+                        pause_menu.show_sheet(p, true)
+                        break
+            _back_held.erase(d)
         _back_was_down[d] = down
 
 
@@ -1296,6 +1320,8 @@ func _input(event: InputEvent) -> void:
             _restart()
         KEY_F1:
             show_help = not show_help
+        KEY_F8:
+            moment_prompt.open(false)
         KEY_C:
             if not players.is_empty() and not pause_menu.visible:
                 pause_menu.show_sheet(players[0], true)
@@ -1309,6 +1335,83 @@ func _input(event: InputEvent) -> void:
                 n = 9
             if n < ids.size() and not players.is_empty():
                 players[0].add_gun(ids[n])
+
+
+# --- Moment probe (--moment-probe, bots) ---------------------------------------
+
+
+## Drives the real keyboard path: an F8 key event opens the card (the tree pauses, the
+## telemetry clock stops), a note goes in, a "3" key event picks Unfair. Then checks the
+## event's fields and that the checkpoint file already holds it.
+func _run_moment_probe() -> void:
+    var t_before := float(Telemetry.get("_clock"))
+    var press := func(code: Key) -> void:
+        for pressed in [true, false]:
+            var ev := InputEventKey.new()
+            ev.physical_keycode = code
+            ev.keycode = code
+            ev.pressed = pressed
+            Input.parse_input_event(ev)
+    press.call(KEY_F8)
+    await get_tree().create_timer(0.1).timeout   # process_always: runs while paused
+    var opened := moment_prompt.is_open() and get_tree().paused
+    await get_tree().create_timer(0.5).timeout
+    var clock_still := absf(float(Telemetry.get("_clock")) - t_before) < 0.3
+    var pause_stayed_shut := not pause_menu.visible
+    moment_prompt._note.text = "bot probe: too much at once"
+    press.call(KEY_3)
+    await get_tree().create_timer(0.1).timeout
+    var ev: Dictionary = moment_prompt.last_event
+    var fails: Array = []
+    if not opened:
+        fails.append("did not open or pause")
+    if not clock_still:
+        fails.append("telemetry clock ran while paused")
+    if not pause_stayed_shut:
+        fails.append("pause menu opened")
+    if get_tree().paused or moment_prompt.is_open():
+        fails.append("still paused after the pick")
+    if String(ev.get("tag", "")) != "unfair" or String(ev.get("note", "")) == "":
+        fails.append("tag/note missing")
+    for k in ["floor", "room", "hp", "max_hp", "guns", "items", "nearest", "enemies_alive", "hurt_recent", "t"]:
+        if not ev.has(k):
+            fails.append("no " + k)
+    var cp := _read_checkpoint()
+    if String(cp.get("saved_at", "")) != "moment" or not _has_moment(cp, ev):
+        fails.append("checkpoint lacks the moment")
+    # Esc cancels without a record and without opening the pause menu.
+    var n_before := Telemetry.event_count("moment")
+    press.call(KEY_F8)
+    await get_tree().create_timer(0.1).timeout
+    var reopened := moment_prompt.is_open()
+    press.call(KEY_ESCAPE)
+    await get_tree().create_timer(0.3).timeout
+    if not reopened or moment_prompt.is_open() or get_tree().paused or pause_menu.visible:
+        fails.append("Esc cancel")
+    if Telemetry.event_count("moment") != n_before:
+        fails.append("cancel recorded something")
+    print("[MOMENT-CHECK] %s %s" % ["PASS" if fails.is_empty() else "FAIL", ", ".join(fails)])
+
+
+func _check_moment_checkpoint() -> void:
+    var cp := _read_checkpoint()
+    var ok := String(cp.get("saved_at", "")) == "room_clear" and bool(cp.get("partial", false)) and _has_moment(cp, moment_prompt.last_event)
+    print("[CHECKPOINT-CHECK] %s saved_at=%s partial=%s events=%d moment_kept=%s file=%s" % ["PASS" if ok else "FAIL", cp.get("saved_at", "-"),
+        cp.get("partial", "-"), (cp.get("events", []) as Array).size(), _has_moment(cp, moment_prompt.last_event), Telemetry.open_path()])
+
+
+func _read_checkpoint() -> Dictionary:
+    if not FileAccess.file_exists(Telemetry.open_path()):
+        return {}
+    var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(Telemetry.open_path()))
+    return parsed if parsed is Dictionary else {}
+
+
+func _has_moment(rec: Dictionary, ev: Dictionary) -> bool:
+    for e in rec.get("events", []):
+        if e is Dictionary and String(e.get("e", "")) == "moment" and is_equal_approx(float(e.get("t", -1.0)), float(ev.get("t", -2.0))):
+            return true
+    return false
 
 
 # --- The Archivist (World and progression GDD, phase 1) ----------------------
@@ -1917,6 +2020,18 @@ func _autotest_tick(delta: float) -> void:
             for gid in ["arc_rifle", "flare_pistol", "frost_caster"]:
                 players[0].add_gun(gid, false)
             print("[LOADOUT] focus-probe: four guns at t=%.0f" % _clock)
+    if _moment_probe == 1 and current != null and ((current.active and _clock > 6.0) or rooms_cleared >= 1) and not get_tree().paused and not game_over:
+        _moment_probe = 2
+        _moment_probe_rooms = rooms_cleared
+        _run_moment_probe()
+    elif _moment_probe == 2 and rooms_cleared > _moment_probe_rooms and not get_tree().paused:
+        _moment_probe = 3
+        _check_moment_checkpoint()
+    if _kill_after_rooms > 0 and rooms_cleared >= _kill_after_rooms and _moment_probe != 1 and _moment_probe != 2:
+        # Crash-safety probe: die like a crash (no _exit_tree, no final record). The next
+        # run on this instance must merge the checkpoint in ("Telemetry: recovered run").
+        print("[KILL] hard kill after %d rooms, run %s, checkpoint %s" % [rooms_cleared, Telemetry.run_id(), Telemetry.open_path()])
+        OS.kill(OS.get_process_id())
     if _synergy_probe_t > 0.0:
         _synergy_probe_t -= delta
         if _synergy_probe_t <= 0.0 and not players.is_empty():

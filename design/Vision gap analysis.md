@@ -530,7 +530,7 @@ art.
 | 11 | Approve the voice sheets, then the first line batch | NEEDS EMIL | Medium-high | 30 minutes for Emil |
 | 12 | Arena tools for the remaining bosses (**DONE 2026-11-10**, with 3) | SLAM DUNK | Medium | 1 session |
 | 13 | Music direction: a composer or a bought pack, a theme per boss | NEEDS EMIL | High | Money, time |
-| 14 | A "this moment" button in telemetry | SLAM DUNK | Medium (process) | Small |
+| 14 | A "this moment" button in telemetry (**DONE 2026-11-11**) | SLAM DUNK | Medium (process) | Small |
 | 15 | Vertical slice before breadth: pause new regions until 1 to 8 are at "finished" quality | NEEDS EMIL | High | A choice |
 | 16 | Camera zoom 1.6 (measured on 11-09, changes the game) | NEEDS EMIL | Medium | Small after the decision |
 | 17 | Hitches: 1% low from about 33 to 55 | SLAM DUNK | Medium | 1 session |
@@ -647,6 +647,15 @@ is on screen, and a screenshot to `user://moments/`. It's for Emil to mark "this
 "this was mush" with one press. Also make sure telemetry is flushed at the end of each room,
 not only at the end of the run, so a crash can't eat a run.
 Done: a moment event appears in a test run's jsonl; `tools/pressure_report.py` lists the moments.
+**DONE 2026-11-11** (build `2026.11.11-moments`). F8, or hold Back (a tap still opens the sheet;
+F9 already wipes the save). The game pauses under a small card: Fun / Boring / Unfair / Confusing
+plus an optional typed note (`scripts/moment_prompt.gd`). The `moment` event carries room, floor,
+seconds into the room, health, build, nearest 5 enemies and what hurt in the last 5 s; the
+screenshot goes to `user://moments/`. Telemetry checkpoints the open run to `runs.open.json`
+after every room clear and moment; the next launch merges a crashed run in as `recovered`.
+`tools/moments_report.py` lists moments with context and what happened next;
+`tools/pressure_report.py --moments` gives one line each. Bot checks: `--moment-probe`,
+`--kill-after-rooms=N`.
 
 **17. Hitches.**
 Files: per "Late-build fps" in the design doc (the materials grid step, enemy spawn and summon,

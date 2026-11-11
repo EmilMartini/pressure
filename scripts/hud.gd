@@ -1142,8 +1142,8 @@ func _draw_help(vp: Vector2) -> void:
             "left stick" if pad else "WASD", inp.prompt("dash") if inp != null else "Space",
             inp.prompt("active") if inp != null else "Q", "A" if pad else "E"],
 
-        "CHARACTER  %s      PAUSE  %s      F1 hides this" % [
-            "Back" if pad else "C", "Start" if pad else "Esc"],
+        "CHARACTER  %s      PAUSE  %s      MARK THIS MOMENT  %s      F1 hides this" % [
+            "Back" if pad else "C", "Start" if pad else "Esc", "hold Back" if pad else "F8"],
     ]
     var y := vp.y - 14.0 - 22.0 * lines.size()
     draw_rect(Rect2(0, y - 22, vp.x, 22.0 * lines.size() + 14), Color(0, 0, 0, 0.55))

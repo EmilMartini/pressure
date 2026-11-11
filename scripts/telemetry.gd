@@ -9,17 +9,23 @@ extends Node
 ## Storage: every record is one JSON line in user://telemetry/runs.jsonl (the open run is
 ## written as a partial at every floor start, the final record replaces it). The file stays
 ## under MAX_BYTES by dropping the oldest lines. `export_text()` returns every line.
+## Crash safety: after every room clear and moment the open run is also written alone to
+## runs.open.json next to it (small, so no hitch; the big file is not rewritten per room).
+## The next launch merges it in as a partial marked `recovered` unless the finished record
+## already landed. A crash or a killed process loses at most the room in progress. Both
+## files are written to a .tmp first and renamed over.
 ##
 ## Upload: only when Settings "telemetry" is "on" and ENDPOINT is not empty. Each stored
 ## record is POSTed as JSON; lines keep an `uploaded` flag and failed uploads retry on the
 ## next launch. Bot runs (`main.autotest`) are flagged `bot: true` and never uploaded.
-## Nothing here records names, addresses or free text.
+## Nothing here records names or addresses. The one free text is the optional note the
+## player types on a moment (F8); it stays on this PC: uploads strip it.
 
 ## The build label is VERSION + "+" + COMMIT (for example "2026.11.08-p4+1a2b3c4").
 ## VERSION: bump it by hand with each phase or shared build (date plus phase tag).
 ## COMMIT: stays "dev" in the repository; the export steps (`.github/workflows/deploy.yml`,
 ## `tools/export_exe.sh`) stamp the short commit hash into it before exporting.
-const VERSION := "2026.11.10-fun1"
+const VERSION := "2026.11.11-moments"
 const COMMIT := "dev"
 const BUILD := VERSION + "+" + COMMIT
 ## Where finished runs are POSTed (a Cloudflare Worker or Apps Script URL). Empty = local only.
@@ -268,7 +274,9 @@ func floor_start(main: Node) -> void:
     event("floor_start", { "floor": _floor })
     # A partial every floor, so a crash or a closed tab still leaves data.
     _run["partial"] = true
+    _run["saved_at"] = "floor_start"
     _store(_run)
+    _drop_open()   # the big file now holds everything the checkpoint had
     _queue_upload(String(_run["run_id"]))
 
 
@@ -370,8 +378,10 @@ func _finish_run(won: bool, abandoned: bool, award: Dictionary = {}) -> void:
         "aim_mode": Player.aim_mode(), "aim_secs": snappedf(aim_secs, 0.1), "auto_secs": snappedf(auto_secs, 0.1),
     })
     _run["partial"] = false
+    _run.erase("saved_at")
     var id := String(_run["run_id"])
     _store(_run)
+    _drop_open()
     _run = {}
     _main_ref = null
     _queue_upload(id)
@@ -450,6 +460,92 @@ func room_clear(room: Node) -> void:
         "reactions": reactions, "fusions": _fusions_room.duplicate(),
     })
     _flush_damage()
+    checkpoint("room_clear")
+
+
+# --- Moments (F8 / hold Back) --------------------------------------------------
+
+
+const MOMENT_ENEMIES := 5
+const MOMENT_RECENT_SECS := 5.0
+
+
+func run_id() -> String:
+    return String(_run.get("run_id", ""))
+
+
+## Events of kind `e` in the open run so far.
+func event_count(e: String) -> int:
+    var n := 0
+    for ev in _run.get("events", []):
+        if String((ev as Dictionary).get("e", "")) == e:
+            n += 1
+    return n
+
+
+## A moment the player marked: the tag (fun / boring / unfair / confusing), an optional
+## note, and the context: room, floor, time in the room, health, the build, the nearest
+## enemies and what hurt you in the last 5 s. `shot` is the saved screenshot ("" when none).
+## Checkpointed at once, so quitting right after still keeps it. Returns the event.
+func moment(main: Node, tag: String, note: String, shot: String) -> Dictionary:
+    if _run.is_empty() or main == null:
+        return {}
+    var room: Node = main.get("current")
+    var p: Node = (main.get("players") as Array)[0] if not (main.get("players") as Array).is_empty() else null
+    var fields := {
+        "tag": tag, "floor": _floor, "room": _room_type(room), "room_pos": [],
+        "fighting": room != null and bool(room.get("active")), "room_secs": snappedf(_clock - _room_t0, 0.1),
+        "room_kills": _room_kills.duplicate(), "hp_lost_room": snappedf(_room_hp_lost, 0.1),
+        "scrap": int(main.get("scrap")), "last_hurt_by": _last_source,
+    }
+    if note != "":
+        fields["note"] = note
+    if shot != "":
+        fields["shot"] = shot
+    var pos: Variant = main.get("current_pos")
+    if pos is Vector2i:
+        fields["room_pos"] = [(pos as Vector2i).x, (pos as Vector2i).y]
+    if p != null:
+        var guns: Array = []
+        for g in p.guns:
+            guns.append("%s@%d" % [g.data.id, g.tier])
+        var items: Array = []
+        var counts: Dictionary = p.gear_counts()
+        for id in counts.keys():
+            items.append(String(id) if int(counts[id]) <= 1 else "%s x%d" % [id, int(counts[id])])
+        fields.merge({ "hp": snappedf(float(p.hp), 0.1), "max_hp": snappedf(float(p.max_hp), 0.1),
+            "hp_pct": snappedf(clampf(float(p.hp) / maxf(1.0, float(p.max_hp)), 0.0, 1.0), 0.01),
+            "level": int(p.level), "guns": guns, "items": items, "synergies": (p.synergies as Array).duplicate() })
+        var near: Array = []
+        var origin: Vector2 = (p as Node2D).global_position
+        for e in get_tree().get_nodes_in_group("enemies"):
+            if not is_instance_valid(e) or not e is Enemy or float(e.hp) <= 0.0:
+                continue
+            near.append([origin.distance_to((e as Node2D).global_position), e])
+        near.sort_custom(func(a, b): return float(a[0]) < float(b[0]))
+        fields["enemies_alive"] = near.size()
+        var nearest: Array = []
+        for pair in near.slice(0, MOMENT_ENEMIES):
+            var e: Enemy = pair[1]
+            var row := { "kind": enemy_label(e), "dist": roundf(float(pair[0])), "hp_pct": snappedf(e.hp / maxf(1.0, e.max_hp), 0.01) }
+            if e.is_elite:
+                row["elite"] = e.affix
+            nearest.append(row)
+        fields["nearest"] = nearest
+    # What hurt the player in the last few seconds (the "Unfair" question).
+    var recent: Dictionary = {}
+    var evs: Array = _run["events"]
+    for i in range(evs.size() - 1, -1, -1):
+        var ev: Dictionary = evs[i]
+        if float(ev.get("t", 0.0)) < _clock - MOMENT_RECENT_SECS:
+            break
+        if String(ev.get("e", "")) == "damage_taken":
+            var src := String(ev.get("source", "unknown"))
+            recent[src] = snappedf(float(recent.get(src, 0.0)) + float(ev.get("amount", 0.0)), 0.1)
+    fields["hurt_recent"] = recent
+    event("moment", fields)
+    checkpoint("moment")
+    return evs[evs.size() - 1]
 
 
 # --- Kills, elites, bosses -----------------------------------------------------
@@ -961,9 +1057,17 @@ func use_file(path: String) -> void:
 
 func _load() -> void:
     _lines = []
-    if not FileAccess.file_exists(FILE):
+    _load_lines()
+    _merge_open()
+
+
+func _load_lines() -> void:
+    var path := FILE
+    if not FileAccess.file_exists(path) and FileAccess.file_exists(path + ".tmp"):
+        path += ".tmp"   # a save died between writing the .tmp and renaming it over
+    if not FileAccess.file_exists(path):
         return
-    var f := FileAccess.open(FILE, FileAccess.READ)
+    var f := FileAccess.open(path, FileAccess.READ)
     if f == null:
         return
     while not f.eof_reached():
@@ -989,12 +1093,86 @@ func _save() -> void:
         keep.push_front(_lines[i])
         out.insert(0, s)
     _lines = keep
-    var f := FileAccess.open(FILE, FileAccess.WRITE)
-    if f == null:
+    if not _write_atomic(FILE, "\n".join(out) + ("\n" if not out.is_empty() else "")):
         push_warning("Telemetry: could not write %s" % FILE)
-        return
-    f.store_string("\n".join(out) + ("\n" if not out.is_empty() else ""))
+
+
+## Write `text` to `path` through a .tmp and a rename, so a crash mid-write never leaves a
+## half file (the old one stays until the new one is complete).
+func _write_atomic(path: String, text: String) -> bool:
+    var tmp := path + ".tmp"
+    var f := FileAccess.open(tmp, FileAccess.WRITE)
+    if f == null:
+        return false
+    f.store_string(text)
     f.close()
+    if DirAccess.rename_absolute(tmp, path) == OK:
+        return true
+    # Rename refused (the target held open): write in place and drop the .tmp.
+    f = FileAccess.open(path, FileAccess.WRITE)
+    if f == null:
+        return false
+    f.store_string(text)
+    f.close()
+    DirAccess.remove_absolute(tmp)
+    return true
+
+
+# --- Crash-safe checkpoints ----------------------------------------------------
+
+
+## The open run's checkpoint file: runs.open.json beside runs.jsonl (runs_<n>.open.json
+## for bot instances).
+func open_path() -> String:
+    return FILE.trim_suffix(".jsonl") + ".open.json"
+
+
+## Write the open run, marked partial, to the checkpoint file. Called after every room
+## clear and moment (floor starts store into the big file instead). `why` says which.
+func checkpoint(why: String) -> void:
+    if _run.is_empty():
+        return
+    _run["partial"] = true
+    _run["saved_at"] = why
+    var copy: Dictionary = _run.duplicate(true)
+    copy["uploaded"] = false
+    if not _write_atomic(open_path(), JSON.stringify(copy)):
+        push_warning("Telemetry: could not write %s" % open_path())
+
+
+func _drop_open() -> void:
+    for path in [open_path(), open_path() + ".tmp"]:
+        if FileAccess.file_exists(path):
+            DirAccess.remove_absolute(path)
+
+
+## The last process left a checkpoint (it crashed or was killed mid-run): merge it into
+## the records as a partial marked `recovered`, unless the finished record (partial false)
+## already landed or the stored partial has more events. Then drop the file.
+func _merge_open() -> void:
+    var path := open_path()
+    if not FileAccess.file_exists(path) and FileAccess.file_exists(path + ".tmp"):
+        path += ".tmp"
+    if not FileAccess.file_exists(path):
+        return
+    var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(path))
+    var changed := false
+    if parsed is Dictionary and String((parsed as Dictionary).get("run_id", "")) != "":
+        var rec: Dictionary = parsed
+        rec["partial"] = true
+        rec["recovered"] = true
+        rec["uploaded"] = false
+        var i := _find(String(rec["run_id"]))
+        if i < 0:
+            _lines.append(rec)
+            changed = true
+        elif bool(_lines[i].get("partial", false)) and (rec.get("events", []) as Array).size() >= (_lines[i].get("events", []) as Array).size():
+            _lines[i] = rec
+            changed = true
+    if changed:
+        _save()
+        print("Telemetry: recovered run %s from %s (%d events)" % [String((parsed as Dictionary)["run_id"]), path, ((parsed as Dictionary).get("events", []) as Array).size()])
+    _drop_open()
 
 
 ## Write a record, replacing an earlier version with the same run_id.
@@ -1053,6 +1231,9 @@ func _pump() -> void:
         var body: Dictionary = rec.duplicate(true)
         body.erase("uploaded")
         body.erase("_rev")
+        for ev in body.get("events", []):
+            if ev is Dictionary and (ev as Dictionary).has("note"):
+                (ev as Dictionary).erase("note")   # a moment's typed note stays local
         var headers := PackedStringArray()
         if ENDPOINT_SIMPLE and OS.has_feature("web"):
             headers.append("Content-Type: text/plain")

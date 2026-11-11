@@ -30,6 +30,9 @@ raids, loot tables).
   "Firing model".
 - **Vent** (LB / Space) dumps the pressure gauge as a nova.
 - **Swap primary** (X / Q) cycles which carried gun is on the trigger.
+- **Mark this moment** (hold Back / F8) pauses under a small card: Fun, Boring, Unfair or
+  Confusing plus an optional note, recorded as a `moment` telemetry event with a screenshot
+  (README, "Marking a moment"; `tools/moments_report.py`).
 
 ### Firing model
 - Every gun you carry aims and fires on its own at the nearest enemy in range, Brotato

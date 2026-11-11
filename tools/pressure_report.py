@@ -1,10 +1,12 @@
 """Per-floor pressure from telemetry (difficulty pass, 2026-11-09).
 
-    python tools/pressure_report.py runs.jsonl [more.jsonl] [--bots] [--shops] [--loot]
+    python tools/pressure_report.py runs.jsonl [more.jsonl] [--bots] [--shops] [--loot] [--moments]
 
 --shops: every shop visit (shop_leave events, Core loop reset 6.5 / 13.2): scrap in, spent,
 left, the cheapest ware still for sale and rerolls, then the targets: share of visits spent
 down (left < cheapest), median leftover against 45 x m and 80 x m, median rerolls.
+--moments: one line per marked moment (F8 / hold Back); tools/moments_report.py has the full
+context.
 --loot: the per-floor floor_loot events (13.2): items free and bought, guns, hearts, cards
 shown, level-ups, scrap earned and the scrap high-water mark against two floors' income.
 
@@ -145,14 +147,34 @@ def loot(runs):
         return
     print('  targets per floor: free 2 to 4, bought 1 to 3, cards <= 15, levels about 1.5; scrap never over 330 x m')
 
+def moments(runs):
+    best = {}
+    for r in runs:
+        rid = r.get('run_id')
+        key = (0 if r.get('partial') else 1, len(r.get('events', [])))
+        if rid not in best or key > best[rid][0]:
+            best[rid] = (key, r)
+    n = 0
+    for _, r in sorted(best.values(), key=lambda kr: kr[1].get('start_time', '')):
+        for e in r.get('events', []):
+            if e.get('e') == 'moment':
+                n += 1
+                print('  MOMENT %s run=%s t=%s floor=%s region=%s room=%s hp=%s/%s fighting=%s enemies=%s note=%s' % (
+                    e.get('tag'), r.get('run_id'), e.get('t'), e.get('floor'), e.get('region'), e.get('room'), e.get('hp'), e.get('max_hp'),
+                    e.get('fighting'), e.get('enemies_alive'), json.dumps(e.get('note', ''))))
+    if not n:
+        print('  no moment events')
+
 def main():
     bots = '--bots' in sys.argv
-    if '--shops' in sys.argv or '--loot' in sys.argv:
+    if '--shops' in sys.argv or '--loot' in sys.argv or '--moments' in sys.argv:
         runs = [r for path in sys.argv[1:] if not path.startswith('--') for r in load(path) if bool(r.get('bot')) == bots]
         if '--shops' in sys.argv:
             shops(runs)
         if '--loot' in sys.argv:
             loot(runs)
+        if '--moments' in sys.argv:
+            moments(runs)
         return
     for path in [a for a in sys.argv[1:] if not a.startswith('--')]:
         for r in load(path):
