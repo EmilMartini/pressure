@@ -474,6 +474,7 @@ func _end_run(won: bool, abandoned: bool = false) -> void:
         announce("+%d Embers" % gained)
     if autotest:
         print("[EMBERS] +%d (%s)  bank %d" % [gained, Mastery.award_text(award), Mastery.embers])
+        print("[TALENTS] fired: %s" % Mastery.fired_text())
     if abandoned:
         return
     Music.play("ambient", 2.5)
@@ -2243,6 +2244,7 @@ func _autotest_tick(delta: float) -> void:
         if not game_over and not victory:
             var would: Dictionary = Mastery.preview(floor_number, false, String(Loadout.current()["mark"]))
             print("[EMBERS] time cap: a death here would pay +%d (%s)" % [int(would["total"]), Mastery.award_text(would)])
+            print("[TALENTS] fired: %s" % Mastery.fired_text())
             pressure_meter.flush()
         _print_stats("END")
         if OS.get_cmdline_user_args().has("--hub-descend"):

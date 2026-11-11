@@ -25,7 +25,7 @@ extends Node
 ## VERSION: bump it by hand with each phase or shared build (date plus phase tag).
 ## COMMIT: stays "dev" in the repository; the export steps (`.github/workflows/deploy.yml`,
 ## `tools/export_exe.sh`) stamp the short commit hash into it before exporting.
-const VERSION := "2026.11.11-bosspatterns"
+const VERSION := "2026.11.11-talents"
 const COMMIT := "dev"
 const BUILD := VERSION + "+" + COMMIT
 ## Where finished runs are POSTed (a Cloudflare Worker or Apps Script URL). Empty = local only.
@@ -242,8 +242,8 @@ func run_start(main: Node) -> void:
     _run = _new_record("run")
     _run["bot"] = bool(main.get("autotest")) or args.has("--start-shot") or args.has("--obstacle-test")
     _update_party(main)
-    # The Shrine loadout this run starts with: the active side and rank of every slot
-    # with a rank bought, and the survival (revive) ranks.
+    # The Shrine loadout this run starts with: every bought talent node with its pick
+    # and rank, and the survival (revive) ranks.
     var talents: Array = Mastery.active_summary()
     var guns: Array = []
     var classes: Array = []

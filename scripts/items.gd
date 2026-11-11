@@ -1121,6 +1121,8 @@ func fire(player: Player, event: String, ctx: Dictionary) -> void:
             continue
         if t.has("if") and not condition(t["if"], player, ctx):
             continue
+        if t.has("talent"):
+            Mastery.note_fired(String(t["talent"]))
         _do(t, player, ctx)
     _depth -= 1
 

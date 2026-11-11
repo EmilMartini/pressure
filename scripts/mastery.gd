@@ -264,6 +264,7 @@ var _totals: Dictionary = {}          # key -> summed amount over bought passive
 var _triggers: Array = []             # Items trigger dicts of the picked options
 var _node_index: Dictionary = {}      # node id -> [branch index, row]
 var _quiet := false                   # balance probes buy without logging hub events
+var fired: Dictionary = {}            # option id -> times its trigger ran this run (bot log)
 
 
 func _init() -> void:
@@ -415,7 +416,21 @@ func triggers() -> Array:
     var out: Array = []
     for t in _triggers:
         out.append((t as Dictionary).duplicate())
+    fired = {}
     return out
+
+
+## Items.fire calls this when a talent trigger runs (the bot's [TALENTS] line).
+func note_fired(id: String) -> void:
+    fired[id] = int(fired.get(id, 0)) + 1
+
+
+## "wildfire 12, second_wind 30" for the run so far, or "none".
+func fired_text() -> String:
+    var bits: Array = []
+    for k in fired.keys():
+        bits.append("%s %d" % [String(k), int(fired[k])])
+    return ", ".join(bits) if not bits.is_empty() else "none"
 
 
 ## The mods of a passive at rank `r`.
@@ -780,7 +795,9 @@ func _rebuild_totals() -> void:
                 var opt: Dictionary = n[pick(id)]
                 mods = opt.get("mods", {})
                 for t in opt.get("triggers", []):
-                    _triggers.append(t)
+                    var tt: Dictionary = (t as Dictionary).duplicate()
+                    tt["talent"] = String(opt["id"])
+                    _triggers.append(tt)
             else:
                 mods = passive_mods(id, r)
             for k in mods.keys():

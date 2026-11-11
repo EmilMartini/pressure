@@ -206,32 +206,29 @@ reached beyond the first, 10 for clearing the dungeon. A floor-1 death that clea
 room pays 1; one that cleared five rooms, killed two elites and found two new reactions
 pays 15 (the old mastery formula paid both 1 point).
 
-Embers are spent at the hub's **Shrine** (`scripts/mastery.gd`, Hades' Mirror of Night
-in shape). Eleven slots, each an exclusive pair: side A or side B is active, switching is
-free, each side has 2 or 3 ranks, and **Refund all** gives every Ember back:
+Embers are spent at the hub's **Shrine** (`scripts/mastery.gd`, a talent tree in the
+style of modern WoW talents, `design/Talent tree.md`). Five branches, one per playstyle,
+five nodes each, top to bottom: a passive (3 ranks), a choice node, a passive, a choice
+node, a capstone choice. A node opens when the one above it is full. A choice node is bought
+once; then you pick one of its two options, and picks swap for free in the Hollow:
 
-| Slot | Side A | Side B |
+| Branch | Passives | Choices (A or B) |
 |---|---|---|
-| Sights | Long Barrel: +4% range per rank (3) | Hot Load: +5% shot speed per rank (3) |
-| Catalyst | Catalyst: +1.5% potency per rank (3) | Lingering Touch: +4% element duration per rank (3) |
-| Nerve | Thick Skin: +4 max HP per rank (3) | High Confidence: +1.5% damage at 80%+ HP per rank (3) |
-| Vent | Reinforced Tank: +4 vent capacity per rank (3) | Hard Vent: +4% vent power per rank (3) |
-| Footwork | Light Feet: +2% move speed per rank (3) | Sidestep: +1% dodge per rank (2) |
-| Salvage | Salvager: +4% scrap per rank (3) | Second Thoughts: 1 level-up reroll per run per rank (3) |
-| Fortune | Lucky Coin: +4% luck per rank (3) | Wider Choice: a 4th level-up card, every other level-up, then every one (2) |
-| Pack | Deep Pockets: +1 carry per rank (2) | Heirloom: the gunsmith is free on floor 1, then floors 1-2 (2) |
-| Scout | Cartographer: shop, then treasure, then boss on the map (3) | Dowser: hidden rooms, then puzzle rooms on the map (2) |
-| Bite | Rime (needs an ice gun): +3% ice fire rate, +2% ice potency (2) | Etch (needs an acid gun): +3% acid damage, +2% acid potency (2) |
-| Twilight | Halo (needs a holy gun): +3% holy damage, +2% holy potency (2) | Hollow (needs a void gun): +3% void fire rate, +2% void potency (2) |
+| Pyre | Kindling +2% potency, Lingering Touch +5% element duration | Wildfire (burning foes spread fire on death) or Slow Burn (fire burns twice as long); Flashpoint (every 4th reaction: fire blast) or Feeding Flame (reactions heal); Pyre Heart (elite kills erupt) or Ash Wake (burning deaths leave fire) |
+| Rime | Thick Skin +4 HP, Cold Blood +1% dodge | Shatter (+30% vs frozen) or Frostbite (hits may freeze wet foes); Cold Snap (freeze foes when hit) or Bramble (10 thorns); Winter's Grip (slow all on room entry) or Shatterburst (frozen deaths burst) |
+| Stride | Light Feet +2% speed, Quick Recovery +6% dash recharge | Frost Trail (dash leaves ice) or Second Wind (a kill refills a dash); Shoulder Charge (dash hits) or Close Shave (dodge: +30% damage 3 s); Twin Dash (+1 charge) or Dash Volley (dash fires 4 shots) |
+| Vent | Reinforced Tank +4 capacity, Wide Valve +5% radius | Hard Vent or Quick Vent; Scald Cloud (vents leave a cloud) or Venting Mend (vents heal 6); Overpressure (vents fire 6 shots) or Storm Vent (vents arc to 4 foes) |
+| Fortune | Salvager +4% scrap, Lucky Coin +4% luck | Cartographer or Dowser; Second Thoughts (2 rerolls) or Heirloom (free gunsmith floors 1-2); Wider Choice (4th card) or Deep Pockets (+2 carry) |
 
-Below the slots, **Last Breath** is the survival track: each of its 3 ranks is one revive
-per run at 25% max HP with 2 s of invulnerability, costing 3, 50 and 100 Embers (Hades'
-Death Defiance at 30 / 500 / 1,000 Darkness, scaled by a room = 1 Ember). Everything
-together costs 928 Embers. At most the board adds about +10% damage-equivalent and +15
-HP-equivalent (the old 212-node tree gave +21% damage, +12% fire rate, +32 max HP and 6
-armour); see GDD.md section 4 and `reports/Roguelite meta progression analysis.md` for
-the numbers behind every value. Pad: d-pad moves, A buys, X switches side; keyboard:
-arrows, Enter / E, Tab / Q; mouse: click the lit row to buy, the other row to switch.
+Rows cost 3/6/10, 12, 8/14/22, 24 and 40 Embers (139 a branch). Under the tree, **Last
+Breath** is the survival track: each of its 3 ranks is one revive per run at 25% max HP
+with 2 s of invulnerability, costing 3, 50 and 100 Embers. Everything together costs 848
+Embers, and **Refund all** gives every Ember back. Choice effects are Items triggers
+(`Mastery.triggers()`, added to the player's boon triggers at spawn); bot runs print
+`[TALENTS] fired: ...` with how often each ran. Pad: d-pad moves, A buys (or flips a bought
+choice), X flips; keyboard: arrows, Enter / E, Tab / Q; mouse: click an option to pick it,
+right-click flips. Saves from the A/B board (version 2) refund every rank at its old price
+and keep a `mastery_v2_backup.json`; the Shrine says how many Embers came back.
 Old saves convert every mastery point ever earned into 8 Embers. Wipe save clears both.
 
 Levels follow Brotato's shape: a quadratic XP curve and small upgrades (+4% damage, +8
@@ -513,8 +510,8 @@ Anonymous, opt-in play data for balancing (`scripts/telemetry.gd`, autoload `Tel
   shop views, purchases, rerolls and skipped offers, level-up / gun / treasure picks,
   equips, drops, combines, vents, actives, prop reactions, death (killer, last 10 health
   samples), run end, frame rate every 10 s (with enemy and particle counts). `run_start`
-  carries the Shrine loadout (`talents`: slot, side, talent id and rank of every active
-  side with a rank; `survival`: Last Breath ranks; `embers_spent`, `embers_bank`);
+  carries the Shrine loadout (`talents`: node, pick, option or node id and rank of every
+  bought node; `survival`: Last Breath ranks; `embers_spent`, `embers_bank`);
   `run_end` carries the payout (`embers`, `embers_parts` and `embers_counts` per source,
   `bounties`, `discoveries`); `revive` and `levelup_reroll` mark Shrine effects in a run.
   Outside runs: tutorial steps, completion or skip step, settings changes and Shrine
@@ -705,9 +702,10 @@ godot --path . res://scenes/main.tscn -- --autotest
 
 Add `--short` after `--autotest` for a 70-second run, `--secs=N` for any length, and
 `--arsenal` to start with every gun (a stress test; the default is a real naked start
-that measures the progression loop). `--mastery=full` buys every Shrine rank and the whole
-survival track (side A active, `--mastery-side=b` for B); `--mastery=N` spends N Embers
-cheapest-first. Both use a throwaway Shrine file and print a `[MASTERY]` line with the
+that measures the progression loop). `--mastery=full` buys every Shrine node and the whole
+survival track (option A picked, `--mastery-side=b` for B, `=mix` alternating); `--mastery=N`
+spends N Embers cheapest-first. `--hub-walk --keep-save --talent-test` checks buying, picks,
+gates and refunds on that instance's Shrine file. Both use a throwaway Shrine file and print a `[MASTERY]` line with the
 loadout and its power estimate. The log prints `[FLOOR]`, `[DEATH]` and `[EMBERS]` lines
 (what the run paid, or would have paid when the time cap ended it), and on a death
 `[LESSON] killer=<boss:kind|region:id> deaths=N new=<first death> unlocks=...`.
