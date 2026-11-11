@@ -1764,6 +1764,10 @@ const FAMILY_PROBE := {
 }
 
 
+## --proc-gear: chance-on-hit, reaction, kill and dodge procs plus the empowering buffs.
+const PROC_GEAR := ["storm_halo", "static_jar", "kindling_mitts", "hands_of_storm", "ring_of_multiplicity",
+    "echo_loop", "chain_reactor", "marking_rounds", "copper_wire", "arc_emitter", "close_shave", "marksman_monocle", "riposte"]
+
 ## --build=<id> profiles for late-floor probes. "storm" replays the human run 4487a37a46b6c384
 ## (Stormcaller, won all five floors): each floor entry is the build at the START of that
 ## floor, i.e. what the player carried when the previous floor ended: guns as id@tier, gear,
@@ -1983,6 +1987,18 @@ func _setup_autotest() -> void:
                 if p0.add_gun(parts[0], parts.size() == 1) and parts.size() > 1:
                     p0.guns[p0.guns.size() - 1].tier = int(parts[1])
             print("[LOADOUT] %s" % a.substr(10))
+        if a == "--no-proc-fx":
+            ProcFx.enabled = false
+        if a == "--drop-probe":
+            _drop_probe_at = [8.0, 40.0, 75.0]
+        if a == "--proc-gear" or a.begins_with("--proc-gear="):
+            # Proc feedback check: gear whose rules proc on hits, reactions, kills and dodges.
+            var pg := players[0]
+            var gear: Array = Array(a.substr(12).split(",")) if a.begins_with("--proc-gear=") else PROC_GEAR
+            for iid in gear:
+                pg.equip(String(iid))
+            pg.recalc_stats()
+            print("[LOADOUT] proc-gear=%s" % ",".join(gear))
         if a.begins_with("--family-probe="):
             # Arsenal expansion 8: four weapons of one family at tier II and the human build's
             # items (Emil's run 6980a749, floor 2). Use with --kite (the family probe) or
@@ -2096,6 +2112,7 @@ func _setup_autotest() -> void:
 
 const FOCUS_PROBE_ADD := 25.0
 var _focus_probe_t := -1.0
+var _drop_probe_at: Array = []   # --drop-probe: game seconds to place a legendary and an epic offer
 var _synergy_probe_t := -1.0
 var _synergy_probe_list: Array = []
 const SYNERGY_PROBE_SECS := 70.0
@@ -2121,6 +2138,18 @@ func _synergy_report(p: Player) -> void:
 
 func _autotest_tick(delta: float) -> void:
     _clock += delta
+    if _drop_probe_at.size() > 0 and _clock >= float(_drop_probe_at[0]) and Room.here != null and not players.is_empty() and not get_tree().paused:
+        # --drop-probe: an epic and a legendary offer appear beside the player (ProcFx drop
+        # moments: beam, sound, hit-stop; counted on [DROP-MOMENT]).
+        _drop_probe_at.pop_front()
+        for r in [Items.Rarity.LEGENDARY, Items.Rarity.EPIC]:
+            var ids: Array = Items._by_rarity[r]
+            if ids.is_empty():
+                continue
+            var ped := Pedestal.new(Items.offer(String(ids.pick_random()), 0))
+            ped.position = Room.here.to_local(players[0].global_position) + Vector2(-70.0 if r == Items.Rarity.LEGENDARY else 70.0, -60.0)
+            Room.here.add_child(ped)
+        print("[DROP-PROBE] t=%.0f offers placed" % _clock)
     if _focus_probe_t > 0.0:
         _focus_probe_t -= delta
         if _focus_probe_t <= 0.0 and not players.is_empty():
@@ -2858,6 +2887,8 @@ func _print_fusion_summary() -> void:
         push_error("fusion termination check failed: %s" % str(d))
     # Vision gap 6.1 items 4 and 5: cataclysm moments played, zoom punches, merged numbers.
     print("[CATA-MOMENT] cataclysms=%d moments=%d punches=%d" % [int(d["cataclysms"]), FusionFx.moments, punches])
+    print(ProcFx.report())
+    print(ProcFx.drop_report())
     print("[DMG-TEXT] mode=%s shown=%d dropped=%d fight_texts=%d fight_secs=%.0f kinds=%s" % [
         Fx.dmg_mode(), Fx.dmg_shown, Fx.dmg_dropped, Fx.fight_texts, Fx.fight_secs, str(Fx.fight_text_kinds)])
     # Brotato's rule: nothing finishes emerging within Enemy.SPAWN_ASSERT of a player.
