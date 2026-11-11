@@ -1656,8 +1656,11 @@ static func _eff_z(n: Node) -> int:
 func boss_in_view() -> bool:
     if main == null or main.current == null or not is_instance_valid(main.current):
         return false
-    var b: Enemy = main.current.get("boss")
-    if b == null or not is_instance_valid(b) or b.is_queued_for_deletion() or b.hp <= 0.0:
+    var bv: Variant = main.current.get("boss")
+    if not is_instance_valid(bv) or not bv is Enemy:
+        return false
+    var b := bv as Enemy
+    if b.is_queued_for_deletion() or b.hp <= 0.0:
         return false
     var vp := get_viewport()
     if vp == null:
