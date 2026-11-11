@@ -43,6 +43,7 @@ const FILL_A := 0.12
 const HOLD := 1.2          # snares: seconds a foe is held (elites and bosses HOLD_ELITE)
 const HOLD_ELITE := 0.4
 const PLACE_DB := -10.0
+const SPREAD := 0.75        # totems and fields: no new one within this share of the radius of another
 ## Effects kept up per weapon by style, before +1 projectile and Ground items.
 const STYLE_CAP := { "aura": 1, "trail": 1, "totem": 2, "field": 2, "snare": 3, "glyph": 6, "pod": 4, "pulse": 2 }
 ## How long an untriggered trap waits (2.6).
@@ -240,10 +241,12 @@ static func maintain(g: Gun, delta: float) -> void:
             g.cooldown = 1.0 / maxf(0.1, g.fire_rate())
             _pressure(g)
         "totem":
-            if g.bodies.size() >= cap_of(g) or p.nearest_enemy(r + 60.0) == null:
+            # A new totem only away from this weapon's others: standing still keeps one up.
+            var feet := p.global_position + Vector2(0, 6)
+            if g.bodies.size() >= cap_of(g) or p.nearest_enemy(r + 60.0) == null or _covered(g, feet, r * SPREAD):
                 g.cooldown = 0.15
                 return
-            _place(g, home, st, p.global_position + Vector2(0, 6), life_of(g))
+            _place(g, home, st, feet, life_of(g))
             g.cooldown = lay_gap(g)
         "field", "snare", "pod":
             var e := p.nearest_enemy(g.effective_range())
@@ -252,7 +255,16 @@ static func maintain(g: Gun, delta: float) -> void:
                 return
             var at := e.global_position
             if st == "field":
-                at = _pack_centre(p.get_tree(), e)
+                # Under the closest pack no field of this weapon covers yet.
+                at = Vector2.INF
+                for o in Focus.pick_from(p.get_tree(), p.global_position, g.effective_range(), 4):
+                    var c := _pack_centre(p.get_tree(), o)
+                    if not _covered(g, c, r * SPREAD):
+                        at = c
+                        break
+                if at == Vector2.INF:
+                    g.cooldown = 0.15
+                    return
             else:
                 # Where the foe will be in SNARE_LEAD s, kept 40 to 220 px from you.
                 at += e.velocity * SNARE_LEAD
@@ -355,6 +367,14 @@ static func _place(g: Gun, home: Node, st: String, at: Vector2, secs: float) -> 
         if fx != null:
             fx.pixels(g.data.element, at, 4, 30.0, 6.0)
     return z
+
+
+## Whether a zone of this weapon already sits within `d` of `at`.
+static func _covered(g: Gun, at: Vector2, d: float) -> bool:
+    for b in g.bodies:
+        if is_instance_valid(b) and not b.is_queued_for_deletion() and b.global_position.distance_to(at) < d:
+            return true
+    return false
 
 
 ## The densest point near the closest foe: the middle of the foes within PACK_R of it.
@@ -636,7 +656,7 @@ func _spring(first: Enemy) -> void:
         "rift_snare":
             # Holds the foe and the pack around it, drawing them in.
             for e in Strike.enemies_in(tree, c, radius * 2.4):
-                s.hit(e, 1.0, e.global_position, (c - e.global_position).normalized() * 120.0)
+                s.hit(e, 1.0 if e == first else 0.5, e.global_position, (c - e.global_position).normalized() * 120.0)
                 _hold(e)
         "holy_glyph":
             s.hit(first, 1.0, first.global_position)

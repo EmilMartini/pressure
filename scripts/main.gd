@@ -2141,7 +2141,7 @@ func _autotest_tick(delta: float) -> void:
         _perf_t -= get_process_delta_time() / maxf(Engine.time_scale, 0.001)
         if _perf_t <= 0.0 and _perf_lines:
             _perf_t = 2.0
-            print("[PERF] t=%.0f fps=%d process_ms=%.2f physics_ms=%.2f draw_calls=%d objects=%d primitives=%d nodes=%d enemies=%d projectiles=%d pixels=%d" % [
+            print("[PERF] t=%.0f fps=%d process_ms=%.2f physics_ms=%.2f draw_calls=%d objects=%d primitives=%d nodes=%d enemies=%d projectiles=%d pixels=%d ground=%d" % [
                 _clock, Engine.get_frames_per_second(),
                 Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0,
                 Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS) * 1000.0,
@@ -2151,7 +2151,8 @@ func _autotest_tick(delta: float) -> void:
                 Performance.get_monitor(Performance.OBJECT_NODE_COUNT),
                 get_tree().get_nodes_in_group("enemies").size(),
                 Projectile.live,
-                fx.live_pixels() if fx != null and fx.has_method("live_pixels") else -1])
+                fx.live_pixels() if fx != null and fx.has_method("live_pixels") else -1,
+                GroundZone.count(players[0]) if not players.is_empty() else 0])
     if current == null or players.is_empty():
         return
     if bot_paused:

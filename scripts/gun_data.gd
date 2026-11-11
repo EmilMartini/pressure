@@ -212,7 +212,9 @@ func dps_at(dmg: float, rate: float) -> float:
             return dmg * rate * float(summon_bodies()) * summon_share()
         "ground":
             # Zones tick `fire_rate` times a second; traps fire once per lay (`lifetime` s).
-            if style in ["snare", "glyph", "pod"]:
+            if style == "glyph":
+                return dmg / maxf(2.0, lifetime)   # one glyph sprung every 2 s or so: it needs kills
+            if style in ["snare", "pod"]:
                 return dmg / maxf(0.1, lifetime)
             return dmg * rate
     if magazine > 0 and rate > 0.0:
