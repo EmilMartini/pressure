@@ -1210,6 +1210,136 @@ room), `room.gd`.
 **Done when** the section 8 checks pass for summons, the idle summon build dies by the end of
 floor 3, and `--arsenal-perf` holds with 16 bodies out.
 
+#### Batch 3 done (2026-11-11, VERSION 2026.11.11-arsenal3)
+
+**Built:**
+- `summon.gd` (`Summon`): one body class with a kind, owned by its weapon (`Gun.bodies`,
+  `GunData.mechanic` "summon"). The weapon itself never fires; `Gun._process` calls
+  `Summon.maintain`, which keeps the cap up, one new body every 0.25 s.
+  - **drone**: hovers 50 px from you on its own spot. `zap` (Scout Drone, Watcher's Eye,
+    which also marks for 3 s) hits its target at once with a thin line; `rain` (Rain Drone,
+    Thunderhead) hovers over its target and hits everything in `aura_radius`, the target
+    at 100% and the rest at 60%; `lob` (Mortar Drone) fires the weapon's lobbed shell.
+  - **familiar**: runs at its target and bites. Tar Crawler leaves an oil stamp every
+    0.25 s; Acid Slime splits on a hit (up to four bodies; halves bite at 40% and last
+    4 s; one split every 1.5 s); Blood Hound dashes through the pack to 60 px past its
+    target; Sun and Moon are a Holy and a Void body, and a foe bitten by both within 2 s
+    bursts (60 px, x1.5, at most once every 3 s per foe).
+  - **orbit**: circles you at `aura_radius` at the rim speed `projectile_speed`, on the
+    weapon's game-time clock. One contact query per body per 0.1 s; each foe is hit at most
+    once per 1/fire rate. Orbit Stones knock back; Frost Blades freeze on a second touch
+    within 2 s (0.6 s, elites 0.25 s); Storm Kite circles at 90 px on a drawn string.
+  - **swarm**: fliers buzz beside you, fly at a target, strike once and respawn at you
+    after 2 s. Holy Wisps burst (40 px); Leech Jar's leeches latch on and bleed the foe
+    until it dies; Hive Queen grows a wasp per wasp kill, up to twelve, for the room.
+  - **golem** (Clay Golem): walks behind you, steps to a foe within the leash and slams
+    `aura_radius` with knockback.
+- **The rules (2.5):**
+  - Leash 260 px: a body past it is pulled back, and familiars and the golem drop their
+    target. Bodies only pick foes within 300 px of you.
+  - They don't tank: bodies are plain `Node2D`s with no collision, not in any group an
+    enemy targets, and block nothing.
+  - Targeting: `Focus.pick_from(tree, origin, reach, n, skip, anchor, leash)`, every 0.2 s
+    per body, closest to the body itself; siblings of one weapon skip each other's targets
+    when there is another choice. Summon weapons take no Focus slot.
+  - The cap: 16 bodies per player across the slots, swarm fliers and turrets included
+    (`Summon.count`, group `summon_bodies`). Past it the oldest turret goes; with none, the
+    new body is not made.
+  - Bodies live in the room. Leaving it frees them, and the weapon makes fresh ones beside
+    you a beat apart (0.4 s, then 0.25 s each).
+  - Turrets (`turret.gd`) join the cap and now aim at the foe closest to themselves.
+    Tesla Post arcs to its 3 closest foes in reach.
+  - Look: a round body with a dark outline, a dark rim and an element core; drones have
+    two rotor ticks, familiars two eye dots, orbits a spike, swarm fliers a 2.5 px speck,
+    the golem three stacked blocks. A player-colour friend ring sits under each, they bob
+    2 px at 1.5 Hz, and they draw under enemies (z 2 against 8), at the own-effects alpha.
+    There are no health bars and no text. Sounds play 6 dB under a shot, at most 4 per
+    0.1 s.
+- **The summon stat map (2.2):** `summon_dmg` (damage), `summon_rate` (attack rate), +1
+  projectile is +1 body, range is reach, shot speed is movement speed, size is body size
+  and contact reach, duration (`state_duration`) and `turret_life` keep turrets up longer.
+  Pierce and bounce reach the shots of the lobbing drone and the turrets.
+- **Weapons:** 20 new summons, so the arsenal now has 113 weapons. Each has a code-drawn
+  icon (`weapon_looks.gd`: drone, familiar, orbit, swarm, golem, turret and Tesla post).
+  Kettle Gun keeps its tile and numbers.
+- **Items (30), all locked until unlocked**, with the Swarm tag and its resonance. At 3:
+  +1 to every summon cap. At 5: doubled, and summons also apply your highest-tier weapon's
+  element (`swarm_tether`). A trigger with `"family": "summon"` fires only for summon
+  weapons, their bodies and turrets.
+  - 12 Swarm passives: Pack Leader, Shared Mind (summons take your first weapon's target),
+    Brood (summon kills hatch a wasp for 4 s), Overclock, Tether, Long Leash, Swift Wings,
+    Big Brood, Feeding Frenzy, Quick Hatch, Spark Collars, Turret Oil;
+  - 6 mods: Spare Rotor, Brood Chamber, Homing Chip, Venom Gland, Iron Shell, Swarm Beacon;
+  - 2 actives: Rally (every summon dashes to the foe nearest it and strikes at x1.5) and
+    Call the Swarm (six wasps for 8 s);
+  - 8 element items, a state and a reaction item each for Poison, Acid, Blood and Void:
+    Venom Sac, Tar Pit Censer, Acid Spit, Electrolyte, Blood Tick, Thin Blood Charm, Void
+    Collar, Whirlpool Bell;
+  - 2 stat and trade-off items: Kennel Keys and Hive Oath.
+- **Unlocks:** Scout Drone is in the core set. 10 play goals open the summon Commons and
+  Uncommons, each with one Swarm item. 8 summon-mastery steps (`kills_summon`, 60 to
+  2,600) open the Rares and Epics, with two to four items each. The Summoner Trial (summons
+  only, you start with a Scout Drone) opens Hive Queen, Call the Swarm and Hive Oath.
+- `--family-probe=summon` (Scout Drone, Ember Imp, Orbit Stones, Wasp Nest).
+
+**Deviations, and why:**
+| Spec | Built | Why |
+|---|---|---|
+| Drones fire their own shots | Most drones zap or rain; only Mortar Drone fires the weapon's shell | `Gun.shoot_from` fires `shot_count` shots, so +1 projectile would count twice (once as +1 body). |
+| Rain Drone "soaks" | It hits for damage and Wet in 50 px and stamps the floor | That is the rain; damage keeps it in the band. |
+| Acid Slime "splits in two on each hit" | A split at most every 1.5 s; halves bite at 40% and last 4 s | Free splits kept four full slimes up: 69 dps against 18 in the band. |
+| Sun and Moon burst whenever both bite | At most once every 3 s per foe | Single target ran 76 against 36. |
+| Watcher's Eye beams | A zap line, and the target is marked for 3 s | No separate beam body; the zap reads as the same thing. |
+| Thunderhead in the Epic band at its damage | Damage 15 | It reacts with itself (Shock on Wet x1.5 and the reactions), so the single number at 30 damage was 50 against 36. |
+| `--arsenal-perf` with 16 bodies | Not built | Batches 1 to 3 have all carried it; see "Not built". |
+| Shades | Not built | Legendary only (batch 5), as the spec says. |
+
+**Checks** (headless, at most 3 instances, 0 `SCRIPT ERROR` in every run; the probes after
+the rebase on fun pass 1):
+| Check | Result | Pass |
+|---|---|---|
+| Weapon bands (`--gun-probe`, 12 s) | Single-target damage: Scout Drone 11.8 (band x70% 12.3), Ember Imp 17.4, Orbit Stones 17.8, Wasp Nest 17.1, Frost Sentry 22.3 (23.8), Rain Drone 18.6, Tar Crawler 18.4, Storm Kite 20.0, Holy Wisps 12.0, Leech Jar 18.4, Watcher's Eye 26.0 (26.2), Tesla Post 26.3, Blood Hound 25.8, Clay Golem 43.1 (42.3), Hive Queen 36.4 (36.1), Sun and Moon 38.5 (36.4). Packs are all under the best gun of their weight except Mortar Drone (about 5% over before its last trim). Acid Slime, Frost Blades, Thunderhead and Mortar Drone were trimmed after their last probe; see "Worth watching" | yes |
+| Family probe (`--family-probe=summon --kite --mastery=full --secs=1800`, 4 runs) | 4 of 4 reach floor 3. Before the rebase: 2 die on floor 3. After: 2 reach floor 5 | yes (needs 2 of 4) |
+| Summon stand-still (`--idle --family-probe=summon --build=human6980 --mastery=full --start-floor=2`) | 2 of 2 die on floor 2, at 50 and 64 s; under 50% health 0.62 and 0.72; 3.49 and 2.50 bars a minute | yes |
+| Human-build stand-still (`--idle --build=human6980 --mastery=full --start-floor=2 --secs=1200`, 4 runs) | Dies on floor 3 (395 s), floor 4 (694 s) and floor 5 (939 s); a fourth run was still alive on floor 3 at the 300 s default cap. Floor 2: 0.51 to 0.92 bars a minute; floor 3: 0.49 to 1.69. The bot never carried a summon in these runs | **no, and not from batch 3**: the same command on `origin/main` before batch 3 (fun pass 1, `a3dc894`) reaches floor 4 in 2 of 2 (dies at 539 s; the other is alive at the 1,200 s cap); floor 2 0.79 and 1.11, floor 3 1.10 and 1.31. Fun pass 1's own note says 3 of 3 died on floor 3 |
+| Human-build mover (`--kite`, same) | Reaches floor 5 (alive at the 1,500 s cap). Floor 2: 0.12 bars a minute; floor 3: 0.01 | yes |
+| Pressure, still against moving (floor 2) | Summon idle 2.50 to 3.49 against summon kite 0.02 to 0.20; human idle 0.51 to 0.92 against kite 0.12 | yes (at least 2x) |
+| Economy | Shop visits spent down: 16 of 21 in the summon probe runs (76%) and 6 of 6 human kite; target 70%. Weapons gained 0 to 1 a floor (the probes start with four) | yes |
+| Cards (`--card-shot`) | `[CARDS] PASS 501`, at most 23 words, at most 298 px tall | yes |
+| Fusion probe, idle bot | `[FUSION-CHECK] PASS` (and in every bot run); the standard idle six-weapon bot dies on floor 1 at 33 s | yes |
+| Hub walk | `[HUB-WALK] PASS`, `[HUB-FRESH] PASS` | yes |
+| Load check (`--editor --quit`) | 0 `SCRIPT ERROR` | yes |
+| Smoke | SMOKE_ROW | yes |
+
+**Not built or not checked:**
+- `--arsenal-perf` (40 enemies, two summon weapons at cap). Bodies do one retarget per
+  0.2 s and one contact query per 0.1 s, with no per-frame allocation in `_draw`, but
+  nothing has measured 16 bodies against 40 enemies yet.
+- The `--read-shot=family` layer check (carried over from batch 1). Bodies draw at z 2,
+  under enemies (8) and hostile shots.
+- A Trial won end to end (as batch 2).
+- The summon weapons' numbers with Swarm items stacked (Pack Leader, Brood, Hive Queen's
+  growth): the cap holds them at 16 bodies, but no probe has measured a full Swarm build.
+
+**Worth watching:**
+- After fun pass 1 the summon movers take very little damage: two of the kite runs reached
+  floor 5 at 0.01 to 0.22 bars a minute. Standing still still dies fast (2.5 to 3.5 bars a
+  minute), so the rule holds, but summons may feel too safe for a mover. The levers are the
+  70% share and the 16-body cap.
+- Acid Slime (7.7 damage), Frost Blades (25), Thunderhead (15) and Mortar Drone (31) were
+  set from one probe each; check them in the next `--gun-probe` pass.
+
+**Screenshots for when Emil is away (window runs):**
+- A card contact sheet (`--card-shot` in a window) with the 20 new icons at 96 px and 22 px,
+  and the Swarm chip.
+- A fight with `--family-probe=summon`: the drone's zap line, the imp biting, three Orbit
+  Stones on their ring, the wasps flying out and back. Check that no body covers an enemy
+  or a telegraph, and that the friend rings read as yours.
+- Storm Kite on its string; Frost Blades freezing on the second touch; Acid Slime split in
+  four; Clay Golem's slam; Rain Drone and Thunderhead over a pack; Tesla Post's arcs.
+- A full cap: four summon weapons with Pack Leader and Brood, 16 bodies out, to see that
+  the screen stays quiet.
+
 ### Batch 4: Auras and traps
 
 **Builds:**
