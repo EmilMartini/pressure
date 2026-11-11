@@ -520,8 +520,8 @@ art.
 | 1 | Choose an art source and solve the licence (private repo or assets kept out of git) | NEEDS EMIL | Very high | Decision, money |
 | 2 | Playtest the current exe: three runs, notes on feel, bosses and look | NEEDS EMIL | Very high | 2 hours |
 | 3 | Boss entrances and deaths (**DONE 2026-11-10**) | SLAM DUNK | High | 1 session |
-| 4 | Cataclysm moments: the rare chain becomes an event | SLAM DUNK | High | 1 session |
-| 5 | Combat text diet | SLAM DUNK | High (clarity and oomph) | Small |
+| 4 | Cataclysm moments: the rare chain becomes an event (**DONE 2026-11-11**, headless; captures owed) | SLAM DUNK | High | 1 session |
+| 5 | Combat text diet (**DONE 2026-11-11**, headless; captures owed) | SLAM DUNK | High (clarity and oomph) | Small |
 | 6 | Hit feel: knockback, squash and stretch, recoil, enemy hit reactions (**DONE 2026-11-10**, headless; window check owed) | SLAM DUNK | High | 1 session |
 | 7 | Add a dash or roll | NEEDS EMIL | High | 1 session after the decision |
 | 8 | Art-pass recipes for every region, starting with the Ossuary | SLAM DUNK | Medium-high | 1 to 2 sessions |
@@ -562,6 +562,24 @@ edge, never over the fight. Keep the existing limit of one per 1.5 s.
 Done: the paired clarity test (`--clarity-ab`) shows enemy and shot contrast unchanged outside
 the 0.3 s of the moment; a before and after capture.
 
+**DONE 2026-11-11** (build `2026.11.11-moments2`), headless only: the `--clarity-ab` pair and the
+before and after capture need a window and are still owed.
+- A cataclysm (tier 4; a tier 3 fusion is unchanged) now plays a **moment** (`FusionFx._moment`):
+  a 75 ms hit-stop (`CATA_STOP`, down from 160 ms) that never starts while another runs
+  (`Main.hitstop_active`); a 6% camera zoom punch over 0.3 s of real time, so it plays through
+  the stop, scaled by the shake option (`Main.zoom_punch`); `cata_boom` (the large burst at
+  pitch 0.58) and `cata_toll` (the gong at 0.5) together, with a short music dip; a strong rumble
+  (`Rumble.boom(0.85)`). Every cataclysm also draws one wide ring in its own colour (1.6 x its
+  reach, 4 px, 0.55 s) in place of the old thin white one.
+- **Kept rare.** The room limit (one per 1.5 s) stays, but bots set off far more than expected:
+  21 cataclysms in a 72 s storm-build Hive Mother, 106 in a 228 s Pyre-chain fusion probe. So the
+  moment plays at most once per 8 s of game time (`MOMENT_GAP`); the cataclysms in between
+  keep their ring, flash and shake, with no hit-stop. Measured: Hive Mother 20 cataclysms and
+  8 moments in 119 s; Choir 30 and 11 in 121 s; Pyre Lord 14 and 4 in 37 s.
+- **First find:** "New cataclysm" over its name in capitals, 34 px, for 4 s at the left screen
+  edge (`Hud.discover(name, true)`), never over the fight. Reactions and fusions keep the small
+  "Discovered" line there.
+
 **5. Combat text diet.**
 Files: `scripts/fx.gd` (damage numbers), `scripts/elements.gd` (`reaction_fired` labels),
 `scripts/settings.gd`, `scripts/options_menu.gd`.
@@ -570,6 +588,35 @@ small, at the edge. Damage numbers merge per target every 0.25 s; small own hits
 crits and boss hits stay. Options: "Damage numbers: all / big hits / off", defaulting to big hits.
 Done: the Pyre Lord and Choir captures with no word bigger than the HUD text; clarity numbers
 equal or better.
+
+**DONE 2026-11-11** (build `2026.11.11-moments2`), headless only: the Pyre Lord and Choir captures
+are still owed (window).
+- Reaction and fusion names were already off by default ("Fight text: quiet", Core loop reset
+  4.5) and only first finds show, small, at the left edge. Unchanged.
+- **Damage numbers merge per target** for 0.25 s (`Fx.number(..., target)`), then print once.
+  Options "Damage numbers: ALL / BIG HITS / OFF" (new key `dmg_numbers`), default BIG HITS; an
+  old save that had numbers on gets ALL. BIG HITS prints a merged crit of at least 3 x the
+  running average hit, at most one every 4 s (gold, 28 px), and a boss's merged hits of at least
+  2.5 x the average (and 25), at most one every 1.5 s (dim, 20 px). Everything else is hidden.
+  OFF is now really off (the old switch still let big crits through). Your own hurt numbers
+  show on ALL only.
+- Measured (bots, BIG HITS): Choir 121 s, 54 numbers shown and 516 merged hits dropped (38 boss
+  numbers, 16 crits); Pyre Lord 37 s, 18 shown, 367 dropped; Hive Mother 119 s, 53 shown, 634
+  dropped. The rest of the fight text is "Discovered" lines at the edge (37 in a Choir fight on a
+  fresh bot save, where everything is new) and the once-a-run hazard label. `[DMG-TEXT]` at the
+  end of every bot run gives the counts.
+
+**Fix: your own effects no longer bury the boss (2026-11-11).** The Fx particle layers (every
+reaction puff, signature, spark and fusion burst) drew at z 20 and 21, over every enemy (8),
+the boss included. While a living boss is on screen (`Fx.boss_in_view`) they now draw at z 6,
+under the boss and its adds, at 70% of their usual opacity ("Your effects" x 0.7), with puffs
+20% smaller, eased over 0.3 s. Ground effects, clouds, beams, summons and your shots were
+already under the boss. Boss telegraphs and enemy shots were already on the Crisp layer (canvas
+layer 2, over the whole world), so they stay on top. The player (z 22) stays over everything.
+Measured by `[BOSS-QUIET]` (bots, every 3 s with a boss in view: the player's own effect nodes
+whose effective z is over the boss's): with `--no-boss-quiet` (the old drawing) 4 of 5 to 13 own
+effect nodes drew above the Hive Mother, every sample; with the fix 0 in every sample (Hive
+Mother, Choir, Pyre Lord, Brute King); the telegraph layer is 2 in all.
 
 **6. Hit feel.**
 Files: `scripts/enemy.gd`, `scripts/player.gd`, `scripts/figure_gen.gd`, `scripts/gun.gd`.
