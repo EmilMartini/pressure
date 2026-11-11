@@ -143,6 +143,18 @@ var _px_mms: Array[MultiMesh] = []
 var _px_was_live := false
 var _shape_layer: ShapeLayer
 var _own_a := 1.0   # Settings.own_fx(), for the puffs
+var _own_base := 1.0   # Settings.own_fx() itself; _own_a adds the boss fade (below)
+
+## Quiet own effects over a boss: while a living boss is on screen the particle layers draw
+## under the enemies (z BOSS_Z instead of 20, so the boss and every add sit on top), fade to
+## BOSS_OWN_A of their usual opacity, and puffs draw BOSS_SIZE smaller. Boss telegraphs and
+## enemy shots are on the Crisp layer, above the whole world, either way. The player (z 22)
+## stays on top. Eased over BOSS_EASE s so walking in and out does not pop.
+const BOSS_Z := 6
+const BOSS_OWN_A := 0.7
+const BOSS_SIZE := 0.8
+const BOSS_EASE := 0.3
+var boss_k := 0.0
 
 
 class AddLayer extends Node2D:
@@ -176,7 +188,8 @@ func _ready() -> void:
     add_child(_add)
     _ground = GroundLayer.new()
     _ground.fx = self
-    _ground.z_index = -21   # relative: lands just above the floor tiles
+    _ground.z_as_relative = false
+    _ground.z_index = -1   # just above the floor tiles, wherever the Fx node itself sits
     add_child(_ground)
     _pp.resize(MAX_PIXELS)
     _pv.resize(MAX_PIXELS)
@@ -217,7 +230,12 @@ func _ready() -> void:
 func _apply_own_fx(key: String) -> void:
     if key != "own_fx":
         return
-    _own_a = Settings.own_fx()
+    _own_base = Settings.own_fx()
+    _set_own_a(_own_base * lerpf(1.0, BOSS_OWN_A, boss_k))
+
+
+func _set_own_a(a: float) -> void:
+    _own_a = a
     _shape_layer.modulate.a = _own_a
     for mat in _px_mats:
         mat.set_shader_parameter(&"own_a", _own_a)
@@ -955,7 +973,7 @@ static func dmg_mode() -> String:
 const MERGE_SECS := 0.25
 ## "Big hits": a boss's merged hits print at most every BOSS_NUM_GAP s of fight, other crits
 ## at most every CRIT_GAP s (almost no fight text: Emil, 2026-11-11).
-const BOSS_NUM_GAP := 1.0
+const BOSS_NUM_GAP := 1.5
 const CRIT_GAP := 4.0
 var _merge := {}
 var _merge_seq := 0
@@ -1565,6 +1583,7 @@ func _process(delta: float) -> void:
                 _crumble(sh)
             _shapes.remove_at(i)
     _flush_numbers(delta)
+    _step_boss_quiet(delta)
     _step_later(delta)
     _step_pixels(delta)
     _upload_pixels()
@@ -1572,6 +1591,79 @@ func _process(delta: float) -> void:
     _shape_layer.queue_redraw()
     _add.queue_redraw()
     _ground.queue_redraw()
+
+
+func _step_boss_quiet(delta: float) -> void:
+    var want := 1.0 if boss_in_view() and not _no_boss_quiet else 0.0
+    if main != null and main.autotest and boss_in_view():
+        _bq_t -= delta
+        if _bq_t <= 0.0:
+            _bq_t = 3.0
+            _boss_quiet_report()
+    if boss_k == want:
+        return
+    boss_k = move_toward(boss_k, want, delta / BOSS_EASE)
+    z_index = BOSS_Z if boss_k > 0.0 else 20
+    _set_own_a(_own_base * lerpf(1.0, BOSS_OWN_A, boss_k))
+
+
+var _bq_t := 1.0
+## `--no-boss-quiet`: the A/B baseline (effects stay at z 20 and full opacity over a boss).
+var _no_boss_quiet := OS.get_cmdline_user_args().has("--no-boss-quiet")
+
+
+## Bots ([BOSS-QUIET], every 3 s with a boss in view): the player's own effects in the world
+## that draw above the boss (effective z over the boss's; must be 0 once eased in), how many
+## there are in all, their opacity, and the canvas layer the boss's telegraphs draw on
+## (Crisp, 2: above the world layer 0).
+func _boss_quiet_report() -> void:
+    var b: Enemy = main.current.get("boss")
+    var bz := _eff_z(b)
+    var above := 0
+    var total := 0
+    var kinds := {}
+    var stack: Array = [main]
+    while not stack.is_empty():
+        var n: Node = stack.pop_back()
+        for c in n.get_children():
+            stack.append(c)
+        var own := n == self or (n is CanvasItem and n.get_parent() == self) or n is Projectile or n is Cloud or n is Pool or n is Beam or n is GunFx or n is Spray or n is Mine or n is Turret or n is Summon
+        if not own or not (n as CanvasItem).is_visible_in_tree():
+            continue
+        total += 1
+        if _eff_z(n) > bz:
+            above += 1
+            var k: String = String(n.get_script().get_global_name()) if n.get_script() != null else ""
+            k = k if k != "" else String(n.name)
+            kinds[k] = int(kinds.get(k, 0)) + 1
+    var tele := Crisp.LAYER if Crisp.layer_for(b) != null else -1
+    print("[BOSS-QUIET] boss=%s boss_z=%d fx_z=%d own_above=%d own_total=%d own_a=%.2f base_a=%.2f k=%.2f tele_layer=%d kinds=%s" % [
+        b.get("boss_kind"), bz, z_index, above, total, _own_a, _own_base, boss_k, tele, str(kinds)])
+
+
+static func _eff_z(n: Node) -> int:
+    var z := 0
+    var c := n
+    while c is CanvasItem:
+        z += (c as CanvasItem).z_index
+        if not (c as CanvasItem).z_as_relative:
+            break
+        c = c.get_parent()
+    return z
+
+
+## A living boss with any part of its body inside the camera's view.
+func boss_in_view() -> bool:
+    if main == null or main.current == null or not is_instance_valid(main.current):
+        return false
+    var b: Enemy = main.current.get("boss")
+    if b == null or not is_instance_valid(b) or b.is_queued_for_deletion() or b.hp <= 0.0:
+        return false
+    var vp := get_viewport()
+    if vp == null:
+        return false
+    var view := vp.get_canvas_transform().affine_inverse() * Rect2(Vector2.ZERO, vp.get_visible_rect().size)
+    return view.grow(b.radius * 2.0).has_point(b.global_position)
 
 
 ## Delayed secondary waves, lingering floor flames and void pulls.
@@ -2105,7 +2197,7 @@ func _draw_puffs(list: Array, canvas: CanvasItem) -> void:
     for p in list:
         var k: float = 1.0 - p["t"] / p["life"]
         var tex: Texture2D = p["tex"]
-        var s: float = p["size"] * (0.55 + 0.65 * k) / tex.get_width()
+        var s: float = p["size"] * (0.55 + 0.65 * k) / tex.get_width() * lerpf(1.0, BOSS_SIZE, boss_k)
         var col: Color = p["color"]
         col.a *= 1.0 - k * k
         col.a *= lerpf(0.3, 1.0, smoothstep(CLEAR_R * 0.45, CLEAR_R, (p["pos"] as Vector2).distance_to(cp)))

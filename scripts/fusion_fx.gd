@@ -9,7 +9,9 @@ extends RefCounted
 ## Scale by tier: a fusion is about a signature reaction moment and a half (its signatures,
 ## a 28 px name, screen pulses and a short hit-stop rationed to one per STOP_GAP_MS); a cataclysm is the
 ## biggest moment in the game short of a boss death (its signatures ringed around the field,
-## a white ring, a 44 px name in capitals, the longest hit-stop, a coloured flash).
+## one wide ring in its colour, a coloured flash, and at most every MOMENT_GAP s the moment:
+## hit-stop, zoom punch, low toll, rumble). Its name shows only on first discovery, at the
+## HUD's left edge (Hud.discover); "Fight text" in Options brings in-world names back.
 
 const SIZES := { "small": 55.0, "medium": 75.0, "large": 100.0, "huge": 125.0, "cataclysm": 150.0 }
 ## Tier 3 hit-stops and full flashes at most this often (real ms); tier 4 is already rationed
@@ -84,7 +86,8 @@ static func play(main: Node, fusion_name: String, tier: int, pos: Vector2, reach
     var sounds: Array = entry.get("sound", [])
     for i in sounds.size():
         Sfx.play(String(sounds[i]), (1.5 if cata else 0.0) - 2.5 * float(i), -1.0, pos)
-    if cata:
+    var moment := cata and Elements._clock - _moment_t >= MOMENT_GAP
+    if moment:
         _moment(main, pos)
     # Weight. Screen-wide pulses (ripple, aberration, hit-stop, flash) are rationed for tier 3
     # so six fusions a second never smear the picture; a cataclysm always gets all of them.
@@ -103,7 +106,7 @@ static func play(main: Node, fusion_name: String, tier: int, pos: Vector2, reach
         PostFx.bloom_pulse(1.0 if cata else 0.5)
     if main.has_method("hitstop"):
         # Never stack: a hit-stop already running (a boss phase, another moment) is enough.
-        if not (main.has_method("hitstop_active") and main.hitstop_active()):
+        if not (main.has_method("hitstop_active") and main.hitstop_active()) and (moment or not cata):
             main.hitstop(CATA_STOP if cata else 0.07)
         main.flash(col.lightened(0.3), 0.42 if cata else 0.2, 0.3 if cata else 0.2)
 
@@ -111,7 +114,12 @@ static func play(main: Node, fusion_name: String, tier: int, pos: Vector2, reach
 ## Cataclysm moment (Vision gap 6.1 item 4): what makes the rare chain an event rather than
 ## more particles. The hit-stop (CATA_STOP, above), a short zoom punch, two existing sounds
 ## pitched down together, a strong rumble. Cataclysms are already rationed to one per
-## Fusions.CATACLYSM_ROOM_COOLDOWN, so this never runs twice inside 1.5 s.
+## Fusions.CATACLYSM_ROOM_COOLDOWN, but a strong build still sets one off every few seconds
+## in a long fight (21 in a 72 s storm-build Hive Mother), so the moment itself (hit-stop,
+## punch, toll, rumble) plays at most once per MOMENT_GAP s of game time; the cataclysms
+## between keep their ring, flash and shake.
+const MOMENT_GAP := 8.0
+static var _moment_t := -100.0
 const CATA_STOP := 0.075
 const CATA_PUNCH := 0.06
 const CATA_PUNCH_SECS := 0.3
@@ -121,6 +129,7 @@ static var moments := 0
 
 static func _moment(main: Node, pos: Vector2) -> void:
     moments += 1
+    _moment_t = Elements._clock
     if main.has_method("zoom_punch"):
         main.zoom_punch(CATA_PUNCH, CATA_PUNCH_SECS)
     Sfx.play("cata_boom", 0.0, -1.0, pos)

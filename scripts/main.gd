@@ -2738,6 +2738,10 @@ func _print_fusion_summary() -> void:
         "PASS" if ok else "FAIL", int(d["max_ctx"]), int(d["max_frame"]), int(d["max_depth"]), int(d["violations"])])
     if not ok:
         push_error("fusion termination check failed: %s" % str(d))
+    # Vision gap 6.1 items 4 and 5: cataclysm moments played, zoom punches, merged numbers.
+    print("[CATA-MOMENT] cataclysms=%d moments=%d punches=%d" % [int(d["cataclysms"]), FusionFx.moments, punches])
+    print("[DMG-TEXT] mode=%s shown=%d dropped=%d fight_texts=%d fight_secs=%.0f kinds=%s" % [
+        Fx.dmg_mode(), Fx.dmg_shown, Fx.dmg_dropped, Fx.fight_texts, Fx.fight_secs, str(Fx.fight_text_kinds)])
     # Brotato's rule: nothing finishes emerging within Enemy.SPAWN_ASSERT of a player.
     print("[SPAWN-CHECK] %s landed=%d moved=%d close=%d" % [
         "PASS" if Enemy.spawn_close == 0 else "FAIL", Enemy.spawn_landed, Enemy.spawn_moved, Enemy.spawn_close])
