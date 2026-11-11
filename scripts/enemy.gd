@@ -178,6 +178,8 @@ const MODE_COOL := 3
 
 var kind_name := "grunt"
 var bx := {}   # roster kinds' own state (Bestiary)
+## A rare elite's name, pattern and clocks (RareElite); empty for everyone else.
+var rare := {}
 var max_hp := 20.0
 var hp := 20.0
 var speed := 110.0
@@ -471,7 +473,7 @@ var _crisp_on := false
 func _ensure_crisp() -> void:
     if _crisp_on or not is_inside_tree():
         return
-    if kind_name in ["bomber", "charger", "boss", "lobber"] or affix in ["volatile", "barrage", "sower", "mortar", "tether"]             or (kind_name == "spitter" and _wave >= _lob_diff()) or Bestiary.needs_crisp(kind_name):
+    if kind_name in ["bomber", "charger", "boss", "lobber"] or affix in ["volatile", "barrage", "sower", "mortar", "tether"]             or (kind_name == "spitter" and _wave >= _lob_diff()) or Bestiary.needs_crisp(kind_name) or not rare.is_empty():
         _crisp_on = true
         Crisp.attach(self, _draw_hostile, 3)
 
@@ -1093,6 +1095,8 @@ var _corpse := false   # a killed bomber whose blast is still to come
 ## Hostile tells on the Crisp layer, above the player's own effects (Hostile): blast
 ## rings and the dash telegraph of chargers and the brute king.
 func _draw_hostile(cv: CanvasItem) -> void:
+    if not rare.is_empty():
+        RareElite.draw_hostile(self, cv)
     if kind_name == "bomber" or affix == "volatile":
         _draw_blast_ring(cv)
     for sh in _shells:
@@ -1445,6 +1449,8 @@ func _physics_process(delta: float) -> void:
     _tick_shells(delta)
     if kind_name != "boss":
         Bestiary.tick(self, delta)
+    if not rare.is_empty():
+        RareElite.tick(self, delta)
     if kind_name == "bomber" or affix == "volatile":
         var pl := _nearest_player()
         var near := pl.global_position.distance_to(global_position) if pl != null else INF
@@ -3309,6 +3315,8 @@ func _draw() -> void:
         Bestiary.draw_body(self)
     if is_elite:
         draw_arc(Vector2.ZERO, radius - 2.0, 0.0, TAU, 32, Color(1.0, 0.85, 0.3), 2.0)
+    if not rare.is_empty():
+        RareElite.draw_body(self)
     if immune_to != Element.Kind.NONE:
         draw_arc(Vector2.ZERO, radius + 5.0, 0.0, TAU, 32, Element.COLORS[immune_to], 3.0)
         draw_arc(Vector2.ZERO, radius + 5.0, 0.0, TAU, 32, Color(0, 0, 0, 0.4), 1.0)
@@ -3727,7 +3735,7 @@ func is_key_threat() -> bool:
 ## Winding up an attack right now (charge telegraph, ring, teleport or gut-blast warning).
 func winding_up() -> bool:
     return _mode == MODE_TELEGRAPH or _ring_warn > 0.0 or _tele_warn > 0.0 or _gut_warn > 0.0 \
-            or _crouch_t > 0.0 or not _shells.is_empty() or _tether_state > 0 or Bestiary.winding_up(self)
+            or _crouch_t > 0.0 or not _shells.is_empty() or _tether_state > 0 or Bestiary.winding_up(self) or RareElite.winding_up(self)
 
 
 ## Shots in flight toward this enemy (Focus skips it once they cover its health).

@@ -29,6 +29,8 @@ var _planned_route: Array = [] # bots: --route=a,b,c, or the random way down to 
 var _door_choice := ""          # the region behind the stairs door the party took (Room "stairs")
 ## This floor's shortcut gate (Shortcuts.plan), {} if none.
 var gate: Dictionary = {}
+## This floor's rare elite arena (RareElite.plan_floor), -1 for none or once it has come.
+var rare_arena := -1
 var _floor_t0 := 0.0            # _clock at floor start ([TRAVEL] lines)
 var _boss_room_at := -1.0       # _clock when the party first entered this floor's boss room
 var _rush := false              # bots: --rush walks straight for the boss room
@@ -678,6 +680,10 @@ func start_floor(n: int) -> void:
     Telemetry.floor_start(self)
     pressure_meter.start_floor(n, region_id)
     rooms = FloorGen.generate(region_id, party_luck(), players)
+    RareElite.force = autotest and OS.get_cmdline_user_args().has("--rare-every")
+    rare_arena = RareElite.plan_floor(n, FloorGen.ARENAS, Room.FLOOR1_GUN_PICKS)
+    if autotest:
+        print("[RARE] plan floor=%d arena=%d" % [n, rare_arena + 1 if rare_arena >= 0 else 0])
     _log_secret_floor()
     _place_archivist()
     _place_well()

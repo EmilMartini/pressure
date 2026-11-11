@@ -58,6 +58,9 @@ var _elites_alive := 0
 var _spawn_timer := 0.0
 var _elite_timer := INF
 var _elite_timer2 := INF
+## Rare elite (RareElite): seconds until it comes, INF for none; set when one was killed here.
+var _rare_t := INF
+var _rare_killed := false
 var _add_timer := 0.0
 var _add_time_left := 0.0
 var _dealt0 := 0.0                  # Enemy.dealt_total when the arena wave began
@@ -378,6 +381,11 @@ func _begin_arena() -> void:
         _key_t = 1.5
         _planned_n = _crowd_left + _keys_left
         _spawned_n = 0
+        _rare_t = INF
+        _rare_killed = false
+        if data.type == RoomData.Type.ARENA and main.rare_arena >= 0 and main.rare_arena == main.floor_arenas_done():
+            main.rare_arena = -1
+            _rare_t = RareElite.SPAWN_AT
         main.announce("Clear the room")
     else:
         main.announce("Survive %d seconds" % int(wave_duration))
@@ -386,7 +394,7 @@ func _begin_arena() -> void:
 
 ## Fun pass 1: what is still to kill in a clear-the-room arena (alive, still to come, elites).
 func enemies_left() -> int:
-    var n := _crowd_left + _keys_left + (0 if _elite_timer == INF else 1) + (0 if _elite_timer2 == INF else 1)
+    var n := _crowd_left + _keys_left + (0 if _elite_timer == INF else 1) + (0 if _elite_timer2 == INF else 1) + (0 if _rare_t == INF else 1)
     for e in enemies.get_children():
         if e is Enemy and not e.is_queued_for_deletion() and e.hp > 0.0 and not e._corpse:
             n += 1
@@ -408,6 +416,7 @@ func _tick_room(delta: float) -> void:
     _spawn_timer -= delta
     _elite_timer -= delta
     _elite_timer2 -= delta
+    _rare_t -= delta
     var alive := _alive_count()
     var fi := clampi(main.floor_number, 1, CROWD_ALIVE.size()) - 1
     if _spawn_timer <= 0.0:
@@ -444,9 +453,13 @@ func _tick_room(delta: float) -> void:
         _elite_timer2 = INF
         _spawn_elite(SpawnTable.elite_count(diff_now(), main.floor_number))
         return
+    if _rare_t <= 0.0 or (rest_done and _rare_t != INF):
+        _rare_t = INF
+        _spawn_rare()
+        return
     if _crowd_left <= 0 and _keys_left <= 0 and _spawn_done_t < 0.0:
         _spawn_done_t = _room_t
-    if (rest_done and _elite_timer == INF and _elite_timer2 == INF) or _room_t >= ROOM_MAX_SECS:
+    if (rest_done and _elite_timer == INF and _elite_timer2 == INF and _rare_t == INF) or _room_t >= ROOM_MAX_SECS:
         if main.autotest:
             var left_kinds: Array = []
             for e in enemies.get_children():
@@ -484,6 +497,13 @@ func _keys_alive() -> int:
 func _room_reward() -> void:
     var gun_room := main.floor_number == 1 and main.floor_arenas_done() <= FLOOR1_GUN_PICKS
     var roll := randf()
+    if _rare_killed:
+        # The rare elite's reward takes the bonus pick's place: 1 of 2, Rare or better.
+        _rare_killed = false
+        _rare_cards()
+        if roll < ROOM_HEART:
+            drop_heart(Vector2.ZERO, true)
+        return
     if roll < ROOM_HEART:
         drop_heart(Vector2.ZERO, true)
     elif not gun_room and roll < ROOM_HEART + ROOM_BONUS:
@@ -736,6 +756,10 @@ func _take_group(o: Dictionary) -> void:
     var g := String(o.get("group", ""))
     if g == "":
         return
+    if g == "rare":
+        Telemetry.event("rare_reward_taken", { "floor": main.floor_number, "kind": String(o["kind"]), "id": String(o["id"]) })
+        if main.autotest:
+            print("[RARE] taken floor=%d kind=%s id=%s" % [main.floor_number, String(o["kind"]), String(o["id"])])
     for other in data.stock:
         if other != o and String(other.get("group", "")) == g:
             other["taken"] = true
@@ -1254,6 +1278,59 @@ func _spawn_enemy(type: String, pos: Vector2) -> Enemy:
     return e
 
 
+## A rare elite (RareElite): an elite with a name, a look, an affix and a pattern of its own.
+func _spawn_rare() -> void:
+    var e := _spawn_enemy("elite", _spawn_point())
+    e.emerge = Enemy.EMERGE_SECS
+    RareElite.apply(e, main.region_id, main.measured_power(), main.difficulty(), main.floor_number)
+    var pairs := Elements.available_reactions(main.party_elements())
+    if not pairs.is_empty():
+        e.set_shield(pairs.pick_random(), 2 + main.difficulty() / 4)
+    Telemetry.elite_spawned(e)
+    Telemetry.event("rare_spawned", { "floor": main.floor_number, "region": main.region_id, "arena": main.floor_arenas_done() + 1, "name": String(e.rare["name"]), "pat": String(e.rare["pat"]), "affix": e.affix, "hp": roundf(e.max_hp), "power": roundf(main.measured_power()) })
+    if main.autotest:
+        print("[RARE] spawned floor=%d region=%s arena=%d name=%s pat=%s affix=%s hp=%.0f P=%.0f" % [main.floor_number, main.region_id, main.floor_arenas_done() + 1, String(e.rare["name"]), String(e.rare["pat"]), e.affix, e.max_hp, main.measured_power()])
+
+
+## The rare elite's reward row: 1 of 2, Rare or better (a step up REWARD_UP of the time), one
+## card a weapon REWARD_WEAPON of the time. Laid out where the bonus pick would be.
+func _rare_cards() -> void:
+    var luck := main.party_luck()
+    var ids: Array = []
+    var cards: Array = []
+    for i in 2:
+        var rar := maxi(Items.Rarity.RARE, Items.roll_rarity("boss", main.floor_number, luck))
+        if randf() < RareElite.REWARD_UP:
+            rar += 1
+        rar = mini(mini(rar, Items.Rarity.LEGENDARY), Items.max_rarity_unlocked())
+        var id := Drops.roll_item_at(rar, ids + FloorGen._mod_ids(), "treasure", main.players)
+        ids.append(id)
+        cards.append(Items.offer(id, 0))
+    if randf() < RareElite.REWARD_WEAPON:
+        var wid := Drops.roll_gun(main.players, _maxed_gun_ids(), maxi(Items.Rarity.RARE, Items.roll_rarity("boss", main.floor_number, luck, true)), Items.Rarity.RARE)
+        if wid != "" and Guns.rarity_of(wid) >= Items.Rarity.RARE:
+            cards[1] = FloorGen.offer("gun", wid, 0)
+    var best := 0
+    for i in cards.size():
+        var o: Dictionary = cards[i]
+        o["pos"] = Vector2((float(i) - 0.5) * 210.0, -150.0)
+        o["group"] = "rare"
+        data.stock.append(o)
+        best = maxi(best, _offer_rarity(o))
+    main.loot_cards(cards.size())
+    _build_pedestals()
+    var weapon := String(cards[1]["kind"]) == "gun"
+    Telemetry.event("rare_reward_shown", { "floor": main.floor_number, "best": best, "weapon": weapon })
+    if main.autotest:
+        print("[RARE] reward floor=%d best=%s weapon=%s" % [main.floor_number, Items.RARITY_NAMES[clampi(best, 0, 4)], str(weapon)])
+
+
+func _offer_rarity(o: Dictionary) -> int:
+    if String(o["kind"]) == "gun":
+        return Guns.rarity_of(String(o["id"]))
+    return int(Items.get_item(String(o["id"])).get("rarity", 0))
+
+
 func _spawn_elite(count: int) -> void:
     var diff := main.difficulty()
     var hits := 2 + diff / 4
@@ -1387,6 +1464,16 @@ func _on_enemy_died(e: Enemy) -> void:
             materials.ignite(e.global_position, e.radius * 1.5)
     if e.is_elite and data.type == RoomData.Type.CHALLENGE:
         _elites_alive -= 1
+    if not e.rare.is_empty():
+        _rare_killed = true
+        RareElite.killed_run += 1
+        var secs := float(Time.get_ticks_msec() - int(e.rare["t0"])) / 1000.0
+        Telemetry.event("rare_killed", { "floor": main.floor_number, "name": String(e.rare["name"]), "secs": snappedf(secs, 0.1) })
+        if main.autotest:
+            print("[RARE] killed floor=%d name=%s secs=%.1f" % [main.floor_number, String(e.rare["name"]), secs])
+        main.hitstop(0.14)
+        Sfx.play("burst_large", 0.0, 0.05, e.global_position)
+        Elements.nova.emit(e.global_position, e.radius * 4.0, Color(RareElite.GOLD, 0.7))
     # Loot: bosses always drop rare or better, elites drop sometimes.
     var inner := rect.grow(-90.0)
     var drop_pos := nearest_open(Vector2(clampf(e.global_position.x, inner.position.x, inner.end.x), clampf(e.global_position.y, inner.position.y, inner.end.y)), 26.0)
