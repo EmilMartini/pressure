@@ -32,6 +32,8 @@ const SWARM_RESPAWN := 2.0
 const SPAWN_GAP := 0.25
 const SOUND_DB := -6.0
 const SOUND_MAX := 4
+const SPLIT_HIT := 0.4       # Acid Slime: a split half bites at this share
+const BOTH_BURST_CD := 3.0   # Sun and Moon: a foe bursts at most this often
 ## Default bodies per weapon by style when the entry sets no cap.
 const STYLE_CAP := { "drone": 1, "familiar": 1, "orbit": 3, "swarm": 4, "golem": 1 }
 ## Body radius in px by style (2.5: drones, familiars and orbiters 10 to 18 px across, swarm
@@ -133,6 +135,7 @@ static func maintain(g: Gun, delta: float) -> void:
         g.bodies.clear()
         g.summon_t = 0.4
     g.bodies = g.bodies.filter(func(b): return is_instance_valid(b) and not b.is_queued_for_deletion())
+    g.orbit_t += delta   # game time, so orbits keep their speed under --fixed-fps
     g.summon_t -= delta
     if g.summon_t > 0.0 or not home.is_inside_tree():
         return
@@ -174,7 +177,8 @@ func _reach() -> float:
 
 
 func _radius() -> float:
-    return float(STYLE_R.get(kind, 7.0)) * maxf(0.5, gun.size_mult()) * (1.0 + gun.player.stat("summon_size"))
+    var base := 10.0 if gun.data.id == "storm_kite" else float(STYLE_R.get(kind, 7.0))
+    return base * maxf(0.5, gun.size_mult()) * (1.0 + gun.player.stat("summon_size"))
 
 
 ## The weapon's strike in this body's element. Tether adds your first weapon's element;
@@ -402,14 +406,16 @@ func _tick_familiar(delta: float, p: Player) -> void:
     _cd = 1.0 / _rate()
     _face = (to - global_position).normalized()
     var s := _strike()
-    s.hit(target, 1.0, global_position.lerp(to, 0.6))
+    s.hit(target, SPLIT_HIT if temp_life > 0.0 else 1.0, global_position.lerp(to, 0.6))
     _pressure()
     sound(element, global_position, -2.0)
     match gun.data.id:
         "acid_slime":
-            # Splits in two on each hit, up to four.
-            if gun.bodies.size() < 4 and make_room(p):
-                var kid := spawn(gun, global_position, 8.0)
+            # Splits in two on a hit, up to four: the halves bite at SPLIT_HIT and melt away.
+            var now := Enemy._game_now()
+            if temp_life < 0.0 and now - gun.split_at >= 1.5 and gun.bodies.size() < 4 and make_room(p):
+                gun.split_at = now
+                var kid := spawn(gun, global_position, 4.0)
                 kid.target = target
         "sun_and_moon":
             # A foe bitten by both bursts.
@@ -417,7 +423,9 @@ func _tick_familiar(delta: float, p: Player) -> void:
             var other := "moon_t" if key == "sun_t" else "sun_t"
             var now := Enemy._game_now()
             target.set_meta(key, now)
-            if target.has_meta(other) and now - float(target.get_meta(other)) < 2.0:
+            var last := float(target.get_meta("sm_burst", -99.0))
+            if target.has_meta(other) and now - float(target.get_meta(other)) < 2.0 and now - last >= BOTH_BURST_CD:
+                target.set_meta("sm_burst", now)
                 target.remove_meta(other)
                 target.remove_meta(key)
                 var bs := _strike()
@@ -435,7 +443,7 @@ func _tick_orbit(delta: float, p: Player) -> void:
     var n := maxi(1, gun.bodies.size())
     var r := gun.data.aura_radius * (1.0 + 0.5 * p.stat("range") + 0.5 * p.stat("summon_size"))
     var spin := gun.data.projectile_speed / maxf(20.0, r)   # rad/s from the rim speed
-    var a := _t * 0.0 + Time.get_ticks_msec() * 0.001 * spin + TAU * float(idx) / float(n) + float(gun.get_index()) * 0.7
+    var a := gun.orbit_t * spin + TAU * float(idx) / float(n) + float(gun.get_index()) * 0.7
     var spot := p.global_position + Vector2.RIGHT.rotated(a) * r
     _face = Vector2.RIGHT.rotated(a + PI * 0.5)
     global_position = spot
